@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/13"
-LOCK_SCHEMA = "mime.lock/13"
+DOCUMENT_SCHEMA = "mime.document/14"
+LOCK_SCHEMA = "mime.lock/14"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -252,6 +252,43 @@ class BasedOnDoc(TypedDict, closed=True):
     doi: NotRequired[ReadOnly[str]]
 
 
+class BlockNamesDoc(TypedDict, closed=True):
+    """What a block's use provides, by the names the document holds them under, in each of the document's sections of
+    declarations by name, absent where it provides none there: things (with their dynamics, fields, commands, parts
+    and segments), interactions and observations by id, the controller, declared values, ranges and sources by path,
+    materials by name, and third-party files' terms by path. The host's settings (``run``, ``scene``, ``gravity``,
+    ``profile``, ``conditions``, ``based_on``) are never a block's; nor is the experiment's licence (a block's is its
+    entry's ``licence``)."""
+
+    things: NotRequired[list[str]]
+    interactions: NotRequired[list[str]]
+    observations: NotRequired[list[str]]
+    controller: NotRequired[list[str]]
+    declared: NotRequired[list[str]]
+    ranges: NotRequired[list[str]]
+    sources: NotRequired[list[str]]
+    materials: NotRequired[list[str]]
+    terms: NotRequired[list[str]]
+
+
+class BlockUseDoc(TypedDict, closed=True):
+    """A block the experiment uses (version 14): its id (``<namespace>.<name>``), version and content hash; its tier,
+    computed from its licence, never written by hand (``copied``: its declarations are in the document; ``referenced``:
+    they are in its container, which the lock's ``assets`` records); its licence, an SPDX expression whose custom
+    licences the document's ``licences`` holds; the DOI it was used by, where it was; how its sockets were bound; the
+    names it provides; and the paths the experiment declared over it."""
+
+    id: ReadOnly[str]
+    version: ReadOnly[str]
+    content: ReadOnly[str]
+    tier: ReadOnly[Literal["copied", "referenced"]]
+    licence: ReadOnly[str]
+    doi: NotRequired[ReadOnly[str]]
+    sockets: dict[str, str]
+    names: BlockNamesDoc
+    overrides: list[str]
+
+
 class ReferenceDoc(TypedDict, closed=True):
     """An asset layer referenced into the scene: the prim it is referenced at, its file below the document's
     folder, and its pin."""
@@ -354,12 +391,14 @@ class ExperimentDocument(TypedDict, closed=True):
     and the threads of its BLAS. Version 11 writes a medium's fields under ``fields``, by role (``fields: {flow:
     ...}``), as an apparatus's are, where earlier versions wrote its flow under ``dynamics``. Version 12 adds
     ``ranges``, each range declared in the experiment (``exp.declare_range``) by its path, absent where none is. Version
-    13 names the FVM's setting ``solve_report_rows``, where earlier versions named it ``report_rows``."""
+    13 names the FVM's setting ``solve_report_rows``, where earlier versions named it ``report_rows``. Version 14 adds
+    ``blocks``, each block the experiment uses, by the use's name, absent where it uses none."""
 
-    schema: ReadOnly[Literal["mime.document/13"]]
+    schema: ReadOnly[Literal["mime.document/14"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     based_on: NotRequired[BasedOnDoc]
+    blocks: NotRequired[dict[str, BlockUseDoc]]
     profile: ReadOnly[Literal["exploratory", "research", "strict"]]
     run: RunDoc
     scene: SceneDoc
@@ -574,7 +613,8 @@ class RemoteAssetRecord(TypedDict, closed=True):
     together): the five keys every record has, and from version 6 each one the record states (its credit, role, kind
     and derivation, notice, custom licences, version, citation, and the packages that provide the adapters its
     locations need). Locations are tried in order; the lock holds only the record's own, never a machine's locations
-    file's."""
+    file's. From version 14 the locations may be none (``[]``: the file is had by request alone), and ``request`` names
+    where it may be asked for."""
 
     name: ReadOnly[str]
     sha256: ReadOnly[str]
@@ -590,6 +630,7 @@ class RemoteAssetRecord(TypedDict, closed=True):
     version: NotRequired[ReadOnly[str]]
     citation: NotRequired[ReadOnly[str]]
     adapters: NotRequired[ReadOnly[dict[str, str]]]
+    request: NotRequired[ReadOnly[str]]
 
 
 class MagnetRecord(TypedDict, closed=True):
@@ -818,7 +859,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/13"]]
+    schema: ReadOnly[Literal["mime.lock/14"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]
@@ -961,6 +1002,7 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 
 __all__ = [
+    "BlockNamesDoc", "BlockUseDoc",
     "BasedOnDoc", "RangeDoc", "ChosenDoc", "CustomLicenceDoc", "DefaultRecord", "EvidenceDoc", "ItemRecord", "PendingDoc", "PermissionDoc",
     "ScopeDoc", "TermsDoc",
     "ReasonDoc", "ResolvedProfile", "WaiverRecord",

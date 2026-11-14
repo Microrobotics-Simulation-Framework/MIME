@@ -22,22 +22,22 @@ import os
 import re
 import shutil
 import stat
+import tomllib
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
-import yaml
 from hypothesis import given
 from hypothesis import strategies as st
-from push_cases import copy_of, saved_toy, with_token, write_sharing
+from push_cases import copy_of, saved_toy, with_token, write_manifest
 from terms_cases import NO_REDISTRIBUTION, layered, same_reference_run, write_mesh
 from zenodo_records import Entry, FakeRecords, FakeTransport, Killed
 
 from mime import assets, push
 from mime.build import BuildRefused
 from mime.cli import main
-from mime.push import _client, _draft, _edits, _plan, _publish, _sharing, _stage, _state
+from mime.push import _client, _draft, _edits, _manifest, _plan, _publish, _stage, _state, _toml
 from mime.push._state import Uploaded, metadata_marks, read_state, write_state
 from mime.saved import card_text, pack
 from mime.saved._bundle import _own_location
@@ -55,7 +55,7 @@ EMBARGO = {"record": "public", "files": "restricted",
 @pytest.fixture(scope="module")
 def toy(tmp_path_factory: pytest.TempPathFactory) -> Path:
     folder = saved_toy(tmp_path_factory.mktemp("toy"))
-    write_sharing(folder)
+    write_manifest(folder)
     return folder
 
 
@@ -138,19 +138,19 @@ def metadata(fake: FakeRecords, record: str = NUMBER) -> dict[str, object]:
 
 
 def sharing_text(folder: Path) -> str:
-    return (folder / "sharing.yaml").read_text(encoding="utf-8")
+    return (folder / "mime.toml").read_text(encoding="utf-8")
 
 
 def rewritten(folder: Path, old: str, new: str) -> None:
     text = sharing_text(folder)
     assert old in text
-    (folder / "sharing.yaml").write_text(text.replace(old, new), encoding="utf-8")
+    (folder / "mime.toml").write_text(text.replace(old, new), encoding="utf-8")
 
 
 def replaced_content(folder: Path, source: Path) -> None:
-    """The folder's saved form replaced by ``source``'s, its sharing.yaml kept."""
+    """The folder's saved form replaced by ``source``'s, its mime.toml kept."""
     for path in folder.iterdir():
-        if path.name != "sharing.yaml":
+        if path.name != "mime.toml":
             shutil.rmtree(path) if path.is_dir() else path.unlink()
     for path in source.iterdir():
         target = folder / path.name
@@ -244,8 +244,8 @@ def test_an_embargo_set_on_the_page_is_shown_and_kept_by_default_and_published_a
     assert published(folder, fake, service, person) is not None and publishes(fake) == 1
     assert fake.records[NUMBER].body["access"] == EMBARGO
     assert "! access was edited on the site since push last wrote it:" in person.said
-    assert person.asked[0].startswith("Write sharing.yaml's over the site's?")
-    assert _sharing.read_sharing(folder).access == {"files": "restricted", "embargo": {"until": "2030-01-01",
+    assert person.asked[0].startswith("Write mime.toml's over the site's?")
+    assert _manifest.read_record(folder).access == {"files": "restricted", "embargo": {"until": "2030-01-01",
                                                                                        "reason": "under review"}}
     warning = "! access once published is not open: the record public, its files restricted, embargoed until 2030-01-01"
     assert any(line.startswith(warning) for line in person.said), person.text()
@@ -316,31 +316,32 @@ def test_a_preview_chosen_on_the_page_survives_a_write(toy: Path, tmp_path: Path
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake, service)
     fake.records[NUMBER].body["files"] = {"enabled": True, "default_preview": "NOTICE.txt"}
-    rewritten(folder, 'description: ""', 'description: "A paragraph."')
+    rewritten(folder, 'description = ""', 'description = "A paragraph."')
     pushed(folder, fake, service)
     assert "A paragraph." in str(metadata(fake)["description"])
     assert fake.records[NUMBER].body["files"] == {"enabled": True, "default_preview": "NOTICE.txt"}
 
 
 @pytest.mark.parametrize(("lines", "where"), [
-    ("access: public", "access"), ("access: {files: open}", "access.files"), ("access: {colour: red}", "access.colour"),
-    ("access: {files: public, embargo: {until: 2030-01-01}}", "access.embargo"),
-    ("access: {files: restricted, embargo: {until: soon}}", "access.embargo.until"),
-    ("access: {files: restricted, embargo: {reason: x}}", "access.embargo.until")])
+    ('access = "public"', "access"), ('access = { files = "open" }', "access.files"),
+    ('access = { colour = "red" }', "access.colour"),
+    ('access = { files = "public", embargo = { until = "2030-01-01" } }', "access.embargo"),
+    ('access = { files = "restricted", embargo = { until = "soon" } }', "access.embargo.until"),
+    ('access = { files = "restricted", embargo = { reason = "x" } }', "access.embargo.until")])
 def test_each_problem_of_access_is_refused_by_its_path(toy: Path, tmp_path: Path, lines: str, where: str):
     folder = copy_of(toy, tmp_path)
-    (folder / "sharing.yaml").write_text(sharing_text(folder) + lines + "\n", encoding="utf-8")
+    (folder / "mime.toml").write_text(sharing_text(folder) + lines + "\n", encoding="utf-8")
     with pytest.raises(BuildRefused) as refused:
-        _sharing.read_sharing(folder)
-    assert [each.code for each in refused.value.refusals] == ["push.sharing"]
-    assert f"sharing.yaml, {where}: " in refused.value.refusals[0].message, refused.value.refusals[0].message
+        _manifest.read_record(folder)
+    assert [each.code for each in refused.value.refusals] == ["manifest.key"]
+    assert f"mime.toml, [record] {where}: " in refused.value.refusals[0].message, refused.value.refusals[0].message
 
 
 def test_an_unquoted_day_of_an_embargo_is_read_as_the_day(toy: Path, tmp_path: Path):
     folder = copy_of(toy, tmp_path)
-    (folder / "sharing.yaml").write_text(sharing_text(folder) + "access: {files: restricted, embargo: {until: "
-                                                                "2030-01-01}}\n", encoding="utf-8")
-    assert _sharing.read_sharing(folder).access == {"files": "restricted", "embargo": {"until": "2030-01-01"}}
+    (folder / "mime.toml").write_text(sharing_text(folder) + 'access = { files = "restricted", embargo = { until = '
+                                                             '2030-01-01 } }\n', encoding="utf-8")
+    assert _manifest.read_record(folder).access == {"files": "restricted", "embargo": {"until": "2030-01-01"}}
 
 
 # --- F3: site edits survive a new version --------------------------------------------------------------------------
@@ -369,7 +370,7 @@ def test_the_same_command_run_twice_stops_at_the_same_edit_of_the_published_reco
     drafted = pushed(folder, fake, service, person)
     assert drafted.record == draft and drafted.version == 2
     assert metadata(fake, draft)["title"] == "Corrected on the page"
-    assert _sharing.read_sharing(folder).title == "Corrected on the page"
+    assert _manifest.read_record(folder).title == "Corrected on the page"
 
 
 def test_control_marks_saved_before_the_edit_is_settled_are_caught_writing_over_it_on_the_second_run(
@@ -407,7 +408,7 @@ def test_a_paragraph_written_on_the_published_page_is_asked_about_and_kept_above
     assert codes(lambda: pushed(folder, fake, service)) == ["push.metadata-edited"]
     person = Terminal(answers=(False,))
     drafted = pushed(folder, fake, service, person)
-    assert len(person.asked) == 1 and _sharing.read_sharing(folder).description == "A correction on the page."
+    assert len(person.asked) == 1 and _manifest.read_record(folder).description == "A correction on the page."
     held = str(metadata(fake, drafted.record)["description"])
     assert held.startswith("<p>A correction on the page.</p>\n<h1>full_toy</h1>")
     assert card_problems(held, drafted.doi, 2) == [], "the card below the paragraph is the new version's"
@@ -424,13 +425,13 @@ def test_a_word_changed_inside_the_published_card_is_asked_about(toy: Path, chan
     published_then_changed(folder, changed, fake, service, word)
     person = Terminal(answers=(False,))
     assert codes(lambda: pushed(folder, fake, service, person)) == ["push.metadata-edited"]
-    assert person.asked[0].startswith("sharing.yaml cannot hold it")
+    assert person.asked[0].startswith("[record] cannot hold it")
     assert "Edited" in str(metadata(fake, fake.drafts()[0].id)["description"]), "a stopped push writes nothing"
 
 
 @pytest.mark.parametrize(("field", "value"), [("locations", {"features": [{"place": "Delft"}]}),
                                               ("publisher", "A press")])
-def test_a_field_sharing_yaml_cannot_hold_edited_on_the_published_page_is_never_dropped_unasked(
+def test_a_field_record_cannot_hold_edited_on_the_published_page_is_never_dropped_unasked(
         toy: Path, changed: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: object):
     fake, service = sandbox(monkeypatch)
     folder = copy_of(toy, tmp_path)
@@ -438,7 +439,7 @@ def test_a_field_sharing_yaml_cannot_hold_edited_on_the_published_page_is_never_
     assert codes(lambda: pushed(folder, fake, service)) == ["push.metadata-edited"]
     declined = Terminal(answers=(False,))
     assert codes(lambda: pushed(folder, fake, service, declined)) == ["push.metadata-edited"]
-    assert declined.asked[0].startswith("sharing.yaml cannot hold it")
+    assert declined.asked[0].startswith("[record] cannot hold it")
     assert metadata(fake, fake.drafts()[0].id)[field] == value
     person = Terminal(answers=(True,))
     drafted = pushed(folder, fake, service, person)
@@ -561,10 +562,11 @@ def test_a_record_naming_anothers_published_record_is_not_adopted(toy: Path, tmp
 
 
 SHARING_CHANGES = [
-    ('title: "full_toy"', 'title: "A different title"', "A different title"),
-    ("creators: [{family: Carberry", "creators: [{family: Stranger, given: Never Asked}, {family: Carberry", "Stranger"),
-    ("contributors: []", "contributors: [{family: Unasked, given: Colleague, type: Supervisor}]", "Unasked"),
-    ('description: ""', 'description: "A claim I typed and forgot."', "A claim I typed"),
+    ('title = "full_toy"', 'title = "A different title"', "A different title"),
+    ('creators = [{ family = "Carberry"', 'creators = [{ family = "Stranger", given = "Never Asked" }, { family = "Carberry"',
+     "Stranger"),
+    ("contributors = []", 'contributors = [{ family = "Unasked", given = "Colleague", type = "Supervisor" }]', "Unasked"),
+    ('description = ""', 'description = "A claim I typed and forgot."', "A claim I typed"),
 ]
 
 
@@ -589,13 +591,13 @@ def test_a_script_publishes_only_what_the_draft_holds(toy: Path, tmp_path: Path,
     assert word in json.dumps(metadata(fake))
 
 
-def test_a_script_is_refused_a_field_removed_from_sharing_yaml_too(toy: Path, tmp_path: Path,
+def test_a_script_is_refused_a_field_removed_from_mime_toml_too(toy: Path, tmp_path: Path,
                                                                    monkeypatch: pytest.MonkeyPatch):
     fake, service = sandbox(monkeypatch)
     folder = copy_of(toy, tmp_path)
-    rewritten(folder, "funding: []", "funding: [{funder: A small foundation}]")
+    rewritten(folder, "funding = []", 'funding = [{ funder = "A small foundation" }]')
     pushed(folder, fake, service)
-    rewritten(folder, "funding: [{funder: A small foundation}]", "funding: []")
+    rewritten(folder, 'funding = [{ funder = "A small foundation" }]', "funding = []")
     assert codes(lambda: published(folder, fake, service, confirm=DOI)) == ["push.metadata-changed"]
 
 
@@ -620,7 +622,8 @@ def test_control_no_hold_on_what_a_script_publishes_is_caught_naming_a_new_creat
     fake, service = sandbox(monkeypatch)
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake, service)
-    rewritten(folder, "creators: [{family: Carberry", "creators: [{family: Stranger, given: Never Asked}, {family: Carberry")
+    rewritten(folder, 'creators = [{ family = "Carberry"',
+              'creators = [{ family = "Stranger", given = "Never Asked" }, { family = "Carberry"')
     published(folder, fake, service, confirm=DOI)
     assert "Stranger" in json.dumps(metadata(fake)) and fake.records[NUMBER].published, \
         "the planted publish of a name no draft held is not seen"
@@ -637,7 +640,7 @@ def test_in_a_terminal_each_change_is_shown_with_its_new_value_before_the_number
     assert published(folder, fake, service, person) is not None
     number = person.events.index(f"Type the record number to publish ({NUMBER}): ")
     before = "\n".join(person.events[:number])
-    assert "! changed in sharing.yaml since the draft was written, and written to it now:" in before
+    assert "! changed in mime.toml since the draft was written, and written to it now:" in before
     assert "metadata.title on the draft: full_toy" in before and "metadata.title to publish: A different title" in before
     assert "Stranger" in before and "Unasked" in before and "A claim I typed" in before
     assert before.index("metadata.title on the draft") < before.index("You state that everyone named")
@@ -647,7 +650,7 @@ def test_the_short_plan_names_the_title_and_the_contributors_always(toy: Path, t
                                                                     monkeypatch: pytest.MonkeyPatch):
     fake, service = sandbox(monkeypatch)
     folder = copy_of(toy, tmp_path)
-    rewritten(folder, "contributors: []", "contributors: [{family: Named, given: Colleague, type: Supervisor}]")
+    rewritten(folder, "contributors = []", 'contributors = [{ family = "Named", given = "Colleague", type = "Supervisor" }]')
     person = Terminal()
     pushed(folder, fake, service, person)
     assert "  title: full_toy" in person.said and any(line.endswith("contributors Named, Colleague")
@@ -1044,13 +1047,13 @@ def test_what_the_service_adds_as_it_stores_a_draft_is_no_difference_after_publi
     assert "its metadata, and the bundle's sha256" in person.text()
 
 
-def test_sharing_yaml_edited_after_publishing_is_not_reported_as_what_the_record_differs_in(
+def test_mime_toml_edited_after_publishing_is_not_reported_as_what_the_record_differs_in(
         toy: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     fake, service = production(monkeypatch)
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake, service)
     published(folder, fake, service, confirm=f"10.5281/zenodo.{NUMBER}")
-    rewritten(folder, 'title: "full_toy"', 'title: "A better title"')
+    rewritten(folder, 'title = "full_toy"', 'title = "A better title"')
     person = Terminal()
     assert published(folder, fake, service, person) is not None
     assert "not what" not in person.text() and "edited on the record's page" not in person.text()
@@ -1146,15 +1149,15 @@ def test_a_question_never_shows_two_values_that_differ_as_two_lines_that_do_not(
 def test_a_seventh_creators_edit_is_shown_on_the_two_lines(toy: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     fake, service = sandbox(monkeypatch)
     folder = copy_of(toy, tmp_path)
-    people = ", ".join(f"{{family: Family{index}, given: Given{index}, affiliation: A rather long affiliation {index}}}"
-                       for index in range(6))
-    rewritten(folder, "creators: [{family: Carberry", f"creators: [{people}, {{family: Carberry")
+    people = ", ".join(f'{{ family = "Family{index}", given = "Given{index}", affiliation = "A rather long affiliation '
+                       f'{index}" }}' for index in range(6))
+    rewritten(folder, 'creators = [{ family = "Carberry"', f'creators = [{people}, {{ family = "Carberry"')
     pushed(folder, fake, service)
     metadata(fake)["creators"][-1]["person_or_org"]["given_name"] = "Changed on the site"  # type: ignore[index]
     person = Terminal(answers=(True,))
     pushed(folder, fake, service, person)
     site = next(line for line in person.said if line.startswith("    on the site:"))
-    file = next(line for line in person.said if line.startswith("    sharing.yaml:"))
+    file = next(line for line in person.said if line.startswith("    mime.toml:"))
     assert "Changed on the site" in site and "Josiah" in file
 
 
@@ -1212,26 +1215,26 @@ def test_keeping_a_title_leaves_another_keys_line_breaks_as_they_were(toy: Path,
                                                                       monkeypatch: pytest.MonkeyPatch, value: str):
     fake, service = sandbox(monkeypatch)
     folder = copy_of(toy, tmp_path)
-    rewritten(folder, 'description: ""', f"description: {json.dumps(value, ensure_ascii=False)}")
-    before = _sharing.read_sharing(folder).description
+    rewritten(folder, 'description = ""', f"description = {_toml.value_text(value)}")
+    before = _manifest.read_record(folder).description
     pushed(folder, fake, service)
     held = str(metadata(fake)["description"])
     metadata(fake)["title"] = "Edited on the site"
     pushed(folder, fake, service, keep_site_edits=True)
-    assert _sharing.read_sharing(folder).description == before and metadata(fake)["description"] == held
+    assert _manifest.read_record(folder).description == before and metadata(fake)["description"] == held
 
 
-def test_a_crlf_sharing_yaml_keeps_its_line_endings_and_is_put_back_byte_for_byte(toy: Path, tmp_path: Path,
+def test_a_crlf_mime_toml_keeps_its_line_endings_and_is_put_back_byte_for_byte(toy: Path, tmp_path: Path,
                                                                                   monkeypatch: pytest.MonkeyPatch):
     fake, service = sandbox(monkeypatch)
     folder = copy_of(toy, tmp_path)
-    path = folder / "sharing.yaml"
+    path = folder / "mime.toml"
     pushed(folder, fake, service)
     path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
     metadata(fake)["title"] = "Edited on the site"
     pushed(folder, fake, service, keep_site_edits=True)
     written = path.read_bytes()
-    assert b"title: Edited on the site\r\n" in written and written.count(b"\n") == written.count(b"\r\n")
+    assert b'title = "Edited on the site"\r\n' in written and written.count(b"\n") == written.count(b"\r\n")
     raw = path.read_bytes()
     metadata(fake)["title"] = "Edited again"
     metadata(fake)["creators"][0]["affiliations"] = [{"name": "A"}, {"name": "B"}]  # type: ignore[index]
@@ -1241,17 +1244,18 @@ def test_a_crlf_sharing_yaml_keeps_its_line_endings_and_is_put_back_byte_for_byt
 
 
 @skip_read_only
-def test_a_read_only_sharing_yaml_stops_the_keep_with_the_lines_to_copy(toy: Path, tmp_path: Path,
+def test_a_read_only_mime_toml_stops_the_keep_with_the_lines_to_copy(toy: Path, tmp_path: Path,
                                                                         monkeypatch: pytest.MonkeyPatch):
     fake, service = sandbox(monkeypatch)
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake, service)
     metadata(fake)["title"] = "Edited on the site"
-    os.chmod(folder / "sharing.yaml", 0o444)
+    os.chmod(folder / "mime.toml", 0o444)
     with pytest.raises(BuildRefused) as refused:
         pushed(folder, fake, service, keep_site_edits=True)
-    os.chmod(folder / "sharing.yaml", 0o644)
-    assert refused.value.codes() == ["push.sharing"] and "title: Edited on the site" in refused.value.refusals[0].action
+    os.chmod(folder / "mime.toml", 0o644)
+    assert refused.value.codes() == ["manifest.write"]
+    assert 'title = "Edited on the site"' in refused.value.refusals[0].action
     assert metadata(fake)["title"] == "Edited on the site"
 
 
@@ -1261,14 +1265,16 @@ COMMENT = st.text(st.characters(exclude_categories=("Cs", "Cc", "Zl", "Zp")), ma
 @given(st.lists(st.text(max_size=24), max_size=5), st.text(min_size=1, max_size=24), st.text(max_size=24), COMMENT)
 def test_written_back_keys_read_back_and_another_keys_text_and_a_comment_stay(words: list[str], title: str, other: str,
                                                                               comment: str):
-    scaffold = _sharing.scaffold("full_toy", "CC-BY-4.0").replace("creators: []", "creators:\n  - {family: A}\n")
-    scaffold = scaffold.replace('description: ""\n', f"description: {json.dumps(other)}\n# {comment}\n")
-    before = yaml.safe_load(scaffold)
-    after = _edits.written_text(scaffold, {"keywords": words, "title": title})
-    read = yaml.safe_load(after)
-    assert read["keywords"] == words and read["title"] == title
-    assert {key: value for key, value in read.items() if key not in ("keywords", "title")} == \
-        {key: value for key, value in before.items() if key not in ("keywords", "title")}
+    scaffold = _manifest.manifest_text("bundle", "full_toy", "CC-BY-4.0").replace(
+        "creators = []", 'creators = [\n  { family = "A" },\n]')
+    scaffold = scaffold.replace('description = ""\n', f"description = {_toml.value_text(other)}\n# {comment}\n")
+    before = tomllib.loads(scaffold)
+    after = _toml.edited(scaffold, "record", {"keywords": words, "title": title})
+    read = tomllib.loads(after)
+    assert read["record"]["keywords"] == words and read["record"]["title"] == title
+    for held in (before, read):
+        held["record"] = {key: value for key, value in held["record"].items() if key not in ("keywords", "title")}
+    assert read == before
     assert f"# {comment}\n" in after, "a comment outside the replaced lines stays"
 
 

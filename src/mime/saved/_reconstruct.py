@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
+from mime._terminal import plain
 from mime.build import (
     CONVENTIONAL_GRAVITY,
     Attachment,
@@ -243,11 +244,30 @@ def scene_from(document: ExperimentDocument, folder: Path) -> Scene:
     return scene
 
 
+def referenced_block_refusals(document: ExperimentDocument) -> list[Refusal]:
+    """``load.referenced-block`` for each block ``document`` uses by reference: its declarations are in the block's
+    container, which this MIME does not yet read, not in the document."""
+    from mime import __version__
+
+    return [Refusal("load.referenced-block", RefusalClass.ENVIRONMENT,
+                    f"the document uses the block {plain(name)!r} ({plain(use['id'])} {plain(use['version'])}) by "
+                    f"reference: its declarations are in the block's container, not the document, and this MIME "
+                    f"({__version__}) does not yet read a referenced block",
+                    f"install the MIME that wrote it ({plain(document['mime'])}) or a later one (`pip install -U "
+                    f"mime-engine`), which reads a referenced block, then load it again; this one loads a block used as "
+                    f"copied, whose declarations the document holds")
+            for name, use in document.get("blocks", {}).items() if use["tier"] == "referenced"]
+
+
 def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord] = (),
                       folder: Path | None = None) -> tuple[RunSettings, list[Declaration]]:
     """The run settings and declarations ``document`` describes, its scene's layers read from below ``folder``
     (the working directory when none is given). Resolves its entries among installed packages and never installs
-    anything; raises :class:`LoadRefused` with every reason, each with the line to install."""
+    anything; raises :class:`LoadRefused` with every reason, each with the line to install. A block used by reference
+    is refused alone, before anything else is read: the rest of the document leans on what it would expand to."""
+    referenced = referenced_block_refusals(document)
+    if referenced:
+        raise LoadRefused(referenced)
     held = folder if folder is not None else Path.cwd()
     try:
         materials, conditions = materials_from(document["materials"], held), conditions_from(document["conditions"])
@@ -302,4 +322,4 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
         raise LoadRefused(reader.refusals)
     scene = scene_from(document, held)
     return RunSettings(document["experiment"], scene, gravity, dt, run["seed"], None, conditions or None,
-                       document["profile"], duration, document.get("based_on")), declarations
+                       document["profile"], duration, document.get("based_on"), document.get("blocks")), declarations

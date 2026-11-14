@@ -367,7 +367,7 @@ class Experiment:
         experiment = cls(settings.experiment, scene=settings.scene, gravity=settings.gravity, dt=settings.dt,
                          seed=settings.seed, up=settings.up, conditions=settings.conditions, profile=settings.profile,
                          duration=settings.duration)
-        experiment._settings = replace(experiment._settings, based_on=settings.based_on)
+        experiment._settings = replace(experiment._settings, based_on=settings.based_on, blocks=settings.blocks)
         experiment._declarations = list(declarations)
         return experiment
 

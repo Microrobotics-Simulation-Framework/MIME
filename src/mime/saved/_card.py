@@ -17,7 +17,10 @@ The meshes the stage draws (the lock's ``visuals`` manifests) count the same way
 every asset the bundle lacks is declared of role presentation and every file is carried, the statement says the results
 reproduce from the bundle alone as far as the records declare, and that showing the experiment needs the assets.
 An id no SPDX list the installed packaging holds names, and no licence the folder or its lock defines, is named with no
-link and as unknown, never given an invented SPDX page.
+link and as unknown, never given an invented SPDX page. **A file nothing names a download location for** (saved form
+14: a record with no location, or a file that may not be redistributed whose terms give no origin) is said plainly:
+the availability statement opens "Not reproducible from public sources" where results depend on it, with where to
+request it, and says only that showing the experiment needs it where it is of role presentation.
 
 **The card** is Markdown, offline (``mime card <folder>``): what the experiment is, what it bounds and estimates (no
 evidence record until a1), what ``mime verify <folder>`` would check (the card runs no check), its validity lines, its
@@ -29,9 +32,10 @@ lines) comes from the ``publication`` of the lock it is written for: ``mime card
 ``mime push`` gives it the staged lock's, so a published record's description says what the record is. A first version's
 concept DOI is minted when it is published, so its card names it from version 2 on. Both refuse a licence that names an id the installed packaging does not list
 (``terms.unlisted-licence``), whose verdict this packaging cannot give. **Credit** (the creators with
-their ORCIDs, the contributors and their roles) is kept in ``sharing.yaml`` beside the saved form, which ``mime push
-<folder> --to <service> --init`` writes: the card names its creators (and its contributors) where it holds one, and
-says where credit lives where it does not; each third-party file's credit is under its licences either way.
+their ORCIDs, the contributors and their roles) is kept in ``mime.toml``'s ``[record]`` beside the saved form, which ``mime
+push <folder> --to <service> --init`` writes: the card names its creators (and its contributors) where it holds one, and
+says where credit lives where it does not; each third-party file's credit is under its licences either way. The works
+``[record]`` asks a user to cite as well (``also_cite``) end the card.
 """
 
 from __future__ import annotations
@@ -41,10 +45,12 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from mime._shell import quoted
 from mime._terminal import plain
 from mime.assets import size_text
+from mime.assets._cache import NO_ROUTE
 from mime.build import BuildRefused, BuildReport
 from mime.saved._based_on import based_on_words
 from mime.saved._folder import named_files, nondeterministic_gpu, read_folder
@@ -63,6 +69,9 @@ from mime.terms import (
     canonical,
     ids_of,
 )
+
+if TYPE_CHECKING:
+    from mime.push._sharing import Sharing
 
 SPDX_PAGE = "https://spdx.org/licenses/{}.html"
 #: A released version's spelling (``0.3.0``): what ``pip install mime-engine==`` can name.
@@ -127,7 +136,7 @@ NO_EVIDENCE = ("No evidence record: MIME's validity layer arrives in a later rel
 CONDITION_WORDS = {NON_COMMERCIAL: "Non-commercial terms", SHARE_ALIKE: "Share-alike terms",
                    NO_DERIVATIVES: "No-derivatives terms"}
 CREDIT_HOME = ("Not stated here: credit (the creators with their ORCIDs, the contributors and their roles) is kept in "
-               "`sharing.yaml` beside the saved form, which `mime push <folder> --to <service> --init` writes; this "
+               "`mime.toml` beside the saved form, which `mime push <folder> --to <service> --init` writes; this "
                "folder has none yet. Each third-party file's credit is under Licences and credit.")
 
 
@@ -152,12 +161,20 @@ def own_licence_text(judged: FolderTerms) -> str:
     return "none. " + NO_LICENCE
 
 
+def _route(request: str | None) -> str:
+    return plain(request) if request else NO_ROUTE
+
+
 def _where(file: FileTerms) -> str:
+    if file.referenced is not None and file.by_request:
+        return (f"referenced: not carried in a bundle; the asset {file.referenced}, with no download location (by "
+                f"request); request it from: {_route(file.request)}")
     if file.referenced is not None:
         return (f"referenced: not carried in a bundle; the asset {file.referenced}, fetched by `mime assets fetch "
                 f"<folder>`")
     if not file.verdict.carried:
-        return "referenced: not carried in a bundle, and its terms give no origin, so `mime pack` refuses the folder"
+        return ("referenced: not carried in a bundle, and its terms give no origin; the lock names no reference for it, "
+                "so `mime pack` asks for the experiment to be saved again")
     return "carried in the bundle"
 
 
@@ -209,6 +226,8 @@ def _asset_role(held: LockAsset) -> str:
 
 
 def _asset_origin(held: LockAsset) -> str:
+    if held.ref.by_request:
+        return f"no download location (by request); request it from: {_route(held.ref.request)}"
     return ", ".join(plain(each) for each in held.ref.locations)
 
 
@@ -233,7 +252,9 @@ def asset_lines(held: LockAsset, saved_by: str) -> list[str]:
     lines = [plain(ref.name),
              f"  sha256 {ref.sha256}, {size_text(ref.size)}; {whose}; licence {plain(ref.licence)}",
              f"  verdict: {held.verdict.words()}, by {held.verdict.by}; not carried in a bundle: the lock names it"
-             + (" among the meshes the stage draws" if held.visual else "") + f", and `{_fetched_by(held)}` fetches it",
+             + (" among the meshes the stage draws" if held.visual else "")
+             + (f", with no download location: a copy placed in the asset cache is taken by its sha256 "
+                f"(`{_fetched_by(held)}`)" if held.ref.by_request else f", and `{_fetched_by(held)}` fetches it"),
              f"  role: {_asset_role(held)}", f"  available from: {_asset_origin(held)}"]
     if ref.credit:
         lines.append(f"  credit: {plain(ref.credit)}")
@@ -249,14 +270,89 @@ def _why_referenced(file: FileTerms) -> str:
     return "may not be redistributed" if not file.verdict.carried else "over the size a bundle carries"
 
 
+def _by_request_parts(judged: FolderTerms) -> tuple[list[str], list[str]]:
+    """Each file and asset nothing names a download location for, as the statement names it: those results may depend
+    on (any role but presentation), then those of role presentation."""
+    results: list[str] = []
+    shown: list[str] = []
+    for file in judged.files:
+        if file.by_request:
+            (shown if file.role == "presentation" else results).append(
+                f"{plain(file.path)} (licence {plain(file.licence or 'none')}; request it from: {_route(file.request)})")
+    for each in judged.assets:
+        if each.ref.by_request:
+            (shown if each.ref.role == "presentation" else results).append(
+                f"{plain(each.ref.name)} (licence {plain(each.ref.licence)}; request it from: "
+                f"{_route(each.ref.request)})")
+    return results, shown
+
+
+def _files_words(count: int) -> str:
+    return (f"{count} file{'s' if count != 1 else ''} {'their publishers do' if count != 1 else 'its publisher does'} "
+            f"not make available for download")
+
+
+def by_request_warnings(judged: FolderTerms) -> list[str]:
+    """``pack``'s warning for each file and asset nothing names a download location for (:class:`ByRequestWarning`):
+    what the bundle carries of it, what that costs, and where to request it, or that no route is given."""
+    found: list[tuple[str, str | None, str | None]] = [
+        (f"{plain(file.path)} (licence {plain(file.licence or 'none')}: {file.verdict.words()})", file.role,
+         file.request) for file in judged.files if file.by_request]
+    found += [(f"the asset {plain(each.ref.name)} (licence {plain(each.ref.licence)})", each.ref.role, each.ref.request)
+              for each in judged.assets if each.ref.by_request]
+    lines: list[str] = []
+    for what, role, request in found:
+        cost = ("showing the experiment needs it, though no result depends on it (role presentation)"
+                if role == "presentation" else "the results that depend on it are not reproducible from public sources")
+        route = (f"request it from: {plain(request)}" if request else
+                 "no route to request it is given: one is strongly recommended, a contact or a link to the paper's "
+                 "data-availability statement (AssetRef(..., locations=(), request=\"...\"))")
+        lines.append(f"{what} has no download location: the bundle carries its record (its sha256 and size), never "
+                     f"its bytes, and {cost}; {route}. MIME does not recommend this: where its exact bytes can be "
+                     f"fetched, name where (its record's locations, or its terms' origin, Terms(..., "
+                     f"origin=(\"https://...\",)))")
+    return lines
+
+
 def availability(judged: FolderTerms) -> str:
     """#198's availability statement: reproducible exactly from the bundle alone only where the bundle needs nothing
     else; otherwise given each file it does not carry (one its terms do not let it carry, and one over the size it
     carries) and each asset the lock names that no file stands for (a bundle never carries those), with why, its
-    licence, its role and where it is available from."""
-    held = [file for file in judged.files if file.referenced is not None or not file.verdict.carried]
-    if not held and not judged.assets:
-        return "Reproducible exactly from this bundle alone."
+    licence, its role and where it is available from. A file nothing names a download location for (saved form 14) is
+    said first and plainly: results that depend on one are not reproducible from public sources, and where to request
+    it; one of role presentation is said last, as needed only to show the experiment."""
+    results, shown = _by_request_parts(judged)
+    held = [file for file in judged.files
+            if (file.referenced is not None or not file.verdict.carried) and not file.by_request]
+    assets = [each for each in judged.assets if not each.ref.by_request]
+    clauses = _fetched_clauses(judged, held, assets)
+    if results:
+        count = len(results)
+        text = (f"Not reproducible from public sources: the results depend on {_files_words(count)}: "
+                f"{'; '.join(results)}. With {'each' if count != 1 else 'the file'} in place, `mime verify <folder>` "
+                f"checks it by its sha256.")
+        if clauses:
+            text += " Besides, it needs " + "; and ".join(clauses) + _CLOSING
+    elif not clauses:
+        text = "Reproducible exactly from this bundle alone" + (" as far as the results go." if shown else ".")
+    elif not held and all(each.ref.role == "presentation" for each in assets):
+        text = ("Reproducible exactly from this bundle alone as far as the results go: what the bundle does not carry "
+                "is declared of the display only (role presentation: no result depends on it), and showing the "
+                "experiment needs " + "; and ".join(clauses) + _CLOSING)
+    else:
+        text = "Reproducible exactly, given " + "; and ".join(clauses) + _CLOSING
+    if shown:
+        text += (f" Showing the experiment needs {_files_words(len(shown))} (role presentation: no result depends on "
+                 f"{'them' if len(shown) != 1 else 'it'}): {'; '.join(shown)}.")
+    return text
+
+
+_CLOSING = ". Not checked since the folder was saved: the availability check comes later."
+
+
+def _fetched_clauses(judged: FolderTerms, held: Sequence[FileTerms], assets: Sequence[LockAsset]) -> list[str]:
+    """The statement's clauses for the files and the assets the bundle does not carry that a location names
+    (``held``, ``assets``): each group with how it is fetched, and each one's why, licence, role and origin."""
     clauses: list[str] = []
     if held:
         parts = [f"{plain(file.path)} ({_why_referenced(file)}; licence {plain(file.licence or 'none')}; "
@@ -265,7 +361,7 @@ def availability(judged: FolderTerms) -> str:
         clauses.append(f"{len(held)} file{'s' if len(held) != 1 else ''} the bundle does not carry, which `mime "
                        f"assets fetch <folder>` fetches and places: " + "; ".join(parts))
     for visual in (False, True):
-        group = [each for each in judged.assets if each.visual == visual]
+        group = [each for each in assets if each.visual == visual]
         if not group:
             continue
         parts = [f"{plain(each.ref.name)} (not carried in a bundle; licence {plain(each.ref.licence)}; "
@@ -276,12 +372,7 @@ def availability(judged: FolderTerms) -> str:
         clauses.append(f"{len(group)} asset{'s' if len(group) != 1 else ''} {what} that the bundle does not carry, "
                        f"which `{_fetched_by(group[0])}` fetches" + (" and bakes" if visual else "") + ": "
                        + "; ".join(parts))
-    closing = ". Not checked since the folder was saved: the availability check comes later."
-    if not held and all(each.ref.role == "presentation" for each in judged.assets):
-        return ("Reproducible exactly from this bundle alone as far as the results go: what the bundle does not carry "
-                "is declared of the display only (role presentation: no result depends on it), and showing the "
-                "experiment needs " + "; and ".join(clauses) + closing)
-    return "Reproducible exactly, given " + "; and ".join(clauses) + closing
+    return clauses
 
 
 def _licences_named(judged: FolderTerms) -> list[str]:
@@ -353,7 +444,8 @@ def notice(folder: str | os.PathLike[str]) -> str:
 def _table_row(file: FileTerms) -> str:
     licence = file.licence or "none declared"
     flag = "".join(f", **{condition}**" for condition in file.verdict.conditions)
-    where = "referenced" if file.referenced is not None or not file.verdict.carried else "carried"
+    where = ("by request" if file.by_request else
+             "referenced" if file.referenced is not None or not file.verdict.carried else "carried")
     credit = plain(file.credit) if file.credit else ""
     return (f"| `{plain(file.path)}` | {_OWNER_WORDS[file.owner]} | {plain(licence)} | "
             f"{file.verdict.status.replace('_', ' ')}{flag} | {where} | {credit} |")
@@ -363,17 +455,24 @@ def _asset_row(held: LockAsset) -> str:
     flag = "".join(f", **{condition}**" for condition in held.verdict.conditions)
     whose = "MIME's own record" if held.mime_own else "an asset the lock names"
     return (f"| `{plain(held.ref.name)}` | {whose} | {plain(held.ref.licence)} | "
-            f"{held.verdict.status.replace('_', ' ')}{flag} | referenced | {plain(held.ref.credit or '')} |")
+            f"{held.verdict.status.replace('_', ' ')}{flag} | {'by request' if held.ref.by_request else 'referenced'} | "
+            f"{plain(held.ref.credit or '')} |")
 
 
-def _credit_lines(root: Path) -> list[str]:
-    """The creators and contributors ``sharing.yaml`` names, where the folder holds one (refused as push refuses it,
-    since the card is the record's description); where it holds none, where credit lives."""
-    from mime.push._sharing import SHARING_FILE, read_sharing
+def _record(root: Path) -> Sharing | None:
+    """``[record]`` of the folder's ``mime.toml``, where it holds one (refused as push refuses it, since the card is the
+    record's description; a folder holding ``sharing.yaml`` is refused with the route to ``mime.toml``)."""
+    from mime.push._manifest import MANIFEST_FILE, OLD_FILE, read_record
 
-    if not (root / SHARING_FILE).is_file():
+    if not (root / MANIFEST_FILE).is_file() and not (root / OLD_FILE).is_file():
+        return None
+    return read_record(root)
+
+
+def _credit_lines(sharing: Sharing | None) -> list[str]:
+    """The creators and contributors ``[record]`` names; where the folder holds none, where credit lives."""
+    if sharing is None:
         return [f"- **Creators:** {CREDIT_HOME}"]
-    sharing = read_sharing(root)
     lines = [f"- **Creators:** {'; '.join(person.words() for person in sharing.creators)}"]
     if sharing.contributors:
         lines.append(f"- **Contributors:** {'; '.join(person.words() for person in sharing.contributors)}")
@@ -383,8 +482,8 @@ def _credit_lines(root: Path) -> list[str]:
 @dataclass(frozen=True)
 class CardFacts:
     """What a card states that one push settles once: the build's report, and the folder's terms, document and lock.
-    ``sharing.yaml`` and the publication are read as the card is written, since an edit kept from the site and a reserved
-    DOI change them during a push."""
+    ``[record]`` of ``mime.toml`` and the publication are read as the card is written, since an edit kept from the site
+    and a reserved DOI change them during a push."""
 
     root: Path
     report: BuildReport
@@ -443,6 +542,7 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
     push sends, rehearsed on the sandbox first)."""
     root, report, judged, document, lock = facts.root, facts.report, facts.judged, facts.document, facts.lock
     name = plain(document["experiment"])
+    sharing = _record(root)
     licences = sorted(set(_licences_named(judged)))
     parent = document.get("based_on") if based_on else None
     lines = [f"# {name}", "", *([f"- **{based_on_words(parent)}**"] if parent is not None else []),
@@ -451,7 +551,7 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
                                   else "none declared (mime push will ask for one)"),
              f"- **Licences of its files{' and assets' if judged.assets else ''}:** "
              f"{', '.join(plain(each) for each in licences) or 'none declared'}",
-             *_credit_lines(root), "",
+             *_credit_lines(sharing), "",
              "## What it is", "",
              f"Saved by MIME {plain(lock['environment']['mime'])} as {DOCUMENT_SCHEMAS[judged.version]}, built under "
              f"the {document['profile']} profile.", ""]
@@ -517,10 +617,12 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
     lines += [f"pip install {plain(each)}=={plain(version)}" for each, version in distributions]
     lines += [_pull_line(publication), f"mime verify ./{name}/", "```", "", "## How to cite", "",
               _cite_line(publication), ""]
+    if sharing is not None and sharing.also_cite:
+        lines += [f"If you use this, please also cite: {'; '.join(each.words() for each in sharing.also_cite)}.", ""]
     return "\n".join(lines)
 
 
 __all__ = ["CONDITION_WORDS", "CREDIT_HOME", "LICENCE_TEXTS", "NO_EVIDENCE", "NO_LICENCE", "CardFacts", "availability",
-           "card_facts", "card_of", "card_text",
+           "by_request_warnings", "card_facts", "card_of", "card_text",
            "file_lines",
            "judged_folder", "notice", "notice_text", "own_licence_text", "permission_words"]

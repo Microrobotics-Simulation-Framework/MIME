@@ -1,4 +1,4 @@
-"""The record's metadata beyond the credit: funding and a conference, first class in ``sharing.yaml``, and any other
+"""The record's metadata beyond the credit: funding and a conference, first class in ``[record]``, and any other
 field of the record the author writes, in the records API's own names and shapes, held to those shapes before
 anything is sent (design #199 (c)).
 
@@ -19,9 +19,9 @@ is published.
 **Any other field** (``fields:``): a field of InvenioRDM's metadata MIME does not build (subjects, dates, languages,
 references, additional titles and descriptions) or a custom field of Zenodo's (``journal:journal``,
 ``imprint:imprint``, ``thesis:university``, ``thesis:type``), written as the records API holds it. Each is checked
-against its shape here, every problem said by its path at once (``push.sharing``); a field MIME builds, or one this
+against its shape here, every problem said by its path at once (``manifest.key``); a field MIME builds, or one this
 table does not hold, is refused by name. Every field here is the author's: a refusal the service gives of one says to
-correct it in ``sharing.yaml``. The shapes are the records API's as documented and as Zenodo's deposit form shows them,
+correct it in ``[record]``. The shapes are the records API's as documented and as Zenodo's deposit form shows them,
 recalled, not probed: the sandbox session checks each.
 """
 
@@ -144,12 +144,12 @@ SHAPES: Mapping[str, Check] = {
     "thesis:university": _text,
     "thesis:type": _text,
 }
-#: Fields of the record MIME builds, or that ``sharing.yaml`` holds under keys of its own: refused in ``fields:``.
+#: Fields of the record MIME builds, or that ``[record]`` holds under keys of its own: refused in ``fields``.
 BUILT = {"title": "title", "creators": "creators", "contributors": "contributors", "related_identifiers": "related",
          "funding": "funding", "meeting:meeting": "conference", "rights": "the experiment's licence",
          "description": "description", "publisher": "MIME", "publication_date": "MIME", "resource_type": "MIME",
          "identifiers": "MIME", "version": "MIME"}
-#: The conference's keys in ``sharing.yaml``, and Zenodo's meeting field's.
+#: The conference's keys in ``[record]``, and Zenodo's meeting field's.
 CONFERENCE = {"title": "title", "acronym": "acronym", "dates": "dates", "place": "place", "url": "url",
               "session": "session", "part": "session_part"}
 
@@ -164,7 +164,7 @@ def field_problems(fields: object) -> list[str]:
         if name in BUILT:
             owner = BUILT[str(name)]
             problems.append(f"{where}: is a field MIME builds" if owner == "MIME" else
-                            f"{where}: is written as sharing.yaml's `{owner}`" if owner != "the experiment's licence"
+                            f"{where}: is written as [record] `{owner}`" if owner != "the experiment's licence"
                             else f"{where}: is {owner}, declared where the experiment is built")
         elif name not in SHAPES:
             problems.append(f"{where}: is not a field push sends (it sends {', '.join(SHAPES)})")
@@ -205,7 +205,7 @@ _FUNDING_KEYS = ("funder", "ror", "award", "title", "url")
 
 
 def ror_identifier(text: str) -> str | None:
-    """The bare ROR identifier ``text`` is, or ``None``: the one check of an identifier, in ``sharing.yaml``, the
+    """The bare ROR identifier ``text`` is, or ``None``: the one check of an identifier, in ``[record]``, the
     defaults and ``--setup`` alike."""
     found = _ROR.fullmatch(text)
     return found.group(1) if found is not None else None

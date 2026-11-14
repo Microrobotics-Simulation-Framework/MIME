@@ -3,13 +3,13 @@
 ``mime push <folder> --to zenodo|zenodo-sandbox`` shows the plan, computed offline (every record file, every file inside
 the bundle with its tier and verdict, every file that travels as a reference, each declared permission in words, the
 metadata), then, confirmed, makes or updates the experiment's draft, reserves its DOI and uploads its files through
-InvenioRDM's records API, each md5 checked against the service's. ``--init`` writes ``sharing.yaml`` (the record's
-credit) from what the folder knows; ``--status`` reads the draft as the service holds it; ``--discard`` deletes it
+InvenioRDM's records API, each md5 checked against the service's. ``--init`` writes ``mime.toml`` (the record's
+manifest) from what the folder knows; ``--status`` reads the draft as the service holds it; ``--discard`` deletes it
 (only a draft can be). ``--to`` is required: the sandbox and production are two services, each fixed in code, never
 one flag apart by accident. A push stopped at any request is resumed by running it again: what was uploaded and
 verified is not sent again. Push writes to, or deletes, only the draft it made (it marks each with an identifier of its
 own), and never writes over metadata edited on the site unasked: each such edit is kept (written into
-``sharing.yaml``) or written over, field by field. ``--publish`` publishes the draft, the one irreversible step, after
+``mime.toml``'s ``[record]``) or written over, field by field. ``--publish`` publishes the draft, the one irreversible step, after
 the plan, the confirmation in words, each declared permission asked on its own and the record number typed (or
 ``--confirm <DOI>`` from a script); then checks the record as published and, on production, writes the staged lock
 into the folder, so ``mime pack <folder>`` makes the published bundle again. A changed folder's next push is a new
@@ -43,10 +43,12 @@ from mime.push._draft import (
     send,
     status,
 )
+from mime.push._check import Checked, check
 from mime.push._defaults import DEFAULTS_FILE, defaults_lines, defaults_path, read_defaults, write_defaults
+from mime.push._manifest import MANIFEST_FILE, MANIFEST_FORMAT, Manifest, read_manifest
 from mime.push._publish import PRODUCTION_FACTS, SANDBOX_FACTS, publish
 from mime.push._records import PublicRecord, ShareLink, public_record, record_number, share_link
-from mime.push._setup import setup
+from mime.push._setup import edit_defaults, setup
 from mime.push._owners import FIELD_OWNERS, field_owner
 from mime.push._plan import KEYWORD, MOST_BYTES, MOST_FILES, AssetChoice, Plan, RecordFile, card_html, make_plan
 from mime.push._service import SERVICES, TEST_PREFIX, ZENODO, ZENODO_SANDBOX, Service
@@ -54,14 +56,12 @@ from mime.push._sharing import (
     CONTRIBUTOR_TYPES,
     DEFAULT_LICENCE,
     RELATION_TYPES,
-    SHARING_FILE,
-    SHARING_FORMAT,
+    AlsoCite,
     Person,
     Related,
     Sharing,
     Uploader,
     orcid_problem,
-    read_sharing,
 )
 from mime.push._stage import own_location, staged_lock
 from mime.push._state import (
@@ -85,6 +85,8 @@ __all__ = [
     "KEEP_FLAG",
     "KEYWORD",
     "LONGEST_WAIT_SECONDS",
+    "MANIFEST_FILE",
+    "MANIFEST_FORMAT",
     "MOST_BYTES",
     "MOST_FILES",
     "OVERWRITE_FLAG",
@@ -95,14 +97,14 @@ __all__ = [
     "RETRIES",
     "SANDBOX_FACTS",
     "SERVICES",
-    "SHARING_FILE",
-    "SHARING_FORMAT",
     "TEST_PREFIX",
     "UPLOAD_ATTEMPTS",
     "ZENODO",
     "ZENODO_SANDBOX",
+    "AlsoCite",
     "Answer",
     "AssetChoice",
+    "Checked",
     "Choices",
     "Client",
     "DraftState",
@@ -111,6 +113,7 @@ __all__ = [
     "Errors",
     "Gone",
     "HttpTransport",
+    "Manifest",
     "Person",
     "Plan",
     "PublicRecord",
@@ -124,11 +127,13 @@ __all__ = [
     "Uploaded",
     "Uploader",
     "card_html",
+    "check",
     "confirmation",
     "defaults_lines",
     "defaults_path",
     "discard",
     "draft_identifier",
+    "edit_defaults",
     "edited_fields",
     "field_owner",
     "fingerprint",
@@ -142,7 +147,7 @@ __all__ = [
     "publish",
     "push",
     "read_defaults",
-    "read_sharing",
+    "read_manifest",
     "read_state",
     "send",
     "setup",

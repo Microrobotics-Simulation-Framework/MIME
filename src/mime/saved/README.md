@@ -88,8 +88,8 @@ lists each pin a source no longer agrees with, and never takes the other version
    `load.lock`), so reading runs no code, and holds the stage and every asset layer to the hash the lock records (a changed
    asset is refused as `load.asset-changed`, a stage edited by hand as `load.stage-changed`);
 2. refuses a form written by a newer MIME before judging it: a document or a lock whose schema is `mime.document/N` or
-   `mime.lock/N` above the newest this MIME reads, a bundle of a later `mime.bundle/N` format and a `sharing.yaml` of a
-   later `mime.sharing/N` are each one refusal, `load.newer-form`, naming the file, the version found and the versions
+   `mime.lock/N` above the newest this MIME reads, a bundle of a later `mime.bundle/N` format and a `mime.toml` of a
+   later `mime.toml/N` are each one refusal, `load.newer-form`, naming the file, the version found and the versions
    this MIME reads, with the advice to upgrade `mime-engine`. An id of another family, and a version this MIME reads,
    are not that refusal; the schema check judges them as it did. (A run folder's `outputs.json` of a later version is
    refused as `result.format`, with the same advice.)
@@ -223,10 +223,12 @@ saved the folder. The meshes the stage draws (the lock's `visuals`) count the sa
 (rehearsed on the sandbox first): every condition each file's licence or permission carries (non-commercial, share-alike, no-derivatives) is flagged, and "what reproduces"
 says what `mime verify <folder>` would check (the card runs no check). Both are generated and the same bytes each
 time. **Credit** (the creators with their ORCIDs, the
-contributors and their roles) lives in `sharing.yaml` beside the saved form, which `mime push <folder> --to <service>
---init` writes (see [`mime.push`](../push/README.md)): the card names its creators and contributors, and where the folder
-holds none says so where the creators go; each third-party file's credit is under its licences either way. `pack`
-neither carries nor refuses `sharing.yaml`, the one file of a folder that is neither the saved form's nor a stray.
+contributors and their roles) lives in `mime.toml`'s `[record]` beside the saved form, which `mime push <folder> --to
+<service> --init` writes (see [`mime.push`](../push/README.md)): the card names its creators and contributors, and where
+the folder holds none says so where the creators go; each third-party file's credit is under its licences either way;
+the works `[record]` asks a user to cite as well end the card. `pack` neither carries nor refuses `mime.toml`, nor
+`sharing.yaml`, the file it replaced, which a person may keep until they delete it: the two files of a folder that are
+neither the saved form's nor strays, and the bundle's bytes are the same with them or without.
 
 ## The bundle
 
@@ -234,7 +236,8 @@ A **bundle** is a saved folder as one file, to hand to someone else (`mime pack 
 zip with nothing compressed, named `<folder>.mimebundle`:
 
 - `manifest.json` first: the format (with its version in the name; the current format's asset records are whole as
-  the lock's are, and the two earlier formats still unpack), the experiment's name, every carried file's sha256 and size (what is
+  the lock's are, and may name no location and a route to request their file, as the fourteenth saved form's lock
+  does; the three earlier formats still unpack, and one of them that holds a record with no location is refused), the experiment's name, every carried file's sha256 and size (what is
   inside), each file that travels as a reference with the asset that holds it (what is fetched), the NOTICE's sha256
   and size, the asset records of the lock with their locations (from where), and the **bundle hash**, the sha256 of the rest of the manifest. It names the bundle's
   content whatever the zip around it.
@@ -284,10 +287,13 @@ in the forms it is known in. `pack` then reads every file's bytes, refusing, wit
   `mime.saved.EXPANSION_LIMIT_BYTES`, is nested more than four deep, or cannot be read inside;
 - a **link or a special file** in the folder (`bundle.special-file`);
 - a **file over the size limit** that travels as no reference (`bundle.file-too-large`);
-- a **file that may not be redistributed** whose terms give no origin (`bundle.no-location`), and a lock whose
-  references are not the ones the document's terms make, or whose assets state another licence or other locations
-  than their source (`bundle.lock-terms`): `pack` judges every file's terms itself, and holds the lock to its
-  judgement;
+- a lock whose references are not the ones the document's terms make, or whose assets state another licence or other
+  locations than their source (`bundle.lock-terms`): `pack` judges every file's terms itself, and holds the lock to its
+  judgement. A **file that may not be redistributed whose terms give no origin** is not refused (since the fourteenth
+  saved form; it was, as `bundle.no-location`, which is retired): the lock names it as a record with no location, the
+  bundle carries that record, and `pack` warns (`ByRequestWarning`), as it does of every asset the lock names with no
+  location (the assets README's "Publishing an asset by request"). A lock of an earlier form that does not name such a
+  file as a reference is refused as `bundle.lock-terms`: save the experiment again;
 - a **copy of a referenced file's bytes** that would be carried, at another path and under whatever terms
   (`bundle.referenced-copy`); and **any file it would carry whose bytes a record in reach says may not travel**,
   whatever the folder's own records and terms say: a referenced record's in an installed source or the lock, a derived
@@ -493,5 +499,20 @@ magnitude or its resolution, and the lock's `atol` is written as zero (What the 
 two keys below the lock's `reference`, `resolution` and `resolution_factor`: a folder of the ninth or earlier loads as
 it was and is judged element by element with the numbers it holds (one that holds either key is refused), and saving it
 again writes the tenth. A reader of the ninth refuses a folder of the tenth as `load.newer-form`.
+
+The saved form is in its fourteenth version since an asset record may name no location, its file had by request
+alone, and a route to request it by (`request`), in the lock's `assets` and in its `visuals` manifests; both are
+outside every hash, so a folder of the thirteenth form or earlier loads as it was, nothing written back, and one whose
+lock holds either is refused. The same step adds the document's `blocks`: each block the experiment uses, by the use's
+name (its id, version, content hash, tier, licence, the DOI it was used by, its sockets' bindings, the names it
+provides in each of the document's sections of declarations, and the paths declared over it), written only where one
+is used and inside the input hash. Its writer (`exp.use`) and the reading of a block used by reference are a later
+MIME's: until then a use of tier `copied`, whose declarations the document holds, loads, and one of tier `referenced`,
+whose declarations are in its container, is refused as `load.referenced-block` when the folder is loaded or built from
+its document (reading the folder, as `mime show`, `pack` and `card` do, refuses nothing). The step is named in one
+place in `_versions.py` (`STEP_14_DOCUMENT_KEYS`, which holds `blocks`, and `STEP_14_LOCK_HELD`), which the refusal of
+an earlier form and the write-back read. The bundle's format and a
+manifest file's step with it (`mime.saved.FORMAT`, `mime.assets.MANIFEST_FORMAT`): a reader before them refuses either
+by its format, where it would otherwise refuse a record's shape. A reader of the thirteenth refuses a folder of the fourteenth as `load.newer-form`.
 
 Releases are explained in the [package manifest](../README.md#status).

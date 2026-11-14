@@ -7,13 +7,16 @@ every carried file's sha256 and size, each file that travels as a reference with
 The ``NOTICE`` follows (each file's licence, credit, verdict and declared permission, ``mime.saved._card``), then the
 folder's files under ``experiment/``, sorted, with a fixed timestamp and mode.
 
+**Format 4** (``mime.bundle/4``) is format 3 whose asset records may name no location, and a route to request their
+file (``request``), as the lock of saved form 14 holds them; a MIME of format 3 refuses it as a later form, before any
+other check, rather than refusing a record's shape, and a manifest of format 3 or 2 that holds either is refused.
 **Format 3** (``mime.bundle/3``) is format 2 with each asset's record whole in the manifest (its credit, role, kind,
 custom licences and the adapters its locations need, as the lock of saved form 6 holds them); a MIME of format 2
 refuses it as a later form rather than misreading it. **Format 2** (``mime.bundle/2``) carries a file only where its terms let it be redistributed: a file that may not be
 redistributed travels as a reference to its origin, **whatever its size**, and never inside a bundle, nor its bytes at
 another path; so does a file over the size a bundle carries that has an origin (``mime.saved._terms``). Each reference's
 asset is held to the file's terms, and an asset MIME ships to its shipped licence: the lock is outside the hashed
-record. Formats 2 and 1 (``mime.bundle/1``) still unpack. A bundle of a format this MIME does not read (a later one) is
+record. Formats 3, 2 and 1 (``mime.bundle/1``) still unpack. A bundle of a format this MIME does not read (a later one) is
 refused first, before any other check, as ``load.newer-form``, with the advice to install the MIME that wrote it; a MIME
 before format 2 (a development checkout) instead refuses one as not a bundle ``mime pack`` wrote, except ``mime pull`` without
 ``--into``, which reads the manifest first.
@@ -36,6 +39,7 @@ import secrets
 import shutil
 import stat
 import unicodedata
+import warnings
 import zipfile
 import zlib
 from collections.abc import Iterator, Mapping, Sequence
@@ -59,19 +63,21 @@ from mime.saved._terms import (
     lock_records,
     place_referenced,
 )
-from mime.saved._versions import newer_form_refusal
+from mime.saved._versions import hash_only_held, newer_form_refusal
 
 BUNDLE_SUFFIX = ".mimebundle"
-FORMAT = "mime.bundle/3"
+FORMAT = "mime.bundle/4"
+FORMAT_3 = "mime.bundle/3"
 FORMAT_2 = "mime.bundle/2"
 FORMAT_1 = "mime.bundle/1"
 MANIFEST_MEMBER = "manifest.json"
 NOTICE_MEMBER = "NOTICE"
 FOLDER_PREFIX = "experiment/"
 
-#: The record's credit and description beside the saved form (``mime push --init`` writes it): neither carried nor
-#: refused, the one file of a folder that is not the saved form's and is not a stray (design #199, section 8 item 7).
-SHARING_FILE = "sharing.yaml"
+#: The record's manifest beside the saved form (``mime push --init`` writes ``mime.toml``), and the file it replaced,
+#: which a person may keep until they delete it: neither carried nor refused, the files of a folder that are not the
+#: saved form's and are not strays (design #199, section 8 item 7; sharing design v4, section 3.1).
+SHARING_FILES = ("mime.toml", "sharing.yaml")
 _MANIFEST_LIMIT_BYTES = 16_000_000
 _CHUNK = 1 << 20
 _TIMESTAMP = (1980, 1, 1, 0, 0, 0)
@@ -130,7 +136,7 @@ class Manifest(TypedDict, closed=True):
     carried; ``referenced`` those that travel as references, never carried; together they are every file the saved
     folder names."""
 
-    format: ReadOnly[Literal["mime.bundle/3", "mime.bundle/2"]]
+    format: ReadOnly[Literal["mime.bundle/4", "mime.bundle/3", "mime.bundle/2"]]
     name: ReadOnly[str]
     files: ReadOnly[dict[str, BundleFile]]
     referenced: ReadOnly[dict[str, ReferencedFile]]
@@ -416,8 +422,10 @@ def referenced_members(judged: FolderTerms, lock: Lock, own: frozenset[str] = fr
     now (a file that may not be redistributed always travels as one, whatever its size) and by the lock's
     ``referenced_files``; and each one's asset held to its terms, the asset's licence their licence and its locations
     their origin, primary first, since the lock is outside the hashed record and the document's terms are inside it. A
-    file that must travel as a reference and has no origin is refused (``bundle.no-location``); a file the lock lists
-    whose terms give no origin, any other disagreement, or an asset whose bytes are not the file's, as
+    file that may not be redistributed and has no origin travels as an asset with no location (saved form 14: never
+    refused; ``pack`` warns, :class:`ByRequestWarning`). A file that must travel as a reference and that the lock does
+    not list (a lock written before form 14, for one with no origin), one the lock lists that may travel whose terms
+    give no origin, any other disagreement, or an asset whose bytes are not the file's, is refused as
     ``bundle.lock-terms``; and a carried file whose bytes are a referenced file's, at whatever path and with whatever
     terms, as ``bundle.referenced-copy``, naming both. ``own`` is where the record the lock names holds its files, as
     ``mime push`` wrote each (:func:`_own_location`)."""
@@ -428,24 +436,17 @@ def referenced_members(judged: FolderTerms, lock: Lock, own: frozenset[str] = fr
     for file in judged.files:
         must = not file.verdict.carried
         held = assets.get(listed[file.path]) if file.path in listed else None
-        if must and file.path not in listed and not file.origin:
-            refusals.append(_refuse(
-                "bundle.no-location", RefusalClass.USER,
-                f"{plain(file.path)} may not be redistributed (licence {plain(file.licence or 'none')}: "
-                f"{file.verdict.words()}), so it travels as a reference, and its terms give no origin to fetch it from",
-                "give its terms the locations of its exact bytes, pinned: asset(path, terms=Terms(..., "
-                "origin=(\"https://...\",))), then save the experiment again, built.save(folder); or declare the rights "
-                "holder's permission: exp.permission(Permission(...))"))
-        elif must and file.path not in listed:
+        if must and file.path not in listed:
             refusals.append(_reference_problem(file.path, "it may not be redistributed and the lock does not say it "
                                                           "travels as a reference"))
         elif file.path in listed and held is None:
             refusals.append(_reference_problem(file.path, f"the lock says it travels as the asset {listed[file.path]!r}, "
                                                           f"which its assets do not name"))
-        elif file.path in listed and not file.origin:
+        elif file.path in listed and not file.origin and not must:
             refusals.append(_reference_problem(file.path, "the lock says it travels as a reference, and no terms of "
                                                           "it give an origin to fetch it from (save writes a reference "
-                                                          "only from terms that give one)"))
+                                                          "with no origin only for a file that may not be "
+                                                          "redistributed)"))
         elif held is not None and (held["sha256"], held["size"]) != (file.sha256, file.size):
             refusals.append(_reference_problem(file.path, f"the lock's asset {held['name']!r} holds other bytes than "
                                                           f"the file"))
@@ -563,6 +564,12 @@ def shipped_asset_problems(lock: Lock) -> list[Refusal]:
     return found
 
 
+class ByRequestWarning(UserWarning):
+    """A bundle that ``pack`` wrote holds the record of a file, or an asset, that nothing names a download location
+    for: its bytes are had by request alone, and the results that depend on it are not reproducible from public
+    sources. ``pack`` never refuses it (saved form 14); it warns, once a file, and the NOTICE and the card say so."""
+
+
 def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None = None,
          own_locations: frozenset[str] = frozenset()) -> Path:
     """Write the bundle of the saved experiment in ``folder`` (by default ``<folder>.mimebundle`` beside it) and return
@@ -570,15 +577,18 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
     redistributed is never carried, whatever its size: it travels as a reference to its origin, as the lock names it,
     and a file over :data:`INLINE_LIMIT_BYTES` likewise. Refused, with every reason, when a file holds a path of this
     machine or a token MIME has stored, when a file is not one the saved form names (or its name is not one every
-    platform holds; ``sharing.yaml``, push's credit, is neither carried nor refused), when a file that may not be redistributed has no origin, when the lock's references are not the
-    ones the terms make (or a reference's asset does not state its terms' licence and origin), when a file that would
+    platform holds; ``mime.toml``, push's manifest, and ``sharing.yaml`` are neither carried nor refused), when the
+    lock's references are not the ones the terms make (or a reference's asset does not state its terms' licence and origin), when a file that would
     be carried holds the bytes of one that travels as a reference, when an asset MIME ships is stated under another
     licence, when a licence names an id the installed packaging does not list, when a file is over the size limit and
     travels as no reference, or when the folder holds a link or a special file. The same folder makes the same bytes.
-    The experiment's own licence may be absent: ``pack`` never refuses that, and the ``NOTICE`` says so.
+    The experiment's own licence may be absent: ``pack`` never refuses that, and the ``NOTICE`` says so. Nor does it
+    refuse a file or an asset that nothing names a download location for (one that may not be redistributed and has no
+    origin, a record with no location): it carries its record alone and warns, once each
+    (:class:`ByRequestWarning`).
     ``own_locations`` is for ``mime push``, packing a staged lock: where the record it names holds its files."""
     from mime.experiment import Experiment
-    from mime.saved._card import notice_text
+    from mime.saved._card import by_request_warnings, notice_text
 
     root = Path(os.path.abspath(folder))
     Experiment.load(root)
@@ -591,7 +601,7 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
             "write it beside the folder (--out)")])
     references = {ref.sha256: ref for ref in folder_assets(root)}
     stored = held_tokens()
-    files = [(member, path) for member, path in _files_of(root) if member != SHARING_FILE]
+    files = [(member, path) for member, path in _files_of(root) if member not in SHARING_FILES]
     named = named_files(form)
     refusals: list[Refusal] = _stray_files(files, named)
     if refusals:
@@ -650,6 +660,8 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
+    for line in by_request_warnings(judged):
+        warnings.warn(line, ByRequestWarning, stacklevel=2)
     return target
 
 
@@ -736,13 +748,14 @@ def unknown_format(archive: zipfile.ZipFile) -> BuildRefused | None:
         held = _format_of(json.loads(archive.read(info)))
     except (ValueError, RecursionError, zipfile.BadZipFile, NotImplementedError, OSError):
         return None
-    return BuildRefused([refusal]) if (refusal := newer_form_refusal(held, "bundle", (FORMAT, FORMAT_2, FORMAT_1),
+    return BuildRefused([refusal]) if (refusal := newer_form_refusal(held, "bundle", (FORMAT, FORMAT_3, FORMAT_2, FORMAT_1),
                                                                       "the bundle")) is not None else None
 
 
 def read_manifest(archive: zipfile.ZipFile) -> Manifest | ManifestFormat1:
-    """The manifest, checked for its format first (3 or 2, or 1 which every file carried: a later one is refused with the
-    advice to install the MIME that packed it), then its shape and its own hash."""
+    """The manifest, checked for its format first (4, 3 or 2, or 1 which every file carried: a later one is refused with
+    the advice to install the MIME that packed it), then its shape and its own hash; one before format 4 whose asset
+    records name no location or a route to request a file is refused, never read as stating it."""
     later = unknown_format(archive)
     if later is not None:
         raise later
@@ -767,6 +780,13 @@ def read_manifest(archive: zipfile.ZipFile) -> Manifest | ManifestFormat1:
                                          "this is not a bundle of a format this MIME reads: install the MIME that "
                                          "packed it (`pip install mime-engine==<version>`)") for problem in problems])
         changed = bundle_hash(cast("dict[str, object]", data)) != manifest["bundle_hash"]
+        added = hash_only_held(data) if manifest["format"] != FORMAT else []
+        if added:
+            raise BuildRefused([_refuse("bundle.manifest", RefusalClass.USER,
+                                         f"{MANIFEST_MEMBER} is of {manifest['format']} and holds {', '.join(added)}, "
+                                         f"which {FORMAT} added", "this is not a bundle `mime pack` wrote: ask its "
+                                                                  "sender to pack the folder again with `mime pack "
+                                                                  "<folder>`")])
     except RecursionError:
         raise BuildRefused([_refuse("bundle.manifest", RefusalClass.USER,
                                      f"{MANIFEST_MEMBER} is nested too deeply to be a manifest",
@@ -971,8 +991,8 @@ def unpack(bundle: str | os.PathLike[str], into: str | os.PathLike[str]) -> Unpa
                     tuple(path for path, _, _ in placed.missing))
 
 
-__all__ = ["BUNDLE_SUFFIX", "EXPANSION_LIMIT_BYTES", "FORMAT", "FORMAT_1", "FORMAT_2", "INLINE_LIMIT_BYTES",
-           "MANIFEST_MEMBER", "NOTICE_MEMBER", "Manifest", "ManifestFormat1", "ReferencedFile", "Unpacked",
+__all__ = ["BUNDLE_SUFFIX", "EXPANSION_LIMIT_BYTES", "FORMAT", "FORMAT_1", "FORMAT_2", "FORMAT_3", "INLINE_LIMIT_BYTES",
+           "MANIFEST_MEMBER", "NOTICE_MEMBER", "ByRequestWarning", "Manifest", "ManifestFormat1", "ReferencedFile", "Unpacked",
            "bundle_hash", "bundle_name", "collisions", "destination_problem", "member_problem", "name_problem", "pack",
            "payload_problems", "read_manifest", "referenced_members", "referenced_of", "shipped_asset_problems",
            "unknown_format", "unpack"]

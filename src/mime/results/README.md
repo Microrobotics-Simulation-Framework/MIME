@@ -74,7 +74,9 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
   extrapolated value; refused, `study.order`, where the levels are not in the asymptotic range), and `read(folder)`.
 - **A study folder** (`_study_folder.py`, `_study_read.py`), what `Study.run_to` writes and `StudyResult.read` reads:
   `study.json` (format `mime-study-outputs`, versioned and closed: a key it does not know is refused), `study.mime.yaml` (the spec),
-  `experiment/` (the base, a saved folder byte for byte), `groups/<k>/outputs.npz` (every member's arrays under
+  `experiment/` (the base, a saved folder byte for byte), `mime.toml` where the study is to be shared (its manifest,
+  `[study]` and `[record]`, which nothing a study reads; see [`mime.push`](../push/README.md#mimetoml)),
+  `groups/<k>/outputs.npz` (every member's arrays under
   `m<point>/`, its manifest and report as JSON text, and the content key it ran under; entries sorted and carrying no
   clock, so the same arrays are the same bytes; its sha256 in `study.json`), `groups/<k>/report.json` and, for a group
   whose compiled program differs from the first group's, `groups/<k>/experiment/`. Layout checked (a stray file is

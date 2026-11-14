@@ -12,12 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The in-loop camera's derivative in reverse mode** (`mime.observations.Camera`, dev2). `Study.gradient(...,
   mode="reverse")` through a camera is no longer refused (`camera.reverse` is gone): each corner sub-sample's and each
   frame's render are checkpointed, so the reverse program keeps 464 frames of temporary memory at 160x120 to 640x480 in
-  both dtypes, over 10 steps as over 1000 (6300 to 7600 without them), for no measurable time; a step's reverse time is
+  both dtypes, over 10 steps as over 1000 (6300 to 7600 without them); the render's checkpoint cost no measurable
+  time (two pairs of runs, each pair's halves on different runner CPUs), and the sub-sample checkpoint's time at 640x480
+  was not measured; a step's reverse time is
   4.5 to 4.7 times forward mode's at 1000 steps in float64 on GitHub's runners (5.1 to 6.1 in float32). Checked against
   forward mode, central differences (float32 against float64 where they cannot discriminate) and a held step's against
   its frame's, from the run's start, from a continued state (the tree's structure, or a leaf written over it) and over a
   CALLBACK controller's chunks, in both dtypes. A study whose estimate would not fit the memory a run can have is
-  refused before it compiles (`camera.reverse-memory`), naming the offline renderer. A batched study stays refused
+  refused before it compiles (`camera.reverse-memory`), naming the offline renderer; the estimate is fitted to runs on
+  GitHub's four-core runners (160x120 to 640x480, up to six poses a frame, both dtypes), its per-pose term is the largest
+  cost measured on any platform, and beyond those platforms and sizes it is an extrapolation. A batched study stays refused
   (`camera.batched`); `Observation.forward_only` becomes `Observation.unbatched` (`mime.registry.unbatched_of`), a
   batched study's refusal alone, and a derivative an observation's node cannot take is its node's to refuse by name
   through `derivative_problem`. The entry's status stays `unverified` in this entry; the next one declares the renderer's switches. No forward
@@ -63,6 +67,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `assets.approved([], accept_licences=...)`. The script `mime modal` writes carries the ids accepted on the machine
   that wrote it, for the experiment's own assets, as `ACCEPT_LICENCES`, and accepts them for its run; one not accepted
   there is refused in the container. No asset MIME ships is gated (the tube table is CC0), so no simulation output moves.
+
+- **`mime check <folder>`: a shared folder's `mime.toml` checked offline, on the profile workflow** (lane P, P6). Every
+  key's check, and the kind table's licence against the experiment's; nothing built, packed or sent. A defect is a
+  finding in every profile, what push still needs (no creator, an experiment with no licence) a to-do in exploratory and
+  a finding in research, and what a reviewer would ask (a creator with no ORCID iD, no description, no keyword) is
+  listed by research and never a finding; `strict` is refused by name. The profile is the experiment's own unless
+  `--profile` gives one; each item comes with its line to write. Exits 0, 1 with a finding, 2 when the folder cannot be
+  checked. It also runs push's own refusals on `[record]` and the folder: a declared permission with no `[record]
+  uploader` named (what push still needs: a to-do in exploratory, a finding in research) or granted to another than the
+  uploader (a defect), and a path of this machine or a stored token in what `[record]` would send. A check does not
+  build or pack, so it leaves to `mime pack` and push the folder's own files, the record's size and file count, a
+  file whose bytes may not travel, a cached asset's bytes and a sandbox location pushed to production; a clean check
+  says the manifest, not the folder, would pass. The same move from `sharing-defaults.yaml` refuses, as the one from
+  `sharing.yaml` does, what TOML cannot carry (`defaults.file`).
+
+- **`mime defaults [show | edit]` and `defaults.toml`** (lane P, P6): a person's defaults in MIME's config directory,
+  `mime.defaults/1`: their creators, the contributors, keywords, uploader and funding they repeat, the licences a new
+  record's content (`[licences] content`, which `--init` takes where an experiment declares none) and a scaffolded
+  plugin's code take, and a scaffold's namespace. `edit` walks them a field at a time and writes them whole or not at
+  all; `mime push --defaults` is an alias of `show`. Moved once from `sharing-defaults.yaml`, said in a line; the old
+  file is kept and never read again (`defaults.file` for a problem, `defaults.no-terminal`).
+
+- **`also_cite` in `[record]`**: works whoever uses a record is asked to cite as well (a DOI or an `https://` address,
+  and how it is cited). The card ends "If you use this, please also cite: ...", and push states each as a related
+  identifier `IsSupplementTo` unless `related` names it. Being metadata, a paper's DOI added after publishing is a
+  metadata edit, never a new version.
+
+- **A file had by request alone: an asset record with no location, saved form 14** (lane P's option 4; the
+  maintainer's answers 2, 3 and 12). A record may name no location (`AssetRef(..., locations=())`, written
+  `"locations": []`) and a route to request its file by (`request=`: one printable line of at most 200 characters, an
+  `https://` link, a `doi:` name, or a contact holding an e-mail address; no part of the file's identity, hash or
+  verdict). MIME does not recommend it and never refuses it. A build that needs the bytes and does not find them is
+  refused as `asset.by-request` (`locate`, `mime assets fetch`, and the load of a folder that lacks such a file), which
+  says where to request it and where to put it: a copy placed in the cache is taken only if its sha256 is the record's.
+  Beside the licence gate in `locate` (P0), a gated file had by request is refused by request while its bytes are not
+  under their sha256, with no licence asked (nothing is read), in `locate`, in `mime assets fetch` of a name and in its
+  batch of a folder alike; the fetch that takes a placed copy asks, and from then on `locate` asks as for any gated file,
+  never saying by request of a file that is here. Where no command can fetch the asset by name (its record is only in a
+  saved folder's lock or a description's manifest), the action names the commands for the folder or the description, not
+  `mime assets fetch <name>`, which would be refused as an unknown asset; `asset.missing` says the same.
+  `mime assets sources` says "no download location (by request)". `mime pack` carries the record, never the bytes, and
+  warns (`mime.saved.ByRequestWarning`); `mime push` never uploads it, whatever its licence, lists it in its plan with
+  its route, and warns; neither refuses it or asks `--yes`. The NOTICE, the availability statement and the card open
+  "Not reproducible from public sources" where results depend on such a file, with its route; one of role
+  `presentation` gets a softer line. The saved form is version 14: the lock's records, in its `assets` and in its
+  `visuals` manifests, may hold either addition, both outside every hash, so a folder of an earlier form loads as it
+  was and one whose lock holds either is refused (`load.lock-shape`); a reader of form 13 refuses form 14 as
+  `load.newer-form`. The bundle's format is `mime.bundle/4` and a manifest file's `mime.asset_manifest/3`, since a
+  reader of the format before each, given a record with no location, refused its shape (`bundle.manifest`,
+  `asset.manifest`), measured with MIME at 316937a8; it now refuses by the format, naming a later MIME.
+  The step is unconditional, so a bundle of an earlier form's folder packed by this MIME is refused by that reader too
+  (`load.newer-form`), and an older MIME's `mime assets fetch <folder>` of a folder of this form is refused by its
+  records' shape, as before (see Fixed). Development releases make no compatibility promise to an older reader.
+
+- **The document's `blocks` key, saved form 14** (the block design's §2.6; the maintainer's answer that it rides this
+  step). Each block an experiment uses, by the use's name: its id, version and content hash, its tier (`copied` or
+  `referenced`, computed from its licence), its licence, the DOI it was used by, its sockets' bindings, the names it
+  provides in each of the document's sections of declarations, and the paths declared over it; written only where a
+  block is used, inside the input hash. Nothing writes it yet: `exp.use` and the reading of a referenced block come
+  with the block itself. Until then a `copied` use, whose declarations the document holds, loads with its input hash
+  reproduced, and a `referenced` one is refused as `load.referenced-block` (this MIME does not yet read a referenced
+  block), never as a shape. A form-13 document that holds the key is refused (`load.document-shape`).
 
 - **A static porous plug in the FVM: `Darcy()`, a porous structure's drag on the fluid in it** (lane F, dev2). A
   structure of the new geometry kind `Plug` (a solid circular cylinder placed in the world: `centre`, `axis`, `radius`,
@@ -981,6 +1047,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`mime.toml` replaces `sharing.yaml`** (lane P, P6), one manifest for every kind of shared folder: `format`
+  (`mime.toml/1`), one kind table (`[bundle] licence` at a saved folder, `[study] licence` at a study folder, a block's
+  tables reserved and refused by name until a later release reads blocks) and `[record]`, the record's metadata with
+  `sharing.yaml`'s keys and checks. Everything outside `[record]` defines the thing; `[record]` is never in a container.
+  Push, the card, `--init` and `--setup` read and write `mime.toml` only: a folder holding `sharing.yaml` alone is refused
+  with the route (`mime push <folder> --setup` writes `mime.toml` from it, `--init` without questions; MIME never deletes
+  your file), and one holding both is refused naming the one to delete. `--setup`, `--init` and the write-back of a site
+  edit edit `[record]` in place: a replaced key's own lines are replaced (the comment that ends its first line is kept; a
+  comment inside its old multi-line value goes with it) and every other line stays byte for byte, line endings
+  included; the new lines keep the key's indentation and take the file's line ending (CRLF where any line is CRLF), and
+  a last line with no line feed gets one when it is replaced. A key written as dotted keys or as a table of its own, and
+  `[record]` written as an inline table, as dotted keys or as an array of tables (`[[record]]`), are refused
+  (`manifest.write`), the file left byte for byte. A move from `sharing.yaml` refuses, naming it, what TOML cannot carry
+  (`manifest.read`, nothing written): a key `[record]` has no place for, a null inside a list, a key YAML reads as a
+  number or a boolean (`1` and `'1'` would be one key). `--init` and `--setup` work on a study folder too. New
+  refusal codes `manifest.missing`, `manifest.read`, `manifest.write`, `manifest.key`, `manifest.kind`, `manifest.both`;
+  `push.sharing` and `push.sharing-missing` are gone; `mime.push.field_owner` says `record` for the author's fields. The
+  study folder's layout holds `mime.toml`: an older MIME refuses such a folder as a stray (`study.stray-file`). No saved
+  form changes: every saved folder loads, and packs to the same bytes, as before. The CLI README now says that every
+  command exits 3 on a MIME defect, push's refusal of a field MIME builds among them.
+
+- **`bundle.no-location` is retired: `mime pack` no longer refuses a file that may not be redistributed whose terms
+  give no origin** (saved form 14). Save writes it into the lock as a reference with no location, the bundle carries
+  that record, and pack warns (`ByRequestWarning`). A lock of an earlier form that does not name such a file as a
+  reference is refused as `bundle.lock-terms` (save the experiment again).
+
 - **A study's reverse-mode derivative in float32 through a body resolved on the FVM's grid (`Drag.Penalty`) is
   refused outside the envelope where it was measured right** (`drag.penalty-float32-reverse`, before the derivative
   compiles), routed to float64 or to forward mode. The envelope, allowed: a sphere in the default 0.1h interior at up
@@ -1307,6 +1399,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **A lock of a later saved form read by `mime assets fetch <folder>` or `mime assets sources <folder>` was refused by
+  its records' shape** (`asset.reference`, measured with MIME at 316937a8 on a form-14 folder), since they read the
+  lock's records without its form. They now refuse it as `load.newer-form` first (`mime.assets.folder_assets`).
+- **Push's plan had a filter that dropped an asset with no location from its list without a word.** It was unreachable
+  until saved form 14, since every record had a location, so no release showed it; the plan now lists such an asset
+  with where to request it.
 
 - **A refusal of the user's or the environment's class raised by MIME's own API inside an entry is that refusal, not the
   entry's defect** (lane P). An entry's `plan()`, `build()`, a default's rule (`numerical_default(..., by=...)`), or a

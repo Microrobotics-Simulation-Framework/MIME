@@ -396,7 +396,7 @@ def test_the_same_token_held_for_both_services_is_refused_before_a_request(tmp_p
 
 def refused_by(fake: FakeRecords, tmp_path: Path, status: int, body: dict[str, object],
                contributors: int = 0) -> list[tuple[str, RefusalClass, str]]:
-    """The refusals of a first push whose making of the draft is answered ``status`` with ``body``, for a sharing.yaml
+    """The refusals of a first push whose making of the draft is answered ``status`` with ``body``, for a ``[record]``
     naming ``contributors`` contributors."""
     from dataclasses import replace
 
@@ -417,7 +417,7 @@ def test_a_4xx_naming_fields_mime_builds_or_no_field_is_mimes_defect(token: str,
         {"field": "metadata.resource_type", "messages": ["Invalid value."]},
         {"field": "metadata.publisher", "messages": ["Missing data."]}]})
     assert [(code, category) for code, category, _ in found] == [("push.rejected", RefusalClass.INTERNAL)] * 2
-    assert not any("sharing.yaml" in action for _, _, action in found)
+    assert not any("mime.toml" in action for _, _, action in found)
     found = refused_by(fake, tmp_path, 400, {"status": 400, "message": "Invalid value bsd-3-clause-clear."})
     assert [(code, category) for code, category, _ in found] == [("push.rejected", RefusalClass.INTERNAL)]
 
@@ -428,11 +428,11 @@ def test_a_4xx_naming_a_field_the_author_writes_is_theirs_to_correct(token: str,
         {"field": "metadata.creators.0.person_or_org.family_name", "messages": ["Missing data."]},
         {"field": "metadata.rights.0.id", "messages": ["Invalid value."]}]})
     assert [(code, category) for code, category, _ in found] == [("push.rejected", RefusalClass.USER)] * 2
-    assert "sharing.yaml" in found[0][2] and "exp.licence" in found[1][2]
+    assert "mime.toml" in found[0][2] and "exp.licence" in found[1][2]
 
 
 def test_contributors_mime_adds_and_its_keyword_are_mimes_and_the_authors_are_theirs(token: str, tmp_path: Path):
-    """The contributors after sharing.yaml's are the rights holders MIME adds from the files' terms, and the first
+    """The contributors after [record]'s are the rights holders MIME adds from the files' terms, and the first
     keyword is MIME's own: a refusal of either is MIME's defect, in a 2xx's ``errors`` as in a 4xx's."""
     fake = FakeRecords(token)
     for contributors, field, category in ((0, "metadata.contributors.0.role", RefusalClass.INTERNAL),

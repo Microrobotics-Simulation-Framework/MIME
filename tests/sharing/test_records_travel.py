@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 
 import pytest
-from push_cases import copy_of, with_token, write_sharing
+from push_cases import copy_of, with_token, write_manifest
 from terms_cases import NO_REDISTRIBUTION, mesh_bytes, same_reference_run
 from zenodo_records import FakeRecords
 
@@ -76,7 +76,10 @@ def test_a_file_declared_by_its_record_is_read_from_the_cache_and_never_download
     record = scan_record(data)
     with pytest.raises(BuildRefused) as refused:
         saved_with(record, tmp_path / "missing")
-    assert "asset.missing" in refused.value.codes() and "mime assets fetch vessel_scan.usda" in str(refused.value)
+    # a record declared only in the experiment's script is not one `mime assets fetch <name>` knows (asset.unknown), so
+    # the action names the commands for the folder or description that references it, never the name
+    assert "asset.missing" in refused.value.codes() and "mime assets fetch <folder>" in str(refused.value)
+    assert "mime assets fetch vessel_scan.usda" not in str(refused.value)
     held = asset(record)
     assert held.sha256 == record.sha256 and held.terms is not None and held.terms.origin == record.locations
     with pytest.raises(ValueError, match="takes its sha256 and its terms from the record"):
@@ -130,10 +133,10 @@ def test_a_pushed_folder_never_uploads_a_referenced_asset_and_its_record_travels
     data = mesh_bytes("vessel_scan", 4000)
     placed(cache, data)
     folder = saved_with(scan_record(data), tmp_path / "scanned")
-    write_sharing(folder)
+    write_manifest(folder)
     token = with_token(monkeypatch)
     fake = FakeRecords(token)
-    plan = _plan.make_plan(copy_of(folder, tmp_path / "push"), fake.service(), push.read_sharing(folder),
+    plan = _plan.make_plan(copy_of(folder, tmp_path / "push"), fake.service(), push.read_manifest(folder).record,
                            tmp_path / "staged")
     uploaded = {file.sha256 for file in plan.files}
     assert hashlib.sha256(data).hexdigest() not in uploaded

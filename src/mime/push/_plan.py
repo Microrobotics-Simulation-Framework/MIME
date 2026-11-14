@@ -9,7 +9,7 @@ read from the cache and hashed in full first. A file that may not be redistribut
 record file: ``pack`` carries it as a reference, and so does the record.
 
 **The metadata** is the records API's: resource type ``dataset``; the title, creators, contributors, keywords and
-related works from ``sharing.yaml``; the rights holder (its credit) of each third-party file the record holds, and each
+related works from ``mime.toml``'s ``[record]``; the rights holder (its credit) of each third-party file the record holds, and each
 permission's grantor, as a ``rightsholder`` contributor (a file that travels as a reference is not in the record: its
 rights holder is credited beside it in the NOTICE and the card, and is no contributor of the record); the card
 (``mime card``'s, the same function, given the record it is published as) as the description, in HTML; every licence of a file in the record or the bundle
@@ -27,6 +27,7 @@ import html
 import json
 import os
 import re
+import warnings
 import zipfile
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
@@ -47,12 +48,14 @@ from mime._said import (
 from mime._shell import quoted
 from mime._terminal import plain
 from mime.assets import AssetRef, folder_assets, locate, size_text
+from mime.assets._cache import NO_ROUTE
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._client import Json
 from mime.push._fields import access_entry, access_words
 from mime.push._owners import FIELD_OWNERS, OWN_RELATED, field_owner
 from mime.push._service import Service
-from mime.push._sharing import Person, Sharing, sharing_path
+from mime.push._manifest import manifest_path
+from mime.push._sharing import Person, Sharing, Uploader
 from mime.push._state import DraftState, metadata_marks
 from mime.saved._bundle import MANIFEST_MEMBER, NOTICE_MEMBER, read_manifest
 from mime.saved._card import CardFacts, availability, card_facts, card_of, permission_words
@@ -140,7 +143,9 @@ def asset_choices(refs: Sequence[AssetRef], judged: FolderTerms, lock: Lock,
     derived from a referenced input, whatever its record's licence (``mime.assets.record_terms``), and one whose bytes
     any record in reach says may not travel (``mime.assets.known_bytes``); one that may be redistributed is a file of
     the record where it has no location on Zenodo yet, or only in an earlier version of this experiment (``own``, by
-    DOI), whose files a new version links rather than uploads again."""
+    DOI), whose files a new version links rather than uploads again. A record with no location (saved form 14) is
+    never uploaded, whatever its licence: its publisher makes it available by request alone, and it travels as its
+    record."""
     from mime.assets import derived_verdicts, known_bytes
     from mime.saved._terms import lock_records
 
@@ -160,7 +165,9 @@ def asset_choices(refs: Sequence[AssetRef], judged: FolderTerms, lock: Lock,
         stated = known.found(ref.sha256)
         if stated is not None and verdict.carried:
             verdict = Verdict("unknown", "referenced", (), stated[1])
-        if not verdict.carried:
+        if ref.by_request:
+            found.append(AssetChoice(ref, verdict, False, f"{BY_REQUEST}: travels as its record, never uploaded"))
+        elif not verdict.carried:
             found.append(AssetChoice(ref, verdict, False, f"{verdict.words()}: travels as a reference, never "
                                                           f"uploaded"))
         elif on_zenodo(ref, own):
@@ -168,6 +175,22 @@ def asset_choices(refs: Sequence[AssetRef], judged: FolderTerms, lock: Lock,
         else:
             found.append(AssetChoice(ref, verdict, True, f"{verdict.words()}; no Zenodo location yet, so uploaded"))
     return found
+
+
+#: What push says of a record with no location, and of a file that travels as one.
+BY_REQUEST = "no download location (by request)"
+
+
+def _file_source(file: FileTerms) -> str:
+    """Where a file the record does not hold comes from, as the plan says it: its origin, or that it is had by request
+    and where to ask."""
+    if file.by_request:
+        return f"{BY_REQUEST}, request it from: {request_words_of(file.request)}"
+    return f"from {plain(file.origin[0]) if file.origin else 'no origin'}"
+
+
+def request_words_of(request: str | None) -> str:
+    return plain(request) if request else NO_ROUTE
 
 
 def record_key(ref: AssetRef, path: str | None) -> str:
@@ -183,7 +206,7 @@ def record_key(ref: AssetRef, path: str | None) -> str:
 class Plan:
     """What a push will do, computed offline: the service, the experiment, the record files in upload order (the
     bundle, the NOTICE, then the uploaded assets), the folder's judged terms, the lock's assets with what the record
-    does with each, the experiment's licence, ``sharing.yaml`` as read, the metadata payload and the MIME release; and
+    does with each, the experiment's licence, ``[record]`` as read, the metadata payload and the MIME release; and
     the lock the bundle was packed with (the folder's, or the staged lock naming the record it will be published
     as)."""
 
@@ -203,7 +226,7 @@ class Plan:
     publication: PublicationRecord | None = None
     #: The staged lock the bundle holds, its bytes, where it was packed with one.
     staged: bytes | None = None
-    #: The card, as the HTML of the record's description (without sharing.yaml's paragraph).
+    #: The card, as the HTML of the record's description (without ``[record]``'s paragraph).
     card: str = ""
     #: The version's number in its concept.
     version: int = 1
@@ -220,7 +243,7 @@ class Plan:
         return record_licences(self.judged, self.assets, self.licence)
 
     def owner(self, field: str) -> str:
-        """Who owns the metadata field at ``field``: :func:`mime.push._owners.field_owner`, for this sharing.yaml."""
+        """Who owns the metadata field at ``field``: :func:`mime.push._owners.field_owner`, for this ``[record]``."""
         return field_owner(field, len(self.sharing.contributors))
 
     def lines(self, state: DraftState | None) -> list[str]:
@@ -241,14 +264,16 @@ class Plan:
         lines.append(Said(f"  Referenced, not uploaded ({len(held) + len(held_assets)}):" +
                           ("" if held or held_assets else " none"), PLAN_REFERENCE))
         lines += [Said(f"    {plain(file.path)}  {size_text(file.size)}  licence {plain(file.licence or 'none')}, "
-                       f"{file.verdict.words()}, role {file.role or 'results'}, from "
-                       f"{plain(file.origin[0]) if file.origin else 'no origin'}, sha256 {file.sha256}", PLAN_REFERENCE)
+                       f"{file.verdict.words()}, role {file.role or 'results'}, {_file_source(file)}, sha256 "
+                       f"{file.sha256}", PLAN_REFERENCE)
                   for file in held]
         lines += [Said(f"    the asset {plain(choice.ref.name)}  {size_text(choice.ref.size)}  licence "
-                       f"{plain(choice.ref.licence)}: {choice.why}, at {plain(choice.ref.locations[0])}", PLAN_REFERENCE)
-                  for choice in held_assets if choice.ref.locations]
+                       f"{plain(choice.ref.licence)}: {choice.why}, " + (
+                           f"request it from: {request_words_of(choice.ref.request)}" if choice.ref.by_request
+                           else f"at {plain(choice.ref.locations[0])}"), PLAN_REFERENCE)
+                  for choice in held_assets]
         lines += [Said(line, PLAN_FIELD) for line in
-                  (f"  The experiment's licence: {plain(self.licence)}, bound to its files (sharing.yaml states the "
+                  (f"  The experiment's licence: {plain(self.licence)}, bound to its files (mime.toml states the "
                    f"same)",
                    f"  Licences on the record: {', '.join(plain(each) for each in self._licences())} (the "
                    f"NOTICE maps each file to its licence; Zenodo has no licence per file)",
@@ -296,8 +321,7 @@ class Plan:
                        choice.ref.name not in {file.referenced for file in held}]
         if held or held_assets:
             lines.append(Said("  by reference, never uploaded: " + "; ".join(
-                [f"{plain(file.path)} ({plain(file.licence or 'no licence')}, from "
-                 f"{plain(file.origin[0]) if file.origin else 'no origin'})" for file in held] +
+                [f"{plain(file.path)} ({plain(file.licence or 'no licence')}, {_file_source(file)})" for file in held] +
                 [f"the asset {plain(choice.ref.name)} ({choice.why.split(':')[0]})" for choice in held_assets]),
                 PLAN_REFERENCE))
         title = plain(str(_mapping(self.payload.get("metadata")).get("title", "")))
@@ -316,8 +340,18 @@ class Plan:
         service."""
         found: list[str] = []
         depends = [file.path for file in self.judged.files
-                   if (file.referenced is not None or not file.verdict.carried)
+                   if (file.referenced is not None or not file.verdict.carried) and not file.by_request
                    and (file.role or "results") == "results"]
+        unreachable = [f"{plain(file.path)}, request it from: {request_words_of(file.request)}"
+                       for file in self.judged.files if file.by_request and (file.role or "results") == "results"]
+        travelling = {file.referenced for file in self.judged.files}
+        unreachable += [f"the asset {plain(choice.ref.name)}, request it from: {request_words_of(choice.ref.request)}"
+                        for choice in self.assets if choice.ref.by_request and choice.ref.name not in travelling
+                        and choice.ref.role != "presentation"]
+        if unreachable:
+            found.append(f"results depend on {len(unreachable)} file{'s' if len(unreachable) != 1 else ''} no one can "
+                         f"download ({'; '.join(unreachable)}): not reproducible from public sources, as the card "
+                         f"says")
         if depends:
             found.append(f"results depend on {len(depends)} file{'s' if len(depends) != 1 else ''} the record does not "
                          f"hold ({', '.join(plain(each) for each in depends)}): reproducible only while a copy of "
@@ -334,7 +368,7 @@ class Plan:
             found.append("the title differs from the published version's: indexes keep a concept's first title")
         access = _mapping(self.payload.get("access"))
         if set(access) - {"record", "files"} or {access.get("record"), access.get("files")} - {"public", None}:
-            found.append(f"access once published is not open: {access_words(access)} (sharing.yaml's `access`)")
+            found.append(f"access once published is not open: {access_words(access)} ([record] `access`)")
         second = self.second_concept(state)
         if second is not None:
             found.append(second)
@@ -364,7 +398,7 @@ def _built_lines(plan: Plan) -> list[str]:
     date, the resource type, the access and push's identifier of the draft."""
     held = _mapping(plan.payload.get("metadata"))
     description = str(held.get("description", ""))
-    paragraph = "sharing.yaml's paragraph, then " if plan.sharing.description else ""
+    paragraph = "[record]'s paragraph, then " if plan.sharing.description else ""
     shown = _mapping(plan.payload.get("access"))
     return [f"  Title: {plain(str(held.get('title', '')))}",
             f"  Description: {paragraph}the card, as HTML ({len(description):,} characters)",
@@ -375,7 +409,7 @@ def _built_lines(plan: Plan) -> list[str]:
             *([f"  Funding: {'; '.join(each.words() for each in plan.sharing.funding)}"]
               if plan.sharing.funding else []),
             *([f"  Conference: {plain(plan.sharing.conference.get('title', ''))}"] if plan.sharing.conference else []),
-            *([f"  Other fields: {', '.join(plain(name) for name in plan.sharing.fields)} (from sharing.yaml's "
+            *([f"  Other fields: {', '.join(plain(name) for name in plan.sharing.fields)} (from [record] "
                f"fields, as written)"] if plan.sharing.fields else []),
             f"  Access once published: {access_words(shown)} (a draft is private)",
             "  Alternate identifier: a urn:uuid push makes for the draft, by which it knows the draft is its own"]
@@ -432,7 +466,7 @@ def _contributor_words(plan: Plan) -> list[str]:
 
 def _related_words(plan: Plan) -> list[str]:
     return [f"Requires and IsCompiledBy mime-engine {plain(plan.mime_version)}"] + \
-        [f"{related.relation} {plain(related.identifier)}" for related in plan.sharing.related]
+        [f"{related.relation} {plain(related.identifier)}" for related in plan.sharing.related_with_citations()]
 
 
 def _keywords(sharing: Sharing) -> list[str]:
@@ -549,14 +583,14 @@ def _related(identifier: str, scheme: str, relation: str) -> Json:
 
 def payload_of(plan_parts: tuple[Sharing, FolderTerms, Sequence[str], str, str], today: datetime.date, *,
                record_version: int = 1) -> Json:
-    """The draft's body for the records API, from ``sharing.yaml``, the folder's terms, the record's licences, the
+    """The draft's body for the records API, from ``[record]``, the folder's terms, the record's licences, the
     description's HTML and the MIME release; ``record_version`` is the version's number in its concept."""
     sharing, judged, licences, description, version = plan_parts
     contributors: list[Json] = [_person(person) for person in sharing.contributors]
     contributors += [_holder(name) for name in _rights_holders(judged)]
     related: list[Json] = [{"identifier": _PYPI.format(version), "scheme": "url", "relation_type": {"id": relation},
                             "resource_type": {"id": "software"}} for relation in ("requires", "iscompiledby")]
-    related += [_related(each.identifier, each.scheme, each.relation.lower()) for each in sharing.related]
+    related += [_related(each.identifier, each.scheme, each.relation.lower()) for each in sharing.related_with_citations()]
     metadata: Json = {
         "resource_type": {"id": "dataset"},
         "title": sharing.title,
@@ -612,17 +646,17 @@ def make_plan(folder: str | os.PathLike[str], service: Service, sharing: Sharing
             "push.licence", RefusalClass.USER,
             f"the experiment {plain(name)} declares no licence, and a record is never published without one: its "
             f"own files would be its author's, with no licence granted to anyone",
-            f"declare it where the experiment is built, exp.licence({sharing.licence!r}) (sharing.yaml states "
+            f"declare it where the experiment is built, exp.licence({sharing.licence!r}) (mime.toml states "
             f"{plain(sharing.licence)}), then save it again, built.save(folder)"))
     elif licence != sharing.licence:
         refusals.append(_refuse(
             "push.licence", RefusalClass.USER,
-            f"sharing.yaml states the licence {plain(sharing.licence)}, and the experiment declares {plain(licence)}, "
+            f"mime.toml states the licence {plain(sharing.licence)}, and the experiment declares {plain(licence)}, "
             f"which its files carry: the record would say one and its NOTICE the other",
-            f"write `licence: {plain(licence)}` in {sharing_path(root)}, or declare the other where the experiment is "
+            f"write `licence = \"{plain(licence)}\"` under [bundle] in {manifest_path(root)}, or declare the other where the experiment is "
             f"built, exp.licence({sharing.licence!r}), and save it again, built.save(folder)"))
     if judged.permissions:
-        refusals += _grantee_problems(judged.permissions, sharing, root)
+        refusals += grantee_problems(judged.permissions, sharing.uploader, root)
     refs = folder_assets(root)
     if service.production:
         refusals += [_refuse(
@@ -707,7 +741,7 @@ def upload_problems(files: Sequence[RecordFile], lock: Lock) -> list[Refusal]:
 
 
 def with_sharing(plan: Plan, sharing: Sharing, today: datetime.date | None = None) -> Plan:
-    """``plan`` with ``sharing.yaml`` read again (an edit made on the site kept, written into it): its card, which
+    """``plan`` with ``[record]`` read again (an edit made on the site kept, written into it): its card, which
     names the creators and the record the plan is packed as, and its metadata payload made again from it."""
     plan = replace(plan, card=card_html(card_of(plan.facts, plan.publication)) if plan.facts is not None else plan.card)
     description = plan.card
@@ -725,16 +759,19 @@ def _packed(root: Path, service: Service, staged: Path, bundle_name: str, lock: 
     """The bundle and its NOTICE as record files, packed from the folder with its own lock or, with ``publication``,
     with the staged lock naming that record (each of ``assets`` located there first); and the staged lock."""
     from mime.push._stage import own_location, pack_staged, staged_lock
-    from mime.saved import pack
+    from mime.saved import ByRequestWarning, pack
 
     target = staged / bundle_name
-    if publication is None:
-        bundle, held = pack(root, out=target), None
-    else:
-        own = {file.asset: own_location(service, publication["record"], publication["doi"], file.key)
-               for file in assets if file.asset is not None}
-        held = staged_lock(lock, publication, own)
-        bundle = pack_staged(root, held, staged, target, frozenset(own.values()))
+    with warnings.catch_warnings():
+        # The plan says what pack would warn of, among its own lines (Plan.warnings).
+        warnings.simplefilter("ignore", ByRequestWarning)
+        if publication is None:
+            bundle, held = pack(root, out=target), None
+        else:
+            own = {file.asset: own_location(service, publication["record"], publication["doi"], file.key)
+                   for file in assets if file.asset is not None}
+            held = staged_lock(lock, publication, own)
+            bundle = pack_staged(root, held, staged, target, frozenset(own.values()))
     with zipfile.ZipFile(bundle) as archive:
         read_manifest(archive)
         notice = archive.read(NOTICE_MEMBER)
@@ -765,24 +802,26 @@ def _record_file(key: str, path: Path, licence: str | None, what: str, asset: st
     return RecordFile(key, path, size, md5, sha256, licence, what, asset)
 
 
-def _grantee_problems(permissions: Sequence[PermissionDoc], sharing: Sharing, root: Path) -> list[Refusal]:
-    """A declared permission's grantee is the uploader or their institution (#198 item 6), whom sharing.yaml names."""
-    if sharing.uploader is None:
+def grantee_problems(permissions: Sequence[PermissionDoc], uploader: Uploader | None, root: Path) -> list[Refusal]:
+    """A declared permission's grantee is the uploader or their institution (#198 item 6), whom ``[record]`` names
+    (``push.permission``; ``mime check`` runs this too, so a permission push refuses is listed there)."""
+    if uploader is None:
         return [_refuse("push.permission", RefusalClass.USER,
                         f"the experiment declares {len(permissions)} permission{'s' if len(permissions) != 1 else ''}, "
-                        f"and sharing.yaml names no uploader to hold its grantee to",
-                        f"name yourself, `uploader: {{name: \"<family name>, <given name>\", institution: <your "
-                        f"institution>}}` in {sharing_path(root)}")]
-    allowed = {sharing.uploader.name, *([sharing.uploader.institution] if sharing.uploader.institution else [])}
+                        f"and mime.toml's [record] names no uploader to hold its grantee to",
+                        f"name yourself, `uploader = {{ name = \"<family name>, <given name>\", institution = \"<your "
+                        f"institution>\" }}` under [record] in {manifest_path(root)}")]
+    allowed = {uploader.name, *([uploader.institution] if uploader.institution else [])}
     return [_refuse("push.permission", RefusalClass.USER,
                     f"permission {index} names the grantee {plain(held['grantee'])}, who is neither the uploader "
-                    f"({plain(sharing.uploader.name)}) nor their institution: the declaration is the uploader's own",
+                    f"({plain(uploader.name)}) nor their institution: the declaration is the uploader's own",
                     f"declare the permission to yourself or your institution, exp.permission(Permission(grantee=...)),"
-                    f" and save again; or name the right uploader in {sharing_path(root)}")
+                    f" and save again; or name the right uploader in {manifest_path(root)}")
             for index, held in enumerate(permissions, start=1) if held["grantee"] not in allowed]
 
 
 __all__ = ["DOI_FIELDS", "FIELD_OWNERS", "KEYWORD", "MOST_BYTES", "MOST_FILES", "NOTICE_KEY", "OWN_RELATED",
            "PUBLISHER", "AssetChoice", "field_owner", "Plan", "RecordFile", "declaring", "asset_choices", "card_html",
-           "file_hashes", "make_plan", "on_zenodo", "payload_of", "record_key", "record_licences", "restaged",
+           "file_hashes", "grantee_problems", "make_plan", "on_zenodo", "payload_of", "record_key", "record_licences",
+           "restaged",
            "rights_entries", "upload_problems", "with_sharing"]

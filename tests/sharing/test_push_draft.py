@@ -37,7 +37,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from homes import Outside, isolate
-from push_cases import client, copy_of, plan_of, run_until_drafted, saved_toy, with_token, write_sharing
+from push_cases import client, copy_of, plan_of, run_until_drafted, saved_toy, with_token, write_manifest
 from terms_cases import CONDITIONAL_IDS, NO_REDISTRIBUTION, OPEN_IDS, UNKNOWN_IDS, layered, same_reference_run, \
     write_mesh
 from zenodo_records import FakeRecords, FakeTransport, Killed
@@ -56,7 +56,7 @@ ORIGIN = "https://example.org/ar4_ros_driver/6a3ebb1/meshes/ar4_visual.usda"
 @pytest.fixture(scope="module")
 def toy(tmp_path_factory: pytest.TempPathFactory) -> Path:
     folder = saved_toy(tmp_path_factory.mktemp("toy"))
-    write_sharing(folder)
+    write_manifest(folder)
     return folder
 
 
@@ -70,7 +70,7 @@ def ar4(tmp_path_factory: pytest.TempPathFactory) -> Path:
         layered("ar4_like", [(visual, Terms(NO_REDISTRIBUTION, "Robot Maker Ltd", "presentation", (ORIGIN,))),
                              (kinematics, Terms("MIT", "Copyright (c) 2021 A. Driver", "results"))],
                 licence="CC-BY-4.0").build().save(root / "ar4_like")
-    write_sharing(root / "ar4_like")
+    write_manifest(root / "ar4_like")
     return root / "ar4_like"
 
 
@@ -238,8 +238,8 @@ def test_a_changed_folder_sends_only_the_files_that_differ(toy: Path, token: str
     fake = FakeRecords(token)
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake)
-    sharing = folder / "sharing.yaml"
-    sharing.write_text(sharing.read_text(encoding="utf-8").replace('title: "full_toy"', 'title: "renamed"'),
+    sharing = folder / "mime.toml"
+    sharing.write_text(sharing.read_text(encoding="utf-8").replace('title = "full_toy"', 'title = "renamed"'),
                        encoding="utf-8")
     again = pushed(folder, fake)
     assert again is not None and again.uploaded == () and \
@@ -513,14 +513,14 @@ def test_a_folder_without_a_licence_and_a_disagreeing_licence_are_refused_before
                                                                                           tmp_path: Path):
     fake = FakeRecords(token)
     bare = saved_toy(tmp_path / "bare", licence=None)
-    write_sharing(bare)
+    write_manifest(bare)
     with pytest.raises(BuildRefused) as refused:
         pushed(bare, fake)
     assert refused.value.codes() == ["push.licence"] and 'exp.licence(\'CC-BY-4.0\')' in \
         refused.value.refusals[0].action
     other = saved_toy(tmp_path / "mit", licence="MIT")
-    path = write_sharing(other)
-    path.write_text(path.read_text(encoding="utf-8").replace("licence: MIT", "licence: CC-BY-4.0"), encoding="utf-8")
+    path = write_manifest(other)
+    path.write_text(path.read_text(encoding="utf-8").replace('licence = "MIT"', 'licence = "CC-BY-4.0"'), encoding="utf-8")
     with pytest.raises(BuildRefused) as refused:
         pushed(other, fake)
     assert refused.value.codes() == ["push.licence"] and "and the experiment declares MIT" in         refused.value.refusals[0].message
@@ -570,11 +570,11 @@ def test_a_permission_whose_grantee_is_not_the_uploader_is_refused(token: str, t
         layered("granted", [(shell, Terms(own, "Maker Ltd", "presentation"))], licence="CC-BY-4.0",
                 permissions=[permission]).build().save(tmp_path / "granted")
     folder = tmp_path / "granted"
-    write_sharing(folder)
+    write_manifest(folder)
     fake = FakeRecords(token)
     assert codes(lambda: pushed(folder, fake)) == ["push.permission"]
-    sharing = folder / "sharing.yaml"
-    sharing.write_text(sharing.read_text(encoding="utf-8") + 'uploader: {name: "Somebody, Else"}\n',
+    sharing = folder / "mime.toml"
+    sharing.write_text(sharing.read_text(encoding="utf-8") + 'uploader = { name = "Somebody, Else" }\n',
                        encoding="utf-8")
     assert codes(lambda: pushed(folder, fake)) == ["push.permission"]
     sharing.write_text(sharing.read_text(encoding="utf-8").replace("Somebody, Else", "Carberry, Josiah"),
@@ -672,7 +672,7 @@ def test_the_draft_push_sends_holds_every_field_datacite_needs_for_its_doi(toy: 
     from mime.push._plan import DOI_FIELDS
 
     fake = FakeRecords(token)
-    plan = _plan.make_plan(copy_of(toy, tmp_path), fake.service(), push.read_sharing(toy), tmp_path / "staged")
+    plan = _plan.make_plan(copy_of(toy, tmp_path), fake.service(), push.read_manifest(toy).record, tmp_path / "staged")
     metadata = plan.payload["metadata"]
     assert all(metadata.get(field) for field in DOI_FIELDS)  # type: ignore[union-attr]
     assert metadata["publisher"] == "Zenodo"  # type: ignore[index]
@@ -696,13 +696,13 @@ def test_a_refused_field_mime_builds_is_mimes_defect_and_one_the_author_writes_i
     held = refused.value.refusals
     assert [(r.code, r.category) for r in held] == [("push.rejected", RefusalClass.INTERNAL)]
     assert "metadata.publisher" in held[0].message and "MIME's defect, not yours" in held[0].message
-    assert "sharing.yaml" not in held[0].action
+    assert "mime.toml" not in held[0].action
     fake = FakeRecords(token)
     with pytest.raises(BuildRefused) as refused:
         push.send(without(plan_of(fake, {"a.bin": b"a"}, tmp_path / "b"), "title"), None, client(fake))
     held = refused.value.refusals
     assert [(r.code, r.category) for r in held] == [("push.rejected", RefusalClass.USER)]
-    assert "correct it in sharing.yaml" in held[0].action
+    assert "correct it under [record] in mime.toml" in held[0].action
 
 
 def test_each_field_of_the_metadata_has_its_owner():
@@ -712,10 +712,10 @@ def test_each_field_of_the_metadata_has_its_owner():
                                        "metadata.something_new")] == ["mime"] * 6
     assert [owner(field, 3) for field in ("metadata.title", "metadata.creators.0.person_or_org.family_name",
                                           "metadata.contributors.2.role", "metadata.related_identifiers.2",
-                                          "metadata.subjects.1")] == ["sharing"] * 5
+                                          "metadata.subjects.1")] == ["record"] * 5
     assert [owner(field, 3) for field in ("metadata.contributors.3.role", "metadata.subjects.0.subject",
                                           "metadata.identifiers.0.identifier")] == ["mime"] * 3
-    assert owner("metadata.contributors.0.role") == "mime", "with no contributor in sharing.yaml, every one is MIME's"
+    assert owner("metadata.contributors.0.role") == "mime", "with no contributor in [record], every one is MIME's"
     assert owner("metadata.rights.0.id") == "experiment"
 
 
@@ -826,7 +826,7 @@ def test_the_lanes_dry_run_needs_no_token_says_what_it_compared_and_removes_what
     out = capsys.readouterr().out.splitlines()
     assert out[-1].startswith("the fake behind the real transport answers as the fake in this process does (a dry "
                               "run: the sandbox was not asked")
-    assert listing(given) == before and not (given / "sharing.yaml").exists()
+    assert listing(given) == before and not (given / "mime.toml").exists()
     assert list(temporary.iterdir()) == [] and list((tmp_path / "cwd").iterdir()) == []
     assert not _state.state_root().exists() or not [p for p in _state.state_root().rglob("*") if p.is_file()]
 
@@ -971,8 +971,8 @@ def test_a_title_edited_on_the_site_stops_the_push_naming_both_values(toy: Path,
         pushed(folder, fake)
     held = refused.value.refusals
     assert [(r.code, r.category) for r in held] == [("push.metadata-edited", RefusalClass.USER)]
-    assert "metadata.title on the site: Edited on the site; from sharing.yaml: full_toy" in held[0].message
-    assert "sharing.yaml's `title`" in held[0].action and push.OVERWRITE_FLAG in held[0].action
+    assert "metadata.title on the site: Edited on the site; from mime.toml's [record]: full_toy" in held[0].message
+    assert "[record] `title` in mime.toml" in held[0].action and push.OVERWRITE_FLAG in held[0].action
     assert push.KEEP_FLAG in held[0].action
     assert record.revision == before, "nothing was written to the draft"
     said: list[str] = []
@@ -987,10 +987,10 @@ def test_an_edit_copied_into_sharing_yaml_goes_on_and_the_flag_writes_over_one_t
     pushed(folder, fake)
     record = fake.records["629525"]
     record.body["metadata"]["title"] = "Edited on the site"  # type: ignore[index]
-    sharing = folder / "sharing.yaml"
-    sharing.write_text(sharing.read_text(encoding="utf-8").replace('title: "full_toy"', 'title: "Edited on the site"'),
+    sharing = folder / "mime.toml"
+    sharing.write_text(sharing.read_text(encoding="utf-8").replace('title = "full_toy"', 'title = "Edited on the site"'),
                        encoding="utf-8")
-    assert pushed(folder, fake) is not None, "the site's title, copied into sharing.yaml, is no longer at stake"
+    assert pushed(folder, fake) is not None, "the site's title, copied into mime.toml, is no longer at stake"
     record.body["metadata"]["version"] = "v2 (the site's)"  # type: ignore[index]
     assert codes(lambda: pushed(folder, fake)) == ["push.metadata-edited"]
     seen = Seen(fake)
@@ -1007,8 +1007,8 @@ def test_control_without_the_check_of_what_push_last_wrote_a_site_edit_is_overwr
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake)
     fake.records["629525"].body["metadata"]["title"] = "Edited on the site"  # type: ignore[index]
-    sharing = folder / "sharing.yaml"  # a change of the author's own, so the push writes
-    sharing.write_text(sharing.read_text(encoding="utf-8").replace("keywords: []", "keywords: [helix]"),
+    sharing = folder / "mime.toml"  # a change of the author's own, so the push writes
+    sharing.write_text(sharing.read_text(encoding="utf-8").replace("keywords = []", 'keywords = ["helix"]'),
                        encoding="utf-8")
     pushed(folder, fake)
     assert fake.records["629525"].body["metadata"]["title"] == "full_toy", \

@@ -16,6 +16,8 @@
                                 the data files it names by sha256, never by running the study again
     compare.usda                the ghosted comparison of the members' stage samples (``m<point>/stage/``), over the
                                 reference member's stage; everything it references lies inside this folder
+    mime.toml                   the study's manifest for sharing it (``[study] licence`` and the record's metadata,
+                                ``[record]``), which ``mime push <folder> --setup`` writes; nothing a study reads
 
 The folder is readable without MIME: JSON, YAML and NPZ. Its manifest is closed (a key it does not know is refused), its
 layout is checked (a file it does not know is refused), and a newer format is refused as ``result.format`` refuses one.
@@ -51,6 +53,8 @@ BASE_DIR = "experiment"
 #: comparison layer. Neither is a result, and both are redrawn or rewritten from the data.
 FIGURES_DIR = "figures"
 COMPARE_FILE = "compare.usda"
+#: The study's manifest for sharing it (``mime.push``), beside its data: nothing a study reads or writes.
+MANIFEST_FILE = "mime.toml"
 GROUPS_DIR = "groups"
 GROUP_OUTPUTS = "outputs.npz"
 GROUP_REPORT = "report.json"
@@ -321,13 +325,13 @@ def check_document(document: object) -> dict[str, Any]:
 
 
 #: What a study folder holds at its top, and in each group's folder (``experiment/`` only past the first group).
-TOP_NAMES = (STUDY_FILE, SPEC_FILE, BASE_DIR, GROUPS_DIR, FIGURES_DIR, COMPARE_FILE)
+TOP_NAMES = (STUDY_FILE, SPEC_FILE, BASE_DIR, GROUPS_DIR, FIGURES_DIR, COMPARE_FILE, MANIFEST_FILE)
 GROUP_NAMES = (GROUP_OUTPUTS, GROUP_REPORT, BASE_DIR)
 
 
 def _own(names: Sequence[str]) -> set[str]:
     """The names of the run's own temporaries of ``names``: each one's temporary (:func:`temporary_of`)."""
-    return {name + TEMPORARY for name in names if name != GROUPS_DIR}
+    return {name + TEMPORARY for name in names if name not in (GROUPS_DIR, MANIFEST_FILE)}
 
 
 def temporaries(root: Path) -> list[Path]:
@@ -371,7 +375,7 @@ def check_layout(root: Path, groups: int | None = None) -> None:
         raise refused("study.stray-file", RefusalClass.USER,
                   f"{root} holds {', '.join(stray)}, which a study folder does not: it holds {STUDY_FILE}, {SPEC_FILE}, "
                       f"{BASE_DIR}/ and {GROUPS_DIR}/<k>/ ({GROUP_OUTPUTS}, {GROUP_REPORT}, {BASE_DIR}/), and, beside them, "
-                      f"{FIGURES_DIR}/ (recipes, .json) and {COMPARE_FILE}",
+                      f"{FIGURES_DIR}/ (recipes, .json), {COMPARE_FILE} and {MANIFEST_FILE}",
                       "move it out of the study folder, beside it and not in it, and read the folder again with "
                       "`StudyResult.read(folder)`")
 
