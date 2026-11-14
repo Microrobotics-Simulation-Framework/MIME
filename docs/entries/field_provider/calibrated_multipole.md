@@ -20,7 +20,11 @@ no override or study axis for them).
 It gives, outside a run, the field and gradient per unit current at a point (`provider.actuation(point)`, an
 `Actuation`, whose `matrix()` is the actuation matrix: the field's rows over the gradient's independent ones) and
 currents for a wanted field and gradient within limits the user declares (`allocate(actuation, field=..., gradient=...,
-limits=...)`: bounded least squares). No calibration ships limits: the limits `allocate()` takes are the user's declarations, and the guard's factor is MIME's declaration (a convention set from the measurement each card gives), neither a maker's specification. The validity lines cite the sources of the figures published for each system.
+limits=..., field_scale=..., gradient_scale=...)`: bounded least squares, by the exact allocation run on the host in
+float64, the least current among several minimisers). Inside a controller's law, where a derivative is wanted, call
+`mime.control.exact_allocation` on the rows `placed_unit_fields` gives at the body's point: `allocate()` is the same
+law on the host, and neither takes more coils than `mime.control.EXACT_COMMANDS` (the iterative path is the route
+beyond it); the allocation note says which path to use. No calibration ships limits: the limits `allocate()` takes are the user's declarations, and the guard's factor is MIME's declaration (a convention set from the measurement each card gives), neither a maker's specification. The validity lines cite the sources of the figures published for each system.
 
 It publishes the flux density and the gradient at the reader's point, or at the point fixed in the body a read names
 (the magnet's centroid), so it feeds `Magnetic.Torque` and `Magnetic.Force`. With the energy ledger attached the array

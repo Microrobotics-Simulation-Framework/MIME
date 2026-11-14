@@ -3,6 +3,8 @@ jaxprs: script A's four arms (riding the floor, centred, falling onto the floor,
 every round-trip case whose build is not refused, which together build every registered entry's nodes, and A0's
 controller inside the compiled step, with its orientation feedback on and a latency, whose step is a node's only
 there (one inverse-kinematics iteration: each runs the same functions, so more trace more and scan nothing more); a
+test-only controller inside the compiled step that calls the exact allocation (``allocation_cases``), which no shipped
+entry calls; a
 dynamic arm with Coulomb friction (``chain_cases.friction_arm``), whose friction and sweeps' start A0's AR4 never
 reaches; a rod held by its hull (``hull_cases.rod_contact``), whose cylinder's support no case reaches; A0's
 apparatus with its masses mounted and that friction arm, each with the energy ledger, whose metered steps (the arm's
@@ -50,6 +52,12 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
     found.update({f"case/{case.name}": case.make for case in CASES if not case.refused})
     found["controller/tracked_rpm_in_graph"] = partial(tracked_rpm, "tracked_rpm_in_graph", mode="graph",
                                                        controller=tracking(orientation_feedback=True, iterations=1))
+    import mime.control
+
+    if hasattr(mime.control, "exact_allocation"):  # a merge base before the exact allocation has no law to reach
+        from allocation_cases import allocating_sphere
+
+        found["controller/allocating_in_graph"] = allocating_sphere
     found["chain/friction_arm"] = friction_arm
     found["contact/rod_hull"] = rod_contact
     found["ledger/massive_rpm"] = partial(metered, partial(massive_rpm, "massive_rpm_metered"))

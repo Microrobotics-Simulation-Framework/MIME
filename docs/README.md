@@ -30,6 +30,9 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
   its frames, the stage binding; printed among the pages.
 - [`recordings.md`](recordings.md): the recording layer in a run folder, the stage it is over, and the visuals MIME does
   not ship (the AR4's), fetched and baked into the asset cache; printed among the pages.
+- [`allocation.md`](allocation.md): the exact allocation, `mime.control.exact_allocation`, and `allocate()` on it: what
+  it solves, how it is exact, its guards, its bound of 8 commands (a choice against the rule set before it was measured,
+  with the numbers), its derivative and which path to use; printed among the pages.
 - [`compilation_cache.md`](compilation_cache.md): the compilation cache `mime run` and `mime serve` keep in the user's
   cache directory: what is stored, the cap, `mime cache clear`, `--no-xla-cache`, `mime verify` leaving it out, and the
   lines that turn it on in a script of your own.

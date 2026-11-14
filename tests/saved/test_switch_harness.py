@@ -1270,7 +1270,17 @@ def guard_points(graph):
                                                 lambda: jax.jacfwd(logarithmic)(not_positive)),
         "the porous plug's depth along its axis": (lambda: plug(plug_axis), lambda: jax.jacfwd(plug)(plug_axis)),
         **tracking_points(),
+        **allocation_points(),
     }
+
+
+def allocation_points():
+    """The exact allocation at the points its guards are reached false at (``allocation_cases.GUARD_POINTS``)."""
+    from allocation_cases import GUARD_POINTS, guard_point_derivative, guard_point_value
+
+    return {f"the exact allocation, {name}": (lambda held=held: guard_point_value(held),
+                                              lambda held=held: guard_point_derivative(held))
+            for name, held in GUARD_POINTS.items()}
 
 
 @cache
@@ -1344,7 +1354,9 @@ def swim_at_twist(graph, twist):
                                    "the MRS samples on the screw",
                                    "A0's controller on its target's orientation",
                                    "A0's controller turning its end effector",
-                                   "A0's controller, the body's z along the home pose's x"])
+                                   "A0's controller, the body's z along the home pose's x",
+                                   "the exact allocation, a command with no effect",
+                                   "the exact allocation, rows of rank one"])
 def test_replacing_every_fallback_changes_nothing_where_its_condition_is_false(graph, where):
     evaluate, derivative = guard_points(graph)[where]
     assert fallback_problems(evaluate, derivative, where).problems == []

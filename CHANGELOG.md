@@ -28,6 +28,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   program changes: the step, a run and its forward-mode derivative compile to the same text, and every forward array is
   the same bit for bit.
 
+- **The exact allocation** (AP2, the camera's PR 3a), `mime.control.exact_allocation(rows, wanted, *, lower, upper,
+  scales, owner, offset=None, reference=None, reference_scales=None)`: the commands within explicit bounds that minimise
+  an affine model's residual over caller-given scales (each row's unit; `scales` is required), with an optional
+  regularisation towards a reference; among several minimisers, the one nearest the reference (least effort for a
+  reference of zero). JAX, it runs inside a controller's compiled step and a derivative passes through it. Exact by its
+  active sets: each free subset's QR factor (`2^K`), every set's candidate (`3^K`) from its subset's, the feasible
+  candidate of least residual selected with no derivative, then the selected set solved once more, differentiably, so the
+  derivative is that set's (a jump, never NaN, where a command reaches or leaves a bound). Its guards: a rank test on
+  each free subset's triangle against `RCOND`, with a stand-in before the solve and the subset kept from the selection
+  after it; a command with no effect held at the reference within its bounds; the commands clipped into the bounds. Its
+  switch's owner is the caller's (`allocation_switch(owner, orders)` declares it); its solves are the registered sites
+  `allocation_exact` and `allocation_least_norm`. More than `EXACT_COMMANDS` (8) commands is refused,
+  `allocation.exact-size`, the iterative path its route. **The bound of 8 is a choice against the rule set before the
+  cost was measured** (the largest bound at which the allocation costs no more than three times its five-command cost,
+  which gives 6): every coil array MIME ships has at most 8 coils, and at 6 `allocate()` on CardioMag and OctoMag would
+  be refused or keep a second solver. The allocation's own cost per base step on GitHub's runners (one thread, float64,
+  CardioMag's rows, run 43569142070): 11, 22, 44, about 120, 320 to 350 and 810 to 1040 us at 3 to 8 commands; a slower
+  controller pays it every base step. `docs/allocation.md` is its page.
+- **`allocate()` runs the exact allocation** on the host in float64 instead of SciPy's BVLS, and takes `field_scale=`
+  and `gradient_scale=` (both or neither; unweighted by default, as before). BVLS's absolute tolerance stopped it short
+  on small rows (a wanted field near 0.1 uT; force rows in SI); the law's tests are relative. Its currents move on every
+  call at rounding level, within the swap line; where several currents make the wanted values (eight coils asked for a
+  field alone) it now returns the least current, which BVLS's answer was not. SciPy stays the swap test's oracle.
 - **Entries declare the assets they read** (lane P, P1). `Entry.assets`, a class variable on the base class
   (`()` by default), names the shipped asset references a dynamics, field provider, drive, controller, observation,
   interaction or geometry kind (a body's part solid, an apparatus part's solid or a structure's geometry) reads, as `Plan.assets` did only for an interaction's or an observation's plan; and

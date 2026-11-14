@@ -46,6 +46,8 @@ PROFILES_PATH = "profiles.md"
 LIVE_PATH = "live.md"
 #: The hand-written note on recordings, the stage a recording is over, and the visuals MIME does not ship.
 RECORDINGS_PATH = "recordings.md"
+#: The hand-written note on the exact allocation (``mime.control.exact_allocation`` and ``allocate()``).
+ALLOCATION_PATH = "allocation.md"
 #: The hand-written concept notes that hold the definitions of the multibody library, of materials and of the scene,
 #: which the reference pages and the user guide link to and never redefine (design #220).
 MULTIBODY_PATH = "multibody.md"
@@ -53,7 +55,7 @@ MATERIALS_PATH = "materials.md"
 SCENE_PATH = "scene.md"
 #: The hand-written notes that are pages as they are, at the pages' root.
 NOTE_PATHS = (CONCEPTS_PATH, RESULTS_PATH, PROFILES_PATH, ERRORS_PATH, LIVE_PATH, RECORDINGS_PATH, MULTIBODY_PATH,
-              MATERIALS_PATH, SCENE_PATH)
+              MATERIALS_PATH, SCENE_PATH, ALLOCATION_PATH)
 #: The user guide's front page and the lab-author guide, hand-written pages under ``guide/`` (``_build.guide_pages``).
 GUIDE_INDEX_PATH = "guide/index.md"
 LAB_AUTHOR_PATH = "guide/lab_author.md"

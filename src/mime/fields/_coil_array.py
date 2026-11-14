@@ -5,13 +5,13 @@ wanted field and gradient within declared limits (``allocate``)."""
 
 from __future__ import annotations
 
-import importlib
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from functools import cache
+from functools import cache, partial
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, cast, override
 
+import jax
 import numpy as np
 from numpy.typing import NDArray
 
@@ -38,6 +38,7 @@ from mime.units import (
     LENGTH,
     MAGNETIC_FLUX_DENSITY,
     A,
+    Dimension,
     Length,
     MagneticFluxDensity,
     Magnitude,
@@ -52,9 +53,13 @@ from mime.vocabulary import FLUX_DENSITY, GRADIENT, Capability
 if TYPE_CHECKING:
     from mime.build import ProviderBuilder, Slot
 
-#: SciPy's bounded least squares, whose hints a strict checker reads as partly unknown.
-def _lsq_linear(*args: Any, **kwargs: Any) -> Any:
-    return cast(Any, importlib.import_module("scipy")).optimize.lsq_linear(*args, **kwargs)
+@cache
+def _host_allocation(rows: int, coils: int) -> Any:
+    """The exact allocation compiled for ``rows`` x ``coils``, run on the host in float64 by :func:`allocate`
+    (``mime.control`` imported here: it imports the build, which imports this module)."""
+    from mime.control import exact_allocation
+
+    return cast(Any, jax).jit(partial(exact_allocation, owner="allocation.active_set"))
 
 #: The calibrations the calibrated multipole reads, by their packaged asset's name (``asset("navion_2")``).
 CALIBRATIONS = ("cardiomag", "navion_2", "octomag")
@@ -160,21 +165,44 @@ class Allocation:
                 f"{self.rows} rows asked")
 
 
+def _scale(given: Quantity | None, unit: Dimension, name: str, example: str) -> float:
+    """A row scale in SI, one above zero; ``1`` where none is given (the unweighted rows)."""
+    if given is None:
+        return 1.0
+    values = np.asarray(si(given, unit, what=name), dtype=np.float64).reshape(-1)
+    held = float(values[0]) if values.size == 1 else float("nan")
+    if not (math.isfinite(held) and held > 0.0):
+        raise ArgumentRefused([Refusal("allocation.wanted", RefusalClass.USER,
+                                       f"{name} {given} is not one value above zero",
+                                       f"give {name}={example}: one quantity above zero, the size at which a miss in "
+                                       f"its rows counts as much as one in the others'")])
+    return held
+
+
 def allocate(actuation: Actuation, *, limits: Quantity, field: Quantity | None = None,
-             gradient: Quantity | None = None) -> Allocation:
+             gradient: Quantity | None = None, field_scale: Quantity | None = None,
+             gradient_scale: Quantity | None = None) -> Allocation:
     """The currents, each within its declared limit (``limits``: one current for every coil, or one per coil), that
     come nearest the wanted ``field`` (T, three entries) and ``gradient`` (T/m, nine entries row by row,
-    ``dB_i/dx_j``), in least squares: the field's rows in T and the gradient's five independent ones in T/m, as
-    mag_manip's backward model stacks them, bounded (SciPy's bounded-variable least squares). No system ships limits:
-    the hardware's are the user's to declare. A wanted gradient must be symmetric and trace-free, as every gradient of
-    a field with no current where it is read is. Out of reach, the rows are stacked unweighted, so the gradient (in
-    T/m, a hundred times the field's scale for 10 mT against 1 T/m) is favoured over the field: ask for one alone when it
-    must win. A wanted value that is not finite is refused. It runs on the host in SciPy: no derivative passes
-    through it."""
+    ``dB_i/dx_j``), in least squares: the field's rows and the gradient's five independent ones, as mag_manip's
+    backward model stacks them, each divided by its scale. No system ships limits: the hardware's are the user's to
+    declare. A wanted gradient must be symmetric and trace-free, as every gradient of a field with no current where it
+    is read is. ``field_scale`` (T) and ``gradient_scale`` (T/m) weigh the rows: a miss of one scale in either counts
+    the same. With neither, the rows are unweighted, in T and T/m, so out of reach the gradient (a hundred times the
+    field's scale for 10 mT against 1 T/m) is favoured over the field: give both scales, or ask for one quantity alone
+    when it must win. With both quantities asked, give both scales or neither. A wanted value that is not finite is
+    refused. It runs on the host, in float64 whatever the run's dtype, through :func:`mime.control.exact_allocation`
+    (exact by active sets, at most :data:`mime.control.EXACT_COMMANDS` coils): no derivative passes through it; in a
+    controller's law, call that function."""
     if field is None and gradient is None:
         raise ArgumentRefused([Refusal("allocation.wanted", RefusalClass.USER,
                                        "allocate() is asked for neither a field nor a gradient",
                                        "give field=, gradient= or both")])
+    if field is not None and gradient is not None and (field_scale is None) != (gradient_scale is None):
+        raise ArgumentRefused([Refusal("allocation.wanted", RefusalClass.USER,
+                                       "allocate() is given one row scale of two: the field's and the gradient's rows "
+                                       "are weighed against each other only through both",
+                                       "give field_scale= and gradient_scale= both, or neither (the unweighted rows)")])
     bounds = np.asarray(si(limits, CURRENT, what="the limits"), dtype=np.float64).reshape(-1)
     if bounds.size == 1:
         bounds = np.full(actuation.coils, float(bounds[0]))
@@ -190,6 +218,7 @@ def allocate(actuation: Actuation, *, limits: Quantity, field: Quantity | None =
                                            f"the wanted {name} is not finite", f"give finite numbers for {name}=")])
     rows: list[NDArray[np.float64]] = []
     targets: list[NDArray[np.float64]] = []
+    scales: list[NDArray[np.float64]] = []
     wanted_field = wanted_gradient = None
     if field is not None:
         wanted_field = np.asarray(si(field, MAGNETIC_FLUX_DENSITY, what="the wanted field"), dtype=np.float64)
@@ -199,6 +228,7 @@ def allocate(actuation: Actuation, *, limits: Quantity, field: Quantity | None =
                                            "give three: mT((x, y, z))")])
         rows.append(actuation.field)
         targets.append(wanted_field - actuation.background)
+        scales.append(np.full(3, _scale(field_scale, MAGNETIC_FLUX_DENSITY, "field_scale", "mT(10)")))
     if gradient is not None:
         flat = np.asarray(si(gradient, FIELD_GRADIENT, what="the wanted gradient"), dtype=np.float64)
         if flat.shape != (9,):
@@ -217,9 +247,20 @@ def allocate(actuation: Actuation, *, limits: Quantity, field: Quantity | None =
                                            "and G_xx + G_yy + G_zz = 0")])
         rows.append(_gradient5(actuation.gradient))
         targets.append(_gradient5(wanted_gradient))
-    matrix, target = np.concatenate(rows), np.concatenate(targets)
-    solved = _lsq_linear(matrix, target, bounds=(-bounds, bounds), method="bvls")
-    currents: NDArray[np.float64] = np.asarray(solved.x, dtype=np.float64)
+        scales.append(np.full(5, _scale(gradient_scale, FIELD_GRADIENT, "gradient_scale", "T_per_m(1)")))
+    matrix, target, weights = np.concatenate(rows), np.concatenate(targets), np.concatenate(scales)
+    from mime.control import EXACT_COMMANDS
+
+    if actuation.coils > EXACT_COMMANDS:
+        raise ArgumentRefused([Refusal("allocation.exact-size", RefusalClass.USER,
+                                       f"allocate() on an array of {actuation.coils} coils: its exact allocation "
+                                       f"takes at most {EXACT_COMMANDS}",
+                                       f"allocate {EXACT_COMMANDS} of the coils with mime.control.exact_allocation(...) "
+                                       f"on their columns of actuation.matrix(), the others held; or wait for the "
+                                       f"iterative path, which takes any number (a later 0.3.0 development release)")])
+    with cast(Any, jax).enable_x64(True):
+        solved = _host_allocation(*matrix.shape)(matrix, target, lower=-bounds, upper=bounds, scales=weights)
+        currents: NDArray[np.float64] = np.asarray(solved.commands, dtype=np.float64)
     made_field = actuation.field @ currents + actuation.background
     made_gradient = actuation.gradient @ currents
     return Allocation(
