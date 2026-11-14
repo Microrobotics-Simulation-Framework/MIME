@@ -1,0 +1,119 @@
+{
+  "written": "2026-11-14, committed before the gates' probe ran (the commit that adds this file is the timestamp): AP2, the exact bounded allocation mime.control.exact_allocation, allocate() re-based on it",
+  "phase": "AP2 (= camera PR 3a): the exact allocator law",
+  "labels": "predictions by the AP2 agent (Opus) from the first step's probe (run 43569142070), camera spike R2 (SPIKE_R2, runs 43302252305 and 43313888566) and local runs of the touched test files on the laptop (pass and plant, one run each: not rates)",
+  "seen_before": [
+    "the first step's probe, run 43569142070 (probe/ap2-k-cost at 745e6a93, GitHub runners, one thread): the per-subset form's own cost per base step, float64, 11 / 22 / 44 / 119-125 / 322-352 / 811-1042 us at K = 3..8 in a CardioMag case with allocate()'s 8 rows; the probe's form had no tie-break and no least-norm branch",
+    "SPIKE_R2: the swap line (16 times the least-squares perturbation bound) held at worst ratio 0.505 (float64) and 0.081 (float32) on Navion_2; the 1 % looser limits caught 20/20 in both dtypes; float32 within 1.1e-5 of the limit on force rows",
+    "local, laptop, one run each of tests/control/test_exact_allocation.py (18 tests): all pass clean; ALLOCATION_PLANT=limits fails the two swap tests; free_tangent, stop_branch and single_where were run once each before this file (their outcomes in the local log, not rates)",
+    "local, laptop: a bench of 400 random problems (K 1..8, R 1..9) against BVLS on rows normalised to order one: the law's residual norm exceeds BVLS's by at most 2.7e-16 (float64) and 7.9e-6 (float32) of the problem's scale; where the minimiser is not unique (about 150 of 400) its effort |u|^2 never exceeds BVLS's past 2e-15 relative (float64)",
+    "local, laptop: allocate() on CardioMag asked for a field alone, before the tie-break: the vertex minimiser put 5 coils at +-35 A where BVLS's answer held none at a limit (test_coil_array_precision.py failed); with the tie-break both of its cases pass",
+    "the switch configurations: 65 on the release tip (f9139cee), 66 with this branch's test-only controller; tests/saved/test_switch_scan.py took 349 s with -n 4 on the laptop with the new configuration (not a timing claim)"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "GitHub runner (4 vCPU), CPU; timings one thread",
+    "matmul_precision": "n/a (CPU)",
+    "sizes_and_parameters": "the arrays MIME ships: Navion_2 (3 coils), CardioMag and OctoMag (8); rows: the field's 3 (over 10 mT), the gradient's 5 (over 1 T/m), both, or the force on a moment of 0.1 to 1 mA m^2 (over its own per-ampere size); points uniform in the central half of each declared region; wanted values log-uniform from 0.1 to 4 times what the limit reaches; limits 5 to 50 A",
+    "seeds_and_draws": "Hypothesis: 150 examples a dtype (the swap test), 100 a dtype (the derivative); detection_rate.py: 30 fresh processes planted and 30 clean per control, each its own Hypothesis seed"
+  },
+  "gate_1_swap": {
+    "claim": "the exact allocation meets SciPy's BVLS (on rows scaled to order one) within camera spike R2's line in both dtypes, limits inactive and active, on the three arrays MIME ships; where the minimiser is not unique, its residual within the residual's line and its effort no more than BVLS's",
+    "kind": "equality",
+    "case": "tests/control/test_exact_allocation.py::test_the_exact_allocation_meets_scipys_bvls_within_the_line[float64|float32]",
+    "prediction": {"value": null, "band": [0, 0], "unit": "failing examples", "basis": "measured-before (spike; local)", "why": "both are the exact least squares of one active set; the law's arithmetic is QR on unit columns"},
+    "metric": "verdict(): the commands' largest miss over the line where unique, the residual and effort otherwise",
+    "control": {
+      "plant": "ALLOCATION_PLANT=limits: the law handed limits 1 % looser; every problem with a coil at its limit misses by 1 % of the limit, 1e9 (float64) to 1e3 (float32) times the line",
+      "environment_variable": "ALLOCATION_PLANT",
+      "expected_rate": "30/30 in both dtypes",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "the line itself: SLACK x eps x (2 kappa + kappa^2 r / (|A||x|)) of the limit; the plant is far above it"
+    },
+    "if_wrong": "a clean failure: read its example (print_blob) and classify by CLAUDE.md's five causes before any tolerance",
+    "cannot_discriminate_if": "no drawn problem holds a coil at its limit (the plant inert): about half do, so a run of 150 examples holds dozens"
+  },
+  "gate_2_derivative": {
+    "claim": "forward and reverse mode agree to rounding; in float64 forward mode equals central differences over a segment that holds one active set (the commands affine there, the difference exact to rounding); float32's forward mode meets float64's at the same problem within the line; at an active-set change the derivative jumps and stays finite",
+    "kind": "equality",
+    "case": "tests/control/test_exact_allocation.py::test_the_derivative_is_the_selected_sets_in_both_modes[float64|float32] and ::test_at_an_active_set_change_the_derivative_jumps_and_stays_finite",
+    "prediction": {"value": null, "band": [0, 0], "unit": "failing examples", "basis": "derived", "why": "within an active set the solution is the selected set's linear solve, which the re-solve differentiates"},
+    "metric": "derivative_problems(): forward vs reverse within SLACK eps |w||J||v|; the difference vs forward mode within the line over the step",
+    "control": {
+      "plant": "free_tangent (a wrong active set: the commands' derivative the unconstrained least squares'); stop_branch (the derivative of what the bound commands leave the free ones stopped)",
+      "environment_variable": "ALLOCATION_PLANT",
+      "expected_rate": "30/30 each, in the float64 and float32 tests together",
+      "runs": 30,
+      "clean_expected": "0/30",
+      "resolution": "a problem with a coil at a bound and one free (and, for stop_branch, a tangent in the limit): about half the draws"
+    },
+    "if_wrong": "a clean failure: classify; a plant missed: count its runs' draws with a bound coil first",
+    "cannot_discriminate_if": "every coil free in every draw (both plants inert)"
+  },
+  "gate_3_guards": {
+    "claim": "every domain guard of the law (the column scale's, and the free subsets' rank stand-ins in both forms) is reached with its condition false at allocation_cases.GUARD_POINTS, and replacing its fallback there (twice, half) changes no output and no derivative",
+    "kind": "acceptance",
+    "case": "tests/control/test_exact_allocation.py::test_every_guard_of_the_law_is_reached_false_and_its_fallback_reaches_no_output_or_derivative, and the switch harness's coverage over the same points",
+    "prediction": {"value": 3, "band": [3, 3], "unit": "guards of the law reached false", "basis": "derived", "why": "a zero column reaches the scale's guard and the least-squares form's; rows of rank one the least-norm form's"},
+    "metric": "fallback_problems() and the guard sites it reaches",
+    "control": {"plant": "single_where: the stand-ins removed (domain_guard returns its first branch), so no guard is reached", "environment_variable": "ALLOCATION_PLANT", "expected_rate": "30/30 (structural, deterministic)", "runs": 30, "clean_expected": "0/30", "resolution": "n/a: structural"},
+    "if_wrong": "a guard no point reaches: add a point; a fallback reaching an output: the guard does not guard",
+    "cannot_discriminate_if": "n/a"
+  },
+  "gate_4_float32_per_array": {
+    "claim": "float32 against float64, per array MIME ships, over the swap test's draws: the largest miss as a share of the limit, and whether a guard is declared",
+    "kind": "estimates",
+    "case": "probe/float32.py: 3000 problems an array (the swap test's draws, each kind), the law in float32 against the law in float64 on the same float32-rounded problem, and both against BVLS",
+    "prediction": {
+      "value": null, "band": [null, null], "unit": "share of the limit",
+      "navion_2": [1e-6, 3e-5], "cardiomag": [1e-6, 1e-3], "octomag": [1e-6, 1e-2],
+      "basis": "measured-before for Navion_2 (spike: 1.1e-5 on force rows); a guess for the 8-coil arrays, whose 8 x 8 rows are worse conditioned",
+      "why": "QR on unit columns loses kappa times eps32, not kappa squared"
+    },
+    "metric": "max |u32 - u64| / limit over unique problems; the scaled rows' condition",
+    "control": {"plant": "none: a measurement", "environment_variable": "", "expected_rate": "n/a", "runs": 0, "clean_expected": "", "resolution": "float64's own line, 1e-14 of the limit"},
+    "if_wrong": "an array past 1e-4 of the limit: a float32 guard is declared for it (the law's rows in float64, as the provider's budget does for OctoMag's field)",
+    "cannot_discriminate_if": "n/a"
+  },
+  "gate_5_allocate_moves": {
+    "claim": "allocate()'s currents, re-based, against the base's (SciPy's BVLS on unweighted rows): the largest movement where the minimiser is unique, and where it passes the swap line, each such draw one where BVLS stopped short (its residual above the law's)",
+    "kind": "estimates",
+    "case": "probe/allocate_moves.py: 1000 points an array, allocate()'s three requests (field, gradient, both) with wanted sizes 0.1 to 4 times the reach and 200 fields near 0.1 uT",
+    "prediction": {"value": null, "band": [null, null], "unit": "A", "largest_movement_within_line_A": [1e-14, 1e-11], "beyond_the_line": "only fields near 0.1 uT and below, each with BVLS's residual above the law's", "basis": "derived (BVLS's absolute 1e-10 KKT tolerance; rows in T/A about 1e-3)", "why": "elsewhere the two solve one active set's least squares"},
+    "metric": "max |i_new - i_old| over unique problems; the count past the line and whether each is a stop-short",
+    "control": {"plant": "none: a measurement, its discriminating range the line", "environment_variable": "", "expected_rate": "n/a", "runs": 0, "clean_expected": "", "resolution": "the swap line"},
+    "if_wrong": "a draw past the line that is no stop-short: the law or the line is wrong there; investigate before the PR claims anything",
+    "cannot_discriminate_if": "n/a"
+  },
+  "gate_6_step_share": {
+    "claim": "the allocation's share of a full base step: the done case's Navion_2 (K = 3, the force rows, a GRAPH controller every 5 ms computed every base step) and a CardioMag case (K = 8, allocate()'s 8 rows)",
+    "kind": "estimates",
+    "case": "probe/share_case.py through node_measure.py: each case with the law and with the same rows made and no allocation",
+    "prediction": {"value": null, "band": [null, null], "unit": "us per base step, and the fraction of the step", "navion_2_K3_us": [8, 40], "navion_2_fraction": [0.1, 0.5], "cardiomag_K8_us": [700, 2500], "cardiomag_fraction": [0.85, 0.99], "basis": "measured-before (first step's probe), plus the tie-break's second argmin", "why": "3^K candidates; the baseline steps are 40-50 us"},
+    "metric": "steady forward seconds per step less the baseline's; fraction = that over the law's step",
+    "control": {"plant": "none; node_measure's trace counter fails a re-traced steady run", "environment_variable": "", "expected_rate": "n/a", "runs": 0, "clean_expected": "", "resolution": "two runners (arms) per case"},
+    "if_wrong": "outside the band: look for the probe's own bug first",
+    "cannot_discriminate_if": "n/a"
+  },
+  "gate_7_scan": {
+    "claim": "the switch scan's configurations and its time, before (the release tip) and after (this branch), on one runner",
+    "kind": "estimates",
+    "case": "probe: tests/saved/test_switch_scan.py on the base worktree and on the head, -n 4, timed",
+    "prediction": {"value": null, "band": [null, null], "unit": "configurations; s", "configurations": [65, 66], "time_increase_fraction": [0.0, 0.05], "basis": "derived: one small configuration among 65", "why": "the configuration's graph is the sphere and three coils"},
+    "metric": "wall seconds of the pytest call",
+    "control": {"plant": "none", "environment_variable": "", "expected_rate": "n/a", "runs": 0, "clean_expected": "", "resolution": "a runner's noise, a few per cent"},
+    "if_wrong": "a large increase: profile the configuration's trace",
+    "cannot_discriminate_if": "n/a"
+  },
+  "bits": {
+    "cases": "script A, A0 closed in the graph (ArmTracking, a ControllerNode program), sphere_settling; float64 and float32; base origin/release/v0.3.0 and the head, in one job, one CPU, one thread (bit_compare.py)",
+    "prediction": "every array np.array_equal",
+    "controls": {"repeat": "the head recorded twice: every array identical", "one_ulp": "script A with its frequency one ulp up: arrays differ"}
+  },
+  "costs": {
+    "prediction": "see gate 6",
+    "measured_at": "the first step's probe (K = 3..8, CardioMag); the gate's done case is not among them"
+  },
+  "outcomes": null
+}
