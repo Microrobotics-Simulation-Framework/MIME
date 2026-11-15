@@ -33,11 +33,11 @@ ${namespace} = "${package}.records"
 packages = ["src/${package}"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "examples", "benchmarks", "README.md", "LICENSE", "CITATION.cff"]
+include = ["src", "tests", "examples", "benchmarks", "scripts", "docs", "README.md", "LICENSE", "CITATION.cff"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tests", "examples"]
+pythonpath = ["tests", "examples", "scripts"]
 # The default lane skips `slow`: a test that takes minutes goes behind the marker and runs in its own CI lane (the `slow`
 # job of .github/workflows/ci.yml, on a pull request labelled `slow` and every week). A physics assertion behind `slow` is
 # documentation unless a lane runs it.

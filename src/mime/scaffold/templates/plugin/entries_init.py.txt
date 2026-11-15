@@ -5,6 +5,6 @@ namespace `${namespace}`, so importing it must register every entry. One module 
 arithmetic lives in `${package}.engine`, which imports no `mime`.
 """
 
-from ${package}.entries.example_load import ExampleLoad
+from .example_load import ExampleLoad
 
 __all__ = ["ExampleLoad"]

@@ -1,0 +1,68 @@
+"""The package imports itself with relative imports, held by reading its source, and shown able to fail.
+
+Why: a plugin that may one day move into MIME's own source tree (`${package}` to `mime.<namespace>`) should move as a
+directory. Every absolute self-import (`from ${package}.engine import load`) would then be a line to rewrite, and a missed one
+imports the old distribution. Relative imports (`from ..engine import load`) survive the move unchanged.
+
+This reads every module under `src/${package}/` (with `ast`, never importing it) and fails on an import of the package's own
+top-level name: `import ${package}...`, `from ${package}... import`, and a constant-string call of
+`importlib.import_module(...)` or `__import__(...)`: by attribute or by name, aliased (`from importlib import import_module as
+im`), with `name=`, with a relative name and a constant `package="${package}"`, and with a placeholder-free f-string. Tests,
+scripts, examples and benchmarks import the package from outside, as a user does, and are not read. The second test is the
+control: each form, planted, must be found.
+
+What a static check cannot see, and this test does not catch: a computed module name (`import_module(prefix + ".engine")`, a
+name read from a file or the environment), `importlib.util.find_spec`, `sys.modules[...]`, `runpy`, an `exec` or `eval` of
+source text, and a string some other code imports. Review is what catches those.
+"""
+
+from pathlib import Path
+
+from import_rules import absolute_imports, top_level
+
+PACKAGE = Path(__file__).resolve().parent.parent / "src" / "${package}"
+NAME = PACKAGE.name
+
+
+def absolute_self_imports(source: str) -> list[str]:
+    """Every module a source imports by this package's own absolute name (relative imports pass)."""
+    return [name for name in absolute_imports(source) if top_level(name) == NAME]
+
+
+def test_the_package_imports_itself_relatively():
+    modules = sorted(PACKAGE.rglob("*.py"))
+    assert modules, f"no module found under {PACKAGE}: the test would pass on nothing"
+    held = {str(path.relative_to(PACKAGE)): absolute_self_imports(path.read_text(encoding="utf-8")) for path in modules}
+    assert {path: found for path, found in held.items() if found} == {}
+
+
+def test_a_planted_absolute_self_import_is_found():
+    """The control: each way to import the package by its own name that this test sees is found, every time."""
+    for planted in (f"import {NAME}", f"import {NAME}.engine", f"import {NAME}.engine as engine",
+                    f"from {NAME} import engine", f"from {NAME}.engine import load",
+                    f"def f():\n    from {NAME}.engine import load",
+                    f'import importlib\nimportlib.import_module("{NAME}.engine")',
+                    f'from importlib import import_module\nimport_module("{NAME}")',
+                    f'from importlib import import_module as im\nim("{NAME}.engine")',
+                    f'import importlib\nload = importlib.import_module\nload("{NAME}")',
+                    f'import importlib\nimportlib.import_module(name="{NAME}.engine")',
+                    f'import importlib\nimportlib.import_module(".engine", package="{NAME}")',
+                    f'import importlib\nimportlib.import_module(".engine", "{NAME}")',
+                    f'import importlib\nimportlib.import_module(f"{NAME}.engine")',
+                    f'__import__("{NAME}.engine")'):
+        assert absolute_self_imports(planted), f"{planted!r} was not found"
+    for honest in ("from . import load", "from .. import engine", "from ..engine import load",
+                   "import jax\nfrom mime.units import N", f"import {NAME}_other", f'f("{NAME}")',
+                   'import importlib\nimportlib.import_module("..engine", package=__package__)',
+                   'import importlib\nimportlib.import_module(".engine", package="other")'):
+        assert not absolute_self_imports(honest), f"{honest!r} was flagged"
+
+
+def test_a_computed_name_is_the_limit_of_this_test():
+    """What the test cannot see, stated and held: a computed name, `find_spec`, `sys.modules`, `runpy` and `exec` are not
+    found, so the docstring's limit is true."""
+    for unseen in (f'import importlib\nimportlib.import_module("{NAME[:3]}" + "{NAME[3:]}")',
+                   f'import importlib.util\nimportlib.util.find_spec("{NAME}.engine")',
+                   f'import sys\nsys.modules["{NAME}.engine"]',
+                   f'import runpy\nrunpy.run_module("{NAME}.engine")', f'exec("import {NAME}")'):
+        assert absolute_self_imports(unseen) == [], unseen
