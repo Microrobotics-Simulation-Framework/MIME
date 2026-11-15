@@ -196,7 +196,6 @@ def two_branch_pixels(body: Subject, position, orientation, view=(LENS, POSE)) -
     return np.nonzero(np.asarray(near).reshape(-1))[0]
 
 
-SUB_REACH = sampled_route.SUB_REACH
 #: The dense profile's steps a march spacing, across each sub-ray's whole march: four times the scheme's own
 #: verification's (``_sampled.VERIFY_STEPS``), so that the guard is not the scheme's own reading of the same samples.
 DENSE_STEPS = 4 * sampled_route.VERIFY_STEPS
@@ -242,14 +241,16 @@ def unread_leasts(body: Subject, position, orientation, pixels: np.ndarray, view
                   verify: bool = True) -> int:
     """How many leasts on the pixels' corner sub-rays the scheme does not read: local minima of the sign function's
     first-order distance along the sub-ray (a dense profile across its whole march, ``DENSE_STEPS`` a spacing) whose
-    line reaches the sub-cell (within ``SUB_REACH`` of its centre, or the cell inside the body there), with no point
-    the scheme's search reads on that sub-ray (``_sampled._leasts``: either piece's, after the merge rule and the
+    half-plane takes some of the sub-cell, in a sub-cell the read branches' union does not already take whole, with no
+    point the scheme's search reads on that sub-ray (``_sampled._leasts``: either piece's, after the merge rule and the
     verification, or before it where not ``verify``) within half a march spacing. The derivation's premise is that each
-    branch crossing a sub-cell is read at its sub-ray's own least; a least beyond the sub-cell's reach (a farther
-    turn's, or a second minimum that is a fold of the sign function's turn) changes nothing the cell reads, nor does
-    any least in a sub-cell wholly inside a read branch's half-plane (the union is the whole cell). How far a read
-    least's value lies from the truth (the quartic's, at an arc's end its guard's) is the line's refinement term, not
-    this count's."""
+    branch crossing a sub-cell is read at its sub-ray's own least. Both tests are the coverage's own exact shares
+    (``coverage.covered`` and ``union_covered``, a sub-cell a side), not a reach: a least whose half-plane misses the
+    sub-cell (a farther turn's, or a second minimum that is a fold of the sign function's turn) changes nothing the
+    cell reads, nor does any least in a sub-cell the read branches already cover whole (the union is the whole cell
+    whatever else crosses it; the half-diagonal, sufficient and not necessary, counted one such at 2667). How far a
+    read least's value lies from the truth (the quartic's, at an arc's end its guard's) is the line's refinement term,
+    not this count's."""
     marched, held, p, o, ray, du, dv, read, _ = judged_sub_rays(body, position, orientation, pixels, view, verify)
     steps = jnp.arange(DENSE_STEPS * (marched.samples - 1) + 1, dtype=jnp.float64) / DENSE_STEPS
     t = held.t[None, :, :1] + held.dt[None, :, None] * steps[None, None, :]
@@ -260,7 +261,8 @@ def unread_leasts(body: Subject, position, orientation, pixels: np.ndarray, view
 
     values, along_u = jax.jvp(profile, ray, du)
     _, along_v = jax.jvp(profile, ray, dv)
-    lines = coverage.line(values, along_u, along_v).distance
+    sub_cell = 1.0 / coverage.CORNER_SAMPLES
+    reaches = coverage.covered(coverage.line(values, along_u, along_v), sub_cell) > 0.0
     minimum = jnp.concatenate([jnp.zeros_like(values[..., :1], dtype=bool),
                                (values[..., 1:-1] < values[..., :-2]) & (values[..., 1:-1] <= values[..., 2:]),
                                jnp.zeros_like(values[..., :1], dtype=bool)], axis=-1)
@@ -273,11 +275,13 @@ def unread_leasts(body: Subject, position, orientation, pixels: np.ndarray, view
 
         g, gu = jax.jvp(value, ray, du)
         _, gv = jax.jvp(value, ray, dv)
-        return coverage.line(g, gu, gv).distance
+        return coverage.line(g, gu, gv)
 
-    # A sub-cell wholly inside a read branch is the union's whatever else crosses it.
-    inside = (jnp.minimum(read_line(read[0]), read_line(read[1])) < -SUB_REACH)[..., None]
-    return int(np.sum(np.asarray(minimum & (lines < SUB_REACH) & unread & ~inside)))
+    first, second = read_line(read[0]), read_line(read[1])
+    taken = jnp.maximum(jnp.maximum(coverage.covered(first, sub_cell), coverage.covered(second, sub_cell)),
+                        coverage.union_covered(first, second, sub_cell))
+    open_cell = (taken < 1.0)[..., None]
+    return int(np.sum(np.asarray(minimum & reaches & unread & open_cell)))
 
 
 def _unverified_none(held, first) -> tuple:

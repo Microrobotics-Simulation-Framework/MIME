@@ -1,0 +1,45 @@
+{
+ "written": "2026-11-15, committed before round 5's confirmation ran (the commit that adds this file is the timestamp): the premise guard's exact test (the coverage's own shares of a sub-cell in place of its half-diagonal), confirmed on fresh draws 2800 to 2999",
+ "phase": "camera PR 5a (route 2), round 5 after round 4's outcomes (runs 43699692574 and 43711276007, predictions_camera_pr5a_round4.json: the rule failed only at 2667, coil2 512 px, where the guard counted a 2e-11 m dip in a sub-cell the read branch covers whole)",
+ "labels": "predictions by round 5's agent from seen draws only (round 4's 2600 to 2799 and earlier); the corner line is predictions_camera_pr5a_fix.json's, derived before its run and not moved; the scheme (route 2's _sampled.py) is round 4's, unchanged: only the test's guard changes",
+ "seen_before": [
+  "the exact test against the half-diagonal one, local, float64 (the guard's own dtype in every arm), tests/sensing/test_sampled.py's unread_leasts on seen draws: 2667 coil2 512 px clean 1 -> 0 (the dropped hit's sub-cell share under the read branches' union exactly 1.0, the hit's own share 0.84), its lost-branch control 56 -> 48",
+  "the lost-branch control (the guard with the second branch read at the first's point), old -> exact, on the seen draws whose old count was least: coil 128 px 2624 12 -> 5, 2791 28 -> 11, 2760 20 -> 17, 2663 22 -> 15, 2600 to 2603 48/44/60/49 -> 43/39/55/40; coil 256 px 2750 15 -> 10, 2758 18 -> 15, 2624 22 -> 17; coil 512 px 2750 17 -> 14, 2603 18 -> 13; coil2 256 px 2600, 2601, 2750 73/65/40 -> 63/52/31; coil2 512 px 2628 22 -> 17. The clean count was 0 under both tests on each of these",
+  "by construction the exact test counts a subset of the half-diagonal's hits: a least whose share of the sub-cell is above zero lies within the half-diagonal, and a sub-cell whose read lines' union is short of whole has no read line beyond minus the half-diagonal; so a clean draw the old guard passed passes, and the control can only fall"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "GitHub runner, 4 vCPU, CPU (JAX_PLATFORMS=cpu); every arm through probe_launch.sh (round 4's corner arms peaked at 2 to 3 GiB)",
+  "sizes_and_parameters": "the corner gate as round 4's (the coil and coil2 from 0.1 m across a 3 mm field at 128, 256 and 512 px; 4 x 4 corner sub-samples; the truth at 64 x 64 jittered samples a pixel and 512 signs, float64; route 2 as round 4's head ec60f818, the verification VERIFY_STEPS 16, VERIFY_REACH 7, VERIFY_FLOOR_ULPS 4); the premise guard's dense profile at 64 a spacing across the whole march, float64, its two tests now coverage.covered and coverage.union_covered on a sub-cell (a quarter pixel a side)",
+  "seeds_and_draws": "DETECTION_SEED 2800 to 2999, never run (the PR's draws 0 to 59, the review's 1000 to 1059, the fix round's 2000 to 2199, the tail's 2200 to 2399, round 3's 2400 to 2599, round 4's 2600 to 2799), 200 a coil, width and dtype, clean and single edge, in arms of 100 (128, 256 px) or 25 (512 px); the truth at 4x on each arm's worst clean draw"
+ },
+ "gate_round5_guard": {
+  "claim": "the premise guard's exact test: on every pixel where two branches of a coil's outline cross, every least whose half-plane takes some of a corner sub-cell the read branches do not already cover whole is read by route 2; with the second branch lost, the guard counts some on every draw. With it, the corner gate's clean rule holds on fresh draws in all 12 groups",
+  "kind": "bounds",
+  "case": "tests/sensing/test_sampled.py::test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth[<dtype>-<width>-<coil>] through .github/probe/detection_rate.py (CAMERA_PLANT=single-edge, clean and planted), CORNER_RECORD holding each draw's largest error, its unread count, the lost-branch count, the run flag and the flag's control; scripts/camera_route2/corner_recheck.py on each arm's worst clean draw",
+  "prediction": {
+   "value": "in every one of the 12 groups: no clean draw over the line and none with an unread least (0/200); the clean largest at most 0.35 of its line (round 4: at most 0.249 L); the lost-branch count above zero on every draw, its least over a group 3 to 15 (seen least 5, at 2624 coil 128 px); the flag's control above zero on every draw (least 3 to 10 pixels) and its bound holding (control_past at most zero); the run flag raised on 0 to 2 clean draws of 2400",
+   "band": [
+    0.0,
+    0.8
+   ],
+   "unit": "the clean largest's share of its line",
+   "basis": "measured (seen draws) and derived (the exact test's hits a subset of the half-diagonal's)",
+   "why": "round 4's one guard hit in 2400 clean draws was a least in a sub-cell the read branch covers whole (share 1.0 exactly from coverage.covered's clamp); the exact test drops it and can add none; the scheme is unchanged, so the clean errors, the flag and its control are round 4's in distribution"
+  },
+  "required": "per group: clean 0/200 (no clean draw over the line, none with an unread least), the lost-branch control above zero on every clean draw, the flag's control above zero on every clean draw (200/200) with its bound holding, and the clean largest at most 0.8 of the line; the truth at 4x moving the worst clean draw by less than the truth's floor (0.0123)",
+  "control": {
+   "plant": "in every clean run, the guard's count with the reading's second branch lost after the verification (lost_branch), and the flag's control (unread_second: the second branch lost before the verification, which then bounds what it finds without reading it); CAMERA_PLANT=single-edge reported beside them, its rate not required (round 4's Q2 answer: the gate states each width's measured power)",
+   "environment_variable": "CAMERA_PLANT",
+   "expected_rate": "the lost-branch count and the flag's control above zero on 200/200 clean draws a group; the single edge 197 to 200/200 a group (round 4: 198/200 at coil 128 px, the misses 2624 and 2791 poses where dropping the branch moves no pixel above 0.10 L)",
+   "runs": 200,
+   "clean_expected": "0/200 a group"
+  },
+  "if_wrong": "a clean draw with an unread least is a least the exact test says changes a sub-cell's share and the scheme did not read: reported with its pixel's cause, the guard and the line not moved; a lost-branch count of zero on a draw is a draw on which the guard cannot discriminate, reported with whether dropping the branch moves any pixel there",
+  "cannot_discriminate_if": "a draw with no two-branch pixel (the test asserts some), the lost-branch count zero, or the truth's re-measurement at four times its samples moving the worst clean draw by more than the truth's floor"
+ },
+ "outcomes": null
+}
