@@ -1,0 +1,46 @@
+"""Test configuration, and the one fixture every test of this plugin shares.
+
+Pin to one core and the CPU when you run these: `JAX_PLATFORMS=cpu taskset -c 0 pytest`. An unpinned JAX run on a shared
+machine oversubscribes the cores and was measured five times slower for the same answer.
+"""
+
+import os
+from collections.abc import Iterator
+
+import pytest
+
+os.environ.setdefault("JAX_PLATFORMS", "cpu")
+
+from mime.experiment import Experiment  # noqa: E402 - after the environment is set, before JAX starts
+from mime.scene import Scene, Z  # noqa: E402
+from mime.testing.toys import PROBE_START, ToyBody  # noqa: E402
+from mime.things import Body  # noqa: E402
+from mime.units import s, standard_gravity  # noqa: E402
+
+import plants  # noqa: E402 - tests/plants.py
+from ${package}.entries import ExampleLoad  # noqa: E402
+
+
+def example_experiment() -> Experiment:
+    """A body with the example entry attached: what the tests build, and examples/example.py builds too."""
+    experiment = Experiment("example", scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=s(0.02))
+    experiment.add_body(Body("probe", dynamics=ToyBody(), initial=PROBE_START))
+    experiment.attach(ExampleLoad(), body="probe")
+    return experiment
+
+
+@pytest.fixture
+def experiment() -> Experiment:
+    return example_experiment()
+
+
+@pytest.fixture(autouse=True)
+def planted_from_the_environment() -> Iterator[None]:
+    """Where ``MIME_PLANT_ERROR`` is set, put the planted error (tests/plants.py) into the engine for the test. This is how a
+    control is run from outside: `MIME_PLANT_ERROR=1 pytest tests/engine/test_properties.py::<property>` must FAIL, on
+    every run, and `.github/probe/detection_rate.py` of MIME counts how often (`--plant-var MIME_PLANT_ERROR`)."""
+    if os.environ.get(plants.PLANT_VARIABLE):
+        with plants.saturated_load():
+            yield
+    else:
+        yield

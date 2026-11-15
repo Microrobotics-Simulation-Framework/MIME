@@ -1,0 +1,37 @@
+"""Planted errors: each is a context manager that puts one defect into the engine for the length of a ``with`` block.
+
+They live in tests, never in the engine: a switch in production code is a defect of its own. A plant is a control, so
+it must be caught EVERY run, not most runs (a control that fails most runs is not one). Before you rely on a plant,
+measure how often its property catches it, with MIME's `.github/probe/detection_rate.py` (`--plant-var MIME_PLANT_ERROR
+--runs 40`): 40 of 40 caught bounds the rate below by 0.93, no more. Plant ABOVE the resolution of the property: an error
+a tolerance cannot see is not caught, and a property that is blind to the kind of error planted (a scale error against a
+linearity property: a scaled linear map is still linear) cannot catch it at all.
+"""
+
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+import jax.numpy as jnp
+from jax import Array
+
+from ${package}.engine import load
+
+#: Set to anything to have tests/conftest.py plant the error in every test of the run.
+PLANT_VARIABLE = "MIME_PLANT_ERROR"
+#: The saturation of the planted error, in N: below the forces the property draws (up to 10 N times a gain of 0.125 to 8).
+SATURATION = 1.0
+
+
+@contextmanager
+def saturated_load() -> Iterator[None]:
+    """The load clipped at 1 N, as a saturating actuator would: still zero where the force is zero, no longer linear."""
+    real = load.load_on
+
+    def saturated(force: Array, gain: Array) -> Array:
+        return jnp.clip(real(force, gain), -SATURATION, SATURATION)
+
+    load.load_on = saturated
+    try:
+        yield
+    finally:
+        load.load_on = real

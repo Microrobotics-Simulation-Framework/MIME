@@ -234,18 +234,25 @@ def test_a_controllers_read_of_a_measurement_port_is_recorded_as_a_measurement()
                                                                                  "age": "measurement"}
 
 
-def test_a_believed_model_is_refused_by_name_until_a_mime_reads_it(tmp_path: Path):
-    """``controller.believed`` is a slot of the form that nothing writes yet: a document holding it is refused, never
-    built as though its controller had no model of what it drives; the document without it builds."""
+def test_a_believed_model_is_read_from_the_slot_and_a_belief_of_no_registered_entry_is_refused(tmp_path: Path):
+    """``controller.believed``, the slot form 15 holds, is read since the apparatus lane's AP3 (``set_controller(
+    believed=...)``): a document holding a belief of the coils, by its full key, builds; one whose belief names an
+    entry no installed package registers is refused as any unknown entry is, never built as though its controller had
+    no model of what it drives. The writing and reading of a belief that moves a number is
+    ``tests/control/test_believed.py``'s."""
     from mime.saved import dump_document
 
     document = fed_back().record.document
     assert document is not None
+    provider = document["things"]["coils"]["fields"]["magnetic"]
     path = tmp_path / DOCUMENT_FILE
-    path.write_text(dump_document(document), encoding="utf-8")
-    Experiment.from_document(path).build()
-    path.write_text(dump_document({**document, "controller": {**document["controller"], "believed": {}}}),
+    path.write_text(dump_document({**document, "controller": {**document["controller"],
+                                                              "believed": {"coils.magnetic": provider}}}),
                     encoding="utf-8")
+    Experiment.from_document(path).build()
+    path.write_text(dump_document({**document, "controller": {**document["controller"], "believed": {
+        "coils.magnetic": {**provider, "name": "no_such_provider"}}}}), encoding="utf-8")
     with pytest.raises(LoadRefused) as refused:
         Experiment.from_document(path)
-    assert refused.value.codes() == ["load.document-shape"] and "controller.believed" in str(refused.value)
+    assert refused.value.codes() == ["load.unknown-entry"] and "the controller's belief 'coils.magnetic'" in \
+        str(refused.value)

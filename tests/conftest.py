@@ -241,16 +241,3 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) ->
         children_now = children_cpu()
         if children is not None and children_now is not None:
             item.user_properties.append(("children_cpu_seconds", f"{children_now - children:.3f}"))
-
-
-
-INITIAL_ASSETS_DIR = os.environ.get("MIME_ASSETS_DIR")  # TEMPORARY DIAGNOSTIC, removed in the next commit
-
-
-@pytest.hookimpl(trylast=True)
-def pytest_runtest_logfinish(nodeid: str, location: object) -> None:  # TEMPORARY DIAGNOSTIC
-    now = os.environ.get("MIME_ASSETS_DIR")
-    if now != INITIAL_ASSETS_DIR and not nodeid.startswith("tests/sharing/"):
-        with open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "assetsleak.txt"), "a") as held:
-            held.write(f"{nodeid} left MIME_ASSETS_DIR={now}\n")
-        raise RuntimeError(f"ENVLEAK: after {nodeid} MIME_ASSETS_DIR is {now}, not {INITIAL_ASSETS_DIR}")

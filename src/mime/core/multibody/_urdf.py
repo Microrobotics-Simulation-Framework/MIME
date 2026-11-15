@@ -270,11 +270,19 @@ def read_urdf(path: str | Path, *, sha256: str | None = None,
     warned about once (:class:`DescriptionWarning`), and a file holding a refused element is refused
     (:class:`DescriptionRefused`) unless ``acknowledged`` maps its path to a reason. ``sha256``, when given, is the
     hash the file must have."""
-    data = Path(path).read_bytes()
+    return read_urdf_bytes(Path(path).read_bytes(), Path(path).name, sha256=sha256, acknowledged=acknowledged,
+                           where=str(path))
+
+
+def read_urdf_bytes(data: bytes, file_name: str, *, sha256: str | None = None,
+                    acknowledged: Mapping[str, str] | None = None, where: str | None = None) -> DescriptionReading:
+    """:func:`read_urdf` of a file's bytes, ``file_name`` its name (``where`` how a refusal names it, the name by
+    default): what the calibration type ``urdf/1`` reads."""
+    path = where if where is not None else file_name
     digest = hashlib.sha256(data).hexdigest()
     if sha256 is not None and digest != sha256.lower():
         raise InvalidDescription(f"{path} has SHA-256 {digest}, not the {sha256} it is pinned to")
-    source = DescriptionSource("urdf", Path(path).name, digest)
+    source = DescriptionSource("urdf", file_name, digest)
     try:
         robot = ElementTree.fromstring(data)
     except ElementTree.ParseError as error:

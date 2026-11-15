@@ -151,7 +151,7 @@ def test_a_plugins_names_come_from_its_folder_and_the_defaults_and_set(tmp_path:
     project = tomllib.loads((tmp_path / "tstlab-probes" / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["project"]["authors"] == [{"name": "Josiah Carberry"}] and project["project"]["license"] == "MIT"
     assert project["project"]["entry-points"]["mime.entries"] == {"tstlab": "probes.entries"}
-    assert (tmp_path / "tstlab-probes" / "src" / "probes" / "entries.py").is_file()
+    assert (tmp_path / "tstlab-probes" / "src" / "probes" / "entries" / "example_load.py").is_file()
 
 
 def test_the_namespace_a_plugin_takes_is_the_registrys_form(tmp_path: Path):

@@ -59,4 +59,25 @@ run on the host in float64; among several minimisers, the least current. **Which
 than `mime.control.EXACT_COMMANDS` wait for the iterative path ([the allocation note](../../../docs/allocation.md)).
 Its sign convention is mag_manip's, which hardware has not grounded (MIME-ANO-153).
 
+**Its calibration** is read by the calibration type `mpem/1` (`mime.registry.CalibrationType`: the reader, its checks,
+the fields a fit produces, `Source_Position`, `Source_Direction` and `B_Coeff`, and the one declared,
+`Workspace_Dimensions`), and the build report prints each instance (`calibration_instance`: the asset, its sha256,
+licence and tier, the unit its file names). **A lab's own MPEM file** is a record its package ships through the
+`mime.assets` entry point, named by the record's name and sha256, `CalibratedMultipole(calibration=Asset("labx_emns.yaml",
+"<sha256>"))`: read from the asset cache through its licence gate (`asset.missing` where it is not stored,
+`asset.licence-not-accepted` where its licence has conditions nothing accepted), held to the packaged files' checks and
+float32 guard, and recorded in the lock (`assets_read`). Nothing judges its fit; its accuracy is the lab's to state.
+
+**Forward models** (`forward_model(ctx)`, `mime.registry.ForwardModel`): each provider here gives its node's arithmetic
+as a pure function `fn(u, x, theta)`, every number from its commands, inputs or parameters (the node's own leaves), for a
+controller's model of it. The calibrated multipole's is affine in `currents`: at a world point (`x["point"]`) it gives
+`flux_density`, `gradient`, and, with a moment stated there (`x["moment"]`), the `force` on it, `F_j = m_i dB_i/dx_j`,
+and the `torque`, `m x B`, which for a fixed moment stay affine in the currents. The point dipole's takes no command (its
+magnet moves with what carries it, at `x["mount_pose"]` where mounted). **What they bound:** the calibrated multipole's
+against mag_manip's reference (field and gradient per unit current, and at drawn currents the field, gradient, force and
+torque, within ten times float64's rounding over the field's cancellation) and the host's `actuation` in both dtypes; the
+point dipole's against its closed form and central differences of it; each against its node, to rounding
+(`tests/oracles/test_forward_models.py`). A software oracle's agreement, which grounds neither sign nor frame against
+hardware.
+
 Releases are explained in the [package manifest](../README.md#status).

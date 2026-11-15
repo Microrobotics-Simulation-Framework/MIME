@@ -60,7 +60,6 @@ from mime.scaffold._values import (
     namespace_clash,
     own_experiment_name,
     own_plugin_names,
-    person_name,
     sets_of,
     text_of,
 )
@@ -295,24 +294,11 @@ def _block(root: Path, held: Mapping[str, Held], defaults: Defaults, source: Pat
     return _Plan(files, notes, empty=("cases",))
 
 
-def _plugin(held: Mapping[str, Held]) -> _Plan:
-    authors = cast(list[dict[str, str]], held[AUTHORS].value) if AUTHORS in held else []
-    values = {"distribution": value_text(held[DISTRIBUTION].value),
-              "namespace": str(held[NAMESPACE].value), "package": str(held[PACKAGE].value),
-              "licence": value_text(held[PLUGIN_LICENCE].value), "mime_range": mime_range(),
-              "description": value_text(f"Entries for MIME in the namespace {held[NAMESPACE].value}"),
-              "authors": ("authors = " + value_text([{"name": person_name(each)} for each in authors]) if authors else
-                          '# authors = [{ name = "<your name>" }]')}
-    package = values["package"]
-    files: dict[str, str | Path] = {
-        "pyproject.toml": fill("plugin", "pyproject.toml.txt", values),
-        f"src/{package}/__init__.py": fill("plugin", "init.py.txt", {**values, "distribution": str(held[DISTRIBUTION].value)}),
-        f"src/{package}/entries.py": fill("plugin", "entries.py.txt", values),
-        f"tests/test_{package}.py": fill("plugin", "test_entries.py.txt", values)}
-    notes = {"pyproject.toml": "licence, the mime-engine dependency, the `mime.entries` entry point",
-             f"src/{package}/entries.py": "one example entry, registered in your namespace",
-             f"tests/test_{package}.py": "its round trip, as MIME's registry walk asks of each entry"}
-    return _Plan(files, notes)
+def _plugin(held: Mapping[str, Held], defaults: Defaults) -> _Plan:
+    from mime.scaffold._plugin import plugin_files
+
+    files, notes = plugin_files(held, defaults)
+    return _Plan(dict(files), notes)
 
 
 def _a(kind: str) -> str:
@@ -414,7 +400,8 @@ def _next(kind: str, given: str, held: Mapping[str, Held]) -> list[tuple[str, st
         return [("check it", f"mime check {path}"), ("edit it", f"mime push {path} --setup")]
     if kind == "block":
         return [("check it", f"mime check {path}"), ("see it", f"mime show {path}")]
-    return [("install it", f"pip install -e {path}"), ("list it", f"mime registry | grep {held[NAMESPACE].value}")]
+    return [("install it", f"pip install -e '{given}[test]'"), ("test it", f"cd {path} && JAX_PLATFORMS=cpu pytest"),
+            ("list it", f"mime registry | grep {held[NAMESPACE].value}")]
 
 
 def _sources(held: Mapping[str, Held]) -> list[str]:
@@ -523,7 +510,7 @@ def scaffold(kind: str, path: str | os.PathLike[str], *, yes: bool = False, sets
         licence = held[BLOCK_LICENCE]
         say(f"the saved experiment declares no licence: block.licence is {licence.value}, from {licence.source}")
     if kind == "experiment" or kind == "plugin":
-        plan = _experiment(held) if kind == "experiment" else _plugin(held)
+        plan = _experiment(held) if kind == "experiment" else _plugin(held, defaults)
     elif kind == "block":
         plan = _block(root, held, defaults, Path(os.fspath(source)) if source is not None else None, chosen_sockets)
     else:

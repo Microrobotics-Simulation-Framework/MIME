@@ -24,6 +24,30 @@
       "credit": "the lab fixture's authors",
       "role": "presentation",
       "kind": "authored"
+    },
+    {
+      "name": "labx_emns.yaml",
+      "sha256": "9e9956913f1c659169a9c9b861128a295288003a756f5163d9df0af6e0478f85",
+      "size": 1023,
+      "licence": "Apache-2.0",
+      "locations": [
+        "package:labx/emns.yaml"
+      ],
+      "credit": "the lab fixture's authors",
+      "role": "results",
+      "kind": "measured"
+    },
+    {
+      "name": "labx_emns_nc.yaml",
+      "sha256": "6fff1b7c4263629b135b4d837a417071c2f5ce9a112349f3e9751c661504f37f",
+      "size": 1041,
+      "licence": "CC-BY-NC-4.0",
+      "locations": [
+        "package:labx/emns_nc.yaml"
+      ],
+      "credit": "the lab fixture's authors",
+      "role": "results",
+      "kind": "measured"
     }
   ]
 }
