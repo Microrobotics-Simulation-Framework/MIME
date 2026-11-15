@@ -65,6 +65,14 @@ a failed run is not paid for again unasked; `--timeout` (default 7200 s) bounds 
 `mime modal --gpu` refuses a lock that records anything else (`env.precision`), before anything is written, and so
 does `mime env check` on the GPU; a CPU run applies whatever the lock records.
 
+**A GPU script starts every container with `XLA_FLAGS=--xla_gpu_enable_triton_gemm=false`** (with `--deterministic`, also
+`--xla_gpu_deterministic_ops=true`; a CPU script sets none), and its comment cites MIME-ANO-157: on an A100 under JAX
+0.12.0.1, with XLA's Triton GEMM fusion on, one float64 operator came out wrong at the highest matmul precision and no error
+followed. Which einsum and why are not isolated, and the flag's cost to a run's speed is not measured. It changes the
+`xla_flags` the run's lock records, so a GPU run verifies within tolerance against a folder saved without it, as a GPU run
+already does. **A GPU acceptance run keeps a CPU-equality check on at least one einsum-heavy node**: the flag is a
+workaround, and only that comparison can see the failure. `mime env check` prints a warning when the flag is missing on a GPU.
+
 **An A100 request is met by any A100.** Modal's GPU guide (https://modal.com/docs/guide/gpu, read 2026-10-29) offers
 one way to stop an upgrade, `H100!`, and says of it only that it avoids the upgrade to an H200; it names no such suffix
 for `A100-40GB`, so none is used. Measured, `A100-40GB` was served by an 80 GB card in 5 of 12 fresh containers, so
