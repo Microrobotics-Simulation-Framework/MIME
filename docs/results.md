@@ -82,6 +82,23 @@ joint velocities the segment holds, against each joint's limit (the manifest lis
 none; a URDF's velocity limit of zero is none, as MoveIt reads it), and adds nothing to the graph; a dynamic arm does
 not apply the limit, so the flag is the record that the run went where the real mechanism would not.
 
+### A controller's flags
+
+A controller declares the flags its step raises in its class's `raises` (each a `Flag(field=..., meaning=...,
+warns=...)`, its `field` the flag's name), and what its law calls declares its own: `ctx.allocator` on the iterative
+path declares `allocation_unconverged`. The step raises one with `mime.control.raise_flag(name, value)`, a bool or a
+measure; the flag's value at a tick is the largest magnitude raised under its name, zero where none was. A run reads
+it at one path, `<controller>.<name>` (`controller.allocation_unconverged`), whether the controller runs inside the
+compiled step or as a callback, and counts it as it counts an entry's flags, with a warning for one that warns; a
+study's members and `Study.gradient`'s carry it. Outside a run (the step called by hand) `raise_flag` does nothing.
+
+Three things are refused rather than lost, each naming its fix: a name the controller does not declare (declare it in
+`raises`); a flag raised inside a `jax.lax.cond`, `while_loop`, `scan` or `fori_loop` body, whose values do not leave
+it (raise at the step's own level, the value returned out of the branch or loop); and a step compiled with nothing
+underneath it to trace (compiled ahead of time, `jax.jit(step).lower(...).compile()`), where a flag raised inside
+cannot leave the compiled program. A step compiled with `jax.jit` on a Python function is fine in either mode: MIME
+traces the function it compiles, with the flags gathered.
+
 ### The Reynolds-number watch
 
 A model that leaves out the fluid's inertia is declared up to a Reynolds number, and its entry's page states the bound

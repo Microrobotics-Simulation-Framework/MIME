@@ -14,11 +14,12 @@
 - **Where the box's assumption fails** (the stage not at ``last``): the first tick from a rest that is not the law's
   initial ``last``, and after a trip. The allocation asks for more than the stage delivers; the recorded traffic shows
   it, the build report says so beside the box, and the run flags a trip (a slew-limited delivery raises no flag).
-- **Refusals, each with its own code and its control**: a command with no bounds (``allocation.bounds``), commands no
-  affine model takes (``allocation.model``: an arm's joint positions), an objective naming no quantity of the model or
-  a scale of another unit (``allocation.objective``), more commands than ``EXACT_COMMANDS`` (``allocation.exact-size``,
-  citing the constant). Each is raised inside ``law(ctx)`` and surfaces with its code; a law raising a plain error is
-  still its entry's defect."""
+- **Refusals, each with its own code and its control**: a command with no bounds (``allocation.bounds``), an objective
+  naming no quantity of the model or a scale of another unit (``allocation.objective``). Each is raised inside
+  ``law(ctx)`` and surfaces with its code; a law raising a plain error is still its entry's defect.
+- **The hand-over**: commands no affine model takes (an arm's joint positions) and more commands than
+  ``EXACT_COMMANDS``, which the exact path refused, take the iterative path, chosen when the law is made, and the
+  report names the path and why."""
 
 from __future__ import annotations
 
@@ -41,7 +42,7 @@ from mime.control import _models
 from mime.control._models import _slew_steps
 from mime.experiment import Experiment
 from mime.things import CommandPort
-from mime.units import A, N, T, ms, s
+from mime.units import A, N, T, m, ms, rad, s
 
 jnp: Any = jax.numpy
 SLEW = 2000.0
@@ -224,15 +225,21 @@ def test_a_command_with_no_bounds_is_refused_with_its_code_and_its_control_build
     believed_sphere(port=CommandPort(bounds=A(LIMIT), latency=ms(1), reason=REASON)).build()
 
 
-def test_commands_no_affine_model_takes_are_refused_and_an_affine_ones_build():
+def test_commands_no_affine_model_takes_go_to_the_iterative_path_and_an_affine_ones_to_the_exact_one():
     experiment = kinematic_rpm(controlled=("arm.joint_positions",))
     experiment.set_controller(AllocatingArmProbe(apparatus="rpm", commands=("arm.joint_positions",),
-                                                 objective=(("frame_poses", N(1.0)),)),
+                                                 objective=(("link_6.position", m(1e-3)),
+                                                            ("link_6.orientation", rad(1e-2)))),
                               reads={"pose": TRACKING_READS["body_pose"]},
                               writes={"joint_positions": "rpm.arm.joint_positions"}, mode="graph")
-    with pytest.raises(BuildRefused) as caught:
-        experiment.build()
-    assert "allocation.model" in caught.value.codes()
+    lines = "\n".join(experiment.build().report.controller)
+    assert "iterative (its model is not affine in joint_positions), 6 commands of rpm.arm's model" in lines
+    assert "exact, 3 commands" in "\n".join(believed_sphere(controller=AllocatingProbe()).build().report.controller)
+
+
+def test_commands_naming_no_one_part_are_refused_and_a_parts_build():
+    caught = refused(believed_sphere(controller=AllocatingProbe(commands=("torques",))))
+    assert caught.codes() == ["allocation.model"] and "name no one provider or segment" in str(caught)
     believed_sphere(controller=AllocatingProbe()).build()
 
 
@@ -243,11 +250,12 @@ def test_an_objective_the_model_cannot_weigh_is_refused_and_its_control_builds(o
     believed_sphere(controller=AllocatingProbe(objective=(("flux_density", T(1e-2)),))).build()
 
 
-def test_more_commands_than_the_exact_path_takes_are_refused_citing_its_constant(monkeypatch):
-    believed_sphere(controller=AllocatingProbe()).build()
+def test_more_commands_than_the_exact_path_takes_go_to_the_iterative_path_citing_its_constant(monkeypatch):
+    lines = "\n".join(believed_sphere(controller=AllocatingProbe()).build().report.controller)
+    assert "exact, 3 commands of coils.magnetic's model, affine in them, at most EXACT_COMMANDS = 8" in lines
     monkeypatch.setattr(_models, "EXACT_COMMANDS", 2)
-    caught = refused(believed_sphere(controller=AllocatingProbe()))
-    assert caught.codes() == ["allocation.exact-size"] and "EXACT_COMMANDS = 2" in str(caught)
+    lines = "\n".join(believed_sphere(controller=AllocatingProbe()).build().report.controller)
+    assert "iterative (3 commands, more than EXACT_COMMANDS = 2)" in lines
 
 
 def test_a_law_raising_a_plain_error_is_still_its_entrys_defect():

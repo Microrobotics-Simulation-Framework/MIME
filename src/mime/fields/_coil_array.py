@@ -298,8 +298,10 @@ def allocate(actuation: Actuation, *, limits: Quantity, field: Quantity | None =
                                        f"allocate() on an array of {actuation.coils} coils: its exact allocation "
                                        f"takes at most {EXACT_COMMANDS}",
                                        f"allocate {EXACT_COMMANDS} of the coils with mime.control.exact_allocation(...) "
-                                       f"on their columns of actuation.matrix(), the others held; or wait for the "
-                                       f"iterative path, which takes any number (a later 0.3.0 development release)")])
+                                       f"on their columns of actuation.matrix(), the others held; or allocate every coil "
+                                       f"on the iterative path, mime.control.iterative_allocation(...) on the rows of "
+                                       f"actuation.matrix() over their scales, with an effort's rows where the coils "
+                                       f"outnumber them")])
     with cast(Any, jax).enable_x64(True):
         solved = _host_allocation(*matrix.shape)(matrix, target, lower=-bounds, upper=bounds, scales=weights)
         currents: NDArray[np.float64] = np.asarray(solved.commands, dtype=np.float64)

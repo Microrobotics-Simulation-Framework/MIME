@@ -59,6 +59,7 @@ from mime.nodes.control import COMMAND_STAGE, HOLDER, declared_flags
 from mime.registry import (
     BuildContext,
     ControlLaw,
+    Controller,
     Drive,
     Dynamics,
     FieldProvider,
@@ -129,7 +130,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
         controller=(*plans.controller.lines(plans.dt), *loop_lines(plans), *model_lines(plans, models),
                     *believed_lines(plans, believed), *slew_lines(slewed), *allocation_lines(paths),
-                    *flag_lines(flags))
+                    *flag_lines(flags, plans.controller.owner))
         if plans.controller is not None else (),
         calibrations=calibration_lines(plans),
         masses=plans.masses, profile=plans.profile, watches=plans.watches, replaced=plans.replaced, removed=plans.removed,
@@ -222,12 +223,13 @@ def allocation_lines(paths: tuple[str, ...]) -> tuple[str, ...]:
             *paths)
 
 
-def flag_lines(flags: tuple[Flag, ...]) -> tuple[str, ...]:
-    """The flags the controller declares (its class's and its law's), each raised by its step and counted by the run."""
+def flag_lines(flags: tuple[Flag, ...], owner: str) -> tuple[str, ...]:
+    """The flags the controller ``owner`` declares (its class's and its law's), each raised by its step and counted by
+    the run, by the path the run reads it at in either mode."""
     if not flags:
         return ()
     return ("  flags, each raised by its step and counted by the run as a law's:",
-            *(f"    {flag.field}{' (warns)' if flag.warns else ''}: {flag.meaning}" for flag in flags))
+            *(f"    {owner}.{flag.field}{' (warns)' if flag.warns else ''}: {flag.meaning}" for flag in flags))
 
 
 def calibration_lines(plans: PlanSet) -> tuple[str, ...]:
@@ -307,7 +309,7 @@ def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -
     rung = getattr(plan.entry, "rung", None)
     held: list[tuple[str, str, str, tuple[int, ...] | None]] = [
         ("flag", flag.node, flag.field, None) for flag in cls.raises
-        if flag.raised_by(rung, bool(plan.members), plan.entry)]
+        if flag.raised_by(rung, bool(plan.members), plan.entry) and not issubclass(cls, Controller)]
     if issubclass(cls, Observation):
         held += [("output", output.node, output.field, cast(Observation, plan.entry).output_shape(output))
                  for output in cls.outputs]

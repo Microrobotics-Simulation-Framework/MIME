@@ -23,7 +23,8 @@ from __future__ import annotations
 import dataclasses
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
@@ -189,49 +190,17 @@ class Allocator:
     effort: Mapping[str, Any] | None
     toward: str
     owner: str
-    path: str = EXACT
+    path: str
+    #: The allocation itself, ``solver(allocator, wanted, at, last)``, its switches' owner bound where the law named it
+    #: (``ctx.allocator(..., owner=...)``): :func:`_allocated`.
+    solver: Callable[..., tuple[dict[str, Any], AllocationReport]] = field(repr=False)
 
     def __call__(self, wanted: Mapping[str, Any], at: Mapping[str, Any],
                  last: Mapping[str, Any] | None = None) -> tuple[dict[str, Any], AllocationReport]:
-        if set(wanted) != set(self.scales):
-            raise ValueError(f"the allocation of {', '.join(self.commands)} is asked for {sorted(wanted)}, and its "
-                             f"objective is {sorted(self.scales)}: give a wanted value of each")
-        if (self.box or self.toward == "last") and last is None:
-            raise ValueError(f"the allocation of {', '.join(self.commands)} moves from the last command (a port's "
-                             f"slew, or toward='last'): give solve(..., last={{command: value}})")
-        dtype = as_run_array(0.0).dtype
-        sizes = [self.model.commands[c].shape[0] for c in self.commands]
-        if self.path == ITERATIVE:
-            return self._iterative(wanted, at, last, dtype, sizes)
-        coefficients, offset = self.model.affine(at, commands=self.commands, dtype=dtype)
-        absent = [quantity for quantity in sorted(self.scales) if quantity not in coefficients]
-        if absent:
-            raise ValueError(self._absent(absent, at))
-        rows: list[Any] = []
-        target: list[Any] = []
-        zero: list[Any] = []
-        scale: list[Any] = []
-        for quantity in sorted(self.scales):
-            block = [jnp.reshape(self.model.row_values(quantity, coefficients[quantity][c]), (-1, size))
-                     for c, size in zip(self.commands, sizes, strict=True)]
-            rows.append(jnp.concatenate(block, axis=1))
-            target.append(self.model.row_values(quantity, jnp.asarray(wanted[quantity], dtype=dtype)))
-            zero.append(self.model.row_values(quantity, offset[quantity]))
-            scale.append(jnp.full((rows[-1].shape[0],), self.scales[quantity], dtype=dtype))
-        joined, lower, upper, before = self._box(last, dtype, sizes)
-        reference = before if self.toward == "last" else None
-        found = exact_allocation(jnp.concatenate(rows), jnp.concatenate(target), lower=lower, upper=upper,
-                                 scales=jnp.concatenate(scale), owner=self.owner, offset=jnp.concatenate(zero),
-                                 reference=reference,
-                                 reference_scales=joined(self.effort) if self.effort is not None else None)
-        split = np.cumsum([0, *sizes])
-        commands = {c: found.commands[split[i]:split[i + 1]] for i, c in enumerate(self.commands)}
-        active = {c: found.active[split[i]:split[i + 1]] for i, c in enumerate(self.commands)}
-        made = self.model(commands, at)
-        return commands, AllocationReport(active, found.objective, {q: made[q] for q in sorted(self.scales)})
+        return self.solver(self, wanted, at, last)
 
-    def _box(self, last: Mapping[str, Any] | None, dtype: Any,
-             sizes: Sequence[int]) -> tuple[Callable[[Mapping[str, Any]], Any], Any, Any, Any]:
+    def box_of(self, last: Mapping[str, Any] | None, dtype: Any,
+               sizes: Sequence[int]) -> tuple[Callable[[Mapping[str, Any]], Any], Any, Any, Any]:
         """The commands joined into one vector (a function of values by command), the box (the ports' bounds, narrowed
         by a slew to the box around ``last``), and ``last`` joined (``None`` without it)."""
 
@@ -246,45 +215,96 @@ class Allocator:
             lower, upper = jnp.clip(before - half, lower, upper), jnp.clip(before + half, lower, upper)
         return joined, lower, upper, before
 
-    def _absent(self, absent: Sequence[str], at: Mapping[str, Any]) -> str:
+    def absent(self, absent: Sequence[str], at: Mapping[str, Any]) -> str:
+        """Why the model gives none of the quantities ``absent`` at ``at``."""
         return (f"the allocation of {', '.join(self.commands)} is asked for {', '.join(absent)}, which the model gives "
                 f"only where {', '.join(sorted(set(self.model.optional) - set(at))) or 'an input'} is given (the force "
                 f"or torque on a moment): give solve(..., at={{'point': ..., 'moment': ...}})")
 
-    def _iterative(self, wanted: Mapping[str, Any], at: Mapping[str, Any], last: Mapping[str, Any] | None, dtype: Any,
-                   sizes: Sequence[int]) -> tuple[dict[str, Any], AllocationReport]:
-        """The iterative path: the rows each quantity's own miss over its scale, and the effort's, from ``last``."""
-        joined, lower, upper, before = self._box(last, dtype, sizes)
-        reference = before if self.toward == "last" else None
-        split = np.cumsum([0, *sizes])
-        zero = {name: jnp.zeros(signal.shape, dtype=dtype) for name, signal in self.model.commands.items()}
-        targets = {q: jnp.asarray(wanted[q], dtype=dtype) for q in sorted(self.scales)}
-        spread = joined(self.effort) if self.effort is not None else None
-        toward = reference if reference is not None else jnp.zeros_like(lower)
 
-        def by_command(u: Any) -> dict[str, Any]:
-            return {c: u[split[i]:split[i + 1]] for i, c in enumerate(self.commands)}
+def _allocated(allocator: Allocator, wanted: Mapping[str, Any], at: Mapping[str, Any],
+               last: Mapping[str, Any] | None, *, owner: str) -> tuple[dict[str, Any], AllocationReport]:
+    """``allocator(wanted, at, last)`` on its path, its switches ``owner``'s."""
+    self = allocator
+    if set(wanted) != set(self.scales):
+        raise ValueError(f"the allocation of {', '.join(self.commands)} is asked for {sorted(wanted)}, and its "
+                         f"objective is {sorted(self.scales)}: give a wanted value of each")
+    if (self.box or self.toward == "last") and last is None:
+        raise ValueError(f"the allocation of {', '.join(self.commands)} moves from the last command (a port's "
+                         f"slew, or toward='last'): give solve(..., last={{command: value}})")
+    dtype = as_run_array(0.0).dtype
+    sizes = [self.model.commands[c].shape[0] for c in self.commands]
+    if self.path == ITERATIVE:
+        return _iterative(self, wanted, at, last, dtype, sizes, owner=owner)
+    coefficients, offset = self.model.affine(at, commands=self.commands, dtype=dtype)
+    absent = [quantity for quantity in sorted(self.scales) if quantity not in coefficients]
+    if absent:
+        raise ValueError(self.absent(absent, at))
+    rows: list[Any] = []
+    target: list[Any] = []
+    zero: list[Any] = []
+    scale: list[Any] = []
+    for quantity in sorted(self.scales):
+        block = [jnp.reshape(self.model.row_values(quantity, coefficients[quantity][c]), (-1, size))
+                 for c, size in zip(self.commands, sizes, strict=True)]
+        rows.append(jnp.concatenate(block, axis=1))
+        target.append(self.model.row_values(quantity, jnp.asarray(wanted[quantity], dtype=dtype)))
+        zero.append(self.model.row_values(quantity, offset[quantity]))
+        scale.append(jnp.full((rows[-1].shape[0],), self.scales[quantity], dtype=dtype))
+    joined, lower, upper, before = self.box_of(last, dtype, sizes)
+    reference = before if self.toward == "last" else None
+    found = exact_allocation(jnp.concatenate(rows), jnp.concatenate(target), lower=lower, upper=upper,
+                             scales=jnp.concatenate(scale), owner=owner, offset=jnp.concatenate(zero),
+                             reference=reference,
+                             reference_scales=joined(self.effort) if self.effort is not None else None)
+    split = np.cumsum([0, *sizes])
+    commands = {c: found.commands[split[i]:split[i + 1]] for i, c in enumerate(self.commands)}
+    active = {c: found.active[split[i]:split[i + 1]] for i, c in enumerate(self.commands)}
+    made = self.model(commands, at)
+    return commands, AllocationReport(active, found.objective, {q: made[q] for q in sorted(self.scales)})
 
-        def rows(u: Any) -> Any:
-            made = self.model({**zero, **by_command(u)}, at)
-            absent = [quantity for quantity in targets if quantity not in made]
-            if absent:
-                raise ValueError(self._absent(absent, at))
-            misses = [self.model.miss(q, made[q], targets[q], owner=self.owner)
-                      / jnp.asarray(self.scales[q], dtype=dtype) for q in targets]
-            if spread is not None:
-                misses.append((u - toward) / spread)
-            return jnp.concatenate(misses)
 
-        start = before if before is not None else jnp.zeros_like(lower)
-        found = iterative_allocation(rows, start, lower=lower, upper=upper, owner=self.owner)
-        raise_flag(UNCONVERGED.field, jnp.where(found.converged, jnp.zeros((), dtype=dtype),
-                                                jnp.maximum(found.stationarity, jnp.finfo(dtype).eps)))
-        commands = by_command(found.commands)
-        active = by_command(found.active)
-        made = self.model({**zero, **commands}, at)
-        return commands, AllocationReport(active, found.objective, {q: made[q] for q in sorted(self.scales)},
-                                          ITERATIVE, found.converged, found.stationarity)
+def _iterative(allocator: Allocator, wanted: Mapping[str, Any], at: Mapping[str, Any], last: Mapping[str, Any] | None,
+               dtype: Any, sizes: Sequence[int], *, owner: str) -> tuple[dict[str, Any], AllocationReport]:
+    """The iterative path: the rows each quantity's own miss over its scale, and the effort's, from ``last``."""
+    self = allocator
+    joined, lower, upper, before = self.box_of(last, dtype, sizes)
+    reference = before if self.toward == "last" else None
+    split = np.cumsum([0, *sizes])
+    zero = {name: jnp.zeros(signal.shape, dtype=dtype) for name, signal in self.model.commands.items()}
+    targets = {q: jnp.asarray(wanted[q], dtype=dtype) for q in sorted(self.scales)}
+    spread = joined(self.effort) if self.effort is not None else None
+    toward = reference if reference is not None else jnp.zeros_like(lower)
+    rows = partial(_rows, allocator=self, at=at, zero=zero, targets=targets, spread=spread, toward=toward,
+                   split=split, dtype=dtype, owner=owner)
+    start = before if before is not None else jnp.zeros_like(lower)
+    found = iterative_allocation(rows, start, lower=lower, upper=upper, owner=owner)
+    raise_flag(UNCONVERGED.field, jnp.where(found.converged, jnp.zeros((), dtype=dtype),
+                                            jnp.maximum(found.stationarity, jnp.finfo(dtype).eps)))
+    commands = _by_command(found.commands, self.commands, split)
+    active = _by_command(found.active, self.commands, split)
+    made = self.model({**zero, **commands}, at)
+    return commands, AllocationReport(active, found.objective, {q: made[q] for q in sorted(self.scales)}, ITERATIVE,
+                                      found.converged, found.stationarity)
+
+
+def _by_command(u: Any, commands: Sequence[str], split: Any) -> dict[str, Any]:
+    return {c: u[split[i]:split[i + 1]] for i, c in enumerate(commands)}
+
+
+def _rows(u: Any, *, allocator: Allocator, at: Mapping[str, Any], zero: Mapping[str, Any], targets: Mapping[str, Any],
+          spread: Any, toward: Any, split: Any, dtype: Any, owner: str) -> Any:
+    """The iterative path's rows at the commands ``u``: each quantity's miss as the model measures it, over its scale,
+    and the effort's rows where it is given."""
+    made = allocator.model({**zero, **_by_command(u, allocator.commands, split)}, at)
+    absent = [quantity for quantity in targets if quantity not in made]
+    if absent:
+        raise ValueError(allocator.absent(absent, at))
+    misses = [allocator.model.miss(q, made[q], targets[q], owner=owner)
+              / jnp.asarray(allocator.scales[q], dtype=dtype) for q in targets]
+    if spread is not None:
+        misses.append((u - toward) / spread)
+    return jnp.concatenate(misses)
 
 
 class ControlModels:
@@ -404,11 +424,12 @@ class ControlModels:
         if not beyond and not own and count <= EXACT_COMMANDS:
             self.paths.append(f"    {where}: exact, {count} commands of {key}'s model, affine in them, at most "
                               f"EXACT_COMMANDS = {EXACT_COMMANDS} ({3 ** count} active sets)")
-            return Allocator(model, local, scales, low, high, box, efforts, toward, owner)
+            return Allocator(model, local, scales, low, high, box, efforts, toward, owner, EXACT,
+                             partial(_allocated, owner=owner))
         why = (f"its model is not affine in {', '.join(beyond)}" if beyond else
                f"the miss of {', '.join(own)} is the model's own" if own else
                f"{count} commands, more than EXACT_COMMANDS = {EXACT_COMMANDS}")
-        rows = self._rows(model, scales, owner)
+        rows = self._row_count(model, scales, owner)
         if efforts is None and rows < count:
             raise _refuse("allocation.objective", RefusalClass.USER,
                           f"{where}: the iterative path ({why}) is asked for {rows} rows of {count} commands with no "
@@ -420,15 +441,19 @@ class ControlModels:
                           f"{UNCONVERGED.field} where its solve does not converge")
         if UNCONVERGED not in self.flags:
             self.flags.append(UNCONVERGED)
-        return Allocator(model, local, scales, low, high, box, efforts, toward, owner, ITERATIVE)
+        return Allocator(model, local, scales, low, high, box, efforts, toward, owner, ITERATIVE,
+                         partial(_allocated, owner=owner))
 
-    def _rows(self, model: ForwardModel, scales: Mapping[str, float], owner: str) -> int:
+    def _row_count(self, model: ForwardModel, scales: Mapping[str, float], owner: str) -> int:
         """How many rows an objective's quantities make: each one's miss, as its model measures it."""
         total = 0
         for quantity in scales:
             signal = model.quantities[quantity]
             zero = jax.ShapeDtypeStruct(signal.shape, as_run_array(0.0).dtype)
-            shape = jax.eval_shape(lambda a, b, q=quantity: model.miss(q, a, b, owner=owner), zero, zero).shape
+            def missed(made: Any, wanted: Any, held: str = quantity) -> Any:
+                return model.miss(held, made, wanted, owner=owner)
+
+            shape = cast(Any, jax).eval_shape(missed, zero, zero).shape
             total += math.prod(shape)
         return total
 

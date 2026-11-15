@@ -821,3 +821,10 @@ control/_allocation.py _selection max 2  # the same, for the subsets with more f
 control/_allocation.py _selection sqrt 1  # each candidate's residual norm, never negative, which the selection ranks: no derivative passes through it (taken with stop_gradient)
 control/_allocation.py _selection sqrt 2  # each candidate's rows' norm, the scale of its residual's rounding for the tie test, inside the selection, which no derivative passes through
 control/_allocation.py _selection sqrt 3  # the target's norm, the other part of that scale, inside the selection, which no derivative passes through
+control/_iterative.py iterative_allocation clip 1  # the solve's start projected into the box: the root's derivative (jax.lax.custom_root's) is the converged commands' and does not pass through the start, so no status moves
+control/_iterative.py iterative_allocation minimum 1  # the distance to the nearer bound, the indicator of the active set's predicate, which is written through mime.core.switch under the caller's owner (allocation_switch); the value feeds only that record
+control/_models.py _iterative where 1  # allocation_unconverged's value, zero where the solve converged and its stationarity where not: a run flag, held as the controller's flag_ field, which no edge reads and no objective differentiates (the stationarity is the forward solve's, which carries no derivative)
+control/_models.py _iterative maximum 1  # that flag's value kept above zero where the solve did not converge (its stationarity at least eps), so a raised flag is never read as clear; a report, as above
+nodes/control/_flags.py flag_values abs 1  # a controller flag's value at a tick, the largest magnitude raised under its name: a report held as its node's flag_ field, which no edge reads and no objective differentiates
+nodes/control/_flags.py flag_values max 1  # the same: the largest element of a raised value
+nodes/control/_flags.py flag_values maximum 1  # the same: the largest of the values raised under the name at the tick

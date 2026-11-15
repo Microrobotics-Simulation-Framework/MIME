@@ -14,15 +14,19 @@ rows' miss, and the Gauss-Newton step ``(Jf^T Jf + floor) d = -Jf^T r`` where it
 :data:`FLOOR` on the scaled normal matrix (a Levenberg term at the dtype's rank test, which keeps the step defined
 where the rows do not fix the free commands); a scaled gradient step on the held ones; the box as a projection, and
 Armijo's test on the projection arc (:data:`ARMIJO`, at most :data:`BACKTRACKS` halvings), the decrease measured as a
-difference of squares, ``sum (r - r') (r + r') / 2``, whose rounding is the rows' change's and not the objective's (a
-miss that cannot be met, as an unreachable target's, leaves an objective whose own rounding would hide every decrease
-near the minimiser). It starts from the caller's start projected into the box. On an affine model the two steps are
+difference of squares, ``sum (r - r') (r + r') / 2``, whose subtraction's rounding is the rows' change's and not the
+objective's, and a decrease within what the objective resolves passing (a miss that cannot be met, as an unreachable
+target's, leaves an objective whose own rounding hides every decrease near the minimiser, where a Newton step still
+lowers the stationarity). It starts from the caller's start projected into the box. On an affine model the two steps are
 one, Newton's, so the iteration is exact once its active set is the solution's.
 
 **Its guards, declared** (MIME's rule for single precision: a tolerance at or above the dtype's reachable floor, with a
 stagnation stop). It stops at :data:`ITERATIONS`, where the stationarity reaches :data:`TOLERANCE` of the problem's
-size, or where it stagnates: no step passes Armijo's test, or :data:`STALLS` steps in a row lower the objective by no
-more than the rounding of the decrease measured. The stationarity is the projected gradient's length in the scaled
+size (then polished: full steps go on while they are longer than the commands' rounding, at most
+:data:`POLISHING_STEPS`, since the tolerance bounds the stationarity, not the distance to the minimiser at which the
+derivative is taken), or where it stagnates: no step passes Armijo's test, or :data:`STALLS` steps in a row lower the objective by no
+more than the objective resolves (about four units in its last place, beside the subtraction's rounding) without
+halving the stationarity. The stationarity is the projected gradient's length in the scaled
 commands, ``|v - P(v - grad_v)|_inf``, over the problem's size, ``|r| + sum_k c_k |u_k|`` (the rows' miss and what the
 commands make, so its rounding floor is the dtype's units in the last place of it whatever the rows cancel).
 ``converged`` is read again at the commands returned, never from the loop's own account: the stationarity within its
@@ -61,6 +65,8 @@ from mime.core.solves import dense_solve
 
 jnp: Any = jax.numpy
 lax: Any = jax.lax
+#: JAX's transforms, whose hints a strict checker reads as partly unknown.
+_jax: Any = jax
 
 #: The most iterations the solve takes.
 ITERATIONS = 50
@@ -76,6 +82,15 @@ FLOOR = {dtype: value * value for dtype, value in RCOND.items()}
 ACTIVE_BAND = 1e-3
 #: The steps in a row that lower the objective by no more than its rounding before the solve stops as stagnated.
 STALLS = 2
+#: The most full steps taken within the tolerance while the step is longer than the commands' rounding (four units in
+#: the last place of the problem's size, in the scaled commands), each where it passes Armijo's test. The tolerance
+#: bounds the stationarity, not the distance to the minimiser, which on an ill-conditioned problem (a weak effort, whose
+#: rows set the scaled Hessian's least eigenvalues near 1e-8 of its largest) can be far larger; and there the
+#: derivative is sensitive to the point it is taken at, the residual's curvature at the iterate's miss moving those
+#: eigenvalues by their own size. A warm start near the minimiser meets the tolerance in two steps with the commands
+#: 4e-8 rad from it and the derivative 8e-5 off the minimiser's (A0's follower); Newton's steps take them to rounding
+#: (quadratic convergence: 2e-6 rad, then 3e-10, then rounding), and the derivative with them.
+POLISHING_STEPS = 3
 
 type Rows = Callable[[Any], Any]
 
@@ -108,7 +123,11 @@ class _At(NamedTuple):
 
 def _at(rows: Rows, u: Any, lower: Any, upper: Any) -> _At:
     """The solve's view of the problem at ``u``: none of it is differentiated (the derivative is the root's)."""
-    jacobian, made = jax.jacfwd(lambda v: (rows(v), rows(v)), has_aux=True)(u)
+    def twice(v: Any) -> tuple[Any, Any]:
+        made = rows(v)
+        return made, made
+
+    jacobian, made = _jax.jacfwd(twice, has_aux=True)(u)
     squared = jnp.sum(jacobian * jacobian, axis=0)
     columns = jnp.sqrt(jnp.where(squared > jnp.finfo(u.dtype).tiny, squared, 1.0))
     gradient = jacobian.T @ made
@@ -146,10 +165,13 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         made = rows(u)
         return 0.5 * jnp.sum(made * made)
 
-    def iteration(carry: tuple[Any, Any, Any, Any]) -> tuple[Any, Any, Any, Any]:
-        u, taken, stalls, _ = carry
+    def iteration(carry: tuple[Any, ...]) -> tuple[Any, ...]:
+        u, taken, stalls, _, before, quiet, polished = carry
         at = _at(rows, u, lower, upper)
-        stationary = jnp.max(jnp.abs(at.projected)) <= tolerance * at.size
+        measure = jnp.max(jnp.abs(at.projected)) / at.size
+        stationary = measure <= tolerance
+        # A stall: the last step's decrease within what the objective resolves, and the stationarity not halved by it.
+        stalls = jnp.where(quiet & (measure >= 0.5 * before), stalls + 1, 0)
         band = jnp.minimum(ACTIVE_BAND * at.size, jnp.sqrt(jnp.sum(at.projected * at.projected)))
         low, high = _held(at, u, lower, upper, band)
         free = ~(low | high)
@@ -159,39 +181,55 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         scaled = at.jacobian / at.columns
         # Newton's step on the free commands where the exact Hessian is positive definite there (near a minimiser,
         # where it converges quadratically whatever the rows' miss), the Gauss-Newton one where it is not.
-        exact = jax.hessian(objective)(u) / (at.columns[:, None] * at.columns[None, :]) * pair + outside
+        exact = _jax.hessian(objective)(u) / (at.columns[:, None] * at.columns[None, :]) * pair + outside
         values = jnp.linalg.eigvalsh(exact)
         definite = values[0] > rcond * jnp.maximum(values[-1], 1.0)
         normal = (scaled.T @ scaled) * pair + outside + floor * eye
         newton = -dense_solve(jnp.where(definite, exact, normal), mask * at.gradient / at.columns)
         step = jnp.where(free, newton, -at.gradient / at.columns) / at.columns
+        # What the objective resolves: its rows' own rounding, about eps of each row's size, makes the measured
+        # decrease uncertain by about eps |r|^2 whatever the step, beside the subtraction's eps |r - r'| |r + r'|.
+        resolved = 4.0 * eps * jnp.sum(at.rows * at.rows)
 
-        def trial(alpha: Any) -> tuple[Any, Any, Any, Any]:
+        def trial(alpha: Any) -> tuple[Any, Any, Any]:
             moved = jnp.clip(u + alpha * step, lower, upper)
             predicted = alpha * jnp.sum(jnp.where(free, -at.gradient * step, 0.0)) + \
                 jnp.sum(jnp.where(free, 0.0, at.gradient * (u - moved)))
             after = rows(moved)
-            # The decrease as a difference of squares, whose rounding is the rows' change's, not the objective's.
+            # The decrease as a difference of squares, whose subtraction's rounding is the rows' change's.
             change = at.rows - after
             decrease = 0.5 * jnp.sum(change * (at.rows + after))
-            rounding = 4.0 * eps * jnp.sum(jnp.abs(change) * (jnp.abs(at.rows) + jnp.abs(after)))
-            return moved, decrease, rounding, decrease >= ARMIJO * predicted
+            noise = resolved + 4.0 * eps * jnp.sum(jnp.abs(change) * (jnp.abs(at.rows) + jnp.abs(after)))
+            # A decrease within its noise passes too: near the floor a Newton step lowers the stationarity by more
+            # than the objective can show, and the stall count above stops a step that does not.
+            return moved, decrease <= noise, decrease + noise >= ARMIJO * predicted
 
-        def halve(search: tuple[Any, Any, Any, Any, Any, Any]) -> tuple[Any, Any, Any, Any, Any, Any]:
-            alpha, tries, _, _, _, _ = search
+        def halve(search: tuple[Any, Any, Any, Any, Any]) -> tuple[Any, Any, Any, Any, Any]:
+            alpha, tries, _, _, _ = search
             return alpha * 0.5, tries + 1, *trial(alpha * 0.5)
 
-        first = trial(jnp.ones((), dtype=dtype))
-        _, _, moved, decrease, rounding, passed = lax.while_loop(
-            lambda search: (~search[5]) & (search[1] < BACKTRACKS), halve,
-            (jnp.ones((), dtype=dtype), jnp.zeros((), dtype=np.int32), *first))
-        stalls = jnp.where(passed & (decrease > rounding), 0, stalls + 1)
-        done = stationary | ~passed | (stalls >= STALLS)
-        return (jnp.where(stationary | ~passed, u, moved), taken + jnp.where(stationary, 0, 1).astype(np.int32),
-                stalls, done)
+        def searching(search: tuple[Any, Any, Any, Any, Any]) -> Any:
+            return (~search[4]) & (search[1] < BACKTRACKS)
 
-    first = (start, jnp.zeros((), dtype=np.int32), jnp.zeros((), dtype=np.int32), jnp.zeros((), dtype=bool))
-    u, taken, _, _ = lax.while_loop(lambda carry: (~carry[3]) & (carry[1] < ITERATIONS), iteration, first)
+        first = trial(jnp.ones((), dtype=dtype))
+        _, _, moved, small, passed = lax.while_loop(searching, halve,
+                                                    (jnp.ones((), dtype=dtype), jnp.zeros((), dtype=np.int32), *first))
+        # Polishing: within the tolerance, full steps go on (each passing Armijo's test, at most POLISHING_STEPS) while
+        # the step is longer than the commands' rounding at the problem's size, so that what is returned, and
+        # linearised for the derivative, is the minimiser to rounding, not a point the tolerance merely admits.
+        longer = jnp.max(at.columns * jnp.abs(first[0] - u)) > 4.0 * eps * at.size
+        polish = stationary & first[2] & longer & (polished < POLISHING_STEPS)
+        stop = (stationary & ~polish) | ~passed | (stalls >= STALLS)
+        after = jnp.where(polish, first[0], jnp.where(stop, u, moved))
+        return (after, taken + jnp.where(stop, 0, 1).astype(np.int32), stalls, stop, measure, small,
+                polished + polish.astype(np.int32))
+
+    first = (start, jnp.zeros((), dtype=np.int32), jnp.zeros((), dtype=np.int32), jnp.zeros((), dtype=bool),
+             jnp.asarray(np.inf, dtype=dtype), jnp.zeros((), dtype=bool), jnp.zeros((), dtype=np.int32))
+    def going(carry: tuple[Any, ...]) -> Any:
+        return (~carry[3]) & (carry[1] < ITERATIONS)
+
+    u, taken, _, _, _, _, _ = lax.while_loop(going, iteration, first)
     at = _at(rows, u, lower, upper)
     stationarity = jnp.max(jnp.abs(at.projected)) / at.size
     low, high = _held(at, u, lower, upper, jnp.minimum(ACTIVE_BAND * at.size,
@@ -203,7 +241,11 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
 
 def _gradient(rows: Rows, u: Any) -> Any:
     """The gradient of ``1/2 |rows(u)|^2``, exact: its linearisation is the exact Hessian's."""
-    return jax.grad(lambda v: 0.5 * jnp.sum(rows(v) * rows(v)))(u)
+    def objective(v: Any) -> Any:
+        made = rows(v)
+        return 0.5 * jnp.sum(made * made)
+
+    return _jax.grad(objective)(u)
 
 
 def _bounds(lower: Any, upper: Any) -> tuple[Any, Any]:
@@ -216,7 +258,7 @@ def _root(rows: Rows, lower: Any, upper: Any) -> Callable[[Any], Any]:
     held (a scaling that moves no root)."""
 
     def residual(u: Any) -> Any:
-        jacobian = lax.stop_gradient(jax.jacfwd(rows)(u))
+        jacobian = lax.stop_gradient(_jax.jacfwd(rows)(u))
         squared = jnp.sum(jacobian * jacobian, axis=0)
         columns = jnp.sqrt(jnp.where(squared > jnp.finfo(u.dtype).tiny, squared, 1.0))
         low, high = _bounds(lower, upper)
@@ -227,7 +269,7 @@ def _root(rows: Rows, lower: Any, upper: Any) -> Callable[[Any], Any]:
 
 def _tangent(linear: Callable[[Any], Any], rhs: Any) -> Any:
     """The tangent system ``F'(u*) x = rhs``, ``K x K``, by one dense LU of its matrix with its columns equilibrated."""
-    matrix = jax.jacfwd(linear)(rhs)
+    matrix = _jax.jacfwd(linear)(rhs)
     largest = jnp.max(jnp.abs(matrix), axis=0)
     scale = jnp.where(largest > jnp.finfo(matrix.dtype).tiny, largest, 1.0)
     return dense_solve(matrix / scale[None, :], rhs) / scale
@@ -246,10 +288,12 @@ def iterative_allocation(rows: Rows, start: Any, *, lower: Any, upper: Any, owne
     low = jnp.broadcast_to(jnp.asarray(lower, dtype=dtype), first.shape)
     high = jnp.broadcast_to(jnp.asarray(upper, dtype=dtype), first.shape)
     guess = jnp.clip(first, low, high)
+    def solve(_: Any, initial: Any) -> tuple[Any, tuple[Any, Any, Any, Any]]:
+        return _solved(rows, initial, low, high, dtype)
+
     with switch.not_collected():
-        commands, (converged, stationarity, taken, active) = lax.custom_root(
-            _root(rows, low, high), guess, lambda _, initial: _solved(rows, initial, low, high, dtype), _tangent,
-            has_aux=True)
+        commands, (converged, stationarity, taken, active) = lax.custom_root(_root(rows, low, high), guess, solve,
+                                                                             _tangent, has_aux=True)
     inside = jnp.minimum(commands - low, high - commands)
     switch.predicate(active == 0, owner=owner, resolution=lambda: switch.rounding(jnp.maximum(jnp.abs(low), jnp.abs(high))),
                      indicator=lambda: inside)
@@ -257,5 +301,5 @@ def iterative_allocation(rows: Rows, start: Any, *, lower: Any, upper: Any, owne
     return IterativeAllocation(commands, active, jnp.sum(made * made), converged, stationarity, taken)
 
 
-__all__ = ["ACTIVE_BAND", "ARMIJO", "BACKTRACKS", "FLOOR", "ITERATIONS", "STALLS", "TOLERANCE", "IterativeAllocation",
-           "iterative_allocation"]
+__all__ = ["ACTIVE_BAND", "ARMIJO", "BACKTRACKS", "FLOOR", "ITERATIONS", "POLISHING_STEPS", "STALLS", "TOLERANCE",
+           "IterativeAllocation", "iterative_allocation"]

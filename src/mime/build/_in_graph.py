@@ -42,7 +42,18 @@ from mime.build._maddening import initial_fields, inputs, live_inputs, make_jaxp
 from mime.build._probes import host_callbacks
 from mime.build._refusals import MIME_DEFECT, Explained, Refusal, RefusalClass, entry_defect
 from mime.core import jnp
-from mime.nodes.control import HOLDER, PREFIX, ControllerNode, DelayNode, Step, declared_flags, holder_step, raising
+from mime.nodes.control import (
+    HOLDER,
+    PREFIX,
+    ControllerNode,
+    DelayNode,
+    Step,
+    declared_flags,
+    flag_values,
+    gathered,
+    holder_step,
+    raising,
+)
 from mime.nodes.control._controller import BELIEVED_NAME
 
 #: The prefix of a believed number among the names a law is made again from (``mime.control._models.BELIEVED``).
@@ -193,10 +204,10 @@ def traced_branch_refusal(label: str, error: BaseException, step: Any, cls: type
 
 
 def leaf_reads(remake: Any, values: Mapping[str, Any], start: Mapping[str, Any],
-               given: Mapping[str, Any]) -> tuple[set[str], set[str]]:
+               given: Mapping[str, Any], flags: Sequence[str] = ()) -> tuple[set[str], set[str]]:
     """Which of the settings ``values`` the law ``remake`` makes from them reads, found exactly by tracing it with each
-    as an argument: the settings its step reads (from the law's start and zero reads), and those its start or held
-    writes are made from."""
+    as an argument: the settings its step reads (from the law's start and zero reads; its writes, its state and the
+    values of the flags ``flags`` it raises), and those its start or held writes are made from."""
     names = sorted(values)
     arguments = [jnp.asarray(values[name]) for name in names]
 
@@ -206,7 +217,9 @@ def leaf_reads(remake: Any, values: Mapping[str, Any], start: Mapping[str, Any],
 
     def stepped(*held: Any) -> Any:
         law = remake({name: setting(arg, name) for name, arg in zip(names, held, strict=True)})
-        return law.step(dict(start), dict(given))
+        with raising(flags) as raised:
+            made = inlined(law.step)(dict(start), dict(given))
+        return made, flag_values(raised, jnp.zeros(()).dtype)
 
     def started(*held: Any) -> Any:
         law = remake({name: setting(arg, name) for name, arg in zip(names, held, strict=True)})
@@ -239,8 +252,8 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float, built: Mapping[s
     given = {name: jnp.zeros_like(value) for name, value in reads.items()}
     flags = declared_flags(plan.registered.cls, getattr(law, "flags", ()))
     try:
-        with raising(flag.field for flag in flags):
-            problems, traced = trace_problems(step, start, given, held)
+        problems, traced = trace_problems(gathered(step, [flag.field for flag in flags]) if flags else step, start,
+                                          given, held)
     except TracedBranch as traced:
         return [], [], [traced_branch_refusal(label, traced.error, law.step, plan.registered.cls)]
     if problems:
@@ -266,7 +279,7 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float, built: Mapping[s
     leaves: dict[str, Any] = {}
     made: Any = None
     if remake is not None and leaf_values:
-        in_step, in_start = leaf_reads(remake, leaf_values, start, given)
+        in_step, in_start = leaf_reads(remake, leaf_values, start, given, [flag.field for flag in flags])
         # A believed number its step does not read is no leaf, and nothing to refuse: the law reads the model as a
         # whole (``ctx.believed``), and an axis never names one.
         unread = sorted(set(leaf_values) - in_step - in_start - {name for name in leaf_values

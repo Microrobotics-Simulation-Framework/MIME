@@ -1,0 +1,191 @@
+{
+  "written": "2026-11-15, committed before AP4a's probe ran (the commit that adds this file is the timestamp): the iterative allocation with its implicit derivative and its polishing, ctx.allocator's structural choice of path, a controller's run flags (allocation_unconverged their first user; one path in both modes; refused below the step's level, under an undeclared name, and for a step compiled with nothing underneath), ForwardModel.misses and the arm's frame quantities",
+  "phase": "apparatus lane AP4a",
+  "labels": "the builder (Opus) from the pilot (tests/control/predictions_ap4_pilot.json's outcomes, the runner's) and from local runs of the touched tests on the laptop (correctness only, never timing); the probe's numbers are the runner's",
+  "seen_before": [
+    "the pilot on the runners (its outcomes): the coils' iterative commands within 2.2e-14 of the limit of the exact path's and its derivative within 2.1e-14 of the exact path's (float64), float32 within 1.8e-6 at the 95th percentile and 8.8e-3 on one draw; the arm's derivative within 5e-6 of central differences on most draws, 1.0 on reference solves of another branch; the planted Gauss-Newton derivative 0.54 to 12.9 off on every unreachable draw; float32's floor on unreachable targets up to 1.5e-4 with the first solve",
+    "after the solve's change (a decrease within what the objective resolves passes; a stall is such a step that does not halve the stationarity), 30 local float32 arm draws: every target converged, the floor at most 2.0e-7",
+    "test_allocator and the raw-raise and refusal-table ratchets passed locally after the hand-over",
+    "locally, the follower's 7.6e-4, diagnosed before this file (float64): central differences of the sweep converge to 1.7598042 at every step from 1e-4 to 3e-7 m (7 digits) against Study.gradient's 1.7584646; with the contact off and the body's moment zero (the loop cut) still 6.5e-4; after one tick (2 ms) 9.1e-5, reproduced on the law's own step and on the solve alone. The implicit derivative is -H^-1 g_s at the point returned (2.6e-9), but that point, a warm start two Newton steps in, is 3.7e-8 rad from the minimiser, where on this weakly regularised problem (effort 20 rad, the scaled Hessian's least eigenvalues 1e-8 of its largest) the derivative is 8e-5 off the minimiser's (-H^-1 g_s there = central differences of polished minimisers to 3e-9)",
+    "locally, after polishing (full steps within the tolerance while longer than the commands' rounding, at most 3): the law's step 1.2e-8 off central differences, the 10 ms follower Study.gradient 9.5e-9 (with the contact) and 2.0e-9 (loop cut); the warm-start draws' derivative within 1e-7 of central differences at 0.2 mm steps (at 2 um the reference solves' rounding reads 1e-5); without polishing (the plant) 7e-4 on the first draw",
+    "locally, the flag seam's changes: test_controller_flags.py 15 passed; its plant (unleveled) caught by all 8 loop-or-branch cases"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU; GitHub runners, 4 vCPU; the cost arm and the bits on one CPU with one BLAS and XLA thread",
+    "sizes_and_parameters": "the agreement draws: allocation_draws.problems on Navion_2, CardioMag and OctoMag (field, gradient, both, force; limits 5 to 50 A; wanted 0.1 to 4 of the reach), an effort of 1 to 100 A on half of them and 30 A where the rows do not fix the coils; nine to sixteen synthetic commands, tall by 0 to 6 rows, singular values 0.3 to 3, regularised on half. The arm: A0's AR4, link_6's position over 1 mm and orientation over 10 mrad, a box of 0.05 rad around the last joints, unreachable targets moved 1.5 m and regularised at 20 rad. The controller rigs: A0's rig with the follower (graph and callback, dt and rates of chain_cases.tracked_rpm), the R2 coil sphere (dt 1 ms, the controller every 5 ms, one step late, 25 A ports) on the iterative path by EXACT_COMMANDS patched to 2",
+    "seeds_and_draws": "Hypothesis: 100 examples a dtype for the agreement with the exact path, 60 for BVLS, 40 for the arm's derivative (each kind of target), its inverse kinematics and float32; detection rates at 20 runs a control (10 for the flag's), each with its Hypothesis seed"
+  },
+  "gate_1_agreement_exact": {
+    "claim": "on the arrays MIME ships, the iterative path's commands are the exact path's within the line its claim derives, it converges, and its stationarity is under the declared tolerance, in both dtypes",
+    "kind": "bounds",
+    "case": "tests/control/test_iterative_allocation.py::test_the_iterative_path_meets_the_exact_path_where_both_apply",
+    "prediction": {
+      "value": "every draw passes",
+      "basis": "measured-before (the pilot, 600 draws of six coils; the local run)",
+      "why": "on a convex quadratic projected Newton's step is the exact path's least squares once the active set is found"
+    },
+    "control": {
+      "plant": "early (two iterations), loose (tolerance one): each must leave a draw unconverged, past the declared line, or past the derived distance",
+      "environment_variable": "ITERATIVE_PLANT=early, =loose",
+      "expected_rate": "20/20 each",
+      "runs": 20,
+      "clean_expected": "0/20"
+    },
+    "if_wrong": "a clean failure is a defect of the active set's identification or of the claim's line; a missed plant means the draws do not need more than two iterations, and the draws are widened"
+  },
+  "gate_2_agreement_bvls": {
+    "claim": "on nine to sixteen commands SciPy's BVLS is the oracle, at camera spike R2's line plus the derived distance, in both dtypes",
+    "kind": "bounds",
+    "case": "tests/control/test_iterative_allocation.py::test_the_iterative_path_meets_bvls_above_the_exact_paths_size",
+    "prediction": {
+      "value": "every draw passes",
+      "basis": "measured-before (the local run)",
+      "why": "as gate 1, with BVLS's own line"
+    },
+    "control": {
+      "plant": "early, loose",
+      "environment_variable": "ITERATIVE_PLANT",
+      "expected_rate": "20/20 each",
+      "runs": 20,
+      "clean_expected": "0/20"
+    },
+    "if_wrong": "as gate 1"
+  },
+  "gate_3_derivative": {
+    "claim": "the arm's implicit derivative in its target, its turn and its last joints (a slew box's bounds active) is central differences of reference solves on its branch within 1e-6 of its largest entry, and reverse mode is forward mode within 1e-12, on reachable and unreachable targets",
+    "kind": "bounds",
+    "case": "tests/control/test_iterative_allocation.py::test_the_implicit_derivative_is_central_differences_and_reverse_mode_is_forward",
+    "prediction": {
+      "value": "every draw within 1e-6",
+      "band": [
+        0,
+        1e-06
+      ],
+      "unit": "share of the largest entry",
+      "basis": "measured-before (the pilot: medians 1e-9 to 3e-6 at steps of 1e-3; the probe takes 0.2 and 0.1, which keep the reference solves' noise at about 1e-7 of the move)",
+      "why": "Richardson's truncation at a 0.2 mm move is about 1e-10, the reference solves converge near 1e-15"
+    },
+    "control": {
+      "plant": "gauss_newton (the root's Hessian Gauss-Newton's: 0.5 to 13 off on every unreachable draw in the pilot); bounds (a held command's derivative zero, where the box holds a joint on every draw, asserted)",
+      "environment_variable": "ITERATIVE_PLANT=gauss_newton, =bounds",
+      "expected_rate": "20/20 each",
+      "runs": 20,
+      "clean_expected": "0/20"
+    },
+    "if_wrong": "a clean draw past 1e-6 on the solution's branch is a defect of the tangent system; one whose reference solves leave the branch at every step is a kink on both sides, reported by its seed",
+    "cannot_discriminate_if": "the box held no joint (asserted on every draw), or the residual were zero (the unreachable draws keep it far from zero)"
+  },
+  "gate_3b_warm_start": {
+    "claim": "at the follower's operating point (the joints read are the start and the effort's reference, the target 0.2 to 2 mm from where they put the flange, effort 20 rad), the derivative in the target and the joints read is central differences of converged reference solves within 1e-6 of its largest entry",
+    "kind": "bounds",
+    "case": "tests/control/test_iterative_allocation.py::test_a_warm_start_near_the_minimiser_gives_the_minimisers_derivative",
+    "prediction": {
+      "value": "every draw within 1e-6",
+      "band": [
+        0,
+        1e-06
+      ],
+      "unit": "share of the largest entry",
+      "basis": "measured-before (local: 8.7e-8 on seed 0 at 0.2 mm steps)",
+      "why": "polished, the commands are the minimiser to rounding; the reference solves' rounding over a 0.2 mm step is about 1e-7"
+    },
+    "control": {
+      "plant": "unpolished (POLISHING_STEPS zero): the derivative at the first iterate the tolerance admits, 7e-4 off on the first local draw",
+      "environment_variable": "ITERATIVE_PLANT=unpolished",
+      "expected_rate": "20/20",
+      "runs": 20,
+      "clean_expected": "0/20"
+    },
+    "if_wrong": "a clean draw past 1e-6 whose commands are the reference's is the differences' noise (the step is widened, never the line); one whose commands are not is polishing's defect",
+    "cannot_discriminate_if": "a draw's solve reaches rounding before the tolerance stops it (the plant then changes nothing): the rate says how often the draws reach the sensitive case"
+  },
+  "gate_4_inverse_kinematics": {
+    "claim": "on reachable poses the iterative solve converges, and where the library's inverse kinematics reaches the pose within the limits from the same start the two reach the same joints within 1e-6 rad and the frame within 1e-9 m",
+    "kind": "bounds",
+    "case": "tests/control/test_iterative_allocation.py::test_iterative_inverse_kinematics_meets_the_librarys_on_reachable_poses",
+    "prediction": {
+      "value": "every draw passes",
+      "basis": "measured-before (the pilot: 119 of 120 reachable draws on the target to 3e-10 m; the other a local minimiser at a limit, where the library's step ignores the limits)",
+      "why": "both are Newton-like from 0.15 rad away on the same model"
+    },
+    "control": {
+      "plant": "early (two iterations: the reachable solves take 3 to 21)",
+      "environment_variable": "ITERATIVE_PLANT=early",
+      "expected_rate": "20/20",
+      "runs": 20,
+      "clean_expected": "0/20"
+    },
+    "if_wrong": "a draw where both reach different joints inside the limits is a second solution of the arm's inverse kinematics, which the test then names"
+  },
+  "gate_5_float32": {
+    "claim": "the arm's solve in float32 converges where float64's does, its joints within 1e-3 rad and its derivative within 1e-2 of float64's largest entry",
+    "kind": "bounds",
+    "case": "tests/control/test_iterative_allocation.py::test_float32_is_judged_against_float64",
+    "prediction": {
+      "value": "every draw passes",
+      "basis": "measured-before (30 local float32 draws after the change: all converged)",
+      "why": "the stationarity's floor in float32 is about 1e-7 of the size"
+    },
+    "control": {
+      "plant": "none: a judgement of float32 against float64",
+      "expected_rate": "n/a"
+    },
+    "if_wrong": "an unconverged float32 draw means the floor still exceeds 1e-5 there: the tolerance is raised above the measured floor and the change recorded"
+  },
+  "gate_6_real_path": {
+    "claim": "through a built controller: the follower writes the same joints in both modes to the dtype's rounding and puts its flange above the body; an exact-path controller declares no flag and builds no holder; an unregularised follower is refused (allocation.objective); a capped solve raises allocation_unconverged at every step in both modes, counted and warned, its value past the tolerance, and a converged one none; the coil sphere on the iterative path writes the exact path's currents within 1e4 eps of 25 A in both dtypes and modes; a study sweeps the follower's standoff; Study.gradient in the coil sphere's kp through the iterative path is central differences within 1e-3; and the flag seam: a declared flag reads controller.far_from_goal in the layout, the report and the run, raised at the same ticks in graph, callback and jitted-callback modes; a study's members and Study.gradient's carry it at that path; a raise inside cond, while_loop, scan or fori_loop is refused naming the rule in both modes; an undeclared name names its declaration; an ahead-of-time compiled step is refused",
+    "kind": "bounds",
+    "case": "tests/control/test_iterative_controller.py (the follower's own Study.gradient test as gate 7) and tests/control/test_controller_flags.py",
+    "prediction": {
+      "value": "every test passes",
+      "basis": "measured-before (13 of 14 passed locally)"
+    },
+    "control": {
+      "plant": "silent (the allocator's flag never raised); unleveled (raise_flag without its level check: a raise in a lax body is then lost or leaks as JAX's own error, never the rule's message)",
+      "environment_variable": "ITERATIVE_PLANT=silent; FLAG_PLANT=unleveled",
+      "expected_rate": "10/10 each",
+      "runs": 10,
+      "clean_expected": "0/10"
+    },
+    "if_wrong": "a mode disagreement is the flag carrier's or the holder's defect"
+  },
+  "gate_7_follower_gradient": {
+    "claim": "Study.gradient in the follower's standoff through five ticks of the arm's polished iterative solves and the body's contact is central differences of the sweep (0.1 mm) within 1e-6",
+    "kind": "bounds",
+    "case": "tests/control/test_iterative_controller.py::test_the_derivative_of_the_follower_in_its_standoff_is_central_differences",
+    "prediction": {
+      "value": "within 1e-6",
+      "band": [
+        0,
+        1e-06
+      ],
+      "unit": "share of the derivative",
+      "basis": "measured-before (local: 9.5e-9 at 10 ms after polishing; the differences' truncation at 0.1 mm 6e-8)",
+      "why": "each tick's derivative is the minimiser's once polished; the contact's and the loop's are smooth here (the loop-cut arm read the same discrepancy before the fix)"
+    },
+    "control": {
+      "plant": "unpolished: 7.6e-4 locally (the measured cause)",
+      "environment_variable": "ITERATIVE_PLANT=unpolished",
+      "expected_rate": "5/5 (no draws: one deterministic case, so five runs show it is caught on each, not a rate)",
+      "runs": 5,
+      "clean_expected": "0/5"
+    },
+    "if_wrong": "a miss with each solve's derivative right (gate 3b) is a defect of how the derivative crosses ticks, the contact's or the controller node's"
+  },
+  "costs": {
+    "prediction": "per base step, compiled, one thread: the coil sphere's iterative allocation 1.5 to 5 times its exact one's step (polishing adds one or two iterations) (both a few tens of microseconds over a sphere's step of about the same); the follower's A0 step 2 to 10 times ArmTracking 0.1.0's (its five fixed damped steps against a converged solve with its line search); a controller that takes no iterative path: no node and no operation added (the bits arm's programs)",
+    "measured_at": "nowhere yet: the pilot's solves alone (a six-coil solve 0.07 ms, an arm solve 2 ms median, compiled, outside a graph), not through the real node"
+  },
+  "bits": {
+    "cases": "script A (float64, float32), A0 closed by ArmTracking 0.1.0 as a callback (tracked_rpm) and inside the compiled step (a0_graph), the coil array, the gantry magnet, the R2 coil sphere on the exact path through ctx.allocator (graph, both dtypes; callback, float64): base release/v0.3.0 against the head, one job, one CPU, one thread",
+    "prediction": "every array np.array_equal",
+    "controls": {
+      "one_ulp": "script A in both dtypes, a0_graph in float32 and the coil sphere in float32, every leaf one ulp up in the head: arrays differ"
+    }
+  },
+  "outcomes": null
+}

@@ -23,7 +23,7 @@ from mime.build._refusals import ArgumentRefused, MimeError, Refusal, RefusalCla
 from mime.build._maddening import FlagTally, FlagTest, Fed, NodeFields, fed_inputs, inputs, node_state, ready, \
     scan_chunk, scan_chunk_tallied, scan_chunk_with_history, with_refreshed_held
 from mime.core import jnp
-from mime.nodes.control import HOLDER, PREFIX, declared_flags, flag_values, raising
+from mime.nodes.control import HOLDER, PREFIX, declared_flags, flag_values, hidden_step, raising
 from mime.registry import BuildContext, ControlLaw, Controller, Flag
 
 type History = dict[str, dict[str, np.ndarray]]
@@ -215,6 +215,12 @@ def law_and_models(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusa
     if not isinstance(cast(object, law), ControlLaw):
         return None, [f"law() returned {law!r}, not a mime.registry.ControlLaw"], tuple(sorted(models.read))
     problems: list[str | Refusal] = list(_write_problems(plan, law.held, "its held writes"))
+    flags = declared_flags(plan.registered.cls, tuple(context.control.flags))
+    if flags and hidden_step(law.step):
+        problems.append(f"its step is compiled with no function underneath it (no __wrapped__), and it declares the "
+                        f"flags {', '.join(str(flag.field) for flag in flags)}: a flag raised inside a step compiled "
+                        f"on its own cannot leave it, so the run would never count it. Return the step uncompiled, "
+                        f"or compiled by jax.jit on a Python function, which MIME traces with its flags gathered")
     read = tuple(context.control.read)
     if read:
         law = _MadeLaw(law.state, law.held, law.step, believed=read, slewed=tuple(context.control.slewed),
@@ -284,6 +290,7 @@ class Callback:
         label = self.plan.registered.cls.label()
         # A step that raises flags is called through the function it compiles, where it compiles one (a value raised
         # inside a compiled function does not leave it).
+        raised: dict[str, Any] = {}
         try:
             if self.flags:
                 self.state, writes, raised = self._flagged()(self.state, {**reads, **self.live} if self.live else reads)
