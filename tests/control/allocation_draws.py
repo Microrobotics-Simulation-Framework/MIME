@@ -246,14 +246,8 @@ SHAPES = ((3, 2, False), (5, 3, False), (8, 3, False), (3, 5, False), (6, 6, Fal
           (6, 4, True), (8, 3, True))
 
 
-@st.composite
-def generals(draw: st.DrawFn) -> General:
-    """A problem of one of ``SHAPES``, 3 to 8 commands, tall or wide or regularised, the matrix of condition at most 4,
-    wanted values of 0.3 to 5 times the limits' size (some commands at a bound, some free), limits 0.5 to 2 either
-    side. Drawn from one seed: the shape is what Hypothesis varies, and no draw is near-singular or at a numerical
-    extreme."""
-    commands, rows, regularised = draw(st.sampled_from(SHAPES))
-    seed = draw(st.integers(0, 2 ** 32 - 1))
+def general_at(commands: int, rows: int, regularised: bool, seed: int) -> General:
+    """The ``General`` that ``generals`` draws at this shape and seed (so a failing draw is rebuilt from the two)."""
     rng = np.random.default_rng(seed)
     size = min(rows, commands)
     left = np.linalg.qr(rng.normal(size=(rows, size)))[0]
@@ -264,6 +258,16 @@ def generals(draw: st.DrawFn) -> General:
                    offset=rng.normal(size=rows) * 0.1, reference=rng.uniform(-0.3, 0.3, commands),
                    reference_scales=rng.uniform(1.0, 5.0, commands) if regularised else None,
                    scales=rng.uniform(0.5, 2.0, rows), seed=seed)
+
+
+@st.composite
+def generals(draw: st.DrawFn) -> General:
+    """A problem of one of ``SHAPES``, 3 to 8 commands, tall or wide or regularised, the matrix of condition at most 4,
+    wanted values of 0.3 to 5 times the limits' size (some commands at a bound, some free), limits 0.5 to 2 either
+    side. Drawn from one seed: the shape is what Hypothesis varies, and no draw is near-singular or at a numerical
+    extreme."""
+    commands, rows, regularised = draw(st.sampled_from(SHAPES))
+    return general_at(commands, rows, regularised, draw(st.integers(0, 2 ** 32 - 1)))
 
 
 def column_oracle(matrix: np.ndarray, wanted: np.ndarray, limit: float) -> float:
