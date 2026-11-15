@@ -99,6 +99,9 @@ class Layout:
     observations: tuple[ObservationLayout, ...]
     flags: tuple[FlagLayout, ...]
     stamp: Stamp | None = None
+    #: The precision the run computed in (``float32`` or ``float64``); ``None`` for a run folder written before it was
+    #: recorded.
+    precision: str | None = None
 
     def observation(self, id: str) -> ObservationLayout | None:
         return next((held for held in self.observations if held.id == id), None)
