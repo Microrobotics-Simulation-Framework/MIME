@@ -126,6 +126,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still runs on the label); the control's clean plugin is built and run once for its module, and each plant re-writes one file of
   a copy and runs only the stage that catches it; the pyright tests skip, with a reason, on a machine without `node`.
 
+- **`mime scaffold plugin`: the typing route for a real engine, a duration guard, and four slots, from the clot port** (dev2, lane P's
+  P7c; template files only: no new verb, code, seam or saved form). The template's typing job was red from its first commit for a
+  real engine (1,093 pyright-strict errors on a 3.5k-line one, 95 % of them unknown types from jaxlib's missing stubs and
+  unannotated parameters). `pyrightconfig.json` is still strict, with the six unknown-type rules (`reportUnknownArgumentType`,
+  `...MemberType`, `...VariableType`, `...ParameterType`, `...LambdaType`, `reportMissingParameterType`) off for `engine/` and
+  `fit/` alone, by `executionEnvironments`; the adapter, the records and the `assert_type` file stay strict, and the other strict
+  rules (unused variables, `None` defaults into typed parameters, possibly unbound) still check the engine. Measured on the
+  ported plugin: 1,093 errors before; a typed `jnp` alias in every module 865 (unannotated parameters stay unknown); standard
+  mode with the adapter listed under `strict` 111; this route 131 (engine 36, `fit` 6, the adapter 89: the fork's entries call `jnp` directly, and with the
+  template's `Any` alias on a copy they fall to 39). A planted unannotated function is reported
+  in `entries/` and not in `engine/` or `fit/`, and a planted unused variable is reported in all three, every run; the
+  `assert_type` file still fails on a planted type change. **A duration guard**: `scripts/check_durations.py` reads the default
+  lane's JUnit report and fails a test over 30 s unless `tests/duration_allowlist.txt` lists it with a reason (a small version of
+  MIME's own gate: no cold-cache re-run, no ceiling); the plugin's CI runs it after `pytest --junitxml`; its test runs it on a
+  report pytest wrote. **Slots**: `fit/` beside `engine/` (the AST no-`mime` test reads both, from one `MIME_FREE` tuple),
+  `scripts` and `docs` in the sdist include (and `scripts` on the tests' path), the float32 and float64 advice saying when a
+  float64-only reference is fine (a reference the engine is computed against, never the law's own path), and `.gitignore` naming
+  no benchmark script (it ignores the files a saved experiment is made of, below `benchmarks/*/`, never the folders). **Relative imports**: the template's package imports itself relatively, and
+  `tests/test_relative_imports.py` (the port's test, proven on the real plugin, over a shared `tests/import_rules.py`) refuses an
+  absolute self-import, a constant-string `import_module` or `__import__` of it included, with a planted form of each. The control
+  now plants five more slips (an import of `mime` in `fit/`, two absolute self-imports, a limit a hundred times too loose, an
+  allowlist line that needs no reason) and each fails the stage that is there to catch it. Review fixes: the no-`mime` test also refuses an import of the adapter from `engine/` or `fit/`
+  (`from ..entries import X`, `from .. import entries`, `from ..entries.example_load import X`, absolute or relative, and a root
+  module or `__init__` that imports `mime`), each spelling planted; `tests/import_rules.py` also reads an aliased `import_module`,
+  `name=`, a relative name with `package=`, and a placeholder-free f-string, and both tests' docstrings say plainly what a static
+  check cannot see (`find_spec`, `sys.modules`, `runpy`, `exec`, a computed name); the README no longer suggests a suite-wide
+  x64 switch (a float64-only reference runs under `jax.experimental.enable_x64` in its own test); the duration guard fails an
+  allowlist row whose test is not in the report, and splits a row on its last ` # ` so an id may hold one.
+
 - **Static meshes in the in-loop camera, traced once a run** (`mime.sensing._mesh`, `mime.sensing.mesh_chords`,
   `MeshChords`, `MESH_SAMPLES`; `mime.observations.Camera`; `mime.viz.write_mesh(..., decimation_distance=)`; dev2, camera
   6a). A scenery `Mesh` of the stage, and a structure of a kind the stage draws (an ellipsoid, a box, a helix, a screw: its

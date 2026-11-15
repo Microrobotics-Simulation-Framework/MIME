@@ -3,5 +3,6 @@
 Why the split: the engine can be tested against closed forms, reference numbers and Hypothesis properties with MIME out
 of the loop, and read by someone who has never opened MIME. The adapter (`${package}.entries`) is the thin layer that
 turns settings into arguments and hands the engine's results to MIME. Delete the example law (`load.py`) when you
-write your own; keep the rule.
+write your own; keep the rule. A fitting or calibration harness that must also run without MIME goes in `${package}.fit`,
+beside this package and under the same rule.
 """
