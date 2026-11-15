@@ -243,7 +243,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) ->
             item.user_properties.append(("children_cpu_seconds", f"{children_now - children:.3f}"))
 
 
-def pytest_configure(config: pytest.Config) -> None:  # TEMPORARY DIAGNOSTIC, removed in the next commit
+def pytest_sessionstart(session: pytest.Session) -> None:  # TEMPORARY DIAGNOSTIC, removed in the next commit
     from mime.assets import _cache
 
     original = _cache.cheap_problem
