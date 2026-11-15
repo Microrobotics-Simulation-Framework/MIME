@@ -7,7 +7,10 @@
     "float32 sweeps of fresh draws (five seeds, 12000 draws in all, Hypothesis repeating some; float64, 1500 draws): the old verdict failed 10 of the float32 draws, all OctoMag 'both' (commands 0.2 to 24.6 A apart, residual gaps 5e-5 to 0.0125); the new verdict failed none, and the old and the new failed none in float64"
   ],
   "operating_point": {
-    "dtype": ["float64", "float32"],
+    "dtype": [
+      "float64",
+      "float32"
+    ],
     "platform": "GitHub runner (4 vCPU), CPU",
     "matmul_precision": "n/a (CPU)",
     "sizes_and_parameters": "the swap test's own draws (three arrays, four kinds, limits 5 to 50 A, wanted values 0.1 to 4 times the reach), 150 Hypothesis examples a dtype; detection_rate.py: 15 fresh processes planted and 15 clean per arm, each its own Hypothesis seed, four arms (seeds 0-59)"
@@ -17,7 +20,10 @@
     "case": "tests/control/test_exact_allocation.py::test_the_exact_allocation_meets_scipys_bvls_within_the_line[float64|float32]",
     "prediction": {
       "value": 60,
-      "band": [60, 60],
+      "band": [
+        60,
+        60
+      ],
       "unit": "planted runs caught of 60 (clean flagged 0 of 60)",
       "basis": "derived",
       "why": "a command at the loosened limit is past the true limit, which the verdict reads before the unique branch; the changed code never sees it (it was caught 60/60 before, predictions_ap2.json)"
@@ -34,9 +40,31 @@
   "gate_2_regression_draw": {
     "claim": "the failing draw passes the verdict in float32 and float64, and a face a command's flip costs far past the windows is still refused",
     "case": "tests/control/test_exact_allocation.py::test_a_unique_minimiser_binds_the_law_only_past_its_tie_window_in_float32",
-    "prediction": {"value": 0, "band": [0, 0], "unit": "failing runs", "basis": "derived", "why": "a deterministic problem; the draw's gap sits at 85 units against windows of 128, and the old verdict fails it (measured)"},
+    "prediction": {
+      "value": 0,
+      "band": [
+        0,
+        0
+      ],
+      "unit": "failing runs",
+      "basis": "derived",
+      "why": "a deterministic problem; the draw's gap sits at 85 units against windows of 128, and the old verdict fails it (measured)"
+    },
     "control": "the old verdict fails it (measured on the laptop before the change); the far face is refused",
     "cannot_discriminate_if": "the law's float32 face at this draw changes with a library's rounding: the test then reads the flipped face, not the law's, for the tie"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-15, after the probe below; the predictions above are unchanged",
+    "runs": {
+      "probe": "43744569241 (probe/ap2-swap-tie at 64e47ba4, the fix round's test code)"
+    },
+    "gate_1_swap_plant": {
+      "hit": true,
+      "value": "limits plant caught 60/60 (15/15 in each of four arms, seeds 0-59; 95% lower bound 0.95 over the 60), clean 0/60 flagged, none inconclusive"
+    },
+    "gate_2_regression_draw": {
+      "hit": true,
+      "note": "passes with the change; fails without it (measured on the laptop before the commit); and run in CI by the PR's default lane"
+    }
+  }
 }
