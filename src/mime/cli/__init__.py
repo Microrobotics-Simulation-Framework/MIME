@@ -69,7 +69,7 @@ def option_seconds(option: str, text: str | None) -> float | None:
     bare = is_bare_number(text)
     message = f"{option} {text} is a bare number, with no unit" if bare else f"{option} {text} is not a duration"
     live = option in LIVE_TIMEOUTS
-    action = (f"write it with its unit: {option} {unit_examples(text)}, as in `mime {'serve' if live else 'run'} <folder> "
+    action = (f"write it with a unit: {option} {unit_examples(text)}, as in `mime {'serve' if live else 'run'} <folder> "
               f"{option} {'15min' if live else '10s'}{'' if live else ' --out <dir>'}`; the forms are {FORMS}")
     why = ("MIME takes every value with its units and never assumes them, so a bare number is never read as seconds "
            "or as anything else: the unit after it is s, ms, us, min or h" if bare else
@@ -381,8 +381,9 @@ def _run(folder: Path, duration: float | None, out: Path, history: bool, record:
     On a terminal (``mime.cli._display``) the run shows its progress on standard error and ends with what needs
     attention first; ``full`` adds the rest. Anywhere else it prints what it always did."""
     from mime.cli._display import RunDisplay, amber_line, damaged_cache_note
-    from mime.experiment._experiment import foreign_entries, refuse_out_not_own
+    from mime.experiment._experiment import foreign_entries, refuse_out_not_own, refuse_out_over
 
+    refuse_out_over(out, [folder])
     refuse_out_not_own(out, force)
     forced = foreign_entries(out) if force else ()
     if forced:

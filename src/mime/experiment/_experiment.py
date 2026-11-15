@@ -963,6 +963,9 @@ def refuse_out_over(out: Path, sources: Sequence[str | PathLike[str]]) -> None:
 #: ``tests/experiment/test_out_folder.py`` keeps these in step with them).
 RUN_FOLDER_NAMES = frozenset({RUN_OUTPUTS, RUN_RECORD, RUN_EXPERIMENT, RUN_TOPOLOGY, RUN_MANIFEST, RUN_REPORT,
                               "recording.usdc", "commands.jsonl"})
+#: The environment check a runner writes into the run's folder before the run (``mime env check --record``, as the Modal
+#: script does): a folder that holds this file alone is one a run is about to be written into, and is MIME's own.
+ENV_CHECK_FILE = "env-check.json"
 
 
 def foreign_entries(out: Path) -> tuple[str, ...]:
@@ -974,7 +977,8 @@ def foreign_entries(out: Path) -> tuple[str, ...]:
     if not out.is_dir():
         return (out.name,)
     held = sorted(child.name + ("/" if child.is_dir() else "") for child in out.iterdir())
-    own = (out / RUN_RECORD).is_file() and all(name.rstrip("/") in RUN_FOLDER_NAMES for name in held)
+    names = {name.rstrip("/") for name in held}
+    own = ((out / RUN_RECORD).is_file() and names <= RUN_FOLDER_NAMES | {ENV_CHECK_FILE}) or names == {ENV_CHECK_FILE}
     return () if own or not held else tuple(held)
 
 
@@ -1861,18 +1865,17 @@ class BuiltExperiment:
 
         As :meth:`run`, a stale build is refused in a notebook or IPython and warned about in a script."""
         self._fresh()
-        refuse_out_not_own(Path(out), force)
         point = self._overridden(override)
         display = _python_display(progress)
         if display is None:
             return self._run_to(out, duration, history=history, record=record, every=every, source=source,
                                 load_seconds=load_seconds, hook=hook, chunk=chunk, stage_every=stage_every,
-                                stop=stop, watch=None, point=point, before_writing=before_writing)
+                                stop=stop, watch=None, point=point, before_writing=before_writing, force=force)
         try:
             watch = self._watch(display, duration, stop)
             return self._run_to(out, duration, history=history, record=record, every=every, source=source,
                                 load_seconds=load_seconds, hook=hook, chunk=chunk, stage_every=stage_every,
-                                stop=watch.stop, watch=watch, point=point, before_writing=before_writing)
+                                stop=watch.stop, watch=watch, point=point, before_writing=before_writing, force=force)
         finally:
             display.close()
 
@@ -1881,12 +1884,13 @@ class BuiltExperiment:
                 source: str | PathLike[str] | None, load_seconds: float | None, hook: ChunkHook | None,
                 chunk: Quantity | None, stage_every: Quantity | None, stop: StopRequest | None,
                 watch: Watch | None, point: Overridden | None = None,
-                before_writing: Callable[[], None] | None = None) -> RunWritten:
+                before_writing: Callable[[], None] | None = None, force: bool = False) -> RunWritten:
         import time
 
         started = time.perf_counter()
         read = [source] if source is not None else [self._saved.folder] if self._saved is not None else []
         refuse_out_over(Path(out), read)
+        refuse_out_not_own(Path(out), force)
         failed: RunFailed | None = None
         samples, hook, chunk = self._stage_samples(stage_every, hook, chunk)
         try:

@@ -265,3 +265,37 @@ def test_an_amber_line_is_amber_on_a_terminal_and_plain_anywhere_else(monkeypatc
     amber_line(plain, "writing now")
     assert "38;5;214" in terminal.getvalue() and "writing now" in terminal.getvalue()
     assert plain.getvalue() == "writing now\n" and AMBER == "color(214)"
+
+
+# -- what the runner leaves, and what a run reads ---------------------------------------------------------------------
+
+
+def test_a_folder_holding_only_the_runners_environment_check_is_written_into_and_a_stranger_beside_it_is_not(saved, tmp_path,
+                                                                                                         capsys):
+    """The Modal runner writes ``env-check.json`` into the run's folder before it runs (``mime env check --record``): that
+    folder is a run's own, and a run is written into it (the base did, and a test of the run on a Volume holds it)."""
+    out = tmp_path / "volume" / "run"
+    out.mkdir(parents=True)
+    (out / "env-check.json").write_text("{}\n", encoding="utf-8")
+    assert run(saved, out) == 0 and (out / "env-check.json").is_file() and RunResult.read(out).steps == 4
+    assert foreign_entries_of(out) == ()
+    beside = tmp_path / "beside"
+    beside.mkdir()
+    (beside / "env-check.json").write_text("{}\n", encoding="utf-8")
+    (beside / "notes.txt").write_text("mine\n", encoding="utf-8")
+    with untouched(beside):
+        assert run(saved, beside) == 2
+    assert CODE in capsys.readouterr().err
+
+
+def foreign_entries_of(folder: Path):
+    from mime.experiment._experiment import foreign_entries
+
+    return foreign_entries(folder)
+
+
+def test_writing_over_the_folder_the_run_reads_is_still_that_refusal_and_not_this_one(saved, capsys):
+    with untouched(saved):
+        assert run(saved, saved) == 2
+    err = capsys.readouterr().err
+    assert "run.out-over-source" in err and CODE not in err
