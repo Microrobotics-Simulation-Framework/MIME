@@ -59,5 +59,10 @@
   "if_wrong": "read the missed seed: a miss is a draw where no element's change passes its bound; measure that draw's ratio before any change",
   "cannot_discriminate_if": "both arms fail or both pass"
  },
- "outcomes": null
+ "outcomes": {
+  "recorded": "2026-11-15, from probe run 43754983614 on probe/f32-rows-plant (feb4e84b), downloaded artifacts, and 20 local runs of the file",
+  "gate_1_the_bound_holds_on_fresh_draws": "as predicted: 0 failing of the probe's 100 clean runs (50 a dtype, Hypothesis seeds 1000 to 1049; AMD EPYC 7763 and 9V74 runners) and of 20 local runs of the whole file (seeds 5001 to 5020, 37 passed each)",
+  "gate_2_the_coefficient_control_fires_every_run": "as predicted: 50/50 caught in each dtype (two arms of 25), none inconclusive, the clean arms 0/50 flagged; 95 % lower bound on the rate 0.942 a dtype",
+  "arm_memory_check": "every arm under its estimate: peaks 0.89 GiB (float32) and 0.92 GiB (float64) against bounds of 1.07 to 1.09 GiB"
+ }
 }
