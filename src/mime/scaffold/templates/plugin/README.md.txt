@@ -92,10 +92,12 @@ week, a weekly job against MIME's release branch (it tells you the week MIME mov
 property test that flakes is read, not loosened: see the comments of `tests/engine/test_properties.py`.
 
 **Both dtypes.** Run the suite in float32 and in float64 (`JAX_ENABLE_X64=1`) before you trust a number: the law itself
-runs in whatever dtype the process computes in, and a test that passes in one only has not shown the other. The exception
-is a reference the engine is computed *against* (a closed form, a table of numbers from another code, a reference run kept
-as float64 bits): that may be float64 alone, and the test that reads it turns x64 on for itself (or `tests/conftest.py`
-does, for a suite whose references all are). Never let the law's own path be float64-only because its reference is.
+runs in whatever dtype the process computes in, and a test that passes in one only has not shown the other. The law's own path
+is tested in both dtypes, always. The exception is a reference the engine is computed *against* (a closed form, a table of
+numbers from another code, a reference run kept as float64 bits): that may be float64 alone, and the test that reads it says so
+where it runs, under `with jax.experimental.enable_x64():` in that test (or under a guard your plugin declares for it), never
+as a suite-wide switch such as an x64 line in `tests/conftest.py`: that would turn float64 on under every test and hide a law
+that only works in one dtype. Never let the law's own path be float64-only because its reference is.
 
 **The duration guard.** Keep the default lane short: `scripts/check_durations.py` (CI runs it on the `pytest
 --junitxml=junit.xml` report) fails a test over 30 s unless `tests/duration_allowlist.txt` lists it with the reason it must

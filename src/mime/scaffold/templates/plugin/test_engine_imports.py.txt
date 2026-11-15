@@ -1,21 +1,29 @@
-"""The engine and the fit package import no `mime`, held by reading their source, and shown able to fail.
+"""The engine and the fit package import no `mime` and none of the adapter, held by reading their source, and shown able to fail.
 
 `engine/` is the part you can test against closed forms and reference numbers with MIME out of the loop (see
 src/${package}/engine/__init__.py); `fit/` is the second such package, for a fitting or calibration harness or anything else
 that should run without MIME (src/${package}/fit/__init__.py). That holds only while it stays true, so this reads every module
-of both (with `ast`, never importing it) and fails on any `mime` name: `import` and `from ... import`, and a call of
-`importlib.import_module("mime...")` or `__import__("mime...")` with a constant string. The second test is the control: each of
-those, planted, must be found, every time. Add a folder to MIME_FREE for each further package that must not import `mime`;
-delete one you do not want, and this test says so rather than pass on nothing.
+of both (with `ast`, never importing it) and fails on:
 
-What it cannot see: a module name that is computed (`importlib.import_module(prefix + "units")`, a name read from a file or
-the environment), an `exec` or `eval` of source text, and an import hidden in a string that something else imports. A computed
-import of `mime` in these packages passes this test; review is what catches it.
+- any `mime` name: `import` and `from ... import`, and a call of `importlib.import_module("mime...")` or `__import__("mime...")`
+  (aliased, with `name=`, with a relative name and `package=`, with a placeholder-free f-string);
+- any import of the adapter, absolute or relative. The adapter is what imports `mime` for the package: `entries/`, `records/`,
+  any other folder that is not in MIME_FREE, a module at the package's root that imports `mime`, and the package root itself
+  when its `__init__.py` does. `from ..entries import ExampleLoad`, `from .. import entries` and `from ..entries.example_load
+  import ...` all bring `mime` in through it, and each is refused here.
+
+The control tests plant each of those, and each must be found, every time. Add a folder to MIME_FREE for each further package
+that must not import `mime`; delete one you do not want, and this test says so rather than pass on nothing.
+
+What a static check cannot see, and this test does not catch: a computed module name (`importlib.import_module(prefix +
+"units")`, a name read from a file or the environment), `importlib.util.find_spec`, `sys.modules[...]`, `runpy`, an `exec` or
+`eval` of source text, and a string some other code imports. A computed import of `mime` in these packages passes this test;
+review is what catches it. (`tests/import_rules.py` lists what it does read.)
 """
 
 from pathlib import Path
 
-from import_rules import absolute_imports, top_level
+from import_rules import absolute_imports, resolved_imports, top_level
 
 PACKAGE = Path(__file__).resolve().parent.parent / "src" / "${package}"
 #: The folders of the package that import no `mime`.
@@ -28,12 +36,42 @@ def mime_imports(source: str) -> list[str]:
     return [name for name in absolute_imports(source) if top_level(name) == "mime"]
 
 
-def test_the_mime_free_packages_import_no_mime():
+def adapter_imports(source: str, base: str, package: Path = PACKAGE, free: tuple[str, ...] = MIME_FREE) -> list[str]:
+    """Every module a source in the package `base` (a dotted name: `${package}.engine` for `engine/load.py`) imports that is
+    the adapter of `package` (the folder holding the distribution's modules), whichever way it is spelt, relative or absolute."""
+    name = package.name
+    root_imports_mime = (package / "__init__.py").exists() and bool(mime_imports((package / "__init__.py").read_text(encoding="utf-8")))
+
+    def is_adapter(module: str) -> bool:
+        below = module.split(".")[1:]
+        if not below:  # the package root: its __init__.py runs on any import of the package
+            return root_imports_mime
+        if below[0] in free:
+            return False
+        if (package / below[0]).is_dir():
+            return True  # entries/, records/, any folder not listed as free
+        file = package / f"{below[0]}.py"
+        if file.exists():  # a module at the root is the adapter only if it imports mime
+            return bool(mime_imports(file.read_text(encoding="utf-8")))
+        return root_imports_mime  # a name the root's __init__ defines
+
+    return [module for module in resolved_imports(source, base) if top_level(module) == name and is_adapter(module)]
+
+
+def base_of(path: Path) -> str:
+    """The dotted package a module of the package lives in: `engine/load.py` is `${package}.engine`, and so is
+    `engine/__init__.py`."""
+    return ".".join([PACKAGE.name, *path.relative_to(PACKAGE).parent.parts])
+
+
+def test_the_mime_free_packages_import_no_mime_and_no_adapter():
     held: dict[str, list[str]] = {}
     for folder in MIME_FREE:
         modules = sorted((PACKAGE / folder).rglob("*.py"))
         assert modules, f"no module found under {PACKAGE / folder}: the test would pass on nothing (drop it from MIME_FREE if you removed it)"
-        held.update({str(path.relative_to(PACKAGE)): mime_imports(path.read_text(encoding="utf-8")) for path in modules})
+        for path in modules:
+            source = path.read_text(encoding="utf-8")
+            held[str(path.relative_to(PACKAGE))] = [*mime_imports(source), *adapter_imports(source, base_of(path))]
     assert {path: found for path, found in held.items() if found} == {}
 
 
@@ -44,12 +82,54 @@ def test_a_planted_import_is_found():
                     'import importlib\nimportlib.import_module("mime.units")',
                     'import importlib\nunits = importlib.import_module("mime")',
                     'from importlib import import_module\nimport_module("mime.units")',
+                    'from importlib import import_module as im\nim("mime.units")',
+                    'import importlib\nimportlib.import_module(name="mime.units")',
+                    'import importlib\nimportlib.import_module(".units", package="mime")',
+                    'import importlib\nimportlib.import_module(".units", "mime")',
+                    'import importlib\nimportlib.import_module(f"mime.units")',
+                    'load = __import__\nload("mime")',
                     '__import__("mime")', 'def f():\n    return __import__("mime.units")'):
         assert mime_imports(planted), f"{planted!r} was not found"
     assert not mime_imports("import jax\nfrom jax import numpy\nimport mimesis")
     assert not mime_imports('import importlib\nimportlib.import_module("jax.numpy")\n__import__("mimesis")\nf("mime")')
 
 
+def test_a_planted_import_of_the_adapter_is_found_in_every_spelling(tmp_path: Path):
+    """The control for the adapter rule, on a package of its own (`pkg`: `engine/`, `fit/`, `entries/`, `records/`, a root
+    module that imports `mime` and one that does not): each way into the adapter is found from `pkg.engine` and `pkg.fit`, and
+    the honest imports between the MIME-free packages and of third-party code are not."""
+    package = tmp_path / "pkg"
+    for folder in ("engine", "fit", "entries", "records"):
+        (package / folder).mkdir(parents=True)
+        (package / folder / "__init__.py").write_text("", encoding="utf-8")
+    (package / "__init__.py").write_text('"""the root"""\n', encoding="utf-8")
+    (package / "_vocabulary.py").write_text("import mime\n", encoding="utf-8")
+    (package / "_constants.py").write_text("PI = 3.14159\n", encoding="utf-8")
+
+    def found(source: str, base: str = "pkg.engine") -> list[str]:
+        return adapter_imports(source, base, package=package, free=("engine", "fit"))
+
+    for planted in ("from ..entries import ExampleLoad", "from .. import entries", "from ..entries.example_load import ExampleLoad",
+                    "from ..records import data", "import pkg.entries", "from pkg.entries import ExampleLoad",
+                    "from pkg import entries", "from pkg.entries.example_load import ExampleLoad",
+                    "from .. import _vocabulary", "from .._vocabulary import NAMESPACE", "def f():\n    from ..entries import X",
+                    'import importlib\nimportlib.import_module("pkg.entries")',
+                    'import importlib\nimportlib.import_module(".entries", package="pkg")',
+                    'import importlib\nimportlib.import_module("..entries", package=__package__)'):
+        assert found(planted), f"{planted!r} was not found from pkg.engine"
+    assert found("from ... import entries", "pkg.engine.sub") and found("from ...entries import X", "pkg.fit.sub")
+    for honest in ("from . import load", "from ..engine import load", "from .. import fit", "from ..fit.model import fit",
+                   "from .. import _constants", "from .._constants import PI", "import jax\nfrom jax import numpy",
+                   "import pkg_other\nfrom entries import X"):
+        assert not found(honest), f"{honest!r} was flagged"
+    (package / "__init__.py").write_text("import mime\n", encoding="utf-8")
+    assert found("from .. import engine") and found("import pkg"), "a root that imports mime is the adapter"
+
+
 def test_a_computed_name_is_the_limit_of_this_test():
     """What the test cannot see, stated and held: a computed module name is not found, so the docstring's limit is true."""
     assert mime_imports('import importlib\nimportlib.import_module("mi" + "me")') == []
+    assert mime_imports('import importlib.util\nimportlib.util.find_spec("mime")') == []
+    assert mime_imports('import sys\nsys.modules["mime"]') == []
+    assert mime_imports('import runpy\nrunpy.run_module("mime")') == []
+    assert mime_imports('exec("import mime")') == []

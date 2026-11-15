@@ -10,11 +10,13 @@ for a JIT compile can read slow once: run it again before you list it), no ceili
 between a change's own tests and the others. Grow it if you need that.
 
 The allowlist holds one pytest node id per line, then ` # ` and the reason it must run on every push (a line with no reason
-fails). A test that is slow because it is a benchmark belongs behind `@pytest.mark.slow`, which CI's default lane skips and its
+fails). The line is split on its **last** ` # `, so a test id may hold one (a parameter such as `[a # b]`) and a reason may
+not: write a reason's own break as ` - ` or `;`. A row whose test is not in the report fails too (the test was renamed or
+removed: delete or fix the row), so the list cannot go stale; run the guard on the whole default lane's report, as CI does. A test that is slow because it is a benchmark belongs behind `@pytest.mark.slow`, which CI's default lane skips and its
 `slow` lane runs; a physics assertion behind that marker is documentation unless a lane runs it. A test is listed here when
 it has to be in the default lane and cannot be made faster; a test is never shrunk, derandomised or loosened to pass it.
 
-Exit codes: 0 passes, 1 a test is over the limit unlisted or a listing has no reason, 2 the report cannot be read or holds
+Exit codes: 0 passes, 1 a test is over the limit unlisted, a listing has no reason, or a listing names no test in the report, 2 the report cannot be read or holds
 no test (a guard over nothing passes on nothing).
 """
 
@@ -42,14 +44,14 @@ def key_of(node_id: str) -> Key:
 
 
 def listed(text: str) -> tuple[dict[Key, str], list[str]]:
-    """The allowlist's tests with their reasons, and each line that has no reason."""
+    """The allowlist's tests with their reasons, and each line that has no reason. A line is split on its last ` # `."""
     found: dict[Key, str] = {}
     problems: list[str] = []
     for line in text.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
-        node_id, _, reason = line.partition(" # ")
-        if not reason.strip():
+        node_id, separator, reason = line.rpartition(" # ") if " # " in line else (line, "", "")
+        if not separator or not reason.strip():
             problems.append(f"{node_id.strip()} is listed with no reason: write ' # <why it must run on every push>'")
         else:
             found[key_of(node_id.strip())] = reason.strip()
@@ -66,11 +68,14 @@ def durations(report: str) -> dict[Key, float]:
 
 
 def judge(report: str, allowlist: str, limit: float = LIMIT) -> tuple[list[str], list[str]]:
-    """The failures and the notes: a test over ``limit`` that is not listed, a listing with no reason; and the listed tests that
-    were over (with their reasons), so that a kept test that grows is seen."""
+    """The failures and the notes: a test over ``limit`` that is not listed, a listing with no reason, a listing whose test is
+    not in the report; and the listed tests that were over (with their reasons), so that a kept test that grows is seen."""
     seconds = durations(report)
     reasons, failures = listed(allowlist)
     notes: list[str] = []
+    for module, name in sorted(set(reasons) - set(seconds)):
+        failures.append(f"{module}::{name} is in tests/duration_allowlist.txt but not in the report: the test was renamed or "
+                        "removed, so delete or fix the row (or this run did not run it: judge the whole default lane)")
     for (module, name), took in sorted(seconds.items(), key=lambda item: -item[1]):
         if took <= limit:
             continue

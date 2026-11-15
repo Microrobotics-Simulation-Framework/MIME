@@ -309,6 +309,19 @@ PLUGIN_PLANTS: dict[str, Plant] = {
     "an absolute import of the package by its own name in the example entry": Plant(
         f"src/{PLUGIN_PACKAGE}/entries/example_load.py", "from ..engine import load as law",
         f"from {PLUGIN_PACKAGE}.engine import load as law", relative_imports_stage, "test_relative_imports"),
+    "a relative import of the adapter in the engine": Plant(f"src/{PLUGIN_PACKAGE}/engine/load.py", "from jax import Array",
+                                                            "from jax import Array\nfrom ..entries import ExampleLoad",
+                                                            engine_imports_stage, "test_engine_imports"),
+    "a relative import of the adapter's folder in the fit package": Plant(
+        f"src/{PLUGIN_PACKAGE}/fit/__init__.py", '"""A second package', 'from .. import entries\n"""A second package',
+        engine_imports_stage, "test_engine_imports"),
+    "an aliased import_module of the package by its own name in the adapter": Plant(
+        f"src/{PLUGIN_PACKAGE}/entries/__init__.py", "from .example_load import ExampleLoad",
+        f'from importlib import import_module as im\n\nExampleLoad = im("{PLUGIN_PACKAGE}.entries.example_load").ExampleLoad',
+        relative_imports_stage, "test_relative_imports"),
+    "an allowlist row that names no test in the report": Plant("scripts/check_durations.py",
+                                                               "for module, name in sorted(set(reasons) - set(seconds)):",
+                                                               "for module, name in []:", durations_stage, "test_durations"),
     "a duration limit a hundred times too loose": Plant("scripts/check_durations.py", "if took <= limit:",
                                                         "if took <= limit * 100:", durations_stage, "test_durations"),
     "an allowlist line that needs no reason": Plant("scripts/check_durations.py", "if not reason.strip():", "if False:",

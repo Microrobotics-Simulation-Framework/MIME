@@ -6,7 +6,15 @@ __pycache__/
 .venv/
 .pytest_cache/
 .hypothesis/
-# A saved benchmark is a folder below benchmarks/, written by the script beside it (whatever it is called): CI writes it again.
-/benchmarks/*/
+# What a benchmark script writes, in any folder below benchmarks/ (CI writes it again): the files of a saved experiment, and the
+# mime.toml that the script copies beside them. Your own files there (data, a table, notes) are not ignored; add a line
+# for anything else your script generates.
+/benchmarks/*/experiment.mime.yaml
+/benchmarks/*/mime.lock
+/benchmarks/*/reference.npz
+/benchmarks/*/mime.toml
+/benchmarks/*/scene/
+/benchmarks/*/records/
+/benchmarks/*/descriptions/
 # The duration guard's input (CI's default lane).
 /junit.xml

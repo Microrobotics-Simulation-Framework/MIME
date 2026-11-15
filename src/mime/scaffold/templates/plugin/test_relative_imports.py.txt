@@ -5,11 +5,15 @@ directory. Every absolute self-import (`from ${package}.engine import load`) wou
 imports the old distribution. Relative imports (`from ..engine import load`) survive the move unchanged.
 
 This reads every module under `src/${package}/` (with `ast`, never importing it) and fails on an import of the package's own
-top-level name: `import ${package}...`, `from ${package}... import`, and a constant-string `importlib.import_module("${package}...")`
-or `__import__(...)`. Tests, scripts, examples and benchmarks import the package from outside, as a user does, and are not
-read. The second test is the control: each form, planted, must be found.
+top-level name: `import ${package}...`, `from ${package}... import`, and a constant-string call of
+`importlib.import_module(...)` or `__import__(...)`: by attribute or by name, aliased (`from importlib import import_module as
+im`), with `name=`, with a relative name and a constant `package="${package}"`, and with a placeholder-free f-string. Tests,
+scripts, examples and benchmarks import the package from outside, as a user does, and are not read. The second test is the
+control: each form, planted, must be found.
 
-What it cannot see: a computed module name, an `exec` or `eval` of source text, and a string that something else imports.
+What a static check cannot see, and this test does not catch: a computed module name (`import_module(prefix + ".engine")`, a
+name read from a file or the environment), `importlib.util.find_spec`, `sys.modules[...]`, `runpy`, an `exec` or `eval` of
+source text, and a string some other code imports. Review is what catches those.
 """
 
 from pathlib import Path
@@ -38,12 +42,27 @@ def test_a_planted_absolute_self_import_is_found():
                     f"from {NAME} import engine", f"from {NAME}.engine import load",
                     f"def f():\n    from {NAME}.engine import load",
                     f'import importlib\nimportlib.import_module("{NAME}.engine")',
-                    f'from importlib import import_module\nimport_module("{NAME}")', f'__import__("{NAME}.engine")'):
+                    f'from importlib import import_module\nimport_module("{NAME}")',
+                    f'from importlib import import_module as im\nim("{NAME}.engine")',
+                    f'import importlib\nload = importlib.import_module\nload("{NAME}")',
+                    f'import importlib\nimportlib.import_module(name="{NAME}.engine")',
+                    f'import importlib\nimportlib.import_module(".engine", package="{NAME}")',
+                    f'import importlib\nimportlib.import_module(".engine", "{NAME}")',
+                    f'import importlib\nimportlib.import_module(f"{NAME}.engine")',
+                    f'__import__("{NAME}.engine")'):
         assert absolute_self_imports(planted), f"{planted!r} was not found"
     for honest in ("from . import load", "from .. import engine", "from ..engine import load",
-                   "import jax\nfrom mime.units import N", f"import {NAME}_other", f'f("{NAME}")'):
+                   "import jax\nfrom mime.units import N", f"import {NAME}_other", f'f("{NAME}")',
+                   'import importlib\nimportlib.import_module("..engine", package=__package__)',
+                   'import importlib\nimportlib.import_module(".engine", package="other")'):
         assert not absolute_self_imports(honest), f"{honest!r} was flagged"
 
 
 def test_a_computed_name_is_the_limit_of_this_test():
-    assert absolute_self_imports(f'import importlib\nimportlib.import_module("{NAME[:3]}" + "{NAME[3:]}")') == []
+    """What the test cannot see, stated and held: a computed name, `find_spec`, `sys.modules`, `runpy` and `exec` are not
+    found, so the docstring's limit is true."""
+    for unseen in (f'import importlib\nimportlib.import_module("{NAME[:3]}" + "{NAME[3:]}")',
+                   f'import importlib.util\nimportlib.util.find_spec("{NAME}.engine")',
+                   f'import sys\nsys.modules["{NAME}.engine"]',
+                   f'import runpy\nrunpy.run_module("{NAME}.engine")', f'exec("import {NAME}")'):
+        assert absolute_self_imports(unseen) == [], unseen

@@ -32,6 +32,19 @@ def test_a_listing_with_no_reason_fails():
     assert any("no reason" in failure for failure in failures)
 
 
+def test_a_listing_whose_test_is_not_in_the_report_fails_as_stale():
+    failures, _ = check_durations.judge(REPORT, "tests/test_a.py::test_gone # kept: it was slow once\n", limit=30.0)
+    assert any("test_gone" in failure and "not in the report" in failure for failure in failures)
+    assert check_durations.judge(REPORT, "tests/test_a.py::test_fast # kept: fast now, still there\n", limit=60.0) == ([], [])
+
+
+def test_a_test_id_holding_a_hash_can_be_listed_and_the_reason_is_split_on_the_last_one():
+    report = """<testsuites><testsuite><testcase classname="tests.test_a" name="test_p[a # b]" time="45.0"/></testsuite></testsuites>"""
+    failures, notes = check_durations.judge(report, "tests/test_a.py::test_p[a # b] # kept: an id with a hash in it\n", limit=30.0)
+    assert failures == [] and len(notes) == 1 and "kept: an id with a hash in it" in notes[0]
+    assert any("no reason" in each for each in check_durations.judge(report, "tests/test_a.py::test_p[a\n", limit=30.0)[0])
+
+
 def test_a_test_under_the_limit_passes_and_the_limit_is_a_parameter():
     assert check_durations.judge(REPORT, "", limit=60.0) == ([], [])
     assert check_durations.LIMIT == 30.0, "the limit of this plugin's lane: change it on purpose, with this test"

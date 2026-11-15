@@ -127,11 +127,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report pytest wrote. **Slots**: `fit/` beside `engine/` (the AST no-`mime` test reads both, from one `MIME_FREE` tuple),
   `scripts` and `docs` in the sdist include (and `scripts` on the tests' path), the float32 and float64 advice saying when a
   float64-only reference is fine (a reference the engine is computed against, never the law's own path), and `.gitignore` naming
-  no benchmark script (`/benchmarks/*/`). **Relative imports**: the template's package imports itself relatively, and
+  no benchmark script (it ignores the files a saved experiment is made of, below `benchmarks/*/`, never the folders). **Relative imports**: the template's package imports itself relatively, and
   `tests/test_relative_imports.py` (the port's test, proven on the real plugin, over a shared `tests/import_rules.py`) refuses an
   absolute self-import, a constant-string `import_module` or `__import__` of it included, with a planted form of each. The control
   now plants five more slips (an import of `mime` in `fit/`, two absolute self-imports, a limit a hundred times too loose, an
-  allowlist line that needs no reason) and each fails the stage that is there to catch it.
+  allowlist line that needs no reason) and each fails the stage that is there to catch it. Review fixes: the no-`mime` test also refuses an import of the adapter from `engine/` or `fit/`
+  (`from ..entries import X`, `from .. import entries`, `from ..entries.example_load import X`, absolute or relative, and a root
+  module or `__init__` that imports `mime`), each spelling planted; `tests/import_rules.py` also reads an aliased `import_module`,
+  `name=`, a relative name with `package=`, and a placeholder-free f-string, and both tests' docstrings say plainly what a static
+  check cannot see (`find_spec`, `sys.modules`, `runpy`, `exec`, a computed name); the README no longer suggests a suite-wide
+  x64 switch (a float64-only reference runs under `jax.experimental.enable_x64` in its own test); the duration guard fails an
+  allowlist row whose test is not in the report, and splits a row on its last ` # ` so an id may hold one.
 
 - **Static meshes in the in-loop camera, traced once a run** (`mime.sensing._mesh`, `mime.sensing.mesh_chords`,
   `MeshChords`, `MESH_SAMPLES`; `mime.observations.Camera`; `mime.viz.write_mesh(..., decimation_distance=)`; dev2, camera

@@ -1,38 +1,119 @@
-"""What two AST tests of this plugin read from a source file: every module it imports by an absolute name.
+"""What two AST tests of this plugin read from a source file: the modules it imports.
 
-tests/test_engine_imports.py (the engine and the fit package import no `mime`) and tests/test_relative_imports.py (the
-package imports itself relatively) both ask this, and read source with `ast`, never importing it. Not a test file.
+tests/test_engine_imports.py (the engine and the fit package import no `mime`, and none of the adapter) and
+tests/test_relative_imports.py (the package imports itself relatively) both ask this, and read source with `ast`, never
+importing it. Not a test file.
+
+What is read: `import a.b`; `from a.b import c`; a relative `from ..x import y`, resolved against the importing module's package
+when it is given; and the constant string of `importlib.import_module(...)` or `__import__(...)`, whichever way it is spelt: by
+attribute (`importlib.import_module`), by name, aliased (`from importlib import import_module as im`, `im = import_module`),
+with the keyword `name=`, with a relative name and a `package=` that is a constant string or `__package__`, and with a
+placeholder-free f-string (`f"a.b"`).
+
+What a static check cannot see, and so nothing here catches: a computed name (`prefix + ".units"`, a name read from a file or
+the environment), `importlib.util.find_spec`, `sys.modules[...]`, `runpy`, `exec` and `eval` of source text, and a string some
+other code imports. Review is what catches those.
 """
 
 import ast
+from collections.abc import Iterator
+
+#: The functions that import a module by the name they are given.
+IMPORTERS = ("import_module", "__import__")
 
 
-def dynamic_import_name(node: ast.Call) -> str | None:
-    """The constant string a call of `importlib.import_module` or `__import__` names, `None` for any other call or for a name
-    that is not a constant string (a computed one is the limit of both tests)."""
+def constant_string(node: ast.expr | None) -> str | None:
+    """The text of a string constant, or of an f-string with no placeholder; `None` for anything computed."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr) and all(isinstance(part, ast.Constant) for part in node.values):
+        return "".join(str(part.value) for part in node.values if isinstance(part, ast.Constant))
+    return None
+
+
+def importer_names(tree: ast.AST) -> set[str]:
+    """The names a call may import by: the functions themselves, and any name bound to one by `from importlib import
+    import_module as im` or `im = importlib.import_module`."""
+    names = set(IMPORTERS)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module in ("importlib", "builtins"):
+            names.update(alias.asname for alias in node.names if alias.asname and alias.name in IMPORTERS)
+        elif isinstance(node, ast.Assign):
+            value = node.value
+            bound = value.attr if isinstance(value, ast.Attribute) else value.id if isinstance(value, ast.Name) else ""
+            if bound in IMPORTERS:
+                names.update(target.id for target in node.targets if isinstance(target, ast.Name))
+    return names
+
+
+def argument(node: ast.Call, position: int, keyword: str) -> ast.expr | None:
+    if len(node.args) > position:
+        return node.args[position]
+    return next((each.value for each in node.keywords if each.arg == keyword), None)
+
+
+def dynamic_import(node: ast.Call, importers: set[str], base: str | None) -> tuple[str, bool] | None:
+    """The constant module name a call of an importer names, with whether it is an absolute name (`True`) or one resolved
+    against a relative `package=`; `None` for any other call, a computed name, or a relative name with no known package."""
     function = node.func
     called = function.attr if isinstance(function, ast.Attribute) else function.id if isinstance(function, ast.Name) else ""
-    if called not in ("import_module", "__import__") or not node.args:
+    if called not in importers:
         return None
-    first = node.args[0]
-    return first.value if isinstance(first, ast.Constant) and isinstance(first.value, str) else None
+    name = constant_string(argument(node, 0, "name"))
+    if name is None:
+        return None
+    if not name.startswith("."):
+        return name, True
+    package_node = argument(node, 1, "package") if called != "__import__" else None
+    given = constant_string(package_node)
+    if given is None and isinstance(package_node, ast.Name) and package_node.id == "__package__":
+        package, explicit = base, False
+    else:
+        package, explicit = given, True
+    return (relative_name(name.lstrip("."), len(name) - len(name.lstrip(".")), package), explicit) if package else None
+
+
+def relative_name(module: str, level: int, package: str) -> str:
+    """`from <dots><module> import ...` written in `package`: the absolute dotted name (`level` 1 is `package` itself)."""
+    parts = package.split(".")
+    held = parts[: len(parts) - (level - 1)] if level > 1 else parts
+    return ".".join([*held, *([module] if module else [])])
+
+
+def imported(source: str, base: str | None = None) -> Iterator[tuple[list[str], bool]]:
+    """Each import of a source as the absolute names it may bring in, and whether the source spelt it absolutely.
+
+    `import a.b` is `["a.b"]`; `from a.b import c, d` is `["a.b", "a.b.c", "a.b.d"]` (a name may be a submodule); `from ..x
+    import y` written in package `base` is the same resolved (and is skipped when `base` is `None`)."""
+    tree = ast.parse(source)
+    importers = importer_names(tree)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            yield [alias.name for alias in node.names], True
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0:
+                module = node.module or ""
+            elif base is None:
+                continue
+            else:
+                module = relative_name(node.module or "", node.level, base)
+            yield [module, *(f"{module}.{alias.name}" for alias in node.names if alias.name != "*")], node.level == 0
+        elif isinstance(node, ast.Call):
+            found = dynamic_import(node, importers, base)
+            if found is not None:
+                yield [found[0]], found[1]
 
 
 def absolute_imports(source: str) -> list[str]:
-    """Every module a source imports by an absolute name: `import a.b`, `from a.b import c`, and the constant string of
-    `importlib.import_module("a.b")` or `__import__("a")`. A relative import (`from . import x`, `from ..engine import y`)
-    has `level > 0` and is not one."""
-    found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Import):
-            found += [alias.name for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.level == 0:
-            found.append(node.module or "")
-        elif isinstance(node, ast.Call):
-            name = dynamic_import_name(node)
-            if name is not None:
-                found.append(name)
-    return found
+    """Every module a source imports by an absolute name, as `importlib.import_module("a.b")` or `from a.b import c` does:
+    here `a.b`. A relative import (`from . import x`, `from ..engine import y`) is not one."""
+    return [names[0] for names, absolute in imported(source) if absolute]
+
+
+def resolved_imports(source: str, base: str) -> list[str]:
+    """Every module a source in package `base` may import, relative imports resolved (`from ..entries import X` in
+    `pkg.engine` brings in `pkg.entries` and `pkg.entries.X`)."""
+    return [name for names, _ in imported(source, base) for name in names]
 
 
 def top_level(name: str) -> str:
