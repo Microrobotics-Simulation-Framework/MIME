@@ -43,9 +43,10 @@ from mime.build._probes import host_callbacks
 from mime.build._refusals import MIME_DEFECT, Explained, Refusal, RefusalClass, entry_defect
 from mime.core import jnp
 from mime.nodes.control import ControllerNode, DelayNode, Step
+from mime.nodes.control._controller import BELIEVED_NAME
 
 #: The prefix of a believed number among the names a law is made again from (``mime.control._models.BELIEVED``).
-BELIEVED = "believed:"
+BELIEVED = BELIEVED_NAME
 
 
 def inlined(step: Any) -> Step:

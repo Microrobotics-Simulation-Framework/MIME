@@ -28,7 +28,7 @@ import jax
 import numpy as np
 import pytest
 
-from believed_cases import believed_sphere, coils, model_of
+from believed_cases import PIXEL_SCALE, DEPTH_SCALE, PROJECTED, camera_sphere, believed_sphere, coils, model_of
 from chain_cases import TRACKING_READS, TRACKING_WRITES, kinematic_rpm, tracking
 
 from mime.build import BuildRefused
@@ -236,3 +236,109 @@ def test_a_belief_made_of_the_truths_declaration_holds_its_numbers_leaf_for_leaf
     held = truth.leaves(["coils.magnetic"])
     plain = _models.ControlModels(believed_sphere().plan()).leaves(["coils.magnetic"])
     assert held.keys() == plain.keys() and all(np.array_equal(held[k], plain[k]) for k in held)
+
+
+# -- a camera's belief in a controller that is built ---------------------------------------------------------------
+#
+# A camera's key is its observation's id with a colon (``camera:``). Its numbers are leaves of the controller's node in
+# graph mode, under names parsed back where the law is made again; the tests above call ``ControlModels`` directly and
+# never built the node, which split ``believed:camera::fx`` into too many parts (``error.uncoded``, every graph build).
+
+@pytest.mark.parametrize("key, parameter", [("coils.magnetic", "coefficients"), ("rpm", "moment"), ("camera:", "fx"),
+                                            ("swim_speed:sphere", "k3")],
+                         ids=["apparatus_part", "apparatus_alone_is_not_a_key", "observation_with_a_colon",
+                              "observation_bound_to_a_body"])
+def test_a_beliefs_leaf_name_round_trips_and_its_leaf_holds_no_colon(key, parameter):
+    from mime.nodes.control._controller import leaf_param, split_believed_name
+
+    name = _models.leaf_name(key, parameter)
+    assert split_believed_name(name) == (key, parameter)
+    assert ":" not in leaf_param(name) and leaf_param(name).startswith("believed_")
+
+
+def test_the_leaves_of_a_rigs_beliefs_are_distinct_whatever_their_key_forms():
+    from mime.nodes.control._controller import leaf_param
+
+    keys = ("coils.magnetic", "coils.magnetic_2", "camera:", "camera", "swim_speed:sphere")
+    names = [leaf_param(_models.leaf_name(key, parameter)) for key in keys for parameter in ("fx", "k3", "at")]
+    assert len(set(names)) == len(names)
+
+
+def camera_written(mode: str, believed: Any) -> tuple[np.ndarray, Any]:
+    """The currents the camera probe writes late in a 30 ms run, in float64, and the experiment's plan."""
+    exp = camera_sphere(believed=believed, mode=mode)
+    with in_dtype("float64"):
+        written = history(exp, 30)["ports:coils"]["written_currents"][-1]
+    return written, exp
+
+
+@pytest.mark.parametrize("mode", ["graph", "callback"])
+@pytest.mark.parametrize("declared", [False, True], ids=["no_belief_declared", "belief_declared"])
+def test_a_controller_built_in_either_mode_reads_the_believed_cameras_projection(mode, declared):
+    """The law projects a world point through ``ctx.believed("camera")``; built and run, in the compiled step (graph) and
+    on the host (callback), with the belief declared (a camera 1 % off in focal length) or not (the true camera), it
+    writes the pixel and depth of the camera it believes, and the two cameras' differ (the belief is read, not the
+    truth)."""
+    from mime.observations import Camera, Detector
+
+    from believed_cases import CAMERA_DETECTOR
+
+    true = camera_sphere()
+    held = next(p.entry for p in true.plan().entries if p.owner == "camera:")
+    off = dict(CAMERA_DETECTOR, fx=CAMERA_DETECTOR["fx"] * 1.01)
+    believed_camera = Camera(detector=Detector(**off), mount=held.mount, frame_period=held.frame_period)
+    written, _ = camera_written(mode, {"camera": believed_camera} if declared else None)
+    point = np.asarray([PROJECTED])
+    with in_dtype("float64"):
+        (pixel,), (depth,) = (np.asarray(v) for v in (believed_camera if declared else held).project(point))
+        (true_pixel,), (_,) = (np.asarray(v) for v in held.project(point))
+    expected = np.asarray([PIXEL_SCALE * pixel[0], PIXEL_SCALE * pixel[1], DEPTH_SCALE * depth])
+    assert np.max(np.abs(written - expected)) <= 1e-12 * np.max(np.abs(expected)), (written, expected)
+    assert bool(abs(written[0] / PIXEL_SCALE - true_pixel[0]) > 0.1) is declared
+
+
+# -- a study over a believing controller -----------------------------------------------------------------------------
+#
+# A graph controller holding a belief holds the belief's numbers as leaves beside its settings' (``believed_...``, not
+# ``setting_...``); the structure key built each leaf's name as a setting's, so any study over it raised a ``KeyError``.
+# A belief's leaf is no study axis (an axis names a setting, a command, an initial value or a declared value): what a
+# study differentiates in a believing controller is its settings, through the believed model.
+
+def swept_final_x(values: list[float]) -> list[float]:
+    from mime.study import Study, grid
+
+    done = Study(believed_sphere("study_sphere")).sweep(grid({"controller.kp": values}), duration=ms(30)).run()
+    arrays = done.arrays()
+    return [float(np.asarray(arrays[f"m{i}/final/sphere/pose"])[0]) for i in range(len(values))]
+
+
+def test_a_study_sweeps_a_setting_of_a_graph_controller_that_allocates_through_a_belief():
+    """The sweep over ``controller.kp`` plans and runs (it raised ``KeyError: 'setting_believed:coils.magnetic:...'``),
+    and two gains give two runs."""
+    with in_dtype("float64"):
+        low, high = swept_final_x([2400.0, 2600.0])
+    assert low != high and np.isfinite([low, high]).all()
+
+
+def test_a_study_over_a_graph_controller_reading_a_cameras_belief_plans():
+    """The camera's belief key holds a colon (``camera:``); its leaves are in the structure key too."""
+    from mime.study import Study, grid
+    from mime.units import m
+
+    with in_dtype("float64"):
+        Study(camera_sphere()).sweep(grid({"sphere.initial.position": [m((1e-4, 0.0, 0.0))]}), duration=ms(10)).plan()
+
+
+def test_the_derivative_in_a_controller_setting_through_a_belief_is_central_differences():
+    """``Study.gradient`` in ``controller.kp`` of the sphere's final x, through a controller allocating by a belief
+    (the coils' belief leaves held beside the setting), against central differences of the sweep, float64. The run's
+    allocation has bound-switching kinks, so the match is to the difference's truncation: 1e-3 of the derivative."""
+    from mime.study import Study, grid
+
+    kp, h = 2500.0, 2.5
+    with in_dtype("float64"):
+        result = Study(believed_sphere("study_sphere")).sweep(grid({"controller.kp": [kp]}), duration=ms(30)).gradient(
+            lambda final: final["sphere"]["pose"][0], wrt=["controller.kp"])
+        low, high = swept_final_x([kp - h, kp + h])
+    derivative = float(np.asarray(result.members[0].gradient["controller.kp"]))
+    assert abs(derivative - (high - low) / (2 * h)) <= 1e-3 * abs(derivative), (derivative, (high - low) / (2 * h))

@@ -58,6 +58,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     offset), `effort` and `toward="last"`; a force or torque asked for without a `moment` in `at` is a `ValueError`
     naming the input to give. One function inside the compiled step and as a callback. On camera spike R2's sphere it writes the currents
     the hand-written law writes, bit for bit in float64.
+  - **A believed number's leaf name** is one encoding and its inverse (`believed_name`, `split_believed_name`, `leaf_param` in
+    `mime.nodes.control`): a key with a colon (a camera's observation id, `camera:`) no longer breaks a graph controller's
+    build (`ValueError`, `error.uncoded`), and the structure key reads each leaf of the controller's node through the same
+    function, so a study over a graph controller that holds a belief (every `ctx.allocator` law) plans (it raised a
+    `KeyError`). A belief's leaf is no study axis; a study differentiates the controller's settings through the belief.
   - **Refusal codes**: `allocation.bounds`, `allocation.model`, `allocation.objective` and `controller.believed`; the
     allocator refuses more than `EXACT_COMMANDS` commands as `allocation.exact-size`, citing the constant.
 
