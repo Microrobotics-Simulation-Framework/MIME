@@ -156,6 +156,16 @@ Set when the build ran on a GPU whose default matmul precision is not `highest`,
 some per cent). Set `JAX_DEFAULT_MATMUL_PRECISION=highest` before JAX starts. `None` on a CPU, and on a GPU at the highest
 precision. The real GPU path is not tested in CI.
 
+## `triton_warning`
+
+Set when the build ran on a GPU whose `XLA_FLAGS` do not hold `--xla_gpu_enable_triton_gemm=false`, and says so (the build also
+warns, `TritonGemmUnguarded`; `mime env check` prints the same line). On an A100 under JAX 0.12.0.1, with XLA's Triton GEMM
+fusion on, one float64 operator came out wrong at the highest matmul precision and no error followed (MIME-ANO-157; which
+einsum and why are not isolated, and no MIME node is shown affected). MIME does not set the flag in your process: set it before
+JAX starts, and keep a CPU-equality check on at least one einsum-heavy node of a GPU acceptance run. The report reads
+`XLA_FLAGS` from the environment, not what XLA used, so a flag set after JAX's backend started is read here and not by XLA.
+`None` on a CPU, and on a GPU with the flag. The real GPU path is not tested in CI.
+
 ## `profile`
 
 What the experiment's profile made of it: the stamp every output carries, the items pending and listed, the defaults taken,

@@ -17,6 +17,27 @@ declared. The sources' positions, directions and coefficients, the pose and the 
 by its step, so a derivative passes through them and a later release's overrides can vary them without a rebuild (this release has
 no override or study axis for them).
 
+**On a frame of its own chain.** `CalibratedMultipole(calibration=..., mount="arm.link_6", at=..., orientation=...)`
+places the calibration's frame by `at` and `orientation` in a frame of its own apparatus's chain (`<segment>.<frame>`),
+which carries it: a mobile electromagnet on an arm. Each step the node composes that placement onto the frame's pose as
+the chain publishes it that step, and evaluates the same exact transform there, so the field stays linear in the currents
+at every pose and an exact allocation (`ctx.allocator`) holds at each tick, its model taking the frame's pose as
+`x.mount_pose`. The mounted field agrees with the same array placed in the world at the frame's pose (the host's
+`actuation`, float64) to the rounding of the sums it is made of: within 10 times `eps` (the run's dtype's) times the sum
+of the magnitudes of the terms each entry is summed from, over the field's peak, in float64 and float32 (a first-order
+running-error bound, with an empirical factor of 10). On a scan of 72 random chain poses the largest miss was 2.3 times
+that floor in float64 and 1.9 in float32. The sources' own cancellation, `eps / c`, is not the floor: the scan's largest
+miss against it was 9.4 times. The frame's motion enters only through the pose: no current is
+induced by it. A mount on a segment that takes loads (a dynamic rung) is refused (`mount.provider`): the array's mass on
+the segment and the reaction on it are not modelled, so the segment would move as if it carried neither; mount it on a
+kinematic segment. `actuation()` of a mounted array is refused too (its placement in the world is the chain's at each
+step): read its forward model at the frame's pose, or place the same array at that pose. A mount left out is not
+written into the record, so every array placed in the world keeps the program and the input hash it had. A controller
+inside the compiled step (mode 1) cannot read a chain's frame poses (`controller.unreached-read`: the controller's node
+runs first in the step and each read edge must carry the state at the step's start, and nothing it writes reaches the
+chain, so the schedule runs the chain before it and the read would carry the end of the step); a callback (mode 2) reads
+them at the start of the period.
+
 It gives, outside a run, the field and gradient per unit current at a point (`provider.actuation(point)`, an
 `Actuation`, whose `matrix()` is the actuation matrix: the field's rows over the gradient's independent ones) and
 currents for a wanted field and gradient within limits the user declares (`allocate(actuation, field=..., gradient=...,

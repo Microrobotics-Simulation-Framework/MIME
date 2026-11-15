@@ -1,0 +1,71 @@
+{
+  "written": "2026-11-15, committed before the probe that rates the swap test's plant ran (the commit that adds this file is the timestamp): the release push run 43740791320's red, the swap test's unique-minimiser branch",
+  "phase": "AP2 fix round 3: the swap test's verdict holds a unique minimiser to BVLS's commands only past the law's tie window",
+  "labels": "predictions by the diagnosing agent (Sonnet) from local runs on the laptop (float32 sweeps of fresh Hypothesis draws, one run each: not rates)",
+  "seen_before": [
+    "the failing draw reproduced locally in float32: OctoMag at the centre of its region, field along y at 2.72 times the reach of 5 A; the law's command 1 at +5 A, BVLS's at -5 A; float64 the law equals BVLS. Objectives in float64: the law's face 373208.35, BVLS's 373200.75 (a gap of 7.6, 2e-5 of it); the residual norms 610.9078 and 610.9016, 85 units in the last place of the target's norm apart, each computed in float32 to 0.3 of one; the law's tie window 0.0047 each side. Scaled columns' norms 0.19 to 0.27 (spread 1.4), condition 12 (against the stated column-spread limit of 1e4): nothing near it. The two faces' effort is equal (all eight commands at a bound).",
+    "float32 sweeps of fresh draws (five seeds, 12000 draws in all, Hypothesis repeating some; float64, 1500 draws): the old verdict failed 10 of the float32 draws, all OctoMag 'both' (commands 0.2 to 24.6 A apart, residual gaps 5e-5 to 0.0125); the new verdict failed none, and the old and the new failed none in float64"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "GitHub runner (4 vCPU), CPU",
+    "matmul_precision": "n/a (CPU)",
+    "sizes_and_parameters": "the swap test's own draws (three arrays, four kinds, limits 5 to 50 A, wanted values 0.1 to 4 times the reach), 150 Hypothesis examples a dtype; detection_rate.py: 15 fresh processes planted and 15 clean per arm, each its own Hypothesis seed, four arms (seeds 0-59)"
+  },
+  "gate_1_swap_plant": {
+    "claim": "the swap test still catches its plant (limits 1 % looser) on every run, and does not fire clean, after its unique branch stops holding a face within the law's tie window to BVLS's commands",
+    "case": "tests/control/test_exact_allocation.py::test_the_exact_allocation_meets_scipys_bvls_within_the_line[float64|float32]",
+    "prediction": {
+      "value": 60,
+      "band": [
+        60,
+        60
+      ],
+      "unit": "planted runs caught of 60 (clean flagged 0 of 60)",
+      "basis": "derived",
+      "why": "a command at the loosened limit is past the true limit, which the verdict reads before the unique branch; the changed code never sees it (it was caught 60/60 before, predictions_ap2.json)"
+    },
+    "control": {
+      "plant": "ALLOCATION_PLANT=limits (the limits handed to the law 1 % looser)",
+      "expected_rate": "60/60",
+      "runs": 60,
+      "clean_expected": "0/60",
+      "resolution": "a coil at its limit exceeds it by 1 % of the limit, far above float32's rounding of the limit; about half the draws hold a coil at its limit, so a run of 150 examples holds one with probability near 1"
+    },
+    "cannot_discriminate_if": "no drawn problem holds a coil at its limit in a run (none in 150 examples: the draws put about half there)"
+  },
+  "gate_2_regression_draw": {
+    "claim": "the failing draw passes the verdict in float32 and float64, and a face a command's flip costs far past the windows is still refused",
+    "case": "tests/control/test_exact_allocation.py::test_a_unique_minimiser_binds_the_law_only_past_its_tie_window_in_float32",
+    "prediction": {
+      "value": 0,
+      "band": [
+        0,
+        0
+      ],
+      "unit": "failing runs",
+      "basis": "derived",
+      "why": "a deterministic problem; the draw's gap sits at 85 units against windows of 128, and the old verdict fails it (measured)"
+    },
+    "control": "the old verdict fails it (measured on the laptop before the change); the far face is refused",
+    "cannot_discriminate_if": "the law's float32 face at this draw changes with a library's rounding: the test then reads the flipped face, not the law's, for the tie"
+  },
+  "outcomes": {
+    "written": "2026-11-15, after the probe below; the predictions above are unchanged",
+    "runs": {
+      "probe": "43744569241 (probe/ap2-swap-tie at 64e47ba4, the fix round's test code)"
+    },
+    "gate_1_swap_plant": {
+      "hit": true,
+      "value": "limits plant caught 60/60 (15/15 in each of four arms, seeds 0-59; 95% lower bound 0.95 over the 60), clean 0/60 flagged, none inconclusive"
+    },
+    "gate_2_regression_draw": {
+      "hit": true,
+      "note": "passes with the change; fails without it (measured on the laptop before the commit); and run in CI by the PR's default lane",
+      "second_draw": "PR 325's CI (run 43748061840, float32): CardioMag 'both' at the centre, the law's command 5 at its +5 A bound where BVLS leaves 4.95 A, 0.062 A over a line of 0.00083 A; the residuals differ by 3.4e-5 inside the windows (1.3e-4), the law's effort lower (144.83 against 145.02). Covered by the same rule; its test fails on the old verdict (measured)."
+    }
+  }
+}

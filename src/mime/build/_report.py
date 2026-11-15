@@ -117,9 +117,11 @@ class BuildReport:
     controller: tuple[str, ...] = ()
     masses: tuple[str, ...] = ()
     #: The floating-point precision the build was made in (``float32`` or ``float64``; ``""`` for a report not made by
-    #: a build) and, for a GPU whose matmul precision is not ``highest``, the warning that says so.
+    #: a build) and, for a GPU whose matmul precision is not ``highest``, the warning that says so, and for a GPU whose
+    #: XLA flags leave the Triton GEMM fusion on, the warning that says so.
     precision: str = ""
     matmul_warning: str | None = None
+    triton_warning: str | None = None
     #: What the experiment's profile made of it: the stamp every output carries, what is pending and listed, the
     #: defaults taken and the declared changes of role.
     profile: ProfileOutcome | None = None
@@ -266,7 +268,8 @@ class BuildReport:
                  + (f"base step {self.dt!r} s" if self.dt else "no base step") + f", run as {self.run.text()}",
                  *self.stale_lines(),
                  *([f"precision: {self.precision}"] if self.precision else []),
-                 *([f"WARNING: {self.matmul_warning}"] if self.matmul_warning else [])]
+                 *([f"WARNING: {self.matmul_warning}"] if self.matmul_warning else []),
+                 *([f"WARNING: {self.triton_warning}"] if self.triton_warning else [])]
         if self.profile is not None:
             lines += self.profile.report_lines()
             if self.profile.items:

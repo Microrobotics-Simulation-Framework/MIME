@@ -15,7 +15,7 @@ from in_loop_cases import scene_without_camera
 
 import mime.study._axes as axes_module
 from mime import Study
-from mime.build._refusals import ArgumentRefused
+from mime.build._refusals import ArgumentRefused, BuildRefused
 from mime.observations import SwimSpeed
 from mime.scene import X
 from mime.study import AxisKind, along
@@ -52,16 +52,35 @@ def test_an_unknown_observation_setting_is_refused_with_the_settings_there_are(d
     assert "study.unknown-path" in str(refused.value) and "swim_speed:ball.after" in refused.value.refusals[0].action
 
 
-def test_the_derivative_along_a_cameras_setting_agrees_with_central_differences_in_both_modes(float64):
-    def of(final):
-        return final["camera:"]["expected"].sum()
+#: The memory the camera's reverse-mode check is given in the tests below, and the one it is refused at: stated, not read
+#: from the host. The check compares its estimate (about 1.6 GiB with its margin, 1.8 GiB with its headroom, for this
+#: study) with the memory a run can have, and on a CI runner the host's available memory is whatever the other xdist
+#: workers leave (0.75 and 1.65 GiB at this test in two runs of one shard). A test's premise is not its neighbours'.
+STATED_MEMORY = 8 * 2 ** 30
+TOO_LITTLE_MEMORY = 2 ** 30
 
-    def study(fx: float = 750.0):
-        exp = ballistic(ms(1), detector=_detector(fx))
-        return Study(exp).sweep(along({"camera:.detector.fx": [fx]}), duration=ms(1))
 
-    found = study().gradient(of, wrt=["camera:.detector.fx"], mode="forward",
-                             acknowledged={"camera:": "the derivative along the camera's setting is the gate's"})
+def _stated_memory(monkeypatch: pytest.MonkeyPatch, held: int) -> None:
+    from mime.sensing import _node
+
+    monkeypatch.setattr(_node, "device_memory", lambda: ("a stated memory", held))
+
+
+def _along_fx(fx: float = 750.0) -> Study:
+    return Study(ballistic(ms(1), detector=_detector(fx))).sweep(along({"camera:.detector.fx": [fx]}), duration=ms(1))
+
+
+def _expected_counts(final):
+    return final["camera:"]["expected"].sum()
+
+
+@pytest.mark.memory_heavy
+def test_the_derivative_along_a_cameras_setting_agrees_with_central_differences_in_both_modes(float64, monkeypatch):
+    """Reverse mode runs for real, on a stated memory the check admits it on (the host's is not read: see
+    :data:`STATED_MEMORY`); the refusal on too little is the next test's."""
+    _stated_memory(monkeypatch, STATED_MEMORY)
+    found = _along_fx().gradient(_expected_counts, wrt=["camera:.detector.fx"], mode="forward",
+                                 acknowledged={"camera:": "the derivative along the camera's setting is the gate's"})
     derivative = float(np.asarray(found.members[0].gradient["camera:.detector.fx"]).reshape(-1)[0])
     h = 0.5
 
@@ -72,9 +91,35 @@ def test_the_derivative_along_a_cameras_setting_agrees_with_central_differences_
 
     assert derivative == pytest.approx((level(750.0 + h) - level(750.0 - h)) / (2 * h), rel=1e-3), derivative
     # Reverse mode sums the same terms in another order: within T1's 128 eps of their scale (test_in_loop_reverse.py).
-    reverse = study().gradient(of, wrt=["camera:.detector.fx"], mode="reverse", acknowledged={"camera:": "a test"})
+    reverse = _along_fx().gradient(_expected_counts, wrt=["camera:.detector.fx"], mode="reverse",
+                                   acknowledged={"camera:": "a test"})
     assert float(np.asarray(reverse.members[0].gradient["camera:.detector.fx"]).reshape(-1)[0]) == pytest.approx(
         derivative, rel=1e-9)
+
+
+def test_reverse_mode_along_a_cameras_setting_is_refused_on_too_little_memory_and_admitted_on_the_stated_memory(
+        float64, monkeypatch):
+    """The study the test above differentiates, on a stated memory: admitted on :data:`STATED_MEMORY` and refused by name,
+    before anything is compiled, on :data:`TOO_LITTLE_MEMORY` (the control: the stated memory is what decides, and
+    ``Study.gradient`` reads the planted one). Forward mode keeps no tape and is refused on neither."""
+    from mime.study import _gradient
+
+    def compiled(*_: object, **__: object) -> None:
+        raise AssertionError("the derivative was compiled")
+
+    node = ballistic(ms(1), detector=_detector(750.0)).build().graph.get_node("camera:")
+    _stated_memory(monkeypatch, STATED_MEMORY)
+    assert node.derivative_problem("reverse", 1, 1, 1) is None
+    _stated_memory(monkeypatch, TOO_LITTLE_MEMORY)
+    problem = node.derivative_problem("reverse", 1, 1, 1)
+    assert problem is not None and problem.code == "camera.reverse-memory"
+    assert node.derivative_problem("forward", 1, 1, 1) is None
+    monkeypatch.setattr(_gradient, "prepare", compiled)
+    with pytest.raises((BuildRefused, ArgumentRefused)) as refused:
+        _along_fx().gradient(_expected_counts, wrt=["camera:.detector.fx"], mode="reverse",
+                             acknowledged={"camera:": "a test"})
+    text = str(refused.value)
+    assert "camera.reverse-memory" in text and "mime.sensing.render" in text and "a stated memory" in text
 
 
 def _detector(fx: float):

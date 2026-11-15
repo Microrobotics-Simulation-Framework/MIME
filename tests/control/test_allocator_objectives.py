@@ -5,9 +5,11 @@ module checks that wiring (the rows' order, their scales, the offset, the regula
 tolerance derived from rounding:
 
 - **The model's rows and offset are the host's** (``actuation``, float64, with the torque's ``m x B`` and the force's
-  ``m . G`` written here): within ``10 eps / c`` of each row's terms, ``c`` the sources' cancellation at the point,
-  the bound ``test_forward_models`` holds the model's field to. That bound is pessimistic by a factor of tens in
-  float32 (the observed agreement is a few ``eps / c``), so it is not the line the allocation is judged to.
+  ``m . G`` written here): each element within the first-order bound of the rounding on the model's own path
+  (:mod:`model_rounding`), ``u`` times the sum over every rounding of how far the element moves with it. It is a worst
+  case: the error measured at 72 points of the region is 0.02 to 0.29 of it in float32 and at most 0.11 in float64,
+  so it is not the line the allocation is judged to. The control (``AP3_PLANT=coefficient``) puts one source of each
+  coil off by 5e-5 of its coefficient in the model, ten times the least such error the bound flags on every draw.
 - **The allocation is BVLS's on the model's own rows and offset**, a :class:`allocation_draws.Problem` judged by
   :func:`allocation_draws.verdict`, whose lines are derived from the law's rounding (its perturbation bound, its tie
   windows). Taking the rows from the model, not the host, keeps the model's own rounding out of the law's line.
@@ -35,10 +37,10 @@ from functools import cache
 from typing import Any
 
 import jax
+import model_rounding
 import numpy as np
 import pytest
-from allocation_draws import Problem, bvls, region, residual_line, tie_window
-from allocation_draws import verdict as swap_verdict
+from allocation_draws import Problem, bvls, region, tie_window, verdict
 from believed_cases import LIMIT, OWNER, believed_sphere
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -52,8 +54,10 @@ from mime.units import A, N, N_m, T, T_per_m, m, mT
 
 jnp: Any = jax.numpy
 PROPERTY = settings(deadline=None, print_blob=True, max_examples=25)
-#: The plant a control is measured with (``AP3_PLANT``): ``offset``, the model's offset at zero command taken as zero.
+#: The plant a control is measured with (``AP3_PLANT``): ``offset``, the model's offset at zero command taken as zero;
+#: ``coefficient``, the model's coefficients with ``PLANTED_SOURCES``' off by ``PLANTED_PART`` of themselves.
 PLANT = os.environ.get("AP3_PLANT", "")
+PLANTED_SOURCES, PLANTED_PART = ((0, 0), (1, 0), (2, 0)), 5e-5
 SYSTEM = "navion_2"
 #: What each quantity's rows are over: the scale of a unit miss, SI.
 SCALES = {"flux_density": 1e-2, "gradient": 1.0, "force": 1e-6, "torque": 1e-8}
@@ -92,24 +96,20 @@ def five(gradient: np.ndarray) -> np.ndarray:
 
 
 def host_rows(point: np.ndarray, moment: np.ndarray, background: tuple[float, float, float],
-              objective: tuple[str, ...]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+              objective: tuple[str, ...]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """The oracle's rows, offsets and scales for ``objective`` (its quantities in alphabetical order, as the allocator
     stacks them), from the host's ``actuation`` at ``point`` in float64: the matrix (R, K) per ampere, its value at zero
-    command, the rows' scales, and the terms each row and each offset is summed from (the absolute values through the
-    same products), which their rounding is judged on."""
+    command, and the rows' scales."""
     actuation = CalibratedMultipole(calibration=asset(SYSTEM), background=T(background)).actuation(m(tuple(point)))
     field, gradient = actuation.field, actuation.gradient  # (3, K), (3, 3, K)
     cross = np.asarray([[0.0, -moment[2], moment[1]], [moment[2], 0.0, -moment[0]], [-moment[1], moment[0], 0.0]])
-    parts = {"flux_density": (field, actuation.background, np.abs(field), np.abs(actuation.background)),
-             "gradient": (five(gradient), np.zeros(5), five(np.abs(gradient)), np.zeros(5)),
-             "force": (np.einsum("i,ijk->jk", moment, gradient), np.zeros(3),
-                       np.einsum("i,ijk->jk", np.abs(moment), np.abs(gradient)), np.zeros(3)),
-             "torque": (cross @ field, cross @ actuation.background, np.abs(cross) @ np.abs(field),
-                        np.abs(cross) @ np.abs(actuation.background))}
+    parts = {"flux_density": (field, actuation.background), "gradient": (five(gradient), np.zeros(5)),
+             "force": (np.einsum("i,ijk->jk", moment, gradient), np.zeros(3)),
+             "torque": (cross @ field, cross @ actuation.background)}
     ordered = sorted(objective)
-    matrix, offset, row_terms, offset_terms = (np.concatenate([parts[q][i] for q in ordered]) for i in range(4))
+    matrix, offset = (np.concatenate([parts[q][i] for q in ordered]) for i in range(2))
     scales = np.concatenate([np.full(ROWS[q], SCALES[q]) for q in ordered])
-    return matrix, offset, scales, row_terms, offset_terms
+    return matrix, offset, scales
 
 
 def as_quantities(rows: np.ndarray, objective: tuple[str, ...]) -> dict[str, Any]:
@@ -145,7 +145,7 @@ def cases(draw: st.DrawFn, objectives: tuple[str, ...] = tuple(OBJECTIVES)) -> d
     moment = moment / np.linalg.norm(moment) * draw(st.floats(1e-4, 1e-3))
     background = draw(st.sampled_from(BACKGROUNDS))
     objective = OBJECTIVES[name]
-    matrix, offset, scales, row_terms, offset_terms = host_rows(point, moment, background, objective)
+    matrix, offset, scales = host_rows(point, moment, background, objective)
     scaled = matrix / scales[:, None]
     direction = np.asarray([draw(st.floats(-1.0, 1.0)) for _ in range(len(matrix))])
     if np.linalg.norm(direction) < 1e-3:
@@ -155,8 +155,7 @@ def cases(draw: st.DrawFn, objectives: tuple[str, ...] = tuple(OBJECTIVES)) -> d
     wanted = direction / np.linalg.norm(direction) * reach * size * scales + offset
     last = np.asarray([draw(st.floats(-LIMIT, LIMIT)) for _ in range(3)])
     return {"name": name, "objective": objective, "point": point, "moment": moment, "background": background,
-            "matrix": matrix, "offset": offset, "scales": scales, "row_terms": row_terms, "offset_terms": offset_terms,
-            "wanted": wanted, "last": last}
+            "matrix": matrix, "offset": offset, "scales": scales, "wanted": wanted, "last": last}
 
 
 def allocated(case: Mapping[str, Any], dtype: str, **given: Any) -> np.ndarray:
@@ -169,30 +168,22 @@ def allocated(case: Mapping[str, Any], dtype: str, **given: Any) -> np.ndarray:
     return np.asarray(commands["currents"], dtype=np.float64)
 
 
-def verdict(problem: Problem, commands: np.ndarray, dtype: str) -> list[str]:
-    """:func:`allocation_draws.verdict`, with one widening that the law's contract makes: where it says a unique minimiser
-    is off BVLS's by more than the commands' line, accept the commands if their residual is within the law's own tie
-    windows of BVLS's (and the residual's rounding). The law ties candidates whose residual is within ``TIE_ULPS eps``
-    of the target's norm and what the commands make, and that window grows with a residual far above what the box
-    reaches, while the commands' line does not: along a flat direction of the rows (a singular ratio of 0.07 here) the
-    window is wider than the residual's change over the whole box (CI's flake: 2.2 A off at 25 A, in float32, a torque
-    asked for beyond the box, its residual 4e-5 of itself above BVLS's, inside the window of 3e-2). The commands are then
-    the law's documented tie, not a rounding error; a planted error moves the residual by far more than a window."""
-    found = swap_verdict(problem, commands, dtype)
-    if not found or not all(line.startswith("unique:") for line in found):
-        return found
-    a, b = problem.scaled(dtype)
-    reference = bvls(problem, dtype)
-    mine, theirs = float(np.linalg.norm(a @ commands - b)), float(np.linalg.norm(a @ reference - b))
-    tied = residual_line(problem, dtype) + tie_window(problem, commands, dtype) + tie_window(problem, reference, dtype)
-    return [] if mine - theirs <= tied else found
+def planted_coefficients(coefficients: Any) -> np.ndarray:
+    """The control's coefficients: ``PLANTED_SOURCES``' off by ``PLANTED_PART`` of themselves."""
+    held = np.reshape(np.array(coefficients, dtype=np.float64), calibration_of(asset(SYSTEM)).coefficients.shape)
+    for k, s in PLANTED_SOURCES:
+        held[k, s] *= 1.0 + PLANTED_PART
+    return held.ravel()
 
 
-def model_rows(case: Mapping[str, Any], dtype: str) -> tuple[np.ndarray, np.ndarray]:
+def model_rows(case: Mapping[str, Any], dtype: str, *, planted: bool = False) -> tuple[np.ndarray, np.ndarray]:
     """The believed model's rows per ampere and its value at zero command at the case's point, in ``dtype`` (as float64),
-    in the objective's alphabetical order, each quantity's rows written here (a gradient's five independent entries)."""
+    in the objective's alphabetical order, each quantity's rows written here (a gradient's five independent entries).
+    ``planted``: the model with the control's coefficients."""
     with in_dtype(dtype):
         model = make_allocator(case["background"], case["objective"]).model
+        if planted:
+            model = model.bound({"coefficients": planted_coefficients(model.theta["coefficients"])})
         coefficients, offset = model.affine({"point": jnp.asarray(case["point"]), "moment": jnp.asarray(case["moment"])},
                                             commands=("currents",), dtype=jnp.zeros((), dtype=dtype).dtype)
     rows, zero = [], []
@@ -204,6 +195,17 @@ def model_rows(case: Mapping[str, Any], dtype: str) -> tuple[np.ndarray, np.ndar
         else:
             rows.append(held)
             zero.append(base)
+    return np.concatenate(rows), np.concatenate(zero)
+
+
+def rounding_bound(case: Mapping[str, Any], dtype: str) -> tuple[np.ndarray, np.ndarray]:
+    """Each element's bound on the model's rows and offset against the host's, stacked as :func:`model_rows` stacks
+    them (:func:`model_rounding.bound`): the gradient's and the force's offsets are exact zeros in both."""
+    found = model_rounding.bound(SYSTEM, case["point"], case["moment"], np.asarray(case["background"]), dtype)
+    rows, zero = [], []
+    for quantity in sorted(case["objective"]):
+        rows.append(five(found[quantity]) if quantity == "gradient" else found[quantity])
+        zero.append(found.get(f"{quantity}_offset", np.zeros(ROWS[quantity])))
     return np.concatenate(rows), np.concatenate(zero)
 
 
@@ -228,12 +230,28 @@ def oracle_problem(case: Mapping[str, Any], dtype: str, *, effort: float | None 
 @given(case=cases())
 def test_the_models_rows_and_offset_are_the_hosts(dtype, case):
     """The model's rows per ampere and its offset at zero command, in ``dtype``, against the host's (float64), each
-    within ``10 eps / c`` of the terms it is summed from (a row's largest over the commands), ``c`` the cancellation of
-    the sources' fields at the point."""
-    held, zero = model_rows(case, dtype)
-    eps = 10.0 * float(np.finfo(dtype).eps) / calibration_of(asset(SYSTEM)).cancellation(case["point"][None, :])
-    assert np.all(np.abs(held - case["matrix"]) <= eps * case["row_terms"].max(axis=1, keepdims=True)), case["name"]
-    assert np.all(np.abs(zero - case["offset"]) <= eps * case["offset_terms"]), case["name"]
+    element within the first-order bound of the rounding on the model's own path (:func:`rounding_bound`)."""
+    held, zero = model_rows(case, dtype, planted=PLANT == "coefficient")
+    rows, offset = rounding_bound(case, dtype)
+    assert np.all(np.abs(held - case["matrix"]) <= rows), case["name"]
+    assert np.all(np.abs(zero - case["offset"]) <= offset), case["name"]
+
+
+def test_the_force_row_ci_found_past_ten_eps_over_c_is_within_the_derived_bound():
+    """CI's stress run (Hypothesis seed 2038640930) drew a force objective at (0.045, 0.078, 0.0434625) m with the
+    moment along z: the float32 force ``F_z`` of coil 0, ``m_z G_zz``, was off by 11.1 ``eps / c`` of its row's
+    largest term, past the earlier line of 10 (``c = 0.0153``, the field's cancellation there). Coil 0's ``G_zz`` is
+    1/37 of its ``G_zy``, and its error is set by how its opposed sources' terms move with each rounding, not by
+    its own size. At that draw the error is within the derived bound, and the control's coefficient is past it."""
+    point, moment = np.asarray([0.045, 0.078, 0.0434625]), np.asarray([0.0, 0.0, 6.0718e-4])
+    matrix, offset, scales = host_rows(point, moment, BACKGROUNDS[0], ("force",))
+    case = {"name": "force", "objective": ("force",), "point": point, "moment": moment, "background": BACKGROUNDS[0],
+            "matrix": matrix, "offset": offset, "scales": scales}
+    held, _ = model_rows(case, "float32")
+    rows, _ = rounding_bound(case, "float32")
+    assert np.all(np.abs(held - matrix) <= rows)
+    planted, _ = model_rows(case, "float32", planted=True)
+    assert np.any(np.abs(planted - matrix) > rows)
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
@@ -292,13 +310,12 @@ FIXED = {"name": "flux_density", "objective": ("flux_density",), "background": B
 
 
 def fixed_case(objective: tuple[str, ...]) -> dict[str, Any]:
-    matrix, offset, scales, row_terms, offset_terms = host_rows(FIXED["point"], FIXED["moment"], FIXED["background"],
-                                                                objective)
+    matrix, offset, scales = host_rows(FIXED["point"], FIXED["moment"], FIXED["background"], objective)
     direction = np.linspace(1.0, -0.5, len(matrix))
     reach = float(np.linalg.norm(matrix / scales[:, None], axis=0).sum()) * LIMIT
     wanted = direction / np.linalg.norm(direction) * 0.25 * reach * scales + offset
     return {**FIXED, "name": "_".join(objective), "objective": objective, "matrix": matrix, "offset": offset,
-            "scales": scales, "row_terms": row_terms, "offset_terms": offset_terms, "wanted": wanted}
+            "scales": scales, "wanted": wanted}
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
@@ -376,13 +393,12 @@ def test_an_objective_of_a_force_or_torque_called_without_a_moment_says_so_where
 def test_the_flake_ci_found_is_the_laws_documented_tie_not_a_rounding_error():
     """CI's probe found, in float32, a force-and-torque objective (a moment along y, the torque asked for beyond the box)
     whose commands were 2.2 A off BVLS's at a 25 A bound: the residual 665.518 against BVLS's 665.489, inside the law's tie
-    window of 0.015 each side. Held here as that case's numbers: the plain swap line refuses it, the widened verdict (the
-    law's tie windows) accepts it, and a command off by the same distance with a residual far above the windows is refused."""
-    from allocation_draws import tie_window
-
+    window of 0.015 each side. Held here as that case's numbers: the verdict, which holds a unique minimiser to BVLS's commands
+    only past the law's tie windows, accepts it, and a command off by the same distance with a residual far above the
+    windows is refused."""
     point = np.asarray([-0.011, 0.022, 0.013775])
     moment = np.asarray([0.0, 4.5557e-4, 0.0])
-    matrix, offset, scales, _, _ = host_rows(point, moment, BACKGROUNDS[0], ("force", "torque"))
+    matrix, offset, scales = host_rows(point, moment, BACKGROUNDS[0], ("force", "torque"))
     wanted = np.asarray([0.0, 0.0, -6.61324859e-4, 0.0, 0.0, -8.81766478e-6])
     case = {"name": "force_and_torque", "objective": ("force", "torque"), "point": point, "moment": moment,
             "background": BACKGROUNDS[0], "matrix": matrix, "offset": offset, "scales": scales, "wanted": wanted,
@@ -394,6 +410,6 @@ def test_the_flake_ci_found_is_the_laws_documented_tie_not_a_rounding_error():
     window = tie_window(problem, nearby, "float32") + tie_window(problem, reference, "float32")
     gap = float(np.linalg.norm(a @ nearby - b) - np.linalg.norm(a @ reference - b))
     assert 0.0 <= gap <= window < 1.0 and np.max(np.abs(nearby - reference)) > 1.0
-    assert swap_verdict(problem, nearby, "float32") and verdict(problem, nearby, "float32") == []
+    assert verdict(problem, nearby, "float32") == []
     far = reference + np.asarray([0.0, 0.0, 2.2]) * 0.0 + np.asarray([6.0, 6.0, 0.0])
     assert verdict(problem, far, "float32")
