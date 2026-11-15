@@ -1,0 +1,105 @@
+{
+ "written": "2026-11-15, committed before the fix round's probe of PR 312 ran (the commit that adds this file is the timestamp): the review's findings on AP3a (gradient objective refused, the affine test's blind plant, the allocator's unguarded offset)",
+ "phase": "apparatus lane AP3a, fix round 1: ctx.allocator's objectives, the affine control, offset, effort and reference guards",
+ "labels": "the fix agent (Sonnet) from the review's probes and local runs on the laptop (correctness and error margins only, never rates or timing); the probe's numbers are the runner's",
+ "seen_before": [
+  "the review (Sonnet, refuting) measured the old plant's blind draw at 8 in 20,000 per example: about 3 % of clean runs and 47 % of 20 stress runs flagged (blind draw: every |u_i| = 1, where u|u| = u)",
+  "locally, on 1500 RNG draws (the 8 corners among them) of the coil model's affine test, planted miss over its line: at least 11.4 in float32, 1.5e10 in float64; the clean model's error at most 1.1e-4 of the line, both dtypes (scratch script, not a rate)",
+  "locally, tests/control/test_allocator_objectives.py (every objective, offset, effort, reference) passed once in both dtypes, and its plants (the offset read as zero, the effort ignored, the reference ignored) fail on every fixed case it runs"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "CPU; the probe on a GitHub runner, 4 vCPU; bits on one CPU, one BLAS and XLA thread",
+  "sizes_and_parameters": "Navion_2 (3 coils); the affine test at 40 Hypothesis examples a run, currents of 0.5 to 20 A either sign, moments 1e-5 to 1e-3 A m^2, points in the declared region; the plant reads the force at u (1 + |u| / 10 A); the allocator tests at 25 examples a property, the port's bounds 25 A",
+  "seeds_and_draws": "detection rates at 200 runs for the affine control (one job a dtype), 20 for the offset control (a fixed case: its draws are not random), 50 for the flake arm (each arm a run of the file with nothing planted); each run a fresh process with its own seed"
+ },
+ "gate_1_the_affine_control_fires_every_run": {
+  "claim": "the affine test's planted gain (force read at u (1 + |u| / 10 A)) is caught on every run, in each dtype, with nothing flagged on its clean arm",
+  "kind": "equality to rounding (the model is affine in its currents), with a control",
+  "case": "tests/oracles/test_forward_models.py::test_the_coil_model_is_affine_in_its_currents_force_and_torque_included[float32] and [float64], AP3_PLANT=affine",
+  "prediction": {
+   "value": "200/200 caught per dtype; the clean arm 0/200",
+   "band": [
+    198,
+    200
+   ],
+   "unit": "runs caught of 200",
+   "basis": "measured-before (the margin of 11x on its worst corner, 1500 draws) and derived (the departure J u |u| / 10 A is nonzero for every u the draws allow, where u |u| vanished at |u_i| = 1)",
+   "why": "the planted departure is at least 11 times the line at every draw tried, the corners included; the clean arm's error is 1e-4 of the line"
+  },
+  "control": {
+   "plant": "AP3_PLANT=affine (the as-built arm reads the planted force, so the test fails on it)",
+   "environment_variable": "AP3_PLANT=affine",
+   "expected_rate": "200/200",
+   "runs": 200,
+   "clean_expected": "0/200 (the earlier plant's clean arm flagged about 6 of 200: its blind draw failed the second arm)",
+   "resolution": "a departure J u |u| / 10 A, at least 11 times the line at the worst corner tried; the clean error is 1e-4 of the line"
+  },
+  "if_wrong": "a miss means a draw the plant cannot see (a current pattern whose three coil terms cancel, or a moment along the force's null): read the missed seed and plant a departure that does not cancel; a clean flag is a draw outside the line: classify it by CLAUDE.md's five causes",
+  "cannot_discriminate_if": "both arms fail (the plant is on in the clean arm) or both pass (the plant not read)"
+ },
+ "gate_2_the_allocator_offset_control": {
+  "claim": "the allocator reading the model's offset at zero command as zero fails the allocation's test on every run; the as-built allocator, with a background field, passes",
+  "kind": "equality to rounding against BVLS, with a control",
+  "case": "tests/control/test_allocator_objectives.py::test_the_allocation_reads_the_models_offset_at_zero_command, AP3_PLANT=offset",
+  "prediction": {
+   "value": "20/20 caught, clean 0/20",
+   "band": [
+    20,
+    20
+   ],
+   "unit": "runs caught of 20",
+   "basis": "derived (the fixed cases move the commands by amperes against a line of 1e-2 A or less), measured-before (locally, every case)",
+   "why": "fixed cases, no Hypothesis: the plant's effect is the same every run, which is why 20 runs and not 200"
+  },
+  "control": {
+   "plant": "AP3_PLANT=offset",
+   "environment_variable": "AP3_PLANT=offset",
+   "expected_rate": "20/20",
+   "runs": 20,
+   "clean_expected": "0/20"
+  },
+  "if_wrong": "a missed run means the plant was not read (the monkeypatch did not apply on the runner)",
+  "cannot_discriminate_if": "the fixed case's background is zero (it is not: 5 mT)"
+ },
+ "gate_3_the_new_allocator_properties_are_not_flaky": {
+  "claim": "tests/control/test_allocator_objectives.py (every objective against BVLS, the model's rows against the host's, the regularisation) never fails with nothing planted, at its own draws",
+  "kind": "stability",
+  "case": "the whole file, 50 runs a arm (both arms with nothing planted: 100 runs of the file in all), each its own Hypothesis seed (AP3_PLANT set to a value nothing reads)",
+  "prediction": {
+   "value": "0/50 runs fail on each arm",
+   "band": [
+    0,
+    0
+   ],
+   "unit": "failing runs of 50",
+   "basis": "guess (the file's lines are the allocation oracle's, derived from the law's rounding; the model's rows are held to 10 eps / c, observed at a few eps / c)",
+   "why": "no draw reaches a rounding the lines do not cover: that is the claim, and a failure is a flake to classify"
+  },
+  "control": {
+   "plant": "none: this arm counts failures; its 'caught' column is the flake count",
+   "environment_variable": "AP3_PLANT=none",
+   "expected_rate": "0/50 failing",
+   "runs": 50,
+   "clean_expected": "0/50"
+  },
+  "if_wrong": "capture the failing example (print_blob), classify it by CLAUDE.md's five causes, then fix; no tolerance changed first",
+  "cannot_discriminate_if": "n/a (a stability count; it cannot pass vacuously: the file's tests ran, which detection_rate.py checks)"
+ },
+ "bits": {
+  "cases": "A0 and script A in float32 and float64, the tutorials and the R2 sphere, base (release/v0.3.0) against this head, one CPU, one BLAS thread",
+  "prediction": "every array equal: this round changes no node, no compiled program (a belief refusal at planning, a unit string, a private name, a tier string, a ValueError at a call a law makes wrongly)",
+  "controls": {
+   "repeat": "the head recorded twice: identical",
+   "one_ulp": "A0's rotor moment one ulp up in the dtype: arrays differ in both dtypes"
+  }
+ },
+ "costs": {
+  "prediction": "not re-measured: the per-step cost of the allocator through ctx.allocator is unchanged (no node, no op); AP3a's measurement stands (nodes 6 = 6, HLO +8.8 %, chunk 1.071x)",
+  "measured_at": "the previous probe, run 43647940444"
+ },
+ "outcomes": null
+}
