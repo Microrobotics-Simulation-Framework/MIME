@@ -196,9 +196,11 @@
   `block.mime.yaml` and `cases/`; with `--from` the declarations of a saved experiment, the things named by `--socket` becoming
   its sockets, through `fragment_from`) and `plugin` (the full layout of a typical plugin, no `--minimal`: `pyproject.toml` with its
   `mime.entries` and `mime.assets` entry points and a `slow` marker, `src/<package>/` with `entries/` (the adapter), `engine/`
-  (pure JAX, no `mime` import) and `records/` (`records.json`, its sha256 filled in from `data/example.json`), `tests/` (the
-  registry's round trip, node verification and parameter reach on the example entry, validity lines, the engine's import rule,
-  a Hypothesis property with one planted error, a `@verification_benchmark` in the slow lane, an `assert_type` file),
+  (pure JAX, no `mime` import), `fit/` (a second package with no `mime` import, empty) and `records/` (`records.json`, its sha256 filled
+  in from `data/example.json`), `tests/` (the registry's round trip, node verification and parameter reach on the example entry,
+  validity lines, the import rules (no `mime` in the engine and `fit`; the package imports itself relatively), the duration
+  guard's test and allowlist, a Hypothesis property with one planted error, a `@verification_benchmark` in the slow lane, an
+  `assert_type` file), `scripts/check_durations.py`,
   `benchmarks/` with `mime.toml`, `examples/`, a README whose "Use" section CI runs, `CITATION.cff`, `LICENSE`,
   `pyrightconfig.json` and a CI workflow with a default lane, a label-gated slow lane, a weekly lane against MIME's release
   branch and a typing job). Every value is the `--set` one (named as `mime.toml` names it: `block.id`, `record.title`,

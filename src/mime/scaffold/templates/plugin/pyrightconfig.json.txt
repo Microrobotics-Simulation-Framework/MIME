@@ -4,5 +4,13 @@
   "typeCheckingMode": "strict",
   "reportMissingTypeStubs": false,
   "venvPath": ".",
-  "venv": ".venv"
+  "venv": ".venv",
+  "executionEnvironments": [
+    {"root": "src/${package}/engine", "reportUnknownArgumentType": false, "reportUnknownMemberType": false,
+     "reportUnknownVariableType": false, "reportUnknownParameterType": false, "reportUnknownLambdaType": false,
+     "reportMissingParameterType": false},
+    {"root": "src/${package}/fit", "reportUnknownArgumentType": false, "reportUnknownMemberType": false,
+     "reportUnknownVariableType": false, "reportUnknownParameterType": false, "reportUnknownLambdaType": false,
+     "reportMissingParameterType": false}
+  ]
 }

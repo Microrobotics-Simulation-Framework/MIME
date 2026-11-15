@@ -100,6 +100,9 @@ xla = modal.Volume.from_name("mime-xla-cache", create_if_missing=True, version=2
 runs = modal.Volume.from_name("mime-runs", create_if_missing=True, version=2)
 image = _image()
 
+# XLA_FLAGS is read once, when JAX's backend starts, so it is set here and not in the run. On a GPU it holds
+# --xla_gpu_enable_triton_gemm=false: MIME-ANO-157, with XLA's Triton GEMM fusion on an A100 assembled one float64
+# operator wrong at the highest matmul precision, with no error. Every function of this script starts with it.
 ENV = {"MIME_ASSETS_DIR": "/assets", "MIME_OFFLINE": "1", "XLA_FLAGS": XLA_FLAGS, "JAX_ENABLE_X64": "1" if X64 else "0"}
 if GPU is not None:
     ENV["JAX_DEFAULT_MATMUL_PRECISION"] = "highest"

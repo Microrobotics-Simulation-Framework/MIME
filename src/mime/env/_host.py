@@ -29,6 +29,11 @@ RUNNER_VARIABLE = "MIME_RUNNER"
 RUNNER_INFO_VARIABLE = "MIME_RUNNER_INFO"
 XLA_FLAGS_VARIABLE = "XLA_FLAGS"
 DETERMINISTIC_FLAG = "--xla_gpu_deterministic_ops"
+TRITON_GEMM_NAME = "--xla_gpu_enable_triton_gemm"
+#: The flag that kept a GPU from the wrong float64 operator MIME-ANO-157 records. MIME's own GPU run environment (the
+#: ``mime modal`` script) sets it; a process MIME did not start is only told.
+TRITON_GEMM_FLAG = f"{TRITON_GEMM_NAME}=false"
+TRITON_GEMM_ANOMALY = "MIME-ANO-157"
 #: The bounds of a runner's record: a few short strings that name where a run was made, never a log.
 RUNNER_LIMITS = (32, 256)
 
@@ -234,16 +239,21 @@ class MatmulPrecisionReduced(UserWarning):
     """A build on a GPU whose matmul precision is not ``highest`` (:func:`matmul_precision_warning`)."""
 
 
+class TritonGemmUnguarded(UserWarning):
+    """A build on a GPU whose ``XLA_FLAGS`` leave XLA's Triton GEMM fusion on (:func:`triton_gemm_warning`)."""
+
+
 def run_precision() -> str:
     """The floating-point precision a run computes in: ``float64`` under ``jax_enable_x64``, else JAX's default,
     ``float32``."""
     return str(run_dtype().name)
 
 
-def device_and_matmul() -> tuple[str, str | None]:
-    """The backend JAX runs on and its default matmul precision: what :func:`precision_note` reads, and the seam a
-    test replaces to test the GPU warning without a GPU."""
-    return jax.default_backend(), matmul_precision()
+def gpu_environment() -> tuple[str, str | None, str]:
+    """The backend JAX runs on, its default matmul precision and ``XLA_FLAGS``: what :func:`precision_note` reads, and
+    the seam a test replaces to test the GPU warnings without a GPU. It reads JAX's configuration and one environment
+    variable and starts no backend beyond the one the build computed on; the flags are parsed only on a GPU."""
+    return jax.default_backend(), matmul_precision(), xla_flags()
 
 
 def matmul_precision_warning(backend: str, precision: str | None) -> str | None:
@@ -257,10 +267,38 @@ def matmul_precision_warning(backend: str, precision: str | None) -> str | None:
             "JAX_DEFAULT_MATMUL_PRECISION=highest before JAX starts")
 
 
-def precision_note(read: Callable[[], tuple[str, str | None]] | None = None) -> tuple[str, str | None]:
-    """``(the run's precision, the GPU matmul warning or None)`` for the process as it is, the device and the matmul
-    precision read through ``read`` (:func:`device_and_matmul` where not given, looked up when called)."""
-    return run_precision(), matmul_precision_warning(*(read or device_and_matmul)())
+def triton_gemm_off(flags: str) -> bool:
+    """Whether the flags turn XLA's Triton GEMM fusion off: the last ``--xla_gpu_enable_triton_gemm`` decides, ``false``
+    (or ``0``) for off; a bare flag or any other value leaves it on."""
+    off = False
+    for word in flags.split():
+        name, _, value = word.partition("=")
+        if name == TRITON_GEMM_NAME:
+            off = value.lower() in ("false", "0")
+    return off
+
+
+def triton_gemm_warning(backend: str, flags: str) -> str | None:
+    """The warning for a run on a GPU whose ``XLA_FLAGS`` do not turn XLA's Triton GEMM fusion off (``None``: nothing to
+    say, which on a CPU is always). On an A100 under JAX 0.12.0.1 a program's convective Jacobian assembled 0.54 off
+    (4e-16 on the CPU) with the fusion on, in float64 at the highest matmul precision and without an error [measured,
+    one program; which einsum and why are not isolated: :data:`TRITON_GEMM_ANOMALY`]. MIME never sets the flag for a
+    process it did not start. XLA reads the flag once, when JAX's backend starts, so one set after it did reaches this
+    reading and not XLA (as for :func:`deterministic_mode`)."""
+    if backend != "gpu" or triton_gemm_off(flags):
+        return None
+    return (f"this run is on a GPU without {TRITON_GEMM_FLAG} in {XLA_FLAGS_VARIABLE}: with XLA's Triton GEMM fusion on, "
+            "an A100 (JAX 0.12.0.1) assembled one float64 operator wrong at the highest matmul precision, and raised no "
+            f"error ({TRITON_GEMM_ANOMALY}); set the flag before JAX starts, and keep a CPU-equality check on at least "
+            "one einsum-heavy node of a GPU acceptance run")
+
+
+def precision_note(read: Callable[[], tuple[str, str | None, str]] | None = None) -> tuple[str, str | None, str | None]:
+    """``(the run's precision, the GPU matmul warning or None, the Triton GEMM warning or None)`` for the process as it
+    is, the device, the matmul precision and ``XLA_FLAGS`` read through ``read`` (:func:`gpu_environment` where not
+    given, looked up when called)."""
+    backend, precision, flags = (read or gpu_environment)()
+    return run_precision(), matmul_precision_warning(backend, precision), triton_gemm_warning(backend, flags)
 
 
 def runner_record(environ: Mapping[str, str] | None = None, *, variable: str = RUNNER_VARIABLE) -> dict[str, str]:
@@ -294,7 +332,7 @@ def runner_info(environ: Mapping[str, str] | None = None) -> dict[str, str]:
     return runner_record(environ, variable=RUNNER_INFO_VARIABLE)
 
 
-__all__ = ["CPU_DETERMINISTIC", "DETERMINISTIC_FLAG", "RUNNER_INFO_VARIABLE", "RUNNER_VARIABLE", "XLA_FLAGS_VARIABLE",
-           "CpuRecord", "GpuRecord", "blas_threads", "cpu_record", "deterministic", "deterministic_mode", "gpu_record",
-           "matmul_precision", "runner_info",
-           "runner_record", "usable_cpus", "with_deterministic", "xla_flags"]
+__all__ = ["CPU_DETERMINISTIC", "DETERMINISTIC_FLAG", "RUNNER_INFO_VARIABLE", "RUNNER_VARIABLE", "TRITON_GEMM_ANOMALY",
+           "TRITON_GEMM_FLAG", "XLA_FLAGS_VARIABLE", "CpuRecord", "GpuRecord", "blas_threads", "cpu_record",
+           "deterministic", "deterministic_mode", "gpu_record", "matmul_precision", "runner_info", "runner_record",
+           "triton_gemm_off", "triton_gemm_warning", "usable_cpus", "with_deterministic", "xla_flags"]

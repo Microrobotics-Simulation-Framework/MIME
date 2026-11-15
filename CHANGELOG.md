@@ -169,6 +169,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still runs on the label); the control's clean plugin is built and run once for its module, and each plant re-writes one file of
   a copy and runs only the stage that catches it; the pyright tests skip, with a reason, on a machine without `node`.
 
+- **`mime scaffold plugin`: the typing route for a real engine, a duration guard, and four slots, from the clot port** (dev2, lane P's
+  P7c; template files only: no new verb, code, seam or saved form). The template's typing job was red from its first commit for a
+  real engine (1,093 pyright-strict errors on a 3.5k-line one, 95 % of them unknown types from jaxlib's missing stubs and
+  unannotated parameters). `pyrightconfig.json` is still strict, with the six unknown-type rules (`reportUnknownArgumentType`,
+  `...MemberType`, `...VariableType`, `...ParameterType`, `...LambdaType`, `reportMissingParameterType`) off for `engine/` and
+  `fit/` alone, by `executionEnvironments`; the adapter, the records and the `assert_type` file stay strict, and the other strict
+  rules (unused variables, `None` defaults into typed parameters, possibly unbound) still check the engine. Measured on the
+  ported plugin: 1,093 errors before; a typed `jnp` alias in every module 865 (unannotated parameters stay unknown); standard
+  mode with the adapter listed under `strict` 111; this route 131 (engine 36, `fit` 6, the adapter 89: the fork's entries call `jnp` directly, and with the
+  template's `Any` alias on a copy they fall to 39). A planted unannotated function is reported
+  in `entries/` and not in `engine/` or `fit/`, and a planted unused variable is reported in all three, every run; the
+  `assert_type` file still fails on a planted type change. **A duration guard**: `scripts/check_durations.py` reads the default
+  lane's JUnit report and fails a test over 30 s unless `tests/duration_allowlist.txt` lists it with a reason (a small version of
+  MIME's own gate: no cold-cache re-run, no ceiling); the plugin's CI runs it after `pytest --junitxml`; its test runs it on a
+  report pytest wrote. **Slots**: `fit/` beside `engine/` (the AST no-`mime` test reads both, from one `MIME_FREE` tuple),
+  `scripts` and `docs` in the sdist include (and `scripts` on the tests' path), the float32 and float64 advice saying when a
+  float64-only reference is fine (a reference the engine is computed against, never the law's own path), and `.gitignore` naming
+  no benchmark script (it ignores the files a saved experiment is made of, below `benchmarks/*/`, never the folders). **Relative imports**: the template's package imports itself relatively, and
+  `tests/test_relative_imports.py` (the port's test, proven on the real plugin, over a shared `tests/import_rules.py`) refuses an
+  absolute self-import, a constant-string `import_module` or `__import__` of it included, with a planted form of each. The control
+  now plants five more slips (an import of `mime` in `fit/`, two absolute self-imports, a limit a hundred times too loose, an
+  allowlist line that needs no reason) and each fails the stage that is there to catch it. Review fixes: the no-`mime` test also refuses an import of the adapter from `engine/` or `fit/`
+  (`from ..entries import X`, `from .. import entries`, `from ..entries.example_load import X`, absolute or relative, and a root
+  module or `__init__` that imports `mime`), each spelling planted; `tests/import_rules.py` also reads an aliased `import_module`,
+  `name=`, a relative name with `package=`, and a placeholder-free f-string, and both tests' docstrings say plainly what a static
+  check cannot see (`find_spec`, `sys.modules`, `runpy`, `exec`, a computed name); the README no longer suggests a suite-wide
+  x64 switch (a float64-only reference runs under `jax.experimental.enable_x64` in its own test); the duration guard fails an
+  allowlist row whose test is not in the report, and splits a row on its last ` # ` so an id may hold one.
+
 - **Static meshes in the in-loop camera, traced once a run** (`mime.sensing._mesh`, `mime.sensing.mesh_chords`,
   `MeshChords`, `MESH_SAMPLES`; `mime.observations.Camera`; `mime.viz.write_mesh(..., decimation_distance=)`; dev2, camera
   6a). A scenery `Mesh` of the stage, and a structure of a kind the stage draws (an ellipsoid, a box, a helix, a screw: its
@@ -1455,6 +1484,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against `actuation` in both dtypes), and the exposure envelope reads its field this way. A point no law reads is still
   refused, its route the observation's own instance of the provider, later work.
 
+- **A GPU build warns when XLA's Triton GEMM fusion is left on, and the `mime modal` script turns it off** (`TritonGemmUnguarded`,
+  `BuildReport.triton_warning`, `EnvReport.triton_warning`; `mime.env._host.triton_gemm_warning`; MIME-ANO-157). On an A100 under
+  JAX 0.12.0.1 one float64 operator assembled wrong at the highest matmul precision, with no error, until
+  `--xla_gpu_enable_triton_gemm=false`; which einsum and why are not isolated, and no MIME node is shown affected. On a GPU
+  whose `XLA_FLAGS` lack the flag the build warns beside the matmul-precision warning, the report carries the line and `mime env
+  check` prints it (it passes; it never refuses). MIME does not set the flag in a process it did not start; the script `mime
+  modal` writes sets it for every container of a GPU run (none on a CPU), citing the anomaly. The warning reads the environment
+  and starts no backend. The precision seam `mime.env._host.device_and_matmul` is now `gpu_environment` and returns the flags
+  too, `precision_note` a third value. The docs say a GPU acceptance run keeps a CPU-equality check on one einsum-heavy node.
+  The guard's logic is tested through the seam; **the real GPU path is not tested in CI** (no GPU there).
 - **The run's precision is stated, and a GPU build warns when the matmul precision is not `highest`** (the build report, `RunResult`, `outputs.json`;
   `mime.env._host.run_precision`, `precision_note`; usability bundle 3, F14). The README quickstart runs in float32 (JAX's default) and
   neither the build report nor the result said so. The report's summary has a `precision: float32` (or `float64`) line, a result's
@@ -2049,6 +2088,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its vector. A0's own field, about 1 mT in its first samples, draws an 8 mm arrow, within the cap and unchanged. The cap is in the view alone (the
   glTF and the page), the page's notes name each capped arrow by its prim path, and the stage and the recording are
   unchanged.
+
+### Known Anomalies
+
+- `MIME-ANO-157`: on an A100 (JAX 0.12.0.1) XLA's Triton GEMM fusion assembled one float64 operator wrong at the highest matmul
+  precision with no error; `--xla_gpu_enable_triton_gemm=false` removed it; which einsum and why are not isolated.
+- `MIME-ANO-158`: the FVM's IMEX Euler grew a noise-seeded transverse disturbance at half its declared CFL line at Re_D 450
+  without tripping the CFL stop (the declared line itself is unstable from Re_D 230; RK3 is not affected); mechanism unknown.
 
 ## [0.3.0.dev1] - 2026-11-05
 

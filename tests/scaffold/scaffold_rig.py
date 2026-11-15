@@ -271,6 +271,14 @@ def engine_imports_stage(folder: Path, target: Path) -> list[str]:
     return plugin_tests(folder, target, "tests/test_engine_imports.py")
 
 
+def relative_imports_stage(folder: Path, target: Path) -> list[str]:
+    return plugin_tests(folder, target, "tests/test_relative_imports.py")
+
+
+def durations_stage(folder: Path, target: Path) -> list[str]:
+    return plugin_tests(folder, target, "tests/test_durations.py")
+
+
 #: More misspelt keys and slips in the plugin's files, each of which must fail the stage of the plugin's check that is there to
 #: catch it, and only that stage runs (the folder is the clean one's copy, with the one file written again): the file, the text
 #: to replace and what replaces it, the stage, and what its failure says. The first of a kind is the one ``planted`` plants for
@@ -293,6 +301,31 @@ PLUGIN_PLANTS: dict[str, Plant] = {
     "a __import__ of mime in the engine": Plant(f"src/{PLUGIN_PACKAGE}/engine/load.py", "from jax import Array",
                                                 'from jax import Array\n\n__import__("mime")', engine_imports_stage,
                                                 "test_engine_imports"),
+    "an import of mime in the fit package": Plant(f"src/{PLUGIN_PACKAGE}/fit/__init__.py", '"""A second package',
+                                                  'import mime\n"""A second package', engine_imports_stage, "test_engine_imports"),
+    "an absolute import of the package by its own name in the adapter": Plant(
+        f"src/{PLUGIN_PACKAGE}/entries/__init__.py", "from .example_load import ExampleLoad",
+        f"from {PLUGIN_PACKAGE}.entries.example_load import ExampleLoad", relative_imports_stage, "test_relative_imports"),
+    "an absolute import of the package by its own name in the example entry": Plant(
+        f"src/{PLUGIN_PACKAGE}/entries/example_load.py", "from ..engine import load as law",
+        f"from {PLUGIN_PACKAGE}.engine import load as law", relative_imports_stage, "test_relative_imports"),
+    "a relative import of the adapter in the engine": Plant(f"src/{PLUGIN_PACKAGE}/engine/load.py", "from jax import Array",
+                                                            "from jax import Array\nfrom ..entries import ExampleLoad",
+                                                            engine_imports_stage, "test_engine_imports"),
+    "a relative import of the adapter's folder in the fit package": Plant(
+        f"src/{PLUGIN_PACKAGE}/fit/__init__.py", '"""A second package', 'from .. import entries\n"""A second package',
+        engine_imports_stage, "test_engine_imports"),
+    "an aliased import_module of the package by its own name in the adapter": Plant(
+        f"src/{PLUGIN_PACKAGE}/entries/__init__.py", "from .example_load import ExampleLoad",
+        f'from importlib import import_module as im\n\nExampleLoad = im("{PLUGIN_PACKAGE}.entries.example_load").ExampleLoad',
+        relative_imports_stage, "test_relative_imports"),
+    "an allowlist row that names no test in the report": Plant("scripts/check_durations.py",
+                                                               "for module, name in sorted(set(reasons) - set(seconds)):",
+                                                               "for module, name in []:", durations_stage, "test_durations"),
+    "a duration limit a hundred times too loose": Plant("scripts/check_durations.py", "if took <= limit:",
+                                                        "if took <= limit * 100:", durations_stage, "test_durations"),
+    "an allowlist line that needs no reason": Plant("scripts/check_durations.py", "if not separator or not reason.strip():", "if False:",
+                                                    durations_stage, "test_durations"),
     "a command of the README that is misspelt": Plant("README.md", "python examples/example.py", "python examples/exampel.py",
                                                       readme_use, "README"),
 }
