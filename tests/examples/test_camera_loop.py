@@ -62,6 +62,7 @@ if CONTROL not in sys.path:
 import camera_loop_cases as cases  # noqa: E402
 from allocation_draws import Problem, verdict  # noqa: E402
 
+from mime.build import RunFailed  # noqa: E402
 from mime.units import ms  # noqa: E402
 
 jnp: Any = jax.numpy
@@ -241,24 +242,41 @@ def test_the_callback_and_graph_modes_write_the_same_currents():
 
 # -- the lightly damped loop's lost target ------------------------------------------------------------------------
 
+@cache
+def damped_run(seed: int) -> Any:
+    """The lightly damped loop of draw ``seed`` (``kd`` times 0.3, the step within 30 degrees of +y, 4.5 to 6 mm) in
+    float64, run for the example's 200 steps; where the run stops non-finite, ``RunFailed``."""
+    gains, _ = cases.drawn(seed)
+    gains = {**gains, "kd": 0.3 * gains["kd"]}
+    rng = np.random.default_rng(8000 + seed)
+    angle, size = math.pi / 2 + rng.uniform(-math.pi / 6, math.pi / 6), rng.uniform(4.5e-3, 6e-3)
+    step = (size * math.cos(angle), size * math.sin(angle))
+    with cases.in_dtype("float64"):
+        return EX.experiment(step_x=step[0], step_y=step[1], **gains).build().run(ms(cases.STEPS), history=True)
+
+
 def test_the_lightly_damped_loops_lost_target_is_held_and_flagged():
     """R2's lightly damped loop (``kd`` times 0.3) overshoots out of the frame: its soft centroid was 0/0 from step 51.
     The guarded tracker holds its last point, the law writes no current, and the run stays finite. The step is drawn
     within 30 degrees of +y (the frame's short side, 9 mm from its centre), where the overshoot leaves the frame on
-    every draw measured (45 to 65 steps in, ten draws on a laptop); R2's own directions leave it on about half."""
-    gains, _ = cases.drawn(cases.SEED)
-    gains = {**gains, "kd": 0.3 * gains["kd"]}
-    rng = np.random.default_rng(8000 + cases.SEED)
-    angle, size = math.pi / 2 + rng.uniform(-math.pi / 6, math.pi / 6), rng.uniform(4.5e-3, 6e-3)
-    step = (size * math.cos(angle), size * math.sin(angle))
-    with cases.in_dtype("float64"):
-        result = EX.experiment(step_x=step[0], step_y=step[1], **gains).build().run(ms(cases.STEPS), history=True)
+    every draw measured (45 to 65 steps in, ten draws on a laptop); R2's own directions leave it on about half.
+
+    The plant (``unguarded``) fails this in one of two ways, and each says so: the loop goes non-finite and the run
+    stops (13 draws of 20), or it stays finite and the first tick's empty frame is not flagged lost (the other 7). A
+    clean draw too gentle to leave the frame is a third thing, and its message says that."""
+    try:
+        result = damped_run(cases.SEED)
+    except RunFailed as failed:
+        assert failed.codes() == ["run.non-finite"], failed.codes()
+        pytest.fail("guard removed: non-finite (the run stopped on run.non-finite)")
     history = result.history
     controller = history["controller"]
     pose = np.asarray(history["sphere"]["pose"])
-    assert np.all(np.isfinite(pose)) and all(np.all(np.isfinite(np.asarray(v))) for v in controller.values())
+    assert np.all(np.isfinite(pose)) and all(np.all(np.isfinite(np.asarray(v))) for v in controller.values()), \
+        "guard removed: non-finite"
     lost = np.asarray(controller["state_lost"])
-    assert lost[-1] > 1, "the target never left the frame after the first tick: the draw does not test the guard"
+    assert lost[-1] >= 1, "guard removed: the first tick's empty frame was not flagged lost"
+    assert lost[-1] > 1, "draw too gentle to test the guard: the target never left the frame after the first tick"
     ticks = np.flatnonzero(np.diff(lost) > 0) + 1
     points = np.asarray(controller["state_point"])
     held = [t for t in ticks if np.array_equal(points[t], points[t - 1])]
@@ -266,6 +284,23 @@ def test_the_lightly_damped_loops_lost_target_is_held_and_flagged():
     written = np.asarray(controller["write_currents"])
     assert np.all(written[ticks] == 0.0), "a lost tick wrote currents"
     assert float(result.final["controller"]["state_first_lost"]) == 0.0, "the first tick reads no frame yet"
+
+
+def test_a_lost_tick_freezes_the_integral():
+    """The PID's integral is held across a lost tick (``pid(..., frozen=)``), so that a frame that shows nothing adds no
+    error to it. The first tick always reads the camera's empty initial frame and is lost, with the reference a step
+    from the held point: a law that integrates it anyway has an integral of the step times the period after one tick, and
+    this one has exactly zero. The damped run's later lost ticks (where the target left the frame) are held alike. Every
+    draw has the first lost tick, so the plant (``integral_unfrozen``) fails on every run."""
+    history = damped_run(cases.SEED).history["controller"]
+    lost = np.concatenate([[0.0], np.asarray(history["state_lost"])])
+    integral = np.concatenate([np.zeros((1, 3)), np.asarray(history["state_integral"])])
+    flagged = np.flatnonzero(np.diff(lost) > 0) + 1
+    assert flagged.size and flagged[0] == 1, "the first tick's empty frame was not flagged lost: no lost tick to test"
+    moved = np.flatnonzero(np.any(np.diff(integral, axis=0) != 0.0, axis=1)) + 1
+    assert moved.size, "the integral never moved on a tick that read a frame: the check reads the wrong field"
+    changed = [int(t) for t in flagged if np.any(integral[t] != integral[t - 1])]
+    assert not changed, f"the integral moved on lost ticks at steps {changed}: it is not frozen"
 
 
 # -- the limit: latency to nothing, the frame rate to the step rate -----------------------------------------------

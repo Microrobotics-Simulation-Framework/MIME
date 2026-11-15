@@ -34,6 +34,11 @@ makes the objective only C^(1,1/2) in a parameter (a disc's segment past a pixel
 3/2), so a difference check through it measures its order and never assumes two. The coils' limit is a port's bound, a
 constant of the build: no derivative is taken in it.
 
+**What this example shows, and what it does not.** It shows a closed loop through a camera that is differentiable end to
+end, and the checks that hold its derivative, its allocation and its guard. It does not track well: the default run ends
+3.47 mm from the reference against a step of 3.35 mm, the sphere having drifted 3.4 mm in depth (flagged off the plane on
+32 ticks), while the true-state arm, the same loop reading the sphere's pose, ends 0.61 mm away.
+
 ``python examples/camera_loop.py`` builds the loop, runs it for 0.2 s, prints the build report's controller block, the
 tracking miss and the flags, then the derivative of the final miss in the gains (reverse mode, through ``Study``).
 ``tests/examples/test_camera_loop.py`` and ``test_camera_loop_tracker.py`` hold it."""

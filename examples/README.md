@@ -38,7 +38,11 @@ MIME does.
   frame's soft centroid back-projected on a declared plane through the controller's believed camera), a PID and the exact
   allocation of the coils' currents through their command port, one controller in GRAPH mode, differentiable end to end.
   `python examples/camera_loop.py` builds it, prints the build report's controller block, runs 0.2 s and prints the miss
-  and the tracker's flags, then the final miss's derivative in two gains (reverse mode, through `Study`). The user guide's
+  and the tracker's flags, then the final miss's derivative in two gains (reverse mode, through `Study`). **It does not
+  track well**: the default run ends 3.47 mm from its reference, against a step of 3.35 mm, with the sphere 3.4 mm off
+  its plane in depth and flagged off it on 32 ticks, while its true-state arm (the same loop reading the pose) misses by
+  0.61 mm. The example shows that the loop is differentiable and what its checks hold, not that a camera and a PID
+  track a sphere well. The user guide's
   page ([A closed loop through a camera](../docs/guide/camera_loop.md)) includes it by its regions and says what its checks
   bound; `tests/examples/test_camera_loop.py` and `test_camera_loop_tracker.py` run it.
 - `tutorial_a.py` and `tutorial_a0.py`: the runs the user guide's tutorials print the output of

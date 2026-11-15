@@ -22,6 +22,7 @@ seeds were ``7000 + n``; a draw that binds no coil leaves the allocation's contr
 - ``edge``, ``stop_branch``: the camera's edge pixels' coverage, and the bound coils' share, stopped (the
   central-difference check's);
 - ``unguarded``: the tracker without its lost guard, R2's own (the lightly damped loop's);
+- ``integral_unfrozen``: the PID integrating on a lost tick (``frozen`` ignored; the freeze test's);
 - ``extra_port``, ``extra_controller``, ``extra_command``: one base step more latency in that home (the limit's);
 - ``unnormalised``, ``belief_ignored``: the centroid not divided by its darkness, and the tracker reading the true camera
   in place of its belief (the tracker's gates)."""
@@ -89,6 +90,15 @@ def _plant_tracker(module: Any) -> None:
             return module.Tracked(point, pixel, mass, jnp.zeros((), bool), zero, mass)
 
         module.tracked = unguarded
+    elif planted("integral_unfrozen"):
+        def unfrozen(state: Any, measured: Any, reference: Any, gains: Any, period: float, *, frozen: Any) -> Any:
+            error = reference - measured
+            integral = state["integral"] + error * period
+            rate = (measured - state["previous"]) / period
+            return {"integral": integral, "previous": measured}, module.MASS * (
+                gains.kp * error + gains.ki * integral - gains.kd * rate)
+
+        module.pid = unfrozen
     elif planted("unnormalised"):
         centroid = module.soft_centroid
 

@@ -100,6 +100,8 @@ limit.
 - **the two modes**: CALLBACK and GRAPH run one law. Since the allocation became one law in both, this shows only that
   the modes agree, and BVLS is the allocation's independent reference;
 - **the lightly damped loop**: its lost target is held and flagged, never a NaN;
+- **the integral's freeze**: across every lost tick (the first always is one, the camera's initial frame being empty) the
+  PID's integral is held; a law that integrates the error of a frame that shows nothing fails on every run;
 - **the limit**: as the latencies go to nothing and the frame rate to the step rate, the loop meets the true-state run
   within a floor computed from the tracker's own error and the loop's linear response.
 
@@ -108,11 +110,19 @@ limit.
 - its derivative against central differences;
 - its guard and its out-of-plane bias.
 
-Each check has a planted control that fails it on every run. The rates are in the pull request that added the example.
+Each check has a planted control that fails it on every run. The rates are measured on GitHub runners and kept with the
+predictions they were made against: `tests/examples/predictions_camera_3c.json` holds the first probe's outcomes and
+`tests/examples/predictions_camera_3c_round2.json` the final probe's, on draws no earlier probe had run (the probe
+workflow's run `43691394582`, branch `probe/camera-3c-r2`, since deleted). The integral's freeze is deterministic and was
+checked by running it with its plant on several draws, not rated on a runner.
 
 These are **acceptance tests of the loop's arithmetic**. They bound the derivative's error, the allocation's error and
-the tracker's error from above. They do not say the loop tracks well: on a draw where a coil saturates, the camera arm
-tracks worse than the true-state arm by R2's measure, because it cannot see the sphere leave its plane.
+the tracker's error from above. They do not say the loop tracks well. The example as it runs by default ends further from its reference than
+the step it was asked to make, drifts in depth by several millimetres, and is flagged off its plane on tens of ticks,
+while the true-state arm, which reads the sphere's pose, ends within a fraction of a millimetre: the camera arm tracks
+worse than the true-state arm, because it cannot see the sphere leave its plane. The example shows that the loop is
+differentiable and what its checks hold; it is not a demonstration of good tracking (`examples/README.md` gives the
+numbers).
 
 ## Why it is an example, not a block
 
