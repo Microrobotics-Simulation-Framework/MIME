@@ -15,17 +15,25 @@
   such pixel is within ``corner_line`` and the single edge (the second branch dropped) is not. The line is derived from
   the scheme's own error terms (``scripts/camera_route2/corner_line.py``), before its confirmation's draws ran
   (``predictions_camera_pr5a_fix.json``): each branch's curvature in a sub-cell, the truth's floor, float32's rounding.
-  Two coils, three widths, both dtypes. **Control** (``CAMERA_PLANT=single-edge``, a pose drawn from
-  ``DETECTION_SEED``): the single edge fails it, every run. **The derivation's premise** (``unread_leasts``, at four
-  times the resolution of the scheme's own verification, across the whole march): on every such pixel's sub-rays each
-  least that reaches its sub-cell is read by a piece; its own control, on every draw: the same count with the second
-  branch's reading lost is not zero. **The run flag** (``corner_unverified``, ``corner_bound``): its count is recorded
-  on every clean draw (a flagged draw within the line is a false alarm), and its control, on every draw
-  (``unread_second``: the second branch lost before the verification, which then bounds what it finds without reading
-  it), flags pixels, each within the line and its bound. A second plant (``CAMERA_PLANT=misread``): the second branch
-  read a tenth of a pixel out (or ``CAMERA_PLANT_SIZE``), the tail round's defect class. ``CORNER_RECORD`` names a file
-  each run appends its numbers to; ``CORNER_TRUTH_CACHE`` a folder that keeps each draw's truth across a probe's
-  passes.
+  Two coils, three widths, both dtypes. **The derivation's premise** (``unread_leasts``, at four times the resolution of
+  the scheme's own verification, across the whole march): on every such pixel's sub-rays each least whose half-plane
+  takes some of a sub-cell the read branches do not already cover whole is read by a piece; its own control, on every
+  draw: the same count with the second branch's reading lost is not zero. **The run flag** (``corner_unverified``,
+  ``corner_bound``): its count is recorded on every clean draw (a flagged draw within the line is a false alarm), and
+  its control, on every draw (``unread_second``: the second branch lost before the verification, which then bounds what
+  it finds without reading it), flags pixels, each within the line and its bound. ``CORNER_RECORD`` names a file each
+  run appends its numbers to; ``CORNER_TRUTH_CACHE`` a folder that keeps each draw's truth across a probe's passes.
+  **What the gate bounds, in image terms**: on a clean draw, every two-branch pixel within the line, and every least
+  that changes a sub-cell's share read. **Its power, by its plants** (each a pose drawn from ``DETECTION_SEED``): a
+  misread branch whose image effect exceeds the line is caught at the measured rate. The single edge
+  (``CAMERA_PLANT=single-edge``, the second branch dropped: the most a misread of this class can move a pixel) and the
+  misread (``CAMERA_PLANT=misread``, the second branch read ``CAMERA_PLANT_SIZE`` of a pixel out on every ray, a tenth
+  by default: the tail round's defect class) were rated on fresh draws (``predictions_camera_pr5a_round4.json``, seeds
+  2600 to 2799, 200 a case). The smallest misread caught on every draw, float32 / float64: coil 512 px 0.15 / 0.1 px;
+  coil2 128 and 256 px 0.1 / 0.1; coil2 512 px 0.15 / 0.1. At coil 128 and 256 px no size is caught on every draw:
+  at 2624 and 2791 (128 px) and 2750 (256 px) dropping the second branch entirely moves no judged pixel past 0.10, 0.72
+  and 0.34 of the line, so there is no image error of this class above the line to catch; on the other draws the
+  smallest caught on every one is 0.5 px (coil 128) and 0.15 / 0.1 px (coil 256).
 - **The motion's derivative across a pixel**: a coil's darkness centroid's forward-mode derivative, at 16 positions over
   one pixel of motion, is within ``RIPPLE_LINE`` of the central difference over that pixel. **Control**
   (``CAMERA_PLANT=lesser``): the PR's first composition (one straight edge a cell, the least of the two branches'
@@ -35,7 +43,9 @@
   its overflow flag stays down over poses within the declared motion; **control** (``CAMERA_PLANT=small-window``): the
   window at 0.3 of its size raises the flag and its image differs, every run.
 - **The held march's derivative** (the switch scan's ``cleared_by`` for its ``stop_gradient``): route 2's forward-mode
-  derivative of the image's darkness and its centroid equals the central difference of the same renderer."""
+  derivative of the image's darkness and its centroid equals the central difference of the same renderer.
+- **Zero cost when unused**: a camera imaging no body by route 2 holds neither of its flags as state and lays out neither;
+  one imaging a coil holds both."""
 
 from __future__ import annotations
 
