@@ -1,0 +1,243 @@
+{
+ "written": "2026-11-15, committed before any arm of camera 3c's round-2 probe ran (the commit that adds this file is the timestamp): the four checks round 1's probe found failing clean or missing their plant, fixed at their causes, every control re-rated on draws no probe has run, and what moves the camera arm's J over the true-state arm's against camera spike R2's, measured. Round 1's predictions and outcomes stay in predictions_camera_3c.json, unchanged",
+ "phase": "camera 3c, round 2: the controls that missed, and R2's numbers that did not reproduce",
+ "labels": "the 3c round-2 agent (Opus). Each value says its basis: derived from the mechanism in the test's docstring, measured before (R2's report and stored runs, round 1's probe 43684620256), or fit to the laptop diagnostics listed under seen_before",
+ "seen_before": [
+  "round 1's probe, run 43684620256 (probe/camera-3c at 63ffd80e, draws 0-19): every number in predictions_camera_3c.json's outcomes",
+  "camera spike R2's stored runs (round 1 run 43302252305, round 2 run 43313888566), recomputed on the laptop: camera J over true-state J less one, median +26 % (-15 % to +1041 %) on round 1's draws, the figure R2's report gives; median +128 % (-13 % to +1041 %) on round 2's redrawn draws, which the example's tests draw and R2's report does not give. Draws 2, 4, 13 and 19 differ between the rounds (round 1's bound no coil at the first tick); the other 16 are the same draws",
+  "laptop, float64, the example with R2's first tick (CAMERA_LOOP_PLANT=unguarded: the camera's frame before its first, dark everywhere, read as the image's centre, which is the start): camera J equals R2's stored camera J on round 2's draw 0 to 1.6e-14 relative and on round 1's draw 2 to 1e-16, and the true-state arm R2's to 2e-16; the example as built (the first tick lost) differs from R2 on draw 0 by +0.78 mm^2",
+  "laptop, the first tick's change of J (round 1's probe against R2's round-2 runs, both seen before) against 5 |step|^2 / N, the step held one frame period longer: 0.76 to 1.10 of it on the six draws whose final depth drift is under 1.3 mm (1, 3, 5, 9, 12, 15); -2.2 to +1.4 of it where the sphere drifts further",
+  "laptop, float32, plain runs of draws 0, 1, 2, 8: the coils' float32 rows at the law's point differ from float64's by 1.6e-5 to 3.7e-5 relative; made again op by op they differ from the compiled ones by 3.5e-6 to 5.1e-6; made again compiled they equal the rows the law kept (state_rows) to every bit (the same worst ratios to 16 digits). The float32 BVLS worst ratio on the law's rows: 0.020, 0.016, 0.036, 0.022 (on float64 rows: 0.46, 2.83, 3.94, 1.14, round 1's numbers). Keeping the rows in the state moved no bit of the run",
+  "laptop, the limit's premise on gentle draws 7 and 0: the reference built in float32 (outside the test's float64 block, as round 1's test built it) misses the true-state run by 1.0247e-9 m and 3.4e-10 m (round 1's clean failure is the first); built in float64, by 6.3e-18 m and 8.9e-18 m, against the derived line of 1.9e-15 m and 2.0e-15 m",
+  "laptop, the tracker's float32 difference check from reset on draw 4: J of about 35.44 moved in the noise table in steps of exactly 4 units in the last place (fourth differences 0.0) and the ladder's differences all equal, so the line was 0.0 and a miss of one quantum failed; with the objective's rounding floor the test passes on that draw",
+  "laptop, the float32 against float64 check with edge_f32 on draw 5 (missed by round 1's stop_branch_f32 at 0.27 of the line): caught, the planted gaps 300 (ki, kp) to 2385 (fx) times the line"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "GitHub runner, 4 vCPU, CPU (probe/camera-3c-r2, one arm a job)",
+  "sizes_and_parameters": "as round 1: R2's case (Navion_2, the 1 mm sphere of 4e-6 kg at oracle point 52 with its moment, the force alone, no gravity, no medium, dt 1 ms; the camera 96 x 72, fx = fy = 400, 0.1 m above the start looking down, frame period 5 ms; the controller GRAPH every 5 ms, latency 1 ms; the coils' command port 25 A; 200 steps; R2's J). The controller's state now also keeps the rows its allocation solved (state_rows)",
+  "seeds_and_draws": "the controls: DETECTION_SEED 20-39 (detection_rate.py --seed-base 20), never run by any probe: R2's round-2 draws 7020-7039, the damped loop's 8020-8039, the limit's gentle 9020-9039, the tracker derivative's 5020-5039, and Hypothesis seeds 20-39 for the tracker's point. R2's numbers and the J diagnosis: R2's own draws 0-19 (seeds 7000-7019), round 1's and round 2's, since they are compared with R2's runs draw by draw"
+ },
+ "gate_2_float32_vs_float64": {
+  "claim": "float32 is judged against float64 at the same draw: J and every derivative within the line (the test unchanged; its control replaced)",
+  "kind": "bounds",
+  "case": "tests/examples/test_camera_loop.py::test_float32_is_judged_against_float64_at_the_same_draw",
+  "prediction": {
+   "value": "clean 0/20; every ratio to the line under 0.1 (round 1's worst 0.039)",
+   "band": [
+    0,
+    0.1
+   ],
+   "unit": "ratio to the line",
+   "basis": "measured-before (round 1's probe)",
+   "why": "the chain's rounding plus the coverage's 3/2-power edge; the line is the worst case of the second"
+  },
+  "metric": "|g32 - g64| / ((16 N eps32 + 1.5 sqrt(W eps32)) S)",
+  "control": {
+   "plant": "edge_f32: the camera's edge pixels' coverage stopped in float32's arithmetic only, a float32-only defect in the camera's derivative (the coverage is written so that no near-equal numbers are subtracted, so that it holds in float32: a defect of that guard shows in float32 alone). Every frame of every draw has its edge, which carries the camera's whole response to the sphere's motion, so the planted float32 derivative loses the loop's feedback through the camera",
+   "environment_variable": "CAMERA_LOOP_PLANT",
+   "expected_rate": "20/20",
+   "runs": 20,
+   "clean_expected": "0/20",
+   "resolution": "draw 5 on the laptop: planted 300 to 2385 times the line. Round 1's stop_branch_f32 (the bound coils' share, which moves the derivative only through the rows' change with the point on bound ticks) is under this test's resolution on some draws: 16/20, the plant at 0.27 to 0.80 of the line on draws 2 and 5 (round 1); that defect is resolved in float64 by the central differences' stop_branch control (20/20), and this test states it cannot resolve it in float32 on every draw"
+  },
+  "if_wrong": "a planted run passing: the plant did not reach the float32 camera (read its derivative against the clean one)",
+  "cannot_discriminate_if": "a derivative with no path through the camera (none of kd, ki, kp, fx has none)"
+ },
+ "gate_3_central_differences": {
+  "claim": "the reverse derivative meets central differences whose order is measured (float64), the rounding now never under the objective's own bound",
+  "kind": "bounds",
+  "case": "tests/examples/test_camera_loop.py::test_the_derivative_meets_central_differences_whose_order_is_measured",
+  "prediction": {
+   "value": "clean 0/20; every draw has a discriminating parameter; the floor below ECnoise on every row (float64)",
+   "band": [
+    0,
+    1
+   ],
+   "unit": "miss over line",
+   "basis": "measured-before (round 1: 20/20 each control, clean 0/20) and derived (the float64 floor, about eps64 J plus the positions' rounding over h/16, is some 1e-13 of a derivative of 1e-4, under ECnoise's)",
+   "why": "as round 1; the floor changes no float64 line by more than rounding"
+  },
+  "metric": "|reverse - CD(h/16)| / line",
+  "control": {
+   "plant": "edge; stop_branch",
+   "environment_variable": "CAMERA_LOOP_PLANT",
+   "expected_rate": "20/20 each",
+   "runs": 20,
+   "clean_expected": "0/20",
+   "resolution": "round 1: lines 1e-8 to 1e-6 of the derivative"
+  },
+  "if_wrong": "a clean flag: read the ladder",
+  "cannot_discriminate_if": "every line above a tenth of its derivative (the test fails then)"
+ },
+ "gate_4_bvls": {
+  "claim": "every tick's allocation is SciPy's BVLS on the rows the law solved, at R2's line, both dtypes",
+  "kind": "equality",
+  "case": "tests/examples/test_camera_loop.py::test_every_ticks_allocation_is_scipys_bvls_at_r2s_line",
+  "prediction": {
+   "value": "clean 0/20 each dtype; float32 worst ratio under 0.1 on every draw (from 3.94 on float64 rows), float64 under 0.505",
+   "band": [
+    0,
+    0.1
+   ],
+   "unit": "ratio to the line (float32)",
+   "basis": "measured-before: R2's swap32 0.081 over 12000 problems on matched rows; laptop, the law's rows, draws 0, 1, 2, 8: 0.016 to 0.036",
+   "why": "round 1 judged the float32 law against float64 rows, which differ from the float32 coil model's by 1.6e-5 to 3.7e-5 relative (the multipole's sum rounded in float32), some 300 times the perturbation R2's line allows for: the gap was the rows, not the allocation"
+  },
+  "metric": "allocation_draws.verdict on each tick, the rows the controller kept (state_rows)",
+  "control": {
+   "plant": "limits: the allocation's bounds 1 % looser",
+   "environment_variable": "CAMERA_LOOP_PLANT",
+   "expected_rate": "20/20 each dtype",
+   "runs": 20,
+   "clean_expected": "0/20",
+   "resolution": "a bound tick's command moves by 0.25 A against lines under 1e-3 A"
+  },
+  "if_wrong": "a float32 ratio over 0.1 on the kept rows: the allocation itself, read the tick",
+  "cannot_discriminate_if": "no tick at a bound (the redraw holds one)"
+ },
+ "gate_7_limit": {
+  "claim": "as latency goes to nothing and the frame rate to the step rate the loop meets the true-state run within the floor; the test's premise, that the true-state run is the linear loop, holds to the run's own float64 rounding",
+  "kind": "bounds",
+  "case": "tests/examples/test_camera_loop.py::test_the_loop_meets_the_true_state_run_as_latency_goes_to_nothing_and_frames_to_every_step",
+  "prediction": {
+   "value": "clean 0/20; the premise's mismatch at most 0.01 of its line (16 eps64 (max|p| (|h_x|_1 + |h_y|_1) + max|A||u| |h_F|_1), about 2e-15 m); gap over floor at most 0.7",
+   "band": [
+    0,
+    0.01
+   ],
+   "unit": "premise mismatch over its line",
+   "basis": "derived (in exact arithmetic the true-state run is the linear loop: the allocation makes the force asked, the body's step is the loop's, the moment holds its direction), and the laptop's draws 0 and 7 (0.004, 0.003)",
+   "why": "round 1's failure (1.0247e-9 m on draw 7) was the premise's reference built in float32, JAX's default outside the test's float64 block: 0.03 m rounds to about 1e-9 m in float32 (CLAUDE.md cause 3, a draw in another dtype than the run's). In float64 the mismatch is a few eps64 of 0.03 m"
+  },
+  "metric": "max over axes and steps of |linear loop - true-state run| over the premise's line; the gap over the floor",
+  "control": {
+   "plant": "extra_port, extra_controller, extra_command",
+   "environment_variable": "CAMERA_LOOP_PLANT",
+   "expected_rate": "20/20 each",
+   "runs": 20,
+   "clean_expected": "0/20",
+   "resolution": "round 1: caught 20/20 each"
+  },
+  "if_wrong": "a premise mismatch above its line in float64: the linear loop is not the run (a step or a sign of the integrator, a latency), read it by axis",
+  "cannot_discriminate_if": "a coil at its bound (the test asserts none)"
+ },
+ "gate_9_tracker_derivative": {
+  "claim": "the tracker's forward derivative meets central differences (order measured), the rounding never under the objective's own bound; float32 meets float64 where differences cannot judge",
+  "kind": "bounds",
+  "case": "tests/examples/test_camera_loop_tracker.py::test_the_trackers_derivative_meets_central_differences_and_float32_meets_float64",
+  "prediction": {
+   "value": "clean 0/20 each arm; every float64 parameter discriminates; float32 rows the floor makes non-discriminating are judged against float64 by the T3 line and pass",
+   "band": [
+    0,
+    0.5
+   ],
+   "unit": "miss over line",
+   "basis": "derived (the floor eps |terms|, the tracked points being absolute positions of about 0.03 m: in float32 about 3 units in the last place of a J of 35) and the laptop's draw 4",
+   "why": "round 1's clean failure was a line of exactly 0.0: a quantised float32 objective whose noise table and ladder were exactly equal steps (CLAUDE.md cause 2, no floor from the law's rounding)"
+  },
+  "metric": "|forward - CD(h/16)| / line",
+  "control": {
+   "plant": "edge",
+   "environment_variable": "CAMERA_LOOP_PLANT",
+   "expected_rate": "20/20 each arm",
+   "runs": 20,
+   "clean_expected": "0/20",
+   "resolution": "the edge carries the whole position derivative; float64's rows discriminate on every draw"
+  },
+  "if_wrong": "a clean float32 row failing T3: read float32's forward against float64's",
+  "cannot_discriminate_if": "every float64 line above a tenth of its derivative (the test fails then)"
+ },
+ "gates_unchanged": {
+  "claim": "the controls of the checks round 1 met, re-rated on fresh draws (tests unchanged but for the rows kept in the controller's state, which moved no bit of the run)",
+  "kind": "acceptance",
+  "case": "rate_mode (mode_bounds), rate_bvls64 (limits), rate_rev64 and rate_rev32 (reverse_chunk), rate_cd_edge, rate_cd_branch, rate_damped (unguarded), rate_limit_* (above), rate_point_unnorm64/32, rate_point_belief64/32 (Hypothesis 100 examples, seeds 20-39), rate_deriv_continued (edge), rate_lost_outside and rate_lost_border (unguarded, 5 runs), rate_offplane (unnormalised, 5 runs)",
+  "prediction": {
+   "value": "every one caught on every run (20/20, or 5/5), clean 0",
+   "band": [
+    1,
+    1
+   ],
+   "unit": "detection rate",
+   "basis": "measured-before (round 1: each 20/20, clean 0/20, on draws 0-19)",
+   "why": "the plants' margins in round 1 were 6 to 1e5 times their lines"
+  },
+  "metric": "detection_rate.py's caught/N and clean flagged",
+  "control": {
+   "plant": "as named",
+   "environment_variable": "CAMERA_LOOP_PLANT",
+   "expected_rate": "20/20",
+   "runs": 20,
+   "clean_expected": "0/20",
+   "resolution": "as round 1"
+  },
+  "if_wrong": "a miss or a clean flag on a fresh draw: classify by CLAUDE.md's five causes before any change",
+  "cannot_discriminate_if": "as round 1"
+ },
+ "r2_numbers": {
+  "claim": "the example reproduces R2's numbers on R2's draws 0-19, and where one moves its cause is measured",
+  "kind": "estimates",
+  "case": "probe/r2_numbers.py (both arms, both dtypes, derivatives and the BVLS ratio on the law's rows and on float64 rows), probe/r2_j.py (forward runs, float64), draws 0-19",
+  "prediction": {
+   "value": {
+    "reverse_vs_forward_max_ratio": "camera float64 at most 0.067, float32 at most 0.2; state at most 0.02 (round 1: 0.029, 0.077, 0.0090, 0.0056)",
+    "float32_vs_float64": "J relative median at most 1.7e-5 (R2), max at most 7.2e-5; ratio to the line under 0.1",
+    "bvls_float32": "on the law's rows: worst under 0.1 on every draw; on float64 rows: round 1's 3.94 again (the gap's cause shown on the same draws); rows' float32-float64 difference 1e-5 to 5e-5 relative on every draw",
+    "bvls_float64": "at most 0.505",
+    "cd_orders": "0.5 to 2 over h to h/16",
+    "camera_over_state_J_r2_first_tick": "with R2's first tick (unguarded), camera J and state J equal R2's stored runs draw by draw to 1e-9 relative, round 1's draws and round 2's; so the medians are R2's: +26 % (-15 % to +1041 %) on round 1's draws, +128 % (-13 % to +1041 %) on round 2's",
+    "camera_over_state_J_example": "the example (its first tick lost) on round 2's draws: round 1's probe's numbers again, median +120 % (+9 % to +1014 %); on round 1's draws, median above +26 % by the first tick (the sign of each draw's change as below)",
+    "first_tick_change": "J guarded less J unguarded, per draw: 0.7 to 1.3 times 5 |step|^2 / N where the final depth drift is under 1.5 mm; either sign and under 3 times it where the sphere drifts further",
+    "damped": "guarded: 20/20 leave the frame at steps 40 to 70; unguarded: every draw stops at run.non-finite, none runs to the end, between steps 40 and 80 (R2 51; round 1's draw 0 56): it acts a frame period earlier than the guarded loop and fails only once the frame holds no darkness at all, where the guard flags the target lost at half a ball"
+   },
+   "band": [
+    null,
+    null
+   ],
+   "unit": "as named",
+   "basis": "measured-before (R2's stored runs, recomputed; round 1's probe) and derived (the first tick: the step held one frame period longer adds 5 |step|^2 / N to the mean squared miss while the sphere stays near its plane, from which the delayed trajectory differs only by the circle's motion over a frame period and the run's last five misses)",
+   "why": "two differences of operating point, each switched alone by r2_j: the draws (R2's +26 % is its round 1's, whose draws 2, 4, 13 and 19 bound no coil; the example draws R2's round 2, redrawn until the first tick binds one, where R2's own code gives +128 %) and the first tick (R2's tracker read the camera's frame before its first, dark everywhere, as the image's centre, the start by the camera's placement; the example's guard loses it and writes nothing, a frame period's delay). Neither is a defect of the example: the first frame does not exist, and R2's reading of it was right only because the camera is centred over the start"
+  },
+  "metric": "per draw and medians over the 20 draws",
+  "control": {
+   "plant": "none: estimates; the unguarded arm is the switch that isolates the first tick",
+   "environment_variable": "CAMERA_LOOP_PLANT",
+   "expected_rate": "",
+   "runs": 20,
+   "clean_expected": "",
+   "resolution": ""
+  },
+  "if_wrong": "an unguarded camera J off R2's by more than 1e-9 on some draw: another difference of operating point, to be found before anything else",
+  "cannot_discriminate_if": ""
+ },
+ "costs": {
+  "prediction": "as round 1's durations arm (303 s in one process; the five tests over 30 s keep their allowlist rows): the changes add no compiled program; the limit test computes one more linear response; the tracker's derivative one more jitted evaluation a dtype",
+  "measured_at": "round 1's runner"
+ },
+ "outcomes": {
+  "written": "2026-11-15, after the probe (GitHub Actions run 43691394582, probe/camera-3c-r2 at 329e25c8 = the example at cc234c46 plus probe/, 26 arms, 4 vCPU runners); the predictions above are unchanged by this commit",
+  "jobs": "11 of 26 jobs failed, every one the probe kit's memory check alone (peaks 1.25 to 2.14 GiB against bounds of 1.25 to 1.28 GiB: the estimator's known underestimate of this case); every arm wrote its results",
+  "controls": "every control caught on every run and every clean arm quiet, on DETECTION_SEED 20-39 (never run before): rate_mode, rate_bvls64, rate_bvls32, rate_rev64, rate_rev32, rate_f32 (edge_f32), rate_cd_edge, rate_cd_branch, rate_damped, rate_limit_port, rate_limit_controller, rate_limit_command, rate_point_unnorm64, rate_point_unnorm32, rate_point_belief64, rate_point_belief32, rate_deriv_reset, rate_deriv_continued 20/20 each, clean 0/20; rate_lost_outside, rate_lost_border, rate_offplane 5/5, clean 0/5",
+  "gate_2_float32_vs_float64": "met: edge_f32 20/20, clean 0/20; on R2's draws 0-19 the ratio to the line at most 0.039",
+  "gate_3_central_differences": "met: edge and stop_branch 20/20, clean 0/20; on draws 0-19 orders 0.50 to 2.00, miss over line at most 0.338 (round 1's figure: the floor moved no float64 line visibly), every draw discriminating",
+  "gate_4_bvls": "met: limits 20/20 each dtype, clean 0/20. On R2's draws 0-19 with the law's rows: float32 worst 0.0375 (camera; median 0.016), 0.044 (true state); float64 0.062. On float64 rows made again, the same draws: float32 3.94 and 2.16 (round 1's), float64 0.338 and 0.634: the rows account for the whole float32 gap. The float32 rows differ from float64's by 1.5e-5 to 3.7e-5 relative on every draw",
+  "gate_7_limit": "met: clean 0/20 (the premise held on every fresh draw), each plant 20/20",
+  "gate_9_tracker_derivative": "met: edge 20/20 each arm, clean 0/20 each arm",
+  "gates_unchanged": "met: every one 20/20 (or 5/5), clean 0",
+  "r2_numbers": {
+   "reverse_vs_forward_max_ratio": "camera float64 0.030, float32 0.077; state 0.0090, 0.0056: met",
+   "float32_vs_float64": "J relative median 4.3e-6, max 2.9e-5; dJ/dkp median 2.0e-5, max 3.4e-4; ratio to the line at most 0.039: met",
+   "bvls": "see gate_4: met",
+   "cd_orders": "0.50 to 2.00: met",
+   "camera_over_state_J_r2_first_tick": "met: with R2's first tick the camera J equals R2's stored runs on every draw to 2.9e-14 relative (round 2's draws) and 1.8e-14 (round 1's), the true-state J to 1.1e-15; the medians are R2's to the per cent, +26 % (-15 % to +1041 %) on round 1's draws and +128 % (-13 % to +1041 %) on round 2's",
+   "camera_over_state_J_example": "met: on round 2's draws median +120 % (+9 % to +1014 %), round 1's probe's figures; on round 1's draws +39 % (+4 % to +1014 %)",
+   "first_tick_change": "met: 0.76 to 1.16 times 5 |step|^2 / N on the ten draws whose final depth drift is under 1.5 mm (round 2's 1, 3, 5, 9, 12, 15; round 1's 2, 4, 13, 19); -2.23 to +1.40 elsewhere",
+   "damped": "guarded met: 20/20 leave the frame, first lost at steps 45 to 65. Unguarded MISSED: 13 of 20 draws stop at run.non-finite (steps 51 to 71), and 7 (3, 6, 8, 9, 14, 16, 18) run to the end finite. Measured on the laptop (draws 3, 6, 0): where the run stays finite the overshoot clips the shadow at the frame's border (border darkness up to 7.8 px) without emptying the frame (its least darkness 0.26 px on draw 3, 38 px on draw 6; 0.0 on draw 0, which goes non-finite), so R2's 0/0 never happens; the guard flags those ticks lost by the border. The test's control is unaffected (an unguarded tracker flags nothing, which the test asserts against): rate_damped 20/20"
+  },
+  "the_cause_of_round_1s_moved_J": "two differences of operating point, each switched alone on the same draws: R2's +26 % is its round 1's (four draws bind no coil), the example draws R2's round 2, where R2's own runs give +128 %; and the example's guard loses the first tick (the camera's frame before its first), delaying the step one frame period, which moves the median to +120 % and raises the low end from -13 % to +9 %. With both switched to R2's the example is R2 to 3e-14",
+  "durations": "runner (4 vCPU), the two files, 19 tests: 185 s in one process, 146 s wall under pytest -n auto --dist worksteal (round 1: 303 s and 234 s on another runner). Over 30 s: reverse against forward float64 37.6 s and float32 32.4 s; the limit 29.7 s, the tracker's derivative 25.0 s and 23.5 s (round 1: 55, 37, 32 s). The five allowlist rows stay"
+ }
+}

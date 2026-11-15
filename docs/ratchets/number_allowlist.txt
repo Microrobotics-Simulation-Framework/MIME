@@ -265,3 +265,4 @@ src/mime/sensing/README.md  1.07 1.15  #1  # the static structure's make time an
 src/mime/sensing/README.md  1.02 1.05  #1  # the static structure's make time and the step's compile and frame ratios with a mesh in view, estimates and ranges over four runner rounds (tests/sensing/predictions_camera_mesh*.json)
 src/mime/sensing/README.md  1 2 1 2013  #1  # the slab widening 1 + 2 gamma_3 (gamma_n = n u / (1 - n u)) and its source, Ize 2013
 src/mime/sensing/README.md  0.1 0.2  #1  # the share of rays at a rotated box's edges the slab lost, a laptop's draws, in percent
+docs/guide/camera_loop.md  43691394582 3c  #1  # a GitHub Actions run id and a branch name (probe/camera-3c-r2): identifiers that locate the probe whose rates the page cites, not claims
