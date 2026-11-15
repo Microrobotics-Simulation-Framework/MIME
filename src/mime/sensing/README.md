@@ -30,7 +30,9 @@ stages:
   (`camera.crease-unmeasured`: the box and the screw, until the screw's measure comes); one with neither is refused
   (`camera.no-route`). The choice never reads a measured time. `route=` is an override only: `"closed form"` on a kind
   without one is refused (`camera.no-closed-form`), and `"sampled"` takes the sampled route where a closed form exists
-  (the swap test's use).
+  (the swap test's use). In the in-loop camera a *structure* of a kind the stage draws with no closed form (an ellipsoid,
+  a box, a helix, a screw) stands still, and is imaged by its drawing as a static mesh (below), as the mesh tracer measured it,
+  never by the sampled route; a body of one moves, and takes the sampled route where its kind can.
 - **The sampled route** (`_sampled.py`), for a body with no closed form. Each ray's line through the body's enclosing ball
   (widened by `MARGIN_PX` footprints) is sampled in one reduction at a declared count: `SAMPLES`, the count camera
   truth's measurement set, raised for a slender body so that neighbouring samples lie at most `SPACING` of its smallest length setting
@@ -39,14 +41,15 @@ stages:
   forms' are: the first-order distance at its ray's own least near the held point (the quartic's through five held
   values half a spacing apart, by Newton's steps from the parabola's), its line by `jvp` along the ray table. Its
   derivative is the least distance's along the ray but for the quartic's error, fourth order in the spacing; read at the
-  parabola's point alone, a branch seen nearly end-on (a coil's apex) left the motion's derivative about 1 % off. **Where
+  parabola's point alone, a branch seen nearly end-on (a coil's apex) left the motion's derivative off by about G20's whole
+  line. **Where
   both branches' lines cross a pixel**, two parts of the outline meet there (a body occluding itself: de Jongh's screw's
   lobes in concave notches, a coil's turns meeting), and the corner sub-samples take the pixel, each sub-ray reading
   its own least. Every cell (a sub-sample, or a pixel where no corner is in view) takes the exact share of the union of
   the two branches' half-planes (`union_covered`, the boundary integral of the polygon outside both), not one straight
   edge: one edge misses up to half a cell along a sharp notch's sliver, the per-pixel error camera PR five's first step
   located off the screw's crease, and its error, depending on where the notch sits on the sub-samples' lattice, made a
-  coil's image ripple as it moved (its motion's derivative 2 to 4 % off at some poses; the measurements are in
+  coil's image ripple as it moved (its motion's derivative off by several times G20's line at some poses; the measurements are in
   `tests/sensing/predictions_camera_pr5a_fix.json`). An attenuating body's chord is its samples' sign changes, linearly
   interpolated: a body thinner than the spacing along a ray can be missed in the chord, never in the coverage. The
   march's choices are switches (`camera.sampled.*`); its search is held.
@@ -109,13 +112,16 @@ about a sub-pixel's area).
 - **Scenery** (`mime.scene.SceneryGprim`, `SceneryMesh`, from `Composition.scenery`): every `Gprim` (a mesh, an implicit
   shape, curves, points) of a referenced asset that no thing owns (below no prim a body or apparatus is bound to, not a kind's
   derived prim, `mime:derived_from`) is scenery. A `Mesh` is read, with its points in metres in the world, its triangles and
-  its display colour and opacity; any other gprim is found and named by its type, not read. The camera **refuses each by
-  name** (`camera.mesh-untraced`, naming `hide=("<prim path>",)`) until the mesh tracer arrives: scenery is never dropped
-  silently. `hide=` takes a scenery prim's path beside a body's or structure's name, and the build report lists what was
-  hidden. A time-sampled mesh is read at its earliest sample and flagged `animated`. A layer records no decimation, so the
-  distance a decimated mesh moved is unknown here, not zero, and is not reported as a number.
-  - **Classed scenery and refused, conservatively** (`hide=` works on each): a prim with `visibility = invisible` or
-    `purpose` `guide` or `proxy`, and a point instancer's prototype meshes.
+  its display colour and opacity; any other gprim is found and named by its type, not read. The camera **traces each mesh**
+  (below) and **refuses any other gprim by name** (`camera.mesh-untraced`, naming `hide=("<prim path>",)`): scenery is never
+  dropped silently. `hide=` takes a scenery prim's path beside a body's or structure's name, and the build report lists what
+  was hidden. A time-sampled mesh is read at its earliest sample and flagged `animated`, and refused (`camera.mesh-moving`).
+  A layer `mime.viz.write_mesh` writes with `decimation_distance=` records how far a decimation moved the mesh (the prim's
+  `customData` key `mime:decimation_distance_m`, metres), and the build report gives it in pixels at this camera; a layer
+  without it is reported as not recorded: unknown, not zero. `write_mesh` writes the key only where it is given, so a layer
+  written without it has the bytes it had before.
+  - **Classed scenery, conservatively** (`hide=` works on each): a prim with `visibility = invisible` or `purpose` `guide`
+    or `proxy`, and a point instancer's prototype meshes.
   - **Display primvars are read as USD composes them** (`mime.scene.read_display`): the nearest constant primvar up the
     path, its indices resolved (`ComputeFlattened`), a time-sampled one at its earliest sample. A parent's primvar with
     vertex, per-face or per-corner interpolation does not inherit to its children, as USD defines it, so a child of such a
@@ -125,10 +131,79 @@ about a sub-pixel's area).
     displayColor per-face (uniform) on <prim> reduced to its area-weighted mean for: <subjects>"); on a prim that is no mesh
     it is the plain mean, said the same way.
 
+## Static meshes (`_mesh.py`)
+
+A static mesh (a scenery `Mesh` of the stage, or a structure's drawing) is traced in the in-loop camera **once a run, in
+the static structure**, by a bounding volume hierarchy, so a run's frames cost 1.02 to 1.05 times the same scene's without a mesh (an estimate, measured on 4-vCPU runners at 320 x 240 and 640 x 480, float32 and float64; each frame also reads a checksum of the tree, about 0.03 ms of that, and each run() call compares it once, under 1 ms).
+
+- **The tree** is built on the host when the node is made: a complete binary tree in heap order, balanced splits along each
+  group's longest centroid axis, leaves of a few triangles, its boxes fixed (the mesh stands). Its arrays are the node's
+  parameter leaves (`mime.sensing._mesh.KEYS`), never constants of the program, so the step's program holds no copy of the
+  mesh and compiles in the time it did; the triangles reach the node as arrays the derived graph records by their sha256,
+  held as `Frozen` (a registered one-leaf pytree) because MADDENING compares the bytes of an `ndarray` among a node's constants
+  at every chunk of a run, which for a hundred thousand triangles was forty times the steps' own time
+  (`test_a_meshs_constants_are_not_arrays_the_graph_compares_byte_for_byte_at_every_chunk`).
+  Rays are traced in tiles of a few dozen, each ray with its own stack, in one while loop a tile.
+- **Every crossing, not the nearest** (one bin): each adds its `t` signed by its facing (leaving the solid `+t`, entering
+  `-t`), so the sum is the chord inside a closed, consistently wound mesh, wherever the camera is, and each adds one to the
+  crossing count. A sub-ray's factor from a mesh is `exp(-mu L)` where it attenuates (named in `absorbers`; it must be a
+  closed solid, else `camera.mesh-open`), what its display opacity leaves, once for each crossing, where the stage gives it
+  one, nothing where it is
+  opaque and crossed (the default, noted), everything where missed. A pixel's factor is the mean over `MESH_SAMPLES` x
+  `MESH_SAMPLES` sub-rays (the pixel's ray moved along the ray table's derivatives) of the product over the meshes, which
+  multiplies into the standing subjects' transmission.
+- **The crossing test is watertight** (Woop, Benthin and Wald's): the corners moved to the ray's origin and sheared so the
+  ray runs along an axis, each edge's function computed from its two corners alone, so two triangles sharing an edge compute
+  exactly opposite values and a ray through an edge is claimed by exactly one of them; each product is rounded on its own
+  (an optimisation barrier keeps XLA from fusing a multiply into the difference). Moller-Trumbore's barycentric test is not
+  watertight: at a shared edge a ray can cross both triangles or neither, and one crossing more or less moves the signed
+  chord by its whole `t`, which a camera a millimetre away makes far larger than a wall's chord.
+- **`MESH_SAMPLES` is a declared default, not a setting**, set by the mesh swap gate: past it the drawing's sagitta, not the
+  sub-rays, sets a silhouette's error. It is in the node's spec (the derived graph) only where a mesh is traced, and in the
+  build report. A saved experiment reproduces at its own MIME version; a MIME that changed the constant would build another
+  derived graph, which `verify` and a load's derived-graph check report.
+- **Once a run**: made when the build makes the node's parameters, again once a run where a derivative may be taken or the
+  tree's detector numbers differ from the run's (`refreshed_held`), and so again at each study point that varies the
+  detector's numbers. Measured through the built graph on GitHub's four-core runners for a closed tube-wall mesh of about a
+  hundred thousand triangles filling the view: 1.5 to 10 seconds at quarter VGA and 4 to 30 seconds at VGA (an estimate, and
+  its range over four rounds on runners of different CPUs, not a bound), the step's compile time 1.07 to 1.15 times and a
+  frame's 1.02 to 1.05 times what they are without (the outcomes of `tests/sensing/predictions_camera_mesh*.json`).
+- **Derivatives.** The rays and the tree are taken under `stop_gradient`: no derivative reaches the traversal's while loop
+  (which has none in reverse mode), so a derivative in a pose, a gain or a limit passes with a mesh in view, and one in any
+  of the detector's nine numbers, which would leave the mesh's part out, is refused by name in both modes and in a fit
+  (`camera.mesh-derivative`, through the node hook `derivative_leaves_problem`, which `Study.gradient` and `Study.fit` ask
+  before compiling): calibrate with the meshes hidden.
+- **The slab test is widened** by `1 + 2 gamma_3` (`slab_pad`: `gamma_n = n u / (1 - n u)`, `u` the run's unit roundoff, Ize 2013): a
+  plane's distance is three roundings, and without it a ray through an edge of a box of the tree was dropped (0.1 to 0.2 percent of
+  the rays aimed at a rotated box's edges in a laptop's draws, in both dtypes; a lost crossing moves the chord by its whole `t`).
+  `tests/sensing/test_mesh_edges.py` goes at the edges and vertices in both dtypes, with the barrier and the widening each
+  planted away.
+- **A mesh is held as built.** The node's arrays are read-only copies; a record replaced with another mesh is refused
+  (`camera.cache-stale`); a tree leaf written is not the one the held structure was made from (the signature of the leaves is
+  among the numbers it is compared with), so the structure is made again from it: no route gives the image of the mesh as
+  built (`tests/sensing/test_mesh_held.py`). `mesh_triangles` and `mesh_owners` stay constructor arguments (the saved form,
+  the derived graph's hash) and are no parameter leaf.
+- **Refused, each naming its route:** a moving (time-sampled) mesh, `camera.mesh-moving` (hide it); a camera that may move
+  with a mesh in view, `camera.mesh-mounted` (a camera on a moving frame keeps no static structure; fix it in the world, or
+  hide the meshes); an open or inconsistently wound mesh named in `absorbers`, `camera.mesh-open`.
+- **Drawn structures** take the stage writer's drawing (its facets, its triangle budget); the build report gives each
+  drawing's sagitta (about the sagitta of a facet's diagonal on its widest ring) in pixels at this camera, or says it is
+  exact (a box).
+- **A body inside a closed attenuating mesh** at its start (a host point-in-mesh test) takes it as its medium: its own term
+  runs at `mu - mu_mesh` along its chord (the displaced-medium rule), and the build report says `outside_parent` is not
+  checked against it (the step holds no signed distance to the mesh).
+- **The chords offline** (`mesh_chords`): each mesh's signed chord and crossings along each sub-ray of every pixel, the path
+  lengths a transmission model such as an X-ray reduction reads; no derivative passes through the rays.
+- **Checked** (`tests/sensing/`): the tree against brute force, every crossing, the chord, the nearest `t` and its triangle,
+  on drawn closed meshes in both dtypes (`test_mesh_bvh.py`); a tube's and a sphere's drawings against their closed forms,
+  within the sagitta's bracket on the same sub-rays and the design's line against the closed forms (`test_mesh_swap.py`); the
+  refusals and a pose's derivative against central differences (`test_mesh_refusals.py`).
+
 ## What it does not do yet
 
 The tracker and the controller that reads the in-loop camera, the crease measures (and so the screw, the cylinder and the box
-on the sampled route), meshes and the display view's lighting and colour, X-ray detectors: each comes in a later piece of the camera lane. Its switch sites (the box edge's pieces, the chords'
+on the sampled route), moving meshes (a refit tree for offline renders and the display view) and the display view's
+lighting and colour, X-ray detectors: each comes in a later piece of the camera lane. Its switch sites (the box edge's pieces, the chords'
 intersections) go through `mime.core.switch` where a switch has a branch a derivative can take, under the owners
 `camera.*` (`_switches.py`, declared on the `camera` entry, each a row of the switch harness); the sites that stay raw are
 listed with their reasons in `docs/ratchets/raw_switches.txt`. A switch collector keeps what a loop's or a cond's body

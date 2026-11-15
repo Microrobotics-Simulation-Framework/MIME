@@ -116,7 +116,18 @@ The limits each record states of its model, printed as `limits of <entry> (state
 ## `controller`
 
 The controller, with the mode it is placed in, its period and its latency, what it reads, and what it writes in place of a
-drive. The line says when a tick reads the state and from which step its writes act.
+drive. The line says when a tick reads the state and from which step its writes act. Where its law reads a model of
+what it drives or observes (`ctx.believed`, `ctx.allocator`), a line per model says whose numbers it holds: `believed =
+true` where no belief is declared (the controller knows the model exactly), or the declared belief's entry; a belief
+declared and not read says so. To give the controller a model of its own, declare it:
+`exp.set_controller(..., believed={"emns.magnetic": CalibratedMultipole(...)})`.
+
+## `calibrations`
+
+Each calibration an entry reads, one line, as its calibration type reads it: the asset's name, the type (`mpem/1`,
+`urdf/1`), its sha256, licence and tier, the unit it describes as its file names it, and which of its fields are fitted
+and which declared. A line says what the file is and where its numbers come from, not that they are accurate: a fit's
+accuracy is its lab's to state. Empty where no entry reads a calibration.
 
 ## `ports`
 
@@ -130,6 +141,20 @@ line names is ideal: nothing was built for it. Empty where no port is declared.
 
 Every mass mounted on a chain, with what carries it (a rigid body welded on a link, a spinner's rotor, nothing on a prescribed
 motion), and a rotor's worst case across its axis and its kick on the joints of the segment that carries it.
+
+## `precision`
+
+The floating-point precision the build was made in, `float32` or `float64`: JAX computes in float32 unless `jax_enable_x64` is on
+(the `JAX_ENABLE_X64` variable), and the README quickstart runs in float32. A result states it too, and a run folder's `outputs.json` records
+it (`precision`). If a number depends on the precision, run both and compare; a saved experiment's lock records the precision it
+was saved in, which `mime run` applies.
+
+## `matmul_warning`
+
+Set when the build ran on a GPU whose default matmul precision is not `highest`, and says so (the build also warns,
+`MatmulPrecisionReduced`). Reduced-precision (TF32) matmuls silently corrupt low-magnitude float32 physics (an earlier line's drag was off by
+some per cent). Set `JAX_DEFAULT_MATMUL_PRECISION=highest` before JAX starts. `None` on a CPU, and on a GPU at the highest
+precision. The real GPU path is not tested in CI.
 
 ## `profile`
 

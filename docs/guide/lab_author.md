@@ -15,8 +15,43 @@ in MIME's repository so that CI builds and installs it in every lane and shows t
 MIME registers for itself. If the fixture ever needed an edit to MIME to pass, the extension contract would be wrong;
 `tests/test_lab_fixture.py` is the control that registering from outside works. Every piece of code on this page is included
 from its files, so the page shows code a test runs. A real plugin has the same shape in a repository of its own, with its own
-tests and versions. Publishing one (versions and compatibility, releasing it, and a template to start from) is documented in
-a later release.
+tests and versions. Publishing one (versions and compatibility, releasing it) is documented in a later release; the template to
+start from is `mime scaffold plugin`, below.
+
+## Starting from a template
+
+`mime scaffold plugin` writes a plugin of your own to start from, in the layout of a typical plugin with no `--minimal`:
+each file is short and says whether it is optional. It holds a `pyproject.toml` with the `mime.entries` and `mime.assets` entry
+points; `src/<package>/` with the adapter (`entries/`, one example entry), the engine (`engine/`: your law as pure JAX, which
+imports no `mime`, and a test holds that) and the records (`records/`, one example record whose sha256 is filled in from its
+data file); tests (the registry walk and the saved round trip, `node_failures` and `param_reach_failures` on the example entry,
+validity lines with none empty, the engine's import rule shown able to fail, a Hypothesis property with **one planted error that
+its property catches every run**, a `@verification_benchmark` behind a `slow` marker, and an `assert_type` file); a `benchmarks/`
+folder with a `mime.toml`; an example; a README whose "Use" section is what CI runs; `CITATION.cff` and `LICENSE`; and a CI
+workflow with a default lane, a slow lane gated by a `slow` label, a weekly lane against MIME's release branch, the `mime
+registry` assertion, `mime check` of the benchmark, `mime assets audit` of the built wheel and sdist, and a typing job (pyright,
+strict, over the package and the `assert_type` file, so the types an editor completes from cannot rot). Every value is the one
+you give with `--set`, else your `defaults.toml` (the namespace, the licence of your code, your name), else scaffold's own, and
+`--dry-run` draws the files and says where each value came from before anything is written. It never overwrites: a folder that
+exists is refused. A namespace that is taken (the first word of one of MIME's entries or refusal codes, or one an installed
+package declares) is refused with a free word to try, since one clash breaks `mime registry` for the whole environment: a folder
+named `helix-robot` therefore needs `--set plugin.namespace=`. Its own control scaffolds the plugin with `--yes` into a temporary folder, unpacks its wheel there, and runs
+its tests in a subprocess that sees only that folder: the tests pass, and with the planted error in, only the planted property
+fails.
+
+<!-- mime-fragment: a shell session, not code a test runs; the command lines are parsed against the CLI by the docs check -->
+```bash
+mime scaffold plugin acme-probes --set plugin.namespace=acme --dry-run --yes
+mime scaffold plugin acme-probes --set plugin.namespace=acme --yes
+pip install -e acme-probes
+mime registry | grep acme
+```
+
+The namespace is the word before the dot in every entry's name (`acme.example_load`) and is filled in the six places it appears
+from one value; records use `_` where entries use `.` (`acme_example_record`), and an instance is named `entry:thing`
+(`acme.example_load:probe`): the template's comments say so, and nothing is renamed. The example entry delivers to the toy
+body's load, so it runs beside MIME's `toy` entries; replace it with your law. Pin a timed run to a single core and the CPU
+(`JAX_PLATFORMS=cpu taskset -c <core> pytest`): an unpinned JAX run on a shared machine was measured several times slower.
 
 ## What a lab registers
 

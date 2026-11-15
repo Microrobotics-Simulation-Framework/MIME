@@ -33,6 +33,8 @@ if TYPE_CHECKING:
     )
     from mime.core.multibody import DescriptionClassification, MultibodyTree, Payload
     from mime.fields._solved import ExchangeFrame, SolvedField
+    from mime.registry._calibration import CalibrationInstance
+    from mime.registry._forward import ForwardModel
 
 _EMPTY: Mapping[str, Any] = MappingProxyType({})
 
@@ -351,12 +353,27 @@ class RosterBody:
     pose: tuple[float, ...] | None
 
 
+@dataclass(frozen=True, eq=False)
+class RosterDrawing:
+    """A structure's drawing as the stage draws it: its kind's ``drawing`` at ``segments`` facets a turn, in the kind's
+    own frame, which ``translation`` (metres) and ``orientation`` (a unit quaternion ``(w, x, y, z)``) place in the
+    world; ``exact`` where the drawing is the same at half the facets (a box's faces), so it carries no sagitta."""
+
+    drawing: Drawing
+    translation: tuple[float, float, float]
+    orientation: tuple[float, float, float, float]
+    segments: int
+    exact: bool
+
+
 @dataclass(frozen=True)
 class RosterStructure:
-    """A structure's geometry kind name and its settings in SI, fixed in the world."""
+    """A structure's geometry kind name and its settings in SI, fixed in the world, and its drawing as the stage draws
+    it (``None`` for a kind drawn natively or not at all)."""
 
     kind: str
     settings: Mapping[str, Magnitude]
+    drawn: RosterDrawing | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -520,6 +537,9 @@ class BuildContext:
     #: For a chain segment, the settings in SI of each response a port hands it to compute itself, by the command's
     #: name (``Segment.responds``).
     responses: Mapping[str, Mapping[str, Magnitude]] = field(default_factory=dict[str, Mapping[str, Magnitude]])
+    #: For a controller, its models of what it drives and observes (``mime.control``): what :meth:`believed` and
+    #: :meth:`allocator` read. ``None`` for every other entry.
+    control: Any = None
 
     def geometry(self, of: str) -> Hull | None:
         """The hull of the body bound to the role ``of``, as its plan saw it."""
@@ -544,6 +564,34 @@ class BuildContext:
     def region(self, role: str) -> Region | None:
         """The region the medium bound to ``role`` fills, as phase 1 resolved it."""
         return self.regions.get(role)
+
+    def believed(self, key: str) -> Any:
+        """A controller's model of an apparatus's provider or chain segment (``<apparatus>.<field>``,
+        ``<apparatus>.<segment>``, or the apparatus's name where it holds one of them) or of a camera (its id): the
+        belief ``set_controller(believed=...)`` declares for it, or the true declaration where none is declared. A
+        provider's or a segment's is its forward model (``mime.registry.ForwardModel``), a camera's its projection
+        (``project``); their numbers are leaves of the controller's node inside the compiled step. Only a
+        controller's context holds models."""
+        if self.control is None:
+            raise _not_a_controller("believed")
+        return self.control.believed(key)
+
+    def allocator(self, apparatus: str, *, commands: Sequence[str], objective: Mapping[str, Quantity], owner: str,
+                  effort: Quantity | Mapping[str, Quantity] | None = None, toward: str = "zero") -> Any:
+        """A controller's exact allocation over ``commands`` of ``apparatus`` (as ``Apparatus.commands`` keys them),
+        through its believed model, within the commands' ports' bounds: a traceable ``solve(wanted, at, last=None) ->
+        (commands, report)`` (``mime.control.Allocator``). ``objective`` gives each quantity of the model the allocation
+        comes near, with its scale; ``effort`` a regularisation's scale towards zero or the last command
+        (``toward``); ``owner`` the switch's owner, which the controller declares (``allocation_switch``). Only a
+        controller's context allocates."""
+        if self.control is None:
+            raise _not_a_controller("allocator")
+        return self.control.allocator(apparatus, commands=commands, objective=objective, owner=owner, effort=effort,
+                                      toward=toward)
+
+
+def _not_a_controller(name: str) -> Exception:
+    return AttributeError(f"ctx.{name} is a controller's: only a controller's law(ctx) holds models of what it drives")
 
 
 def _held(settings: Mapping[str, Magnitude], name: str) -> Magnitude:
@@ -1120,6 +1168,15 @@ class ChainSegment(Dynamics):
         they are published, so that the segment it mounts on publishes them for it."""
         return True
 
+    def forward_model(self, ctx: BuildContext) -> ForwardModel | None:
+        """Its forward model (``mime.registry.ForwardModel``): the world poses of its frames from its commands, made
+        from its own build context, which supplies its structure alone. ``None`` for a segment that declares none."""
+        return None
+
+    def calibration_instance(self) -> CalibrationInstance | None:
+        """The description asset it reads, as its calibration type reads it, or ``None``."""
+        return None
+
     def placement(self, settings: Mapping[str, Magnitude]) -> tuple[float, float, float, float, float, float, float]:
         """Its base's pose in the frame it mounts on (in the world for the first segment): ``at`` (in SI) and
         ``orientation``."""
@@ -1159,6 +1216,17 @@ class FieldProvider(Entry):
     def capabilities(self) -> CapabilityRecord:
         return CapabilityRecord(self.label(), frozenset(self.flags),
                                 {name: Port(prefix) for name, prefix in self.publishes.items()})
+
+    def forward_model(self, ctx: BuildContext) -> ForwardModel | None:
+        """Its forward model (``mime.registry.ForwardModel``), made from its own build context, which supplies its
+        structure alone: every number the model reads is in its parameters, inputs or commands. ``None`` for a provider
+        that declares none."""
+        return None
+
+    def calibration_instance(self) -> CalibrationInstance | None:
+        """The calibration asset it reads, as its type reads it (``mime.registry.CalibrationInstance``), or
+        ``None``."""
+        return None
 
     def build(self, ctx: BuildContext, b: ProviderBuilder, slots: Sequence[Slot]) -> None:
         raise NotImplementedError

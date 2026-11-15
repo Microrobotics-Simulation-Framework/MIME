@@ -22,6 +22,10 @@ from mime.scene._camera import display_authors, read_display
 from mime.scene._derived import DERIVED_FROM
 from mime.scene._pxr import Usd, UsdGeom
 
+#: The ``customData`` key of a mesh prim recording how far a decimation moved it, in metres (whatever the layer's
+#: units): the larger one-sided distance between the original and the decimated mesh (``mime.viz.mesh_distance``).
+DECIMATION_DISTANCE = "mime:decimation_distance_m"
+
 
 @dataclass(frozen=True, eq=False)
 class SceneryGprim:
@@ -42,12 +46,15 @@ class SceneryGprim:
 @dataclass(frozen=True, eq=False, kw_only=True)
 class SceneryMesh(SceneryGprim):
     """A scenery ``Mesh``, read: its ``points`` (``(n, 3)``, metres, world frame) and ``triangles`` (``(m, 3)`` indices),
-    and whether it is ``animated`` (time-sampled points or placement: read at its earliest sample). Whether the stage had
-    decimated it is not recorded in a layer: that is unknown here, not zero."""
+    whether it is ``animated`` (time-sampled points or placement: read at its earliest sample), and how far a decimation
+    moved it where its layer records that; where it does not, that is unknown here, not zero."""
 
     points: np.ndarray
     triangles: np.ndarray
     animated: bool = False
+    #: The decimation's measured distance (metres) where the layer records it (``mime:decimation_distance_m`` in the
+    #: prim's ``customData``, which ``mime.viz.write_mesh`` writes where its caller gives it); ``None``: not recorded.
+    decimation: float | None = None
 
 
 def _triangles(counts: Sequence[int], indices: Sequence[int], flip: bool) -> np.ndarray:
@@ -82,8 +89,10 @@ def read_mesh(prim: Any, meters_per_unit: float) -> SceneryMesh:
     indices = list(mesh.GetFaceVertexIndicesAttr().Get(time) or [])
     animated = (mesh.GetPointsAttr().GetNumTimeSamples() > 0 or mesh.GetFaceVertexCountsAttr().GetNumTimeSamples() > 0
                 or mesh.GetFaceVertexIndicesAttr().GetNumTimeSamples() > 0 or bool(xformable.TransformMightBeTimeVarying()))
+    recorded = prim.GetCustomDataByKey(DECIMATION_DISTANCE)
+    decimation = float(recorded) if isinstance(recorded, (int, float)) and not isinstance(recorded, bool) else None
     return SceneryMesh(str(prim.GetPath()), "Mesh", points=points, triangles=_triangles(counts, indices, flip),
-                       animated=animated, **_display(prim))
+                       animated=animated, decimation=decimation, **_display(prim))
 
 
 def read_gprim(prim: Any) -> SceneryGprim:
@@ -110,4 +119,4 @@ def scenery(stage: Any, owned: Sequence[str], meters_per_unit: float) -> tuple[S
     return tuple(sorted(found, key=lambda held: held.path))
 
 
-__all__ = ["SceneryGprim", "SceneryMesh", "read_gprim", "read_mesh", "scenery"]
+__all__ = ["DECIMATION_DISTANCE", "SceneryGprim", "SceneryMesh", "read_gprim", "read_mesh", "scenery"]

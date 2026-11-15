@@ -3,7 +3,10 @@
 # Every code MIME constructs is here, and nothing else: a Refusal whose code is not here and is not in a registered
 # namespace's own (labx.too-far) raises when it is constructed. The rows are generated from a scan of the source, and
 # `mime docs check` fails, naming the row to add, delete or change, when they differ from what the source constructs.
+allocation.bounds             user
 allocation.exact-size         user
+allocation.model              user
+allocation.objective          user
 allocation.wanted             user
 apparatus.reserved-field      user
 asset.audit                   user
@@ -77,6 +80,10 @@ camera.calibration-size       user
 camera.crease-unmeasured      user
 camera.frame-period           user
 camera.hide                   user
+camera.mesh-derivative        user
+camera.mesh-mounted           user
+camera.mesh-moving            user
+camera.mesh-open              user
 camera.mesh-untraced          user
 camera.mount                  user
 camera.no-closed-form         user
@@ -134,6 +141,7 @@ container.kind                user
 control.law-raised            user
 control.law-traced-branch     user
 control.law-writes            user
+controller.believed           user
 controller.impure             user
 controller.labels             user
 controller.latency            user
@@ -560,6 +568,9 @@ rung.unknown                  user
 save.not-loadable             user
 save.not-writable             environment
 save.unsavable                user
+scaffold.exists               user
+scaffold.no-terminal          user
+scaffold.set                  user
 scene.asset-changed           user
 scene.asset-default-prim      user
 scene.asset-dependencies      user

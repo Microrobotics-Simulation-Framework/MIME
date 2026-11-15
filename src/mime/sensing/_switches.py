@@ -69,8 +69,8 @@ PIECES_SWITCHES = (
                   "where the first is nearer-inside and taken)",
         orders={"expected": -1},
         route="the corner sub-samples take the pieces' lines at the sub-pixels' centres and so narrow the jump to a "
-              "sub-pixel's share (camera.corner); the exact union of the pieces' half-planes removes it, as route 2's "
-              "two branches take it (camera.union.*)"),
+              "sub-pixel's share (camera.corner); the exact union of the pieces' half-planes removes it, as the sampled route "
+              "takes its two branches (camera.union.*)"),
     switch.Declaration(
         owner="camera.pieces.greatest",
         indicator="the first piece's line's distance from the pixel's centre less the second's, in pixels (positive "

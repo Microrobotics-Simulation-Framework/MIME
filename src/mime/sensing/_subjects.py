@@ -276,6 +276,9 @@ class Subject:
     #: The depth of penetration outside its parent within which a subject counts as inside it (a contact's tolerance:
     #: the robot rides the floor), as a share of its enclosing radius.
     tolerance: float = 1e-3
+    #: The attenuation per metre of the medium a subject with no parent subject lies in, displaced along its chord: a
+    #: closed attenuating mesh the in-loop camera traces, whose chord runs through the subject (``None``: none).
+    around: float | None = None
     placed: Placed = field(init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -385,7 +388,7 @@ def resolve(subjects: Sequence[Subject], stage: Mapping[str, Display] | None = N
         sources[subject.name] = source
         held.append(Subject(subject.name, subject.kind, subject.settings, subject.region, appearance, subject.parent,
                             subject.moving, subject.pose, subject.coverage, subject.window, subject.route,
-                            subject.tolerance))
+                            subject.tolerance, subject.around))
     boxed = [s.name for s in subjects if s.kind == "sphere" and s.coverage == "box_edge"]
     notes = ((f"appearance defaulted for: {', '.join(defaulted)}",) if defaulted else ()) + \
         ((f"the box edge in place of exact disc coverage (opt-in) for: {', '.join(boxed)}",) if boxed else ())

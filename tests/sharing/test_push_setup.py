@@ -1010,8 +1010,8 @@ def test_control_enter_read_as_no_is_caught_asking_for_new_values(saved: Path, t
                                                                   monkeypatch: pytest.MonkeyPatch):
     folder = copy_of(saved, tmp_path)
     walk(folder, Person(*FIRST))
-    real = _setup._Walk.keep  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(_setup._Walk, "keep",  # pyright: ignore[reportPrivateUsage]
+    real = _setup.Walk.keep
+    monkeypatch.setattr(_setup.Walk, "keep",
                         lambda self, head, value: False if self.answer(f"{head}\nuse? [Y/n] ") == "" else
                         real(self, head, value))
     with pytest.raises(AssertionError, match="asked more than was answered"):

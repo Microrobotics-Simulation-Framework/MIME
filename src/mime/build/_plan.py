@@ -17,8 +17,8 @@ import numpy as np
 
 from mime import materials, vocabulary
 from mime._notebook import RAN_TWICE, RUN_AGAIN, in_notebook
-from mime.build._control import DELAY, UNBUILT, ClassedRead, ControllerPlan, Mode, ReadClass, ResolvedWrite, \
-    controller_nodes, mode_of, refused_reads
+from mime.build._control import DELAY, UNBUILT, BeliefPlan, ClassedRead, ControllerPlan, Mode, ReadClass, \
+    ResolvedWrite, believed_key, controller_nodes, mode_of, refused_reads
 from mime.build import _ports
 from mime.build._ports import CommandPortPlan, MeasurementPlan, StagePlan
 from mime.build._declarations import (
@@ -46,6 +46,7 @@ from mime.build._refusals import (
     MIME_DEFECT,
     BuildRefused,
     Explained,
+    MimeError,
     Refusal,
     RefusalClass,
     catalogue_problem,
@@ -97,6 +98,7 @@ from mime.registry import (
     RoleKind,
     Roster,
     RosterBody,
+    RosterDrawing,
     RosterPart,
     RosterStructure,
     Segment,
@@ -735,6 +737,7 @@ class _Planner:
         self.mode: Mode | None = None
         self.latency = 0
         self.controller_leaves: tuple[str, ...] = ()
+        self.controller_believed: object = None
         #: The commands the controller writes, by apparatus and command, each to its write label and path as written.
         self.written: dict[str, dict[str, tuple[str, str]]] = {}
         self.writes: dict[str, ResolvedWrite] = {}
@@ -1897,6 +1900,9 @@ class _Planner:
             return []
         try:
             problems = list(entry.setting_problems(settings))
+        except MimeError as refused:  # a refusal its settings meet below it (an asset gate's) keeps its own code
+            self.refusals.extend(refused.refusals)
+            return ["refused"]
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
             self.defect(type(entry), f"setting_problems() raised {error!r}", error)
             return ["defect"]
@@ -2812,6 +2818,7 @@ class _Planner:
             return
         index, held = declared[0]
         self.controller_leaves = tuple(held.leaves)
+        self.controller_believed = held.believed
         record = self.registered_as(cast(Entry, held.controller), EntryKind.CONTROLLER, "the controller")
         if record is None:
             return
@@ -2950,10 +2957,102 @@ class _Planner:
                         f"{where}'s read {read.label!r} ({read.path}, {read.read_class.value}) is refused: {reason}",
                         "read an observation's output instead, set_controller(reads={...: \"<observation "
                         "id>.<output>\"})")
+        beliefs = self.plan_beliefs(self.controller_believed, where)
         if self.mode is None or len(writes) != len(cls.writes) or len(reads) != len(cls.reads):
             return None
         return ControllerPlan(plan.owner, cast(Controller, plan.entry), plan.registered, dict(plan.settings), self.mode,
-                              plan.divider, self.latency, tuple(reads), tuple(writes), self.controller_leaves)
+                              plan.divider, self.latency, tuple(reads), tuple(writes), self.controller_leaves,
+                              beliefs)
+
+    def plan_beliefs(self, given: object, where: str) -> tuple[BeliefPlan, ...]:
+        """The controller's beliefs (``set_controller(believed=...)``), each resolved to its key in full and to the
+        part it is a belief of: a declaration of that part's kind, taking its commands, its settings checked as the
+        part's are. A camera's belief is checked by its settings alone: what needs the stage (its scenery, its meshes)
+        is the true camera's."""
+        if not given:
+            return ()
+        if not isinstance(given, Mapping):
+            self.refuse("controller.believed", RefusalClass.USER, f"{where}: believed={given!r} is not a mapping of "
+                                                                  f"keys to declarations",
+                        "pass believed={\"<apparatus>.<field>\": <its declaration>, ...}")
+            return ()
+        parts = {name: (*thing.fields, *thing.chain) for name, thing in self.things.items()
+                 if isinstance(thing, Apparatus)}
+        observations = {plan.owner: plan for plan in self.readers if plan.section is Section.OBSERVATION}
+        segments = {plan.owner: plan for held in self.segments.values() for plan in held}
+        keys = sorted([*(f"{a}.{p}" for a, held in parts.items() for p in held), *observations])
+        planned: dict[str, BeliefPlan] = {}
+        for written, entry in sorted(cast(Mapping[object, object], given).items(), key=lambda item: str(item[0])):
+            key, problem = believed_key(str(written), parts, observations)
+            if key is None:
+                self.refuse("controller.believed", RefusalClass.USER, f"{where}'s belief {written!r} {problem}",
+                            f"key each belief in full, set_controller(..., believed={{\"<apparatus>.<field>\": ...}}): "
+                            f"{', '.join(keys) or 'none declared'}")
+                continue
+            if key in planned:
+                self.refuse("controller.believed", RefusalClass.USER,
+                            f"{where} declares two beliefs of {key}, as {planned[key].written!r} and {written!r}",
+                            f"declare one belief of {key}, set_controller(..., believed={{{key!r}: ...}})")
+                continue
+            truth = self.providers.get(key) or segments.get(key) or observations.get(key)
+            if truth is None:
+                continue  # the part itself is refused where it is planned
+            entry_where = f"{where}'s belief {key!r}"
+            record = self.registered_as(cast(Entry, entry), truth.registered.kind, entry_where)
+            if record is None:
+                continue
+            settings = self.settings_in_si(cast(Entry, entry), record, entry_where)
+            mismatch = self.belief_mismatch(cast(Entry, entry), truth, settings)
+            if mismatch is not None:
+                self.refuse("controller.believed", RefusalClass.USER, f"{entry_where} ({record.cls.label()}) {mismatch}",
+                            f"believe {key} by a declaration of its kind taking its commands, "
+                            f"set_controller(..., believed={{{key!r}: {type(truth.entry).__name__}(...)}})")
+                continue
+            if isinstance(truth.entry, FieldProvider) and self.belief_names_parts_only(cast(FieldProvider, entry)):
+                self.refuse("controller.believed", RefusalClass.USER,
+                            f"{entry_where} ({record.cls.label()}) cannot differ from the truth: its only settings name "
+                            f"parts ({', '.join(sorted(type(cast(FieldProvider, entry)).parts))}), and its numbers "
+                            f"come from the apparatus's declared values and its parts' placement, which are the "
+                            f"truth's, so the belief would be the truth itself",
+                            f"leave {key} out of believed= (the controller then knows it exactly, as the report says), "
+                            f"or vary the moment and the placement as study leaves (mime.study), the run's own numbers; "
+                            f"a belief of them is not a setting of {type(cast(Entry, entry)).__name__}")
+                continue
+            if not self.setting_problems(cast(Entry, entry), settings, entry_where):
+                planned[key] = BeliefPlan(key, str(written), cast(Entry, entry), record, settings)
+        return tuple(planned[key] for key in sorted(planned))
+
+    @staticmethod
+    def belief_names_parts_only(entry: FieldProvider) -> bool:
+        """Whether every setting of ``entry`` names a part, so that a belief of its kind holds the truth's numbers
+        whatever it says (a point dipole's moment is its apparatus's, its placement its part's)."""
+        return all(item.name in type(entry).parts for item in dataclasses.fields(cast(Any, entry)))
+
+    def belief_mismatch(self, entry: Entry, truth: EntryPlan, settings: Mapping[str, Magnitude]) -> str | None:
+        """Why ``entry`` cannot be a belief of the part ``truth`` plans, or ``None``: another set of commands, or other
+        parts named; a camera's belief is a camera."""
+        if truth.section is Section.OBSERVATION:
+            from mime.observations import Camera
+
+            if not isinstance(truth.entry, Camera) or not isinstance(entry, Camera):
+                return "is not a camera's, and a controller models a camera among observations"
+            return None
+        if isinstance(truth.entry, FieldProvider):
+            mine, theirs = type(cast(FieldProvider, entry)).commands, type(truth.entry).commands
+            if {k: v.dimension for k, v in mine.items()} != {k: v.dimension for k, v in theirs.items()}:
+                return f"takes the commands {sorted(mine)}, and the part takes {sorted(theirs)}"
+            named = [setting for setting in type(truth.entry).parts if getattr(entry, setting, None) !=
+                     getattr(truth.entry, setting, None)]
+            return f"names other parts ({', '.join(named)})" if named else None
+        if truth.segment is not None and isinstance(entry, ChainSegment):
+            try:
+                made = entry.segment(settings)
+            except Exception:  # noqa: BLE001 - its own settings' refusal says why
+                return None
+            mine = {k: (v.dimension, v.shape) for k, v in made.commands.items()}
+            theirs = {k: (v.dimension, v.shape) for k, v in truth.segment.commands.items()}
+            return None if mine == theirs else f"takes the commands {sorted(mine)}, and the part takes {sorted(theirs)}"
+        return None
 
     def controller_read(self, label: str, units: str, shape: tuple[int, ...], path: str,
                         where: str) -> ClassedRead | None:
@@ -3429,9 +3528,24 @@ class _Planner:
                 pose = (*(float(c) for c in cast(tuple[float, ...], initial["position"])),
                         *(float(c) for c in cast(tuple[float, ...], initial["orientation"])))
             bodies[name] = RosterBody(parts, pose)
-        structures = {name: RosterStructure(plan.registered.cls.name, dict(plan.settings))
+        structures = {name: RosterStructure(plan.registered.cls.name, dict(plan.settings), self.roster_drawing(plan))
                       for name, plan in sorted(self.geometries.items())}
         return Roster(bodies, structures, self.scenery())
+
+    def roster_drawing(self, plan: GeometryPlan) -> RosterDrawing | None:
+        """A structure's drawing as the stage writer draws it (its facets, its budget), placed in the world, and whether
+        it is the same at half the facets; ``None`` for a kind drawn natively or not at all."""
+        from mime.build._stage import kind_prim
+
+        geometry = plan.geometry
+        if type(geometry).native is not None or not implements(geometry, "drawing"):
+            return None
+        held = kind_prim(geometry, plan.registered, plan.settings)
+        if held.drawing is None:
+            return None
+        coarser = geometry.drawing(plan.settings, max(4, held.segments // 2))
+        return RosterDrawing(held.drawing, held.translation, held.orientation, held.segments,
+                             coarser.points == held.drawing.points)
 
     def roster_part(self, body: str, line: PartLine) -> RosterPart:
         """A body's part as the roster lists it: for a bound body's part, the stage's display colour and opacity (its

@@ -19,6 +19,34 @@ type Step = Callable[[Mapping[str, Any], Mapping[str, Any]], tuple[Mapping[str, 
 type ReadSpec = tuple[str, tuple[int, ...]]
 #: The prefix of a controller node's leaf holding one of its law's settings (``setting_gain``).
 SETTING = "setting_"
+#: The prefix of a controller node's leaf holding a number of a believed model (``ctx.believed``): its key and its
+#: parameter joined by double underscores, the key's dots as double underscores and its colon (an observation's id,
+#: ``camera:``) as ``_c_`` (``believed_coils__magnetic__coefficients``, ``believed_camera_c___fx``).
+BELIEVED = "believed_"
+#: The prefix of the name a law is made again from for a believed number: ``believed:<key>:<parameter>``.
+BELIEVED_NAME = "believed:"
+
+
+def believed_name(key: str, parameter: str) -> str:
+    """The name a belief's number is made again under: ``believed:<key>:<parameter>``."""
+    return f"{BELIEVED_NAME}{key}:{parameter}"
+
+
+def split_believed_name(name: str) -> tuple[str, str]:
+    """``(key, parameter)`` of ``believed:<key>:<parameter>``, the inverse of :func:`believed_name`: a key may hold a
+    colon (an observation's id, ``camera:``), a parameter never does, so the split is at the last."""
+    key, _, parameter = name[len(BELIEVED_NAME):].rpartition(":")
+    return key, parameter
+
+
+def leaf_param(name: str) -> str:
+    """The controller node's leaf a name its law is made again from is held as: ``setting_<name>`` for a setting,
+    ``believed_<key>__<parameter>`` for a believed number (``believed:<key>:<parameter>``, the key with its dots and its
+    colon written out, which a leaf name holds none of)."""
+    if name.startswith(BELIEVED_NAME):
+        key, parameter = split_believed_name(name)
+        return f"{BELIEVED}{key.replace('.', '__').replace(':', '_c_')}__{parameter}"
+    return f"{SETTING}{name}"
 
 
 class ControllerState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
@@ -53,7 +81,7 @@ class ControllerNode(MimeNode):
                  initial_state: Mapping[str, Any], initial_writes: Mapping[str, Any],
                  settings: Mapping[str, Any] | None = None,
                  remake: Callable[[Mapping[str, Any]], Step] | None = None) -> None:
-        held = {f"{SETTING}{name_}": jnp.asarray(value) for name_, value in sorted((settings or {}).items())}
+        held = {leaf_param(name_): jnp.asarray(value) for name_, value in sorted((settings or {}).items())}
         super().__init__(name, timestep, controller=controller,
                          reads={label: (units, tuple(shape)) for label, (units, shape) in sorted(reads.items())},
                          initial_state={key: jnp.asarray(value) for key, value in sorted(initial_state.items())},
@@ -69,7 +97,7 @@ class ControllerNode(MimeNode):
         """The law's step at the step constants ``p``: made again from the leaves it holds, or the built one."""
         if self.remake is None:
             return self.law_step
-        return self.remake({name: p[f"{SETTING}{name}"] for name in self.leaf_settings})
+        return self.remake({name: p[leaf_param(name)] for name in self.leaf_settings})
 
     @override
     def to_dict(self) -> dict[str, Any]:
@@ -146,5 +174,5 @@ class DelayNode(MimeNode):
         return node_fields(out)
 
 
-__all__ = ["SETTING", "ControllerInputs", "ControllerNode", "ControllerState", "DelayInputs", "DelayNode",
-           "DelayState", "ReadSpec", "Step"]
+__all__ = ["BELIEVED", "BELIEVED_NAME", "SETTING", "ControllerInputs", "ControllerNode", "ControllerState", "DelayInputs", "DelayNode",
+           "DelayState", "ReadSpec", "Step", "believed_name", "leaf_param", "split_believed_name"]

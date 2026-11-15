@@ -19,6 +19,7 @@ from typing import Any, cast
 import numpy as np
 
 from mime.scene._pxr import Sdf, Usd, UsdGeom, Vt
+from mime.scene._scenery import DECIMATION_DISTANCE
 
 
 @dataclass(frozen=True)
@@ -259,9 +260,12 @@ def mesh_distance(original: Mesh, decimated: Mesh, *, samples: int | None = None
     return max(one_sided_distances(original, decimated, samples=samples, seed=seed))
 
 
-def write_mesh(path: Path, mesh: Mesh, name: str) -> Path:
+def write_mesh(path: Path, mesh: Mesh, name: str, *, decimation_distance: float | None = None) -> Path:
     """``mesh`` as a USD layer of one ``Mesh`` prim, its default prim, in metres (``metersPerUnit`` 1), with no
-    subdivision and no colour of its own (it takes the colour of the prim it is referenced into), exported fresh."""
+    subdivision and no colour of its own (it takes the colour of the prim it is referenced into), exported fresh.
+    ``decimation_distance`` (metres), where given, is how far a decimation moved the mesh (:func:`mesh_distance` of the
+    original and ``mesh``), recorded in the prim's ``customData`` (``mime:decimation_distance_m``), so that a camera
+    imaging it says what it is in pixels; where not given, nothing is written and the layer's bytes are as before."""
     layer = Sdf.Layer.CreateAnonymous(".usda")
     stage = Usd.Stage.Open(layer)
     UsdGeom.SetStageMetersPerUnit(stage, 1.0)
@@ -272,6 +276,8 @@ def write_mesh(path: Path, mesh: Mesh, name: str) -> Path:
     held.CreateFaceVertexCountsAttr(Vt.IntArray([3] * len(mesh.triangles)))
     held.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(mesh.triangles.reshape(-1).astype(np.int32)))
     held.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
+    if decimation_distance is not None:
+        held.GetPrim().SetCustomDataByKey(DECIMATION_DISTANCE, float(decimation_distance))
     if len(points):
         held.CreateExtentAttr(Vt.Vec3fArray.FromNumpy(np.stack([points.min(axis=0), points.max(axis=0)])))
     stage.SetDefaultPrim(held.GetPrim())

@@ -116,6 +116,10 @@ class BuildReport:
     limits: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
     controller: tuple[str, ...] = ()
     masses: tuple[str, ...] = ()
+    #: The floating-point precision the build was made in (``float32`` or ``float64``; ``""`` for a report not made by
+    #: a build) and, for a GPU whose matmul precision is not ``highest``, the warning that says so.
+    precision: str = ""
+    matmul_warning: str | None = None
     #: What the experiment's profile made of it: the stamp every output carries, what is pending and listed, the
     #: defaults taken and the declared changes of role.
     profile: ProfileOutcome | None = None
@@ -140,6 +144,8 @@ class BuildReport:
     #: Each declared port's line: what it does to its command or its read (``mime.build._ports``), and where it is
     #: computed. Empty where none is declared: every command and read is then ideal.
     ports: tuple[str, ...] = ()
+    #: Each calibration an entry reads, as its type reads it (``mime.registry.CalibrationInstance``), by entry.
+    calibrations: tuple[str, ...] = ()
 
     def stale_lines(self) -> list[str]:
         return [f"STALE: {self.stale}"] if self.stale else []
@@ -258,7 +264,9 @@ class BuildReport:
         MADDENING's warnings with their text, the refusals, and the hash."""
         lines = [f"build report: experiment {self.experiment!r}, "
                  + (f"base step {self.dt!r} s" if self.dt else "no base step") + f", run as {self.run.text()}",
-                 *self.stale_lines()]
+                 *self.stale_lines(),
+                 *([f"precision: {self.precision}"] if self.precision else []),
+                 *([f"WARNING: {self.matmul_warning}"] if self.matmul_warning else [])]
         if self.profile is not None:
             lines += self.profile.report_lines()
             if self.profile.items:
@@ -284,6 +292,9 @@ class BuildReport:
         if self.descriptions:
             lines.append("descriptions, each chain segment's as read:")
             lines += [f"  {line}" for line in self.descriptions]
+        if self.calibrations:
+            lines.append("calibrations, each as its type reads it:")
+            lines += [f"  {line}" for line in self.calibrations]
         if self.masses:
             lines.append("mounted masses, each with what carries it:")
             lines += [f"  {line}" for line in self.masses]
@@ -338,6 +349,9 @@ class BuildReport:
         if self.descriptions:
             lines.append("descriptions, each chain segment's as read:")
             lines += [f"  {line}" for line in self.descriptions]
+        if self.calibrations:
+            lines.append("calibrations, each as its type reads it:")
+            lines += [f"  {line}" for line in self.calibrations]
         lines += self.replaced_lines()
         lines += self.removed_lines()
         lines += self.asset_lines()

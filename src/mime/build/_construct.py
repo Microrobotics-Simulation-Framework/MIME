@@ -79,19 +79,23 @@ _REFUSED_ISSUES = {"ERROR": "maddening.error", "WARNING[units]": "maddening.unit
                    "WARNING[shape]": "maddening.shape", "WARNING[dtype]": "maddening.dtype"}
 
 
-def _remake(plans: PlanSet) -> tuple[Callable[[Mapping[str, Any]], Any] | None, dict[str, Any]]:
-    """Where a study's axis names settings of a controller inside the compiled step: its law made from settings given
-    by name, and the named settings' values in SI; ``None`` and none otherwise."""
+def _remake(plans: PlanSet, law: ControlLaw | None = None) -> tuple[Callable[[Mapping[str, Any]], Any] | None,
+                                                                    dict[str, Any]]:
+    """Where a study's axis names settings of a controller inside the compiled step, or its law read believed models
+    (``ctx.believed``, which ``law`` records): its law made from settings and believed numbers given by name, and their
+    values in SI (each believed number as ``believed:<key>:<parameter>``); ``None`` and none otherwise."""
     controller = plans.controller
-    if controller is None or not controller.leaves:
+    believed = tuple(getattr(law, "believed", ()))
+    if controller is None or not (controller.leaves or believed):
         return None, {}
+    from mime.control._models import ControlModels
     from mime.control._run import control_context
 
     def remake(given: Mapping[str, Any]) -> Any:
         return controller.entry.law(control_context(plans, given))
 
     settings = control_context(plans).settings
-    return remake, {name: settings[name] for name in controller.leaves}
+    return remake, {**{name: settings[name] for name in controller.leaves}, **ControlModels(plans).leaves(believed)}
 
 
 def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] = (),
@@ -99,7 +103,8 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
               derived_hash: str | None = None, lags: Sequence[EdgeLag] = (),
               models: tuple[str, ...] | None = None,
               computed: Mapping[str, tuple[str, ...]] | None = None, energy: tuple[str, ...] = (),
-              unmetered: Mapping[str, str] | None = None, solving: tuple[str, ...] = ()) -> BuildReport:
+              unmetered: Mapping[str, str] | None = None, solving: tuple[str, ...] = (),
+              believed: tuple[str, ...] | None = None, slewed: tuple[str, ...] = ()) -> BuildReport:
     owners = {name: plan for plan in plans.entries for name in plan.node_names()}
     lines = [NodeLine(position, name, owners[name].owner, owners[name].section.name.lower(), owners[name].describe(),
                       owners[name].divider_of(name), plans.dt * owners[name].divider_of(name)) if name in owners else
@@ -116,8 +121,10 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         dict(plans.vocabulary), tuple(refusals), plans.run, tuple(reported), derived_hash, plans.values, tuple(lags),
         plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
-        controller=(*plans.controller.lines(plans.dt), *loop_lines(plans), *model_lines(plans, models))
+        controller=(*plans.controller.lines(plans.dt), *loop_lines(plans), *model_lines(plans, models),
+                    *believed_lines(plans, believed), *slew_lines(slewed))
         if plans.controller is not None else (),
+        calibrations=calibration_lines(plans),
         masses=plans.masses, profile=plans.profile, watches=plans.watches, replaced=plans.replaced, removed=plans.removed,
         checked=dict(sorted({**plans.checked, **{owner: (*plans.checked.get(owner, ()), *lines)
                                                  for owner, lines in (computed or {}).items()}}.items())),
@@ -162,6 +169,52 @@ def loop_lines(plans: PlanSet) -> tuple[str, ...]:
                          f"controller's latency {controller.latency}, the command {write.latency} late, and each "
                          f"sample held up to its period less one")
     return tuple(lines)
+
+
+def believed_lines(plans: PlanSet, read: tuple[str, ...] | None) -> tuple[str, ...]:
+    """The controller's believed models: each its law read, declared or the true declaration, and each declared that
+    it did not read. Nothing where it declares none and read none, or where what it read is not known."""
+    controller = plans.controller
+    if controller is None:
+        return ()
+    held = tuple(read or ())
+    declared = {belief.key: belief for belief in controller.beliefs}
+    if not held and not declared:
+        return ()
+    where = ("leaves of the controller's node, which a derivative of the run reaches" if controller.mode is Mode.GRAPH
+             else "held as its law was made, on the host")
+    lines = ["  believed models, each the law read (ctx.believed):"]
+    for key in held:
+        belief = declared.get(key)
+        lines.append(f"    {key}: believed = true: the controller knows the model exactly (no belief declared; its "
+                     f"numbers the true declaration's, {where})" if belief is None else
+                     f"    {key}: believed {belief.registered.cls.label()}, declared (set_controller(believed=...)); its "
+                     f"numbers {where}")
+    lines += [f"    {key}: a belief is declared ({belief.registered.cls.label()}), and the law read no model of it"
+              for key, belief in sorted(declared.items()) if key not in held]
+    return tuple(lines)
+
+
+def slew_lines(slewed: tuple[str, ...]) -> tuple[str, ...]:
+    """Each command whose allocation a port's slew boxes (``ctx.allocator``), and what the box takes the stage to be at:
+    the last command written, which the stage stood at only if every earlier command was delivered (not on the first
+    tick from a rest the law does not start from, nor after a trip)."""
+    if not slewed:
+        return ()
+    return ("  allocation boxed by a port's slew (ctx.allocator), the stage taken to stand at the last command: not so "
+            "on the first tick from a rest the law does not start from, nor after a trip (the run flags a trip, not "
+            "a delivery the slew limited):", *slewed)
+
+
+def calibration_lines(plans: PlanSet) -> tuple[str, ...]:
+    """Each calibration a planned entry reads, as its type reads it, by entry."""
+    found: list[str] = []
+    for plan in plans.entries:
+        instance = getattr(plan.entry, "calibration_instance", None)
+        held = instance() if callable(instance) else None
+        if held is not None:
+            found.append(f"{plan.owner}: {cast(Any, held).text()}")
+    return tuple(found)
 
 
 def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ...]:
@@ -245,6 +298,12 @@ def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -
             found.append(f"it declares the {what} {field!r} with shape {shape}, and its node holds it with shape "
                          f"{tuple(state[field].shape)}")
     return found
+
+
+def entry_context(plan: EntryPlan, plans: PlanSet) -> BuildContext:
+    """The build context of the entry ``plan`` plans: what it builds from, and what its forward model is made from
+    (``mime.registry.ForwardModel``)."""
+    return _context(plan, plans)
 
 
 def _context(plan: EntryPlan, plans: PlanSet) -> BuildContext:
@@ -437,7 +496,7 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
     if plans.controller is not None and plans.controller.mode is Mode.GRAPH:
         if law is None:
             raise ValueError("a controller inside the compiled step is built from its law: pass construct its law")
-        remake, leaf_values = _remake(plans)
+        remake, leaf_values = _remake(plans, law)
         in_graph, controller_edges, refusals = controller_nodes(plans.controller, law, plans.dt, built, remake,
                                                                 leaf_values)
         if refusals:
@@ -541,4 +600,5 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
     derived = derive(graph, (n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()))
     return graph, report_of(plans, order, [], external, reported, derived.physics_hash, lags, models,
                             merged(node_lines(graph, plans), held.flags), energy,
-                            held.energy.unmetered if held.energy is not None else None, solving_lines(graph)), derived
+                            held.energy.unmetered if held.energy is not None else None, solving_lines(graph),
+                            tuple(getattr(law, "believed", ())), tuple(getattr(law, "slewed", ()))), derived

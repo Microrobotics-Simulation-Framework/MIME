@@ -466,7 +466,7 @@ def test_a_manifest_whose_steps_is_a_string_is_a_refusal_and_not_an_internal_fai
 
 #: The keys of a run's manifest, and two a stopped or overridden run adds.
 MANIFEST_KEYS = ["clock", "containment", "dt", "end", "every", "experiment", "flags", "format", "history", "observations",
-                 "overrides", "reading", "recorded", "run_flags", "stamp", "start", "start_step", "steps", "stopped",
+                 "overrides", "precision", "reading", "recorded", "run_flags", "stamp", "start", "start_step", "steps", "stopped",
                  "version", "watches"]
 
 

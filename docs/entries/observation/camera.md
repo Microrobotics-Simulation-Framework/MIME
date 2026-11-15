@@ -12,6 +12,21 @@ shadow, a subject named in `absorbers` attenuates by Beer-Lambert, and every oth
 `Pinhole.from_calibration(file)` read them from a calibration file, which labels them fitted with the file's name and
 sha256.
 
+**Static meshes.** A `Mesh` of a referenced asset that no thing owns (a vessel's STL as a layer) and a structure of a kind the
+stage draws (an ellipsoid, a box, a helix, a screw) are traced as static meshes, once a run, in the static structure, by a
+bounding volume hierarchy: a run's frames cost 1.02 to 1.05 times the same scene's without (an estimate, measured on 4-vCPU
+runners). Each sub-ray takes every crossing of each mesh, signed by
+its facing, so a closed mesh named in `absorbers` attenuates along its chord, one with a display opacity on the stage passes
+that share at each crossing, and any other is opaque; a pixel is the mean of a few sub-rays each way
+(`mime.sensing.MESH_SAMPLES`, a declared default, not a setting). The structure is made once a run, and again at each study
+point that varies the detector's numbers: for a mesh of about a hundred thousand triangles filling the view, 1.5 to 10 seconds at
+quarter VGA and 4 to 30 seconds at VGA, an estimate and its range over four rounds on 4-vCPU runners of different CPUs, not a
+bound (the outcomes of the `tests/sensing/predictions_camera_mesh*.json` files).
+The build report names each mesh with its triangles and look, a drawing's sagitta and a recorded decimation in pixels at this
+camera, and a body that starts inside a closed attenuating mesh, which it takes as its medium. Any other unowned gprim (a cube,
+curves) is refused by name (`camera.mesh-untraced`). The meshes' chords along each pixel's rays are had offline from
+`mime.sensing.mesh_chords`.
+
 **Required settings.** `detector`, `mount` and `frame_period` have no default, and omitting one is refused: the detector is
 the declared camera model (MIME assumes none), the mount is where the camera is, and the period is the experimenter's
 choice of clock.
@@ -55,7 +70,14 @@ a warning, and the frame no longer equals the offline render, whose window is de
   (`camera.crease-unmeasured`) until the screw's crease measure comes; `hide` it. A body with neither a closed form nor a
   sign function is refused too (`camera.no-route`). The helix and the ellipsoid take the sampled route, whose frame costs
   its samples a ray times its window's rays: the build report gives its structural estimate and warns above a declared
-  line (`mime.sensing._sampled.COST_LINE`), naming the offline renderer.
+  line (`mime.sensing._sampled.COST_LINE`), naming the offline renderer. A structure of a drawn kind with no closed form is
+  imaged by its drawing.
+- For a mesh that moves, or a camera on a frame that may move with a mesh in view: refused (`camera.mesh-moving`,
+  `camera.mesh-mounted`), naming `hide=`; the camera traces static meshes once a run, and a moving camera keeps no static
+  structure.
+- For a calibration with a mesh in view: a derivative in the detector's numbers is refused in both modes and in a fit
+  (`camera.mesh-derivative`), since the mesh is traced with no derivative in the rays; hide the meshes while fitting. A
+  derivative in a pose, a gain or a limit passes with them in view.
 - For a batched study: it is refused (`camera.batched`), naming the offline renderer, which is differentiable and vmaps:
   under `vmap` the frame's `cond` is a `select`, so every step would render.
 - For reverse mode past the memory a run can have: it is refused before it compiles (`camera.reverse-memory`), naming the

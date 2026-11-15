@@ -1,0 +1,29 @@
+"""Types an editor completes from, held by `assert_type`: pyright (strict) fails CI if one changes under you.
+
+Autocomplete in an editor is only as good as the types it reads. MIME ships `py.typed` and this plugin's entries are
+frozen dataclasses, so their settings complete; what a string names (`ctx.scalar("force")`, a record's name) cannot. These
+lines hold what does complete. Add a line for each public entry and law you write. This file is never run by pytest (it
+holds no test), only read by pyright: `pyright` in this folder, with the environment active or `--pythonpath
+"$$(which python)"` (CI does the second).
+"""
+
+from typing import assert_type
+
+from jax import Array
+from mime.registry import Interaction
+from mime.units import Quantity
+
+from ${package}.engine.load import load_on
+from ${package}.entries import ExampleLoad
+
+entry = ExampleLoad()
+assert_type(entry, ExampleLoad)
+assert_type(entry.force, Quantity)
+assert_type(entry.gain, float)
+assert_type(ExampleLoad.name, str)
+assert_type(ExampleLoad.validity, tuple[str, ...])
+assert isinstance(entry, Interaction)
+
+
+def the_law(force: Array, gain: Array) -> None:
+    assert_type(load_on(force, gain), Array)

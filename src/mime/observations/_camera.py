@@ -28,9 +28,10 @@ from mime.registry import (
     register_setting_group,
 )
 from mime.scene._kinds import rotate
-from mime.sensing import BrownConrady, Pinhole
+from mime.sensing import Appearance, BrownConrady, Pinhole
 from mime.sensing import _sampled as sampled_route
 from mime.sensing import _scene as scene
+from mime.sensing._mesh import MESH_SAMPLES
 from mime.sensing._detector import CameraPose
 from mime.sensing._detector import project as projected
 from mime.sensing._node import FLAG_FIELDS, FOCAL_SHARE, CameraNode, period_steps
@@ -60,6 +61,42 @@ FLAG_MEANINGS = {
 }
 #: The flags warned of after a run that raised them: a pixel whose stated accuracy is not verified.
 FLAG_WARNS = frozenset({"corner_unverified"})
+
+
+def _nearest_depth(triangles: Any, position: Any, orientation: tuple[float, float, float, float]) -> float | None:
+    """The least depth along the camera's optical axis of a mesh's corners in front of it, or ``None`` for none."""
+    w, x, y, z = orientation
+    axis = np.array([2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)])
+    depth = (np.reshape(np.asarray(triangles, dtype=np.float64), (-1, 3)) - position) @ axis
+    ahead = depth[depth > 0.0]
+    return float(ahead.min()) if ahead.size else None
+
+
+def _mesh_problems(found: scene.Found, mounted: str | None) -> list[Problem]:
+    """The traced meshes' refusals: one the stage animates, one that attenuates and is not a closed solid, and any on a
+    camera that may move; each naming its route."""
+    problems: list[Problem] = []
+    for each in found.meshes:
+        if each.animated:
+            problems.append(Problem(
+                "camera.mesh-moving", f"the scenery mesh {each.name!r} moves (the stage samples its points or its "
+                                      f"placement in time), and the in-loop camera traces static meshes once a run",
+                f"hide it with hide=({each.name!r},); a moving mesh is not imaged in the loop"))
+        if each.open is not None:
+            problems.append(Problem(
+                "camera.mesh-open", f"{each.name!r} is named in absorbers, so it attenuates along its chord, which "
+                                    f"needs a closed solid, and {each.open}",
+                f"leave it out of absorbers, absorbers=((name, per_metre),) without {each.name!r} (it is then imaged by "
+                f"its display opacity, or opaque), or close it: every edge shared by two triangles wound opposite ways, "
+                f"counter-clockwise seen from outside"))
+    if mounted is not None and found.meshes:
+        names = [each.name for each in found.meshes]
+        problems.append(Problem(
+            "camera.mesh-mounted", f"the camera is mounted on {mounted}, which may move, and it would trace static "
+                                   f"meshes ({', '.join(names)}): a moving camera keeps no static structure, and a mesh "
+                                   f"traced every frame would cost seconds a frame",
+            f"fix the camera in the world, mount=World(...), or hide the meshes, hide=({', '.join(repr(n) for n in names)},)"))
+    return problems
 
 
 #: The camera's own model of its noise and quantisation, which its image carries and its expected image is before.
@@ -317,22 +354,23 @@ class Camera(Observation):
             problems.append(Problem("camera.hide", f"hide names {name!r}, which is no body or structure of the experiment",
                                     f"write `hide=(...)` with names the experiment declares, or a scenery prim's prim "
                                     f"path: {', '.join(sorted({*ctx.roster.bodies, *ctx.roster.structures, *(m.path for m in ctx.roster.scenery)}))}"))
-        unknown = sorted({n for n, _ in self.absorbers} - {s.name for s in found.subjects})
+        imaged = {s.name for s in found.subjects} | {each.name for each in found.meshes}
+        unknown = sorted({n for n, _ in self.absorbers} - imaged)
         for name in unknown:
             problems.append(Problem("camera.hide", f"absorbers names {name!r}, which is no subject the camera images",
-                                    f"write `absorbers=((name, per_metre),)` with one of "
-                                    f"{', '.join(sorted(s.name for s in found.subjects))}"))
+                                    f"write `absorbers=((name, per_metre),)` with one of {', '.join(sorted(imaged))}"))
         for name, code, message in found.refused:
             if code == scene.MESH_UNTRACED:
-                problems.append(Problem("camera.mesh-untraced", f"the scenery prim {name!r} cannot be imaged yet: {message}",
-                                        f"hide it with hide=({name!r},), or wait for the mesh tracer"))
+                problems.append(Problem("camera.mesh-untraced", f"the scenery prim {name!r} cannot be imaged: {message}",
+                                        f"hide it with hide=({name!r},), or give the stage a Mesh prim in its place"))
                 continue
             problems.append(Problem(code, f"{name!r} cannot be imaged: {message.split(': ', 1)[-1]}",
                                     f"hide it with hide=({name!r},), or give its kind a closed form, or a cheap sign "
                                     f"function (and, if creased, its crease measure)"))
+        mounted = self.mount.frame if isinstance(self.mount, Mounted) else None
+        problems += _mesh_problems(found, mounted)
         reads = {f"pose_{body}": Read("", POSE.name, of=body) for body, names in found.bodies.items()
                  if names and ctx.roster.bodies[body].pose is not None}
-        mounted = self.mount.frame if isinstance(self.mount, Mounted) else None
         return Plan(reads=reads, streams=("noise",), problems=tuple(problems), mounted_on=mounted,
                     notes=self._notes(ctx, found, period, mounted))
 
@@ -388,6 +426,7 @@ class Camera(Observation):
             *([f"route 1 (closed form) for every subject: {route}"] if not sampled else
               [f"route 1 (closed form) for: {closed or 'none'}",
                *self._sampled_notes(ctx, sampled, period)]),
+            *self._mesh_notes(ctx, found),
             f"frame: {d.width * d.height} rays, {sub} sub-frame{'s' * (sub > 1)}, rendered every {period} base steps "
             f"({period * dt:.6g} s); exposure {sub} step{'s' * (sub > 1)} ending at the frame step",
             f"latency: a read sees a frame between 0 and {period - 1} steps ({(period - 1) * dt:.6g} s) old; a controller "
@@ -395,8 +434,10 @@ class Camera(Observation):
         ]
         if found.hidden:
             lines.append(f"hidden: {', '.join(found.hidden)}")
-        staged = [s.name for s in found.subjects if s.name in found.display]
-        defaulted = [s.name for s in found.subjects if s.name not in dict(self.absorbers) and s.name not in found.display]
+        staged = [s.name for s in found.subjects if s.name in found.display] + \
+            [each.name for each in found.meshes if each.appearance is None and each.look() is not None]
+        defaulted = [s.name for s in found.subjects if s.name not in dict(self.absorbers) and s.name not in found.display] + \
+            [each.name for each in found.meshes if each.look() is None]
         if staged:
             lines.append(f"appearance from the stage's display primvars for: {', '.join(staged)}")
         lines += [f"appearance: {line} for: {', '.join(names)}" for line, names in found.reduced.items()]
@@ -406,13 +447,54 @@ class Camera(Observation):
         if mounted is None:
             lines.append("static cache: the camera and the static structure share the world's frame, so the structure is "
                          "rendered once, at the build, and held as a leaf beside the numbers it was made at; a run whose "
-                         "detector numbers differ renders it once, before its steps")
+                         "detector numbers differ renders it once, before its steps"
+                         + ("; with the traced meshes it is made once a run, and again at each study point that varies "
+                            "the detector's numbers, and each frame reads the tree's checksum (its cost, measured on runners, is on "
+                            "the camera's entry page)" if found.meshes else ""))
         else:
             statics = [s.name for s in found.subjects if not s.moving]
             lines.append(f"static cache: the camera is mounted on {mounted}, taken to move, so the static structure "
                          f"({', '.join(statics) or 'none'}) is rendered again in every frame: {d.width * d.height} rays "
                          f"each, no cache is held (a stale one would be a wrong image)")
         return tuple(lines)
+
+    def _mesh_notes(self, ctx: PlanContext, found: scene.Found) -> list[str]:
+        """The build notes of the traced meshes: each with its triangles and look, the sub-rays a pixel, a drawing's
+        facets and sagitta and a scenery mesh's decimation in pixels at this camera, and each body's mesh parent."""
+        if not found.meshes:
+            return []
+        d = self._detector()
+        position = np.asarray(ctx.vector("mount.position"), dtype=np.float64) if isinstance(self.mount, World) else None
+        lines = [f"traced static meshes (a bounding volume hierarchy, once a run, {MESH_SAMPLES} x {MESH_SAMPLES} "
+                 f"sub-rays a pixel): " + ", ".join(
+                     f"{each.name} ({len(each.triangles)} triangles, {(each.look() or Appearance.opaque()).look.value})"
+                     for each in found.meshes)]
+
+        def pixels(length: float, each: scene.TracedMesh) -> str:
+            if position is None:
+                return "unknown (the camera moves)"
+            depth = _nearest_depth(each.triangles, position, self.mount.orientation)
+            return "behind the camera" if depth is None else f"{length * max(d.fx, d.fy) / depth:.3g} px"
+
+        drawn = [each for each in found.meshes if each.source != "scenery"]
+        if drawn:
+            lines.append("structures imaged by their drawing: " + ", ".join(
+                f"{each.name} ({each.source}, exact)" if each.sagitta == 0.0 else
+                f"{each.name} ({each.source}, {each.segments} facets a turn, sagitta about {each.sagitta:.3g} m, "
+                f"{pixels(each.sagitta, each)} at this camera)" for each in drawn))
+        recorded = [each for each in found.meshes if each.source == "scenery" and each.decimation is not None]
+        if recorded:
+            lines.append("decimation distance at this camera: " + ", ".join(
+                f"{each.name} {pixels(cast(float, each.decimation), each)} ({cast(float, each.decimation):.3g} m)"
+                for each in recorded))
+        unrecorded = [each.name for each in found.meshes if each.source == "scenery" and each.decimation is None]
+        if unrecorded:
+            lines.append(f"decimation distance not recorded for: {', '.join(unrecorded)} (its layer holds none, so what "
+                         f"a decimation moved is unknown)")
+        if found.inside:
+            lines.append("a mesh as parent medium, outside_parent not checked against it (no signed distance in the "
+                         "step): " + ", ".join(f"{subject} in {mesh}" for subject, mesh in sorted(found.inside.items())))
+        return lines
 
     @override
     def build(self, ctx: BuildContext, b: ObservationBuilder) -> None:
@@ -429,6 +511,13 @@ class Camera(Observation):
             "response": {"full_scale": sensor.full_scale, "gain": sensor.gain, "offset": sensor.offset,
                          "read_noise": sensor.read_noise, "shot_noise": sensor.shot_noise, "bits": sensor.bits,
                          "psf": sensor.psf}}
+        meshes: dict[str, Any] = {}
+        if found.meshes:
+            spec["meshes"] = [scene.mesh_spec(each) for each in found.meshes]
+            spec["mesh_samples"] = MESH_SAMPLES
+            meshes = {"mesh_triangles": np.concatenate([each.triangles for each in found.meshes]),
+                      "mesh_owners": np.concatenate([np.full(len(each.triangles), i, dtype=np.int64)
+                                                     for i, each in enumerate(found.meshes)])}
         position = ctx.vector("mount.position")
         placement = (*position, *self.mount.orientation)
         mount = ctx.mount
@@ -438,7 +527,8 @@ class Camera(Observation):
             bodies=bodies, initial_poses=initial, period=period,
             sub_frames=self.sub_frames, seed=ctx.seeds["noise"], placement=placement,
             mount_index=mount.index if mount is not None else -1, mount_count=mount.count if mount is not None else 0,
-            initial_mount_pose=mount.initial_pose if mount is not None else (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)))
+            initial_mount_pose=mount.initial_pose if mount is not None else (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+            **meshes))
         for name in bodies:
             b.connect(b.read(f"pose_{name}"), into=node[f"pose_{name}"])
         if mount is not None:

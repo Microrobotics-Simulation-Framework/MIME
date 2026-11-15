@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.egg-info/
+/dist/
+/build/
+.venv/
+.pytest_cache/
+.hypothesis/
+# Written by benchmarks/build_case.py: CI writes it again.
+/benchmarks/case/
