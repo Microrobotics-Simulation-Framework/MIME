@@ -89,6 +89,13 @@ read, not loosened: see the comments of `tests/engine/test_properties.py`.
 
 ## Editor support
 
-`pyrightconfig.json` is strict over `src/${package}` and `tests/assert_types.py`. For an editor's language server to
-resolve MIME, MADDENING and JAX, start it inside the environment (`python -m venv .venv`, then `pip install -e
-".[test,typing]"`, and activate it); CI runs `pyright --pythonpath "$$(which python)"` in its own environment.
+`pyrightconfig.json` is strict over `src/${package}` and `tests/assert_types.py`, and names this folder's `.venv`, so that an
+editor's language server finds MIME, MADDENING and JAX there (autocomplete is only as good as the types it reads):
+
+```bash
+python -m venv .venv && .venv/bin/pip install -e ".[test,typing]"
+```
+
+If `.venv` does not exist, pyright says so on stderr and uses the environment it is given. CI creates `.venv` itself and runs
+`pyright --pythonpath "$$(which python)"`. A `.venv` that exists but does not hold MIME overrides `--pythonpath` (measured),
+so install into it or delete it.

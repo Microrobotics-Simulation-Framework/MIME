@@ -14,10 +14,11 @@ dependencies = ["mime-engine[verify]${mime_range}"]
 ${authors}
 
 [project.optional-dependencies]
-# The tests (`pip install -e ".[test]"`); Hypothesis comes with `mime-engine[verify]`, and `typing` is what CI's typing job
-# installs (pyright strict over the package, and tests/assert_types.py).
+# The tests (`pip install -e ".[test]"`); Hypothesis comes with `mime-engine[verify]`. `typing` is what CI's typing job installs
+# (pyright strict over the package, and tests/assert_types.py): pinned to the release this template was checked with, because
+# a newer pyright can add a check and turn the job red; raise it on purpose.
 test = ["pytest>=8.0"]
-typing = ["pyright"]
+typing = ["pyright==1.1.414"]
 
 # How MIME finds your entries: it imports this module, which registers them. The namespace is the word before the dot in
 # every entry's name (entries use `.`, records `_`, an instance `:`, as in `${namespace}.example_load:probe`).

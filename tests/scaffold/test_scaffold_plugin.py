@@ -198,3 +198,12 @@ def test_a_changed_type_fails_the_assert_type_file(tmp_path: Path):
     report = pyright_report(root)
     messages = [(each["file"], each["message"]) for each in report["generalDiagnostics"]]
     assert any(file.endswith("assert_types.py") and "assert_type" in message for file, message in messages), messages
+
+
+def test_the_typing_extra_pins_the_pyright_this_suite_checks_the_template_with(tmp_path: Path):
+    """The template's pyright pin is the release the test above ran, not a number written once and left: a bump of MIME's
+    own pin fails here until the template follows."""
+    from importlib.metadata import version
+
+    extras = tomllib.loads(files_of(scaffolded(tmp_path))["pyproject.toml"])["project"]["optional-dependencies"]
+    assert extras["typing"] == [f"pyright=={version('pyright')}"]
