@@ -324,7 +324,7 @@ PLUGIN_PLANTS: dict[str, Plant] = {
                                                                "for module, name in []:", durations_stage, "test_durations"),
     "a duration limit a hundred times too loose": Plant("scripts/check_durations.py", "if took <= limit:",
                                                         "if took <= limit * 100:", durations_stage, "test_durations"),
-    "an allowlist line that needs no reason": Plant("scripts/check_durations.py", "if not reason.strip():", "if False:",
+    "an allowlist line that needs no reason": Plant("scripts/check_durations.py", "if not separator or not reason.strip():", "if False:",
                                                     durations_stage, "test_durations"),
     "a command of the README that is misspelt": Plant("README.md", "python examples/example.py", "python examples/exampel.py",
                                                       readme_use, "README"),
