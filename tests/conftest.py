@@ -243,30 +243,14 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) ->
             item.user_properties.append(("children_cpu_seconds", f"{children_now - children:.3f}"))
 
 
-def pytest_sessionstart(session: pytest.Session) -> None:  # TEMPORARY DIAGNOSTIC, removed in the next commit
-    from mime.assets import _cache
 
-    original = _cache.cheap_problem
+INITIAL_ASSETS_DIR = os.environ.get("MIME_ASSETS_DIR")  # TEMPORARY DIAGNOSTIC, removed in the next commit
 
-    def wrapped(ref, checksum=None):
-        found = original(ref, checksum)
-        if found is not None and "isn't downloaded" in found:
-            import os as _os
-            import traceback
 
-            where = _os.environ.get("MIME_ASSETS_DIR")
-            try:
-                _cache.file_path(ref).stat()
-                problem = "stat now works"
-            except OSError as error:
-                problem = repr(error)
-            try:
-                listing = sorted(_os.listdir(where)) if where else None
-            except OSError as error:
-                listing = repr(error)
-            print(f"ASSETDIAG {_os.environ.get('PYTEST_CURRENT_TEST')} dir={where} path={_cache.file_path(ref)} stat={problem} "
-                  f"listing={listing} cwd={_os.getcwd()} uid={_os.getuid()} pid={_os.getpid()}", file=sys.stderr, flush=True)
-            traceback.print_stack(limit=6, file=sys.stderr)
-        return found
-
-    _cache.cheap_problem = wrapped
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_logfinish(nodeid: str, location: object) -> None:  # TEMPORARY DIAGNOSTIC
+    now = os.environ.get("MIME_ASSETS_DIR")
+    if now != INITIAL_ASSETS_DIR and not nodeid.startswith("tests/sharing/"):
+        with open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "assetsleak.txt"), "a") as held:
+            held.write(f"{nodeid} left MIME_ASSETS_DIR={now}\n")
+        raise RuntimeError(f"ENVLEAK: after {nodeid} MIME_ASSETS_DIR is {now}, not {INITIAL_ASSETS_DIR}")
