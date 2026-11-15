@@ -21,7 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     cuts or a Gauss-Newton one stays monotone, since with the allowance a float32 OctoMag draw cycled between two
     corners of the box), Levenberg's damping (1e-3, times 10 at each further cut) after a step that had to be cut, raised at each further cut and
     lowered at each whole step (a warm start crawling by halvings met the cap 0.027 rad from the minimiser; over the
-    2220 solves, at most 15 iterations), the decrease measured as a difference of squares, a decrease within what the
+    2220 solves, at most 15 iterations), the step's path bent with the rows (Transtrum and Sethna's geodesic
+    acceleration, the least-squares fit of the rows' second derivative along the step, zero on an affine model: in the
+    curved valley the straight step was cut and the damped one after it overshot again, which took 3 of 7474 of the
+    follower's warm starts to the cap; with the bend none, at most 15 iterations), the decrease measured as a
+    difference of squares, a decrease within what the
     objective resolves passing (each row's rounding judged on its terms' scale, the problem's size, not on the row's).
     **Its guards, declared**: at most `ITERATIONS` (50) iterations, read at a point already weighed; `TOLERANCE` on the
     stationarity (the projected gradient's length in commands scaled to unit columns, over the rows' miss plus what the
@@ -64,7 +68,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     of its own, whose switches its caller evaluates once more on the solution.
   - **What the iterative path bounds, and what it estimates**: against the exact path on the arrays MIME ships and
     against SciPy's BVLS above eight commands, within the line its claim derives (the oracle's perturbation bound plus
-    the natural residual's error bound); against the rigid-body library's inverse kinematics on reachable poses; its
+    the natural residual's error bound); against the rigid-body library's inverse kinematics on reachable poses where
+    it holds no joint at a limit, and, where it does, by the first-order conditions there from the objective's own
+    gradient (unregularised near the AR4's wrist singularity the minimiser reached from the start can be a joint's
+    limit far from it, off the pose, where the library's damped solve met the pose close by: the solve reaches a local
+    minimiser, not the nearest; a slew box bounds how far it goes); its
     derivative against central differences of converged reference solves, reverse against forward mode, float32
     against float64 (`tests/control/test_iterative_allocation.py`); through a built controller in both modes, a study's
     sweep and `Study.gradient` (`tests/control/test_iterative_controller.py`). Software oracles: nothing here says a

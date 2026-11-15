@@ -234,7 +234,11 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         # solves; with the bend none of the same 7474 did, and the most iterations went from 50 to 15. On an affine
         # model ``r''`` is zero, and so is the bend.
         moving = jnp.where(free, step, 0.0)
-        curvature = _jax.jvp(lambda v: _jax.jvp(rows, (v,), (moving,))[1], (u,), (moving,))[1]
+
+        def along(v: Any) -> Any:
+            return _jax.jvp(rows, (v,), (moving,))[1]
+
+        curvature = _jax.jvp(along, (u,), (moving,))[1]
         bend = -dense_solve(normal + damped, mask * (scaled.T @ curvature)) / at.columns
         # What the objective resolves, judged on the scale the rows came from: a row is a difference of terms (a
         # frame's position and its goal, a field and its target) whose rounding is eps of the terms, not of the row,
