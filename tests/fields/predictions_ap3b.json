@@ -110,5 +110,58 @@
   "measured_at": "nothing measured before: guesses from the arithmetic added (a pose composition; three norms, three maxima and three comparisons)",
   "basis": "guess"
  },
- "outcomes": null
+ "outcomes": {
+  "written": "2026-11-15, after the probe run 43677688002 (probe/ap3b at 07cbb9a5 = head 4949ab0f plus probe/), 4 vCPU GitHub runner, AMD EPYC 9V74; every job succeeded, no memory check exceeded its bound",
+  "detection_rates": {
+   "planted_caught": {
+    "mount.provider (dynamic arm refused)": "20/20",
+    "exposure.declaration (no reason)": "20/20",
+    "composition order (mounted field vs actuation, float32 test)": "20/20",
+    "flag flux_density f64": "20/20",
+    "flag flux_density f32": "20/20",
+    "flag field_gradient f64": "20/20",
+    "flag field_gradient f32": "20/20",
+    "flag rate_of_change f64": "20/20",
+    "flag rate_of_change f32": "20/20"
+   },
+   "clean_flagged": "0/20 in every arm",
+   "every_run": true,
+   "inconclusive": 0,
+   "lower_bound_95_each": 0.861
+  },
+  "mount_exactness": {
+   "measured_on_the_runner": "the composition-order arm's clean runs (float32 oracle test, tolerance 10 eps / c of the peak) passed 20/20; the plant (frame inside the placement) was caught 20/20",
+   "not_measured_on_the_runner": "the float64 oracle test was not a probe arm: its agreement is from the laptop (correctness only: 7.8e-14 of the peak float64, 2.8e-5 float32, against 2.8e-14 and 1.5e-5 for eps / c), so the float64 plant rate was seen once, not rated"
+  },
+  "bits": {
+   "programs_equal": "a0, script_a, sphere, believed in float32 and float64, tutorial_a and tutorial_a0 float32: every array np.array_equal, derived hashes and canonical texts included",
+   "control": "A0's rotor moment one ulp up: differs in both dtypes (float32 max |diff| 4.7e-10 in the flux-density slot; float64 8.7e-19; derived hash differs)"
+  },
+  "costs": {
+   "placed": {
+    "nodes": 9,
+    "hlo_float32": 12034,
+    "hlo_float64": 12043,
+    "median_chunk_s": 0.02226
+   },
+   "mounted": {
+    "nodes": 9,
+    "hlo_float32": 12355,
+    "hlo_float64": 12364,
+    "median_chunk_s": 0.02184,
+    "ops_over_placed": "+2.7 % in both dtypes (predicted within +5 %)",
+    "chunk_over_placed": 0.981
+   },
+   "exposed": {
+    "nodes": 10,
+    "hlo_float32": 12472,
+    "hlo_float64": 12481,
+    "median_chunk_s": 0.02358,
+    "ops_over_mounted": "+0.95 % (predicted within +10 %)",
+    "chunk_over_mounted": 1.08
+   },
+   "verdict": "every cost prediction held; exposed/mounted 1.080 against a 1.10 bound, a runner's 60-chunk median on one CPU model",
+   "unused": "an unmounted, unexposed array: derived hash and canonical text unchanged (bits)"
+  }
+ }
 }
