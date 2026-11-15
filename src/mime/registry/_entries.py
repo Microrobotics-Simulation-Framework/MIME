@@ -225,6 +225,10 @@ class Plan:
     #: Lines the plan adds to the build report, computed from the experiment as built (a camera's route per subject,
     #: what it hides, its frame's cost).
     notes: tuple[str, ...] = ()
+    #: The fields of the entry's ``raises`` this build's node raises, where it raises some only for what the experiment
+    #: holds (a camera's sampled-route flags, its state only where it images a body by that route, so that a camera
+    #: without one compiles as before them); ``None``: every flag ``raises`` names, as ``Flag.raised_by`` narrows it.
+    raises: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)

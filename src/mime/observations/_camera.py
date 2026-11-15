@@ -34,7 +34,7 @@ from mime.sensing import _scene as scene
 from mime.sensing._mesh import MESH_SAMPLES
 from mime.sensing._detector import CameraPose
 from mime.sensing._detector import project as projected
-from mime.sensing._node import FLAG_FIELDS, FOCAL_SHARE, CameraNode, period_steps
+from mime.sensing._node import FLAG_FIELDS, FOCAL_SHARE, SAMPLED_FLAG_FIELDS, CameraNode, period_steps
 from mime.sensing._render import projected_reach
 from mime.sensing._switches import SWITCHES
 from mime.units import DIMENSIONLESS, LENGTH, Length, Quantity, Time, m, si
@@ -260,7 +260,8 @@ class Camera(Observation):
         "hide": convention(DESIGN, "nothing is hidden: the camera sees the whole scene"),
         "absorbers": convention(PHYSICAL, "no subject attenuates: every subject is opaque, defaulted and noted"),
     }
-    raises = tuple(Flag(name, FLAG_MEANINGS[name], warns=name in FLAG_WARNS) for name in FLAG_FIELDS)
+    raises = tuple(Flag(name, FLAG_MEANINGS[name], warns=name in FLAG_WARNS)
+                   for name in (*FLAG_FIELDS, *SAMPLED_FLAG_FIELDS))
     outputs = (
         Output("image", DIMENSIONLESS, "the held frame, in counts, rows by columns", shape_from_settings=True,
                recordable=False, noise_model=SENSOR_RESPONSE),
@@ -371,8 +372,11 @@ class Camera(Observation):
         problems += _mesh_problems(found, mounted)
         reads = {f"pose_{body}": Read("", POSE.name, of=body) for body, names in found.bodies.items()
                  if names and ctx.roster.bodies[body].pose is not None}
+        # The sampled route's flags are the node's state only where it images a subject by that route.
+        sampled = any(each.placed.sampled is not None for each in found.subjects)
         return Plan(reads=reads, streams=("noise",), problems=tuple(problems), mounted_on=mounted,
-                    notes=self._notes(ctx, found, period, mounted))
+                    notes=self._notes(ctx, found, period, mounted),
+                    raises=FLAG_FIELDS + (SAMPLED_FLAG_FIELDS if sampled else ()))
 
     def _sampled_notes(self, ctx: PlanContext, sampled: list[Any], period: int) -> list[str]:
         """Route 2's line for each sampled body, and its structural cost estimate (its window's rays at the start

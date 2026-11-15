@@ -631,3 +631,43 @@ def test_a_held_branchs_derivative_converges_on_the_least_distances_along_the_ra
           f"{2 * marched.samples - 1}, of derivatives up to {largest:.3g}")
     assert coarse <= 0.05 * largest
     assert fine <= coarse / 2.5
+
+
+# -- zero cost when unused ---------------------------------------------------------------------------------------------
+
+def in_loop_camera(solid) -> "object":
+    """A small in-loop camera seeing one still body of ``solid``, built."""
+    from mime import Body, Experiment, State
+    from mime.dynamics import RigidInertial
+    from mime.observations import Camera, Detector, World
+    from mime.scene import Scene, Z
+    from mime.things import Part
+    from mime.units import kg_per_m3, m, m_per_s, ms, rad_per_s, um
+
+    root = math.sqrt(0.5)
+    experiment = Experiment("route_flags", scene=Scene.new(up=Z, units="m"), dt=ms(1))
+    experiment.add_body(Body("body", dynamics=RigidInertial(), initial=State(
+        position=um((0.0, 0.0, 0.0)), orientation=IDENTITY, velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(solid)}))
+    experiment.declare("body.parts.steel.density", kg_per_m3(7850.0), reason="steel")
+    experiment.observe(Camera(detector=Detector(width=32, height=24, fx=150.0, fy=150.0, cx=15.5, cy=11.5),
+                              mount=World(position=m((0.0, -1e-3, 0.0)), orientation=(root, -root, 0.0, 0.0)),
+                              frame_period=ms(1)))
+    return experiment.build()
+
+
+def test_the_sampled_routes_flags_are_state_only_where_a_body_takes_that_route():
+    """Zero cost when unused (camera design v6, G25): a camera imaging no body by route 2 holds neither of the sampled
+    route's flags (``corner_unverified``, ``corner_bound``) as state and lays out neither, so its programs are those of
+    a camera before route 2 (held equal on a runner by ``scripts/camera_route2/hlo.py`` through ``bit_compare.py``);
+    one imaging a coil holds both, and lays both out."""
+    from mime.scene import Helix, Sphere
+    from mime.sensing._node import SAMPLED_FLAG_FIELDS
+    from mime.units import um
+
+    for solid, route_two in ((Sphere(radius=um(20.0)), False),
+                             (Helix(radius=um(12.0), pitch=um(15.0), turns=2.0, filament_radius=um(3.0)), True)):
+        built = in_loop_camera(solid)
+        held = set(built.current_state()["camera:"]) & set(SAMPLED_FLAG_FIELDS)
+        laid = {flag.field for flag in built.layout.flags} & set(SAMPLED_FLAG_FIELDS)
+        assert held == laid == (set(SAMPLED_FLAG_FIELDS) if route_two else set()), (type(solid).__name__, held, laid)
