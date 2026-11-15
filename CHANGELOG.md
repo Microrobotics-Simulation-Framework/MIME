@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The closed loop through a camera, as an example** (`examples/camera_loop.py`, camera 3c, dev2): a magnetic sphere in
+  Navion_2's field steered by what a camera sees, in GRAPH mode. A camera port (`imaging.frames`, of `camera:.expected`)
+  feeds a tracker, then a PID, then the exact allocation (`ctx.allocator`), then the coils' command port (25 A). The
+  tracker and the PID are plain functions of the example, composed in one controller's law; the controller reads its
+  believed camera through `ctx.believed("camera")`. The tracker takes the frame's soft centroid and back-projects it onto a
+  declared plane by inverting the belief's `project`. It has a lost-target guard: the point is held, the law writes no
+  current, and the target is never a 0/0. It also has an out-of-plane flag from the shadow's area. Both flags live in the
+  controller's state and are printed from the run. The derivative's status is `piecewise_jump`. The coils' limit is a
+  port's bound, a constant of the build, and is not differentiated. `tests/examples/test_camera_loop.py` holds camera
+  spike R2's checks on R2's draws: reverse mode against forward mode, float32 against float64, central differences with
+  their order measured, SciPy's BVLS at every tick, the CALLBACK and GRAPH modes as a mode test, the lightly damped
+  loop's lost target, and the limit as latency goes to nothing and the frame rate to the step rate.
+  `test_camera_loop_tracker.py` holds the tracker's gates (camera PR 3b's, which retired as a core PR). The user guide's
+  page is [A closed loop through a camera](docs/guide/camera_loop.md).
+
 - **The forward-model contract, calibration types and instances, and a controller's believed models and allocator**
   (apparatus lane, AP3a, dev2).
   - **`forward_model(ctx)`**, an optional capability of a field provider and a chain segment
