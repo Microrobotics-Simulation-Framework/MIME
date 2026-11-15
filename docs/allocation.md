@@ -189,7 +189,10 @@ found.commands, found.active, found.objective, found.converged, found.stationari
 `rows` maps the commands to rows, each a miss over its scale (and an effort's rows, where you want one), in JAX; it may
 close over traced values (what is wanted, a believed model's numbers), and each carries its derivative. The bounds may be
 infinite. It starts from `start`, projected into the bounds: on a model that is not affine the minimiser it returns is
-the local one reached from there (the last command, in `ctx.allocator`).
+the local one reached from there (the last command, in `ctx.allocator`), which need not be the nearest. Unregularised,
+near a singular pose of an arm, Newton's step along the direction the rows barely fix is long: on the AR4's wrist the
+solve can end at a joint's limit far from its start, a constrained minimiser off the pose, where a damped solve met the
+pose close by. A slew box around the start bounds how far the solve can go.
 
 **The method** is Bertsekas's projected Newton, in commands scaled to unit columns: an epsilon-active set; Newton's step
 on the free commands where the exact Hessian is positive definite there, Gauss-Newton's where it is not (far from a
@@ -201,8 +204,11 @@ the current point alone, those steps were halved at every other iteration, and a
 whole cap. A step the box cuts, and a Gauss-Newton step, are judged against the current point: with the allowance, a
 box's corners can trade places for the whole cap. Where a step had to be cut, the next is damped (Levenberg's term,
 small, raised at each further cut and lowered at each step taken whole), so that on a curved valley's floor the
-steps shorten and turn towards the gradient instead of crawling by halvings to the cap. Its decrease is measured as a
-difference of squares, and a decrease within what the objective resolves passes, judged on the scale the rows came from:
+steps shorten and turn towards the gradient instead of crawling by halvings to the cap. The step's path bends with the
+rows (Transtrum and Sethna's geodesic acceleration): a second-order term, the least-squares fit of the rows' second
+derivative along the step, keeps the step in a curved valley that the straight step leaves, where a cut step and the
+damped one after it had zigzagged a warm start to the cap; on an affine model the term is zero. Its decrease is measured
+as a difference of squares, and a decrease within what the objective resolves passes, judged on the scale the rows came from:
 a row is a difference of terms (a frame's position and its goal) whose rounding is the terms', not the row's, so each
 row's rounding is taken as the dtype's of the problem's size, which bounds its terms (exactly so on an affine model). On
 an affine model Newton's and Gauss-Newton's steps are one, and the iteration is exact once its active set is the

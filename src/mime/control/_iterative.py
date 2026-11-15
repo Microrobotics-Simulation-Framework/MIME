@@ -18,12 +18,18 @@ positive definite Hessian that no bound cuts: against the largest objective of t
 current one's alone, since in a curved valley that step first raises the objective (the Maratos effect). Where a step
 had to be cut, the next is damped (Levenberg's term, :data:`_DAMPING`, raised by :data:`_DAMPING_FACTOR` at each further
 cut and lowered at each step taken whole), so that in a curved valley's floor the steps shorten and turn towards the
-gradient instead of crawling by halvings. The decrease is measured as a difference of squares, ``sum (r - r') (r + r') /
-2``, and a decrease within what the objective resolves passes. What it resolves is judged on the scale the rows came
-from: a row is a difference of terms (a frame's position and its goal, a field and its target) whose rounding is the
-terms', not the row's, which cancels to far less, so each row's rounding is taken as eps of the problem's size (below),
-which bounds its terms (exactly so on an affine model). It starts from the caller's start projected into the box. On an
-affine model the two steps are one, Newton's, so the iteration is exact once its active set is the solution's.
+gradient instead of crawling by halvings. The step's path bends with the rows (Transtrum and Sethna's geodesic
+acceleration): it is ``u + alpha step + alpha^2 bend / 2``, ``bend`` the least-squares fit of the rows' second derivative
+along the step, so that the step follows a curved valley to second order instead of leaving it; zero on an affine
+model. The decrease is measured as a difference of squares, ``sum (r - r') (r + r') / 2``, and a decrease within what
+the objective resolves passes. What it resolves is judged on the scale the rows came from: a row is a difference of
+terms (a frame's position and its goal, a field and its target) whose rounding is the terms', not the row's, which
+cancels to far less, so each row's rounding is taken as eps of the problem's size (below), which bounds its terms
+(exactly so on an affine model). It starts from the caller's start projected into the box. On an affine model the two
+steps are one, Newton's, so the iteration is exact once its active set is the solution's. Unregularised, near a
+singular pose of an arm, Newton's step along the direction the rows barely fix is long, and the minimiser reached can
+be far from the start (the AR4's wrist: a joint's limit 1.8 rad away, where the library's damped solve met the pose
+0.1 rad away); a slew box around the start bounds how far the solve can go.
 
 **Its local phase.** From the first point within the tolerance on, the solve is in Newton's local phase: full steps,
 with no line search, while a step is longer than the commands' rounding (four units in the last place of the
@@ -220,6 +226,16 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         damped = jnp.where(polishing, 0.0, damping) * jnp.diag(mask)
         newton = -dense_solve(jnp.where(definite, exact, normal) + damped, mask * at.gradient / at.columns)
         step = jnp.where(free, newton, -at.gradient / at.columns) / at.columns
+        # The step's path bends with the rows (geodesic acceleration, Transtrum and Sethna): along ``u + alpha step +
+        # alpha^2 bend / 2``, ``bend`` the least-squares fit of ``J bend = -r''``, the rows' second derivative along
+        # the free step, so that the rows' linear model holds to second order along the path. In a curved valley's
+        # floor the straight step leaves the valley (by its rows' curvature times its square) and is cut, and the
+        # steps after it zigzag: two warm starts of the follower's derivative test took the whole cap, 3 of 7474
+        # solves; with the bend none of the same 7474 did, and the most iterations went from 50 to 15. On an affine
+        # model ``r''`` is zero, and so is the bend.
+        moving = jnp.where(free, step, 0.0)
+        curvature = _jax.jvp(lambda v: _jax.jvp(rows, (v,), (moving,))[1], (u,), (moving,))[1]
+        bend = -dense_solve(normal + damped, mask * (scaled.T @ curvature)) / at.columns
         # What the objective resolves, judged on the scale the rows came from: a row is a difference of terms (a
         # frame's position and its goal, a field and its target) whose rounding is eps of the terms, not of the row,
         # which cancels to far less (A0's follower: rows of 4e-4 from terms of 600). Each row's terms are bounded by
@@ -229,7 +245,7 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         resolved = 4.0 * eps * at.size
 
         def trial(alpha: Any) -> tuple[Any, Any, Any]:
-            free_move = u + alpha * step
+            free_move = u + alpha * step + 0.5 * alpha * alpha * bend
             moved = jnp.clip(free_move, lower, upper)
             predicted = alpha * jnp.sum(jnp.where(free, -at.gradient * step, 0.0)) + \
                 jnp.sum(jnp.where(free, 0.0, at.gradient * (u - moved)))
