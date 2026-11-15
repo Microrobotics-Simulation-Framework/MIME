@@ -104,8 +104,8 @@ PIECE_EVALUATIONS = 2 * (5 + 3) + 2 * DESCENT_SHARE * (LEAST_REACH + 2)
 #: window's 225 values and lines) add about 0.6 % a turn, not counted.
 CORNER_EVALUATIONS = 16 * PIECE_EVALUATIONS
 #: The structural cost estimate above which the build warns, in flops-equivalents a frame: a declaration, about 33 to
-#: 43 ms in float32 and 72 to 86 ms in float64 on a four-core runner at the rates G19 measured for route 2 through the
-#: in-loop camera (23 to 31 and 12 to 14 G a second; camera PR 5a's predictions file holds the runs).
+#: 37 ms in float32 and 56 to 66 ms in float64 on a four-core runner at the rates G19 measured for route 2 through the
+#: in-loop camera (27 to 30 and 15 to 18 G a second; camera PR 5a's predictions file holds the runs).
 COST_LINE = 1.0e9
 
 

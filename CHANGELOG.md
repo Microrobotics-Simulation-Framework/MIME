@@ -13,22 +13,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SignValue`, `sign_zone`; `Geometry.crease_measure`, `CreaseMeasure`; dev2, camera PR 5a). A kind whose geometry declares a
   cheap sign function is imaged without a closed form: each ray's line through its enclosing ball is sampled (32 samples by
   default, more for a slender body so that they lie at most half its smallest length apart), the first-order distance
-  marched on itself in one reduction, and the least sample and the least other local minimum held, refined by a parabola,
-  as two pieces of route 1's pixel integration. Where both cross a pixel (two parts of the outline meeting, as FL-9's lobes
-  in concave notches and a coil's crossing turns), route 1's corner sub-samples take it: the first step located the 0.09 to
-  0.25 per-pixel error off the screw's crease there (15 of 15 pixels, the truth at four times its samples moving by at most
-  0.0066), and the sub-samples took it to 0.010 to 0.020 (on the coil, whose turns cross, the located pixels read within one sub-sample's share, 1/16, of the sign-only truth at 128 and 256 pixels, with the single edge over that line at every draw; the coil's derivative against the truth's central difference reads within 1 % at three of four pose and axis entries and 1.6 % in x at the straight pose, cause open). The helix and the ellipsoid now appear in the in-loop camera (its
+  marched on itself in one reduction, and the least sample and the least other local minimum held, refined by a descent and
+  a quartic, as two pieces of route 1's pixel integration. The helix and the ellipsoid now appear in the in-loop camera (its
   window sized at the build, as a disc's is) and in `render`; the sphere, capsule, cylinder, screw and helix declare sign
-  functions (`mime.scene`). The route is chosen by capability: a creased kind (a solid whose body is the intersection of two
-  or more regions: the cylinder, the box, the screw) takes route 2 only with its crease measure, so the box and the screw are
-  refused (`camera.crease-unmeasured`) until the screw's measure comes; a kind with neither a closed form nor a sign function
-  is refused (`camera.no-route`); `camera.no-closed-form` now refuses only `route="closed form"` on a kind without one, and
-  `route="sampled"` is a route. The build report gives each sampled body's structural cost estimate (its window's rays,
-  sub-frames, evaluations a ray and one evaluation's flops-equivalents from XLA's cost analysis: a count, never a time) and
-  warns above 1e9 flops-equivalents a frame, naming the offline renderer. New switches: `camera.sampled.least`, `.basin`,
-  `.second`, `.branch`, and the helix's `helix.end.low`, `.high`. `mime.testing.sign_function_problems` holds a kind's sign
-  function to its regions' sign at drawn points and its gradient's length. The saved form gains nothing. No compiled
-  program changes for a scene route 1 already images.
+  functions (`mime.scene`).
+  - **The ripple fix.** Every cell takes the exact share of the union of the two branches' half-planes, not one straight edge
+    a cell: one edge missed up to half a cell along a sharp notch's sliver and made a coil's image ripple as it moved.
+  - **Where both pieces cross a pixel** (two parts of the outline meeting, as FL-9's lobes in concave notches and a coil's
+    crossing turns), route 1's corner sub-samples take it, and the corner line is derived (`corner_line.py`) rather than
+    declared. The first step left a 0.09 to 0.25 per-pixel error off the screw's crease there; the sub-samples bring it to
+    the line. A dense window on the pixels a guard flags verifies each flagged pixel, and the guard's test of whether a
+    least is already covered by the branch read is exact (the covered share positive and the read lines' union under the
+    whole sub-cell), not a sufficient half-diagonal one.
+  - **What the verification reports.** `corner_unverified` (the unverified corner pixels a frame) and `corner_bound` (the
+    largest bound on a flagged pixel's error) are state on a camera node that images a shape by route 2, and only there:
+    they warn and never refuse, a scene whose bodies all take route 1 has neither in its state, and its compiled programs
+    are bit for bit the release's in float32 and float64 (a one-ulp control differs on the runner). Over 2400 clean fresh
+    draws (seeds 2800 to 2999, the twelve groups) none was flagged, the flag's planted control fired on 200 of 200, and a
+    flagged pixel's error held under its bound.
+  - **What the gate bounds, in image terms.** A misread whose image effect exceeds the line is caught at the measured rate
+    (the smallest misread caught on every draw, in pixels, float32 / float64: the coil 0.5 at 128 pixels, 0.15 / 0.1 at 256 and 512; the second coil 0.1 / 0.1 at 128 and 256 and 0.15 / 0.1 at 512, leaving out the named draws below; the sensing README holds the per-width table). At poses where even a dropped branch moves no
+    pixel past the line (draws 2624, 2791 and 2750) there is no image error to catch. This is a bound on the misreads the
+    plants represent, not a proof for every pose.
+  - **Derivatives.** The coil's motion derivative against the truth's central difference reads within 0.42 % even at the
+    worst sub-pixel position. The earlier 0.6 to 1 % residual at three entries was the one-pixel central difference's own
+    error (its step sweep converges to the derivative within 2.2e-4 at steps of 1/512 or finer), not the derivative's:
+    nothing to fix. The image's refinement from N to 2N samples moves by 1.8e-6.
+  - **The cost.** The build reports each sampled body's structural cost estimate (its window's rays, sub-frames,
+    evaluations a ray and one evaluation's flops-equivalents from XLA's cost analysis: a count, never a time) and warns
+    above 1e9 flops-equivalents a frame, naming the offline renderer. At the rates measured through the in-loop camera
+    (27 to 30 G a second in float32 and 15 to 18 in float64 on a four-core runner) that line is about 33 to 37 ms and
+    56 to 66 ms a frame.
+  - **The route is chosen by capability**: a creased kind (a solid whose body is the intersection of two or more regions: the
+    cylinder, the box, the screw) takes route 2 only with its crease measure, so the box and the screw are refused
+    (`camera.crease-unmeasured`) until the screw's measure comes; a kind with neither a closed form nor a sign function is
+    refused (`camera.no-route`); `camera.no-closed-form` now refuses only `route="closed form"` on a kind without one, and
+    `route="sampled"` is a route. New switches: `camera.sampled.least`, `.basin`, `.second`, `.branch`, and the helix's
+    `helix.end.low`, `.high`. `mime.testing.sign_function_problems` holds a kind's sign function to its regions' sign at
+    drawn points and its gradient's length. The saved form gains nothing.
 - **The forward-model contract, calibration types and instances, and a controller's believed models and allocator**
   (apparatus lane, AP3a, dev2).
   - **`forward_model(ctx)`**, an optional capability of a field provider and a chain segment

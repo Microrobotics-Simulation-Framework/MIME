@@ -394,8 +394,8 @@ class Camera(Observation):
                          f"of the program, not a time")
             if cost > sampled_route.COST_LINE:
                 lines.append(f"warning: {subject.name}'s frames are estimated at {cost / 1e9:.3g} G flops-equivalents, "
-                             f"over the line of {sampled_route.COST_LINE / 1e9:.3g} G (about 35 to 45 ms in float32 and "
-                             f"70 to 90 ms in float64 on a four-core CPU): render its frames offline from the recorded poses (mime.sensing.render), "
+                             f"over the line of {sampled_route.COST_LINE / 1e9:.3g} G (about 33 to 37 ms in float32 and "
+                             f"56 to 66 ms in float64 on a four-core CPU): render its frames offline from the recorded poses (mime.sensing.render), "
                              f"or lengthen frame_period")
         return lines
 
