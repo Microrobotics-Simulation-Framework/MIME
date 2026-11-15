@@ -101,5 +101,12 @@
   "prediction": "not re-measured: the per-step cost of the allocator through ctx.allocator is unchanged (no node, no op); AP3a's measurement stands (nodes 6 = 6, HLO +8.8 %, chunk 1.071x)",
   "measured_at": "the previous probe, run 43647940444"
  },
- "outcomes": null
+ "outcomes": {
+  "recorded": "2026-11-15, from probe run 43678750308 on probe/ap3a-fix (4bc60b554, over 64db7ec6), downloaded artifacts",
+  "gate_2_the_allocator_offset_control": "20/20 caught, clean 0/20: as predicted",
+  "gate_3_the_new_allocator_properties_are_not_flaky": "NOT as predicted: 1 failing run of the 100 (clean arm, seed 2; planted arm, nothing planted, 0 of 50). Classified (CLAUDE.md, cause 2, judge on the scale a result came from): in float32 a force-and-torque objective with a moment along y and a torque asked for beyond the box; the commands were 2.2 A off BVLS's at a 25 A bound with a residual 4e-5 of itself above BVLS's, inside the law's tie window (0.015 each side, which grows with the residual, where the commands' line does not). Fixed in the test's judge (the law's documented tie accepted where its residual is inside the windows), with the case as a test and the controls' effort strengthened; no tolerance of the law changed",
+  "bits": "as predicted: A0, script A (both dtypes), the tutorials and the sphere equal on every array; the one-ulp controls differ in both dtypes (14 and 13 arrays)",
+  "gate_1_the_affine_control_fires_every_run": "NOT JUDGED: the two arms were still running after 5.5 h (the planted arm's Hypothesis shrinking, 200 runs an arm) and were cancelled; the plant they rate was also replaced (predictions_ap3a_fix2.json): CI's stress run found it missing at u = (-1, -1, -1). Relaunched as shorter arms (predictions_ap3a_fix3.json)",
+  "arm_memory_check": "flake_objectives failed its memory check only (peak 1.28 GiB over its bound 1.08 GiB, the estimator's row for the calibration table is in the artifact); every arm ran on a runner, none locally"
+ }
 }

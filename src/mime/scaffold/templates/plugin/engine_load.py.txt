@@ -1,0 +1,12 @@
+"""The example law: a load that is a gain times a commanded force. Replace it with yours.
+
+Pure JAX, on arrays, in SI, and the engine never imports `mime`. The properties of tests/engine/test_properties.py are
+stated about this function alone, so they hold whatever MIME does around it.
+"""
+
+from jax import Array
+
+
+def load_on(force: Array, gain: Array) -> Array:
+    """The load a body feels, in N: the commanded ``force`` (N) times the dimensionless ``gain``. Linear in the force."""
+    return gain * force

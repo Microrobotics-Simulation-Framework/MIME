@@ -341,15 +341,22 @@ def manifest_text(kind: str, name: str, licence: str | None, values: Mapping[str
         f"# The {whose}'s own licence, which covers its files: it must equal the licence the experiment declares",
         f"# (exp.licence(...), bound to its files when it is saved). {declared}",
         f"[{kind}]", f"licence = {value_text(held.get('licence', licence or fallback))}", "", "[record]"]
+    return "\n".join([*lines, *record_lines(held, name), ""])
+
+
+def record_lines(held: Mapping[str, object], name: str) -> list[str]:
+    """The keys of ``[record]``, each explained where it stands (the title ``name`` where ``held`` gives none), as every
+    ``mime.toml`` that has a ``[record]`` writes them, under its ``[record]`` header."""
+    lines: list[str] = []
     for key, (explained, absent) in _EXPLAINED.items():
         if key == "access" and key not in held:
             continue
         lines += [f"# {line}" for line in explained]
         value = held.get(key, name if key == "title" else _EMPTY.get(key))
         lines += key_lines(key, value) if value is not None else [absent or f"# {key} = ..."]
-    return "\n".join([*lines, ""])
+    return lines
 
 
 __all__ = ["BLOCK", "BLOCK_TABLES", "BUNDLE", "KINDS", "MANIFEST_FILE", "MANIFEST_FORMAT", "OLD_FILE", "STUDY", "Manifest",
            "folder_kind", "kind_of", "manifest_path", "manifest_problems", "manifest_text", "old_values", "present",
-           "read_manifest", "read_record", "read_toml", "toml_holdable", "toml_problems", "toml_shaped"]
+           "read_manifest", "read_record", "read_toml", "record_lines", "toml_holdable", "toml_problems", "toml_shaped"]

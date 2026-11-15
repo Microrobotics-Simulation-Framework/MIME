@@ -1,0 +1,14 @@
+"""The example entry round-trips: built, saved, loaded in a fresh process and rebuilt, it gives the same derived hash and
+the same first steps, bit for bit. A new entry needs a case like this one (MIME's own registry walk requires one for
+each of its entries)."""
+
+from mime.testing import round_trip_failures
+from mime.testing.toys import coupled_toy
+
+from ${package}.entries import ExampleLoad
+
+
+def test_the_example_entry_round_trips(tmp_path):
+    experiment = coupled_toy()
+    experiment.attach(ExampleLoad(), body="probe")
+    assert round_trip_failures(experiment, tmp_path / "saved") == []

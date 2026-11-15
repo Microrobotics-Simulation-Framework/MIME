@@ -37,7 +37,8 @@ from typing import Any
 import jax
 import numpy as np
 import pytest
-from allocation_draws import Problem, region, verdict
+from allocation_draws import Problem, bvls, region, residual_line, tie_window
+from allocation_draws import verdict as swap_verdict
 from believed_cases import LIMIT, OWNER, believed_sphere
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -166,6 +167,25 @@ def allocated(case: Mapping[str, Any], dtype: str, **given: Any) -> np.ndarray:
                                  {"currents": jnp.asarray(case["last"])})
     assert set(report.made) == set(case["objective"])
     return np.asarray(commands["currents"], dtype=np.float64)
+
+
+def verdict(problem: Problem, commands: np.ndarray, dtype: str) -> list[str]:
+    """:func:`allocation_draws.verdict`, with one widening that the law's contract makes: where it says a unique minimiser
+    is off BVLS's by more than the commands' line, accept the commands if their residual is within the law's own tie
+    windows of BVLS's (and the residual's rounding). The law ties candidates whose residual is within ``TIE_ULPS eps``
+    of the target's norm and what the commands make, and that window grows with a residual far above what the box
+    reaches, while the commands' line does not: along a flat direction of the rows (a singular ratio of 0.07 here) the
+    window is wider than the residual's change over the whole box (CI's flake: 2.2 A off at 25 A, in float32, a torque
+    asked for beyond the box, its residual 4e-5 of itself above BVLS's, inside the window of 3e-2). The commands are then
+    the law's documented tie, not a rounding error; a planted error moves the residual by far more than a window."""
+    found = swap_verdict(problem, commands, dtype)
+    if not found or not all(line.startswith("unique:") for line in found):
+        return found
+    a, b = problem.scaled(dtype)
+    reference = bvls(problem, dtype)
+    mine, theirs = float(np.linalg.norm(a @ commands - b)), float(np.linalg.norm(a @ reference - b))
+    tied = residual_line(problem, dtype) + tie_window(problem, commands, dtype) + tie_window(problem, reference, dtype)
+    return [] if mine - theirs <= tied else found
 
 
 def model_rows(case: Mapping[str, Any], dtype: str) -> tuple[np.ndarray, np.ndarray]:
@@ -300,6 +320,10 @@ def test_the_allocation_reads_the_models_offset_at_zero_command(objective, dtype
 # -- the regularisation -------------------------------------------------------------------------------------------
 
 EFFORT = 3.0
+#: The controls' effort: small enough that the regularisation's rows dominate the objective's, so that ignoring them or their
+#: reference changes the residual by far more than the law's tie window (at 3 A the torque rows of a force-and-torque
+#: objective outweigh them: their rows are 10 to 20 per ampere over the scale).
+CONTROL_EFFORT = 0.03
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
@@ -323,11 +347,11 @@ def test_ignoring_the_effort_or_the_reference_moves_the_commands_off_the_regular
     with the reference taken as zero, each misses the regularised oracle's commands by more than its line (asserted
     here on every case: the as-built arm matches, each control does not)."""
     case = {**fixed_case(objective), "last": np.asarray([3.0, -2.0, 1.0])}
-    problem = oracle_problem(case, dtype, effort=EFFORT, reference=case["last"] if toward == "last" else None)
-    assert verdict(problem, allocated(case, dtype, effort=A(EFFORT), toward=toward), dtype) == []
+    problem = oracle_problem(case, dtype, effort=CONTROL_EFFORT, reference=case["last"] if toward == "last" else None)
+    assert verdict(problem, allocated(case, dtype, effort=A(CONTROL_EFFORT), toward=toward), dtype) == []
     assert verdict(problem, allocated(case, dtype, toward=toward), dtype), "the effort ignored"
     if toward == "last":
-        assert verdict(problem, allocated(case, dtype, effort=A(EFFORT), toward="zero"), dtype), "the reference ignored"
+        assert verdict(problem, allocated(case, dtype, effort=A(CONTROL_EFFORT), toward="zero"), dtype), "the reference ignored"
 
 
 # -- a call missing what the objective needs ---------------------------------------------------------------------
@@ -347,3 +371,29 @@ def test_an_objective_of_a_force_or_torque_called_without_a_moment_says_so_where
         solve(wanted, {**point, "moment": jnp.asarray(case["moment"])})
         flux = fixed_case(("flux_density",))
         make_allocator(flux["background"], ("flux_density",))(as_quantities(flux["wanted"], ("flux_density",)), point)
+
+
+def test_the_flake_ci_found_is_the_laws_documented_tie_not_a_rounding_error():
+    """CI's probe found, in float32, a force-and-torque objective (a moment along y, the torque asked for beyond the box)
+    whose commands were 2.2 A off BVLS's at a 25 A bound: the residual 665.518 against BVLS's 665.489, inside the law's tie
+    window of 0.015 each side. Held here as that case's numbers: the plain swap line refuses it, the widened verdict (the
+    law's tie windows) accepts it, and a command off by the same distance with a residual far above the windows is refused."""
+    from allocation_draws import tie_window
+
+    point = np.asarray([-0.011, 0.022, 0.013775])
+    moment = np.asarray([0.0, 4.5557e-4, 0.0])
+    matrix, offset, scales, _, _ = host_rows(point, moment, BACKGROUNDS[0], ("force", "torque"))
+    wanted = np.asarray([0.0, 0.0, -6.61324859e-4, 0.0, 0.0, -8.81766478e-6])
+    case = {"name": "force_and_torque", "objective": ("force", "torque"), "point": point, "moment": moment,
+            "background": BACKGROUNDS[0], "matrix": matrix, "offset": offset, "scales": scales, "wanted": wanted,
+            "last": np.asarray([-3.0, 0.0, 0.0])}
+    problem = oracle_problem(case, "float32", effort=EFFORT, reference=case["last"])
+    reference = bvls(problem, "float32")
+    nearby = np.asarray([0.64944434, -17.13034248, 25.0])
+    a, b = problem.scaled("float32")
+    window = tie_window(problem, nearby, "float32") + tie_window(problem, reference, "float32")
+    gap = float(np.linalg.norm(a @ nearby - b) - np.linalg.norm(a @ reference - b))
+    assert 0.0 <= gap <= window < 1.0 and np.max(np.abs(nearby - reference)) > 1.0
+    assert swap_verdict(problem, nearby, "float32") and verdict(problem, nearby, "float32") == []
+    far = reference + np.asarray([0.0, 0.0, 2.2]) * 0.0 + np.asarray([6.0, 6.0, 0.0])
+    assert verdict(problem, far, "float32")

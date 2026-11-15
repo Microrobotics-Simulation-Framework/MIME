@@ -1,0 +1,34 @@
+"""The example, as a user runs it: one body with the plugin's entry attached, built, run for a second, and printed.
+
+    python examples/example.py
+
+Names you type, all in the namespace `${namespace}`: the entry `${namespace}.example_load` (its class, `ExampleLoad`, with
+its settings `force` and `gain`), the record it reads `${namespace}_example_record`, and the instance on a body,
+`${namespace}.example_load:probe` (the entry, a colon, the body: it is how the build report and a study name it).
+Replace the toy body with your own (`mime.things`), and run `mime registry | grep ${namespace}` to see what is installed.
+
+A study can only move a setting that reaches the run through the state: a design setting of an entry is not an axis today
+(a gap F0 tracks), so to differentiate through a value, make it the body's initial state, as the clot plugin does.
+"""
+
+from mime.experiment import Experiment
+from mime.scene import Scene, Z
+from mime.testing.toys import PROBE_START, ToyBody
+from mime.things import Body
+from mime.units import s, standard_gravity
+
+from ${package}.entries import ExampleLoad
+
+
+def build() -> Experiment:
+    experiment = Experiment("example", scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=s(0.02))
+    experiment.add_body(Body("probe", dynamics=ToyBody(), initial=PROBE_START))
+    experiment.attach(ExampleLoad(), body="probe")
+    # The licence the saved files are shared under: it is bound to them when the experiment is saved.
+    experiment.licence(${content_licence})
+    return experiment
+
+
+if __name__ == "__main__":
+    built = build().build()
+    print(f"built {len(built.report.nodes)} nodes; the example load is `${namespace}.example_load:probe`")

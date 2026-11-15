@@ -1,0 +1,10 @@
+"""The adapter: this plugin's MIME entries, found through the `mime.entries` entry point in pyproject.toml.
+
+MIME imports this module when it lists what is installed (`mime registry`) or loads a saved experiment that names the
+namespace `${namespace}`, so importing it must register every entry. One module per entry (`example_load.py`); the
+arithmetic lives in `${package}.engine`, which imports no `mime`.
+"""
+
+from ${package}.entries.example_load import ExampleLoad
+
+__all__ = ["ExampleLoad"]

@@ -104,6 +104,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `KeyError`). A belief's leaf is no study axis; a study differentiates the controller's settings through the belief.
   - **Refusal codes**: `allocation.bounds`, `allocation.model`, `allocation.objective` and `controller.believed`; the
     allocator refuses more than `EXACT_COMMANDS` commands as `allocation.exact-size`, citing the constant.
+- **`mime scaffold`: a new experiment, bundle, study, block or plugin from a template** (`mime.scaffold`, the help group Start;
+  `scaffold.exists`, `scaffold.set`, `scaffold.no-terminal`; dev2, lane P's P7a). `mime scaffold <kind> <path>` writes an
+  experiment (`experiment.py` over the toy entries, run once and saved into `saved/`), adds `mime.toml` to a saved folder
+  (bundle) or a study folder, writes a block (`mime.toml`, `block.mime.yaml`, `cases/`; with `--from <saved folder> --socket
+  <name>=<thing>` the declarations of a saved experiment, through `fragment_from`) or a plugin (`pyproject.toml`, an example
+  entry, a round-trip test). Each value is the `--set key=value` one (named as `mime.toml` names it), else your `defaults.toml`,
+  else scaffold's own; without `--yes` or `--dry-run` it walks them as `mime push --setup` does and asks at the end whether to
+  save what it was told as your defaults. It never overwrites, asks nothing and accepts no licence under `--yes`, refuses with
+  no terminal and no `--yes`, searches everything it writes for a token MIME holds, and writes nothing under `--dry-run`, which
+  draws the tree and where each value came from. Templates are package data filled by `string.Template`, no network. The CI
+  control scaffolds each kind with `--yes` and runs its check (`mime check` with exactly the kind's to-do list; the experiment
+  verifies; the plugin is built with the environment's own build backend into a temporary target only a subprocess sees, where
+  `mime registry --json` lists it and its own test passes, so the suite's registry is never changed); a misspelt key planted in each
+  kind's template fails it (caught 5 of 5). `mime push --init` is kept as the alias of `mime scaffold bundle|study <folder>
+  --yes`, one writer and the same bytes, a test holds them equal; it keeps an existing `mime.toml` softly where scaffold refuses, and migrates a folder's `sharing.yaml` where scaffold refuses it.
+  A plugin's namespace that is taken (the first word of one of MIME's refusal codes or entries, or a namespace an installed
+  distribution declares, read from the registry and the environment) is refused (`scaffold.set`) with a free word to try, also
+  where it is derived from the folder's name or your defaults (`helix-robot` does not default to `helix`); `block --from` takes the
+  saved experiment's declared licence as the block's and refuses another; a saved or study folder asked for as the other kind is
+  `manifest.kind`; the symlink guard is tested.
+  `mime new`, planned before, is `mime scaffold experiment`. `push._setup`'s `Walk`, `asked` and `filled` are public in that module.
+
+- **`mime scaffold plugin` writes the full plugin layout, with editor support and a typing check** (dev2, lane P's P7b; no new
+  verb, code, seam or saved form). No `--minimal`: each file is short and commented as optional. `pyproject.toml` (the
+  `mime.entries` and `mime.assets` entry points, a `slow` marker, `-m "not slow"` by default); `src/<package>/` with `entries/`
+  (the adapter), `engine/` (pure JAX, an AST test that it imports no `mime`, with a planted import shown to fail) and
+  `records/` (`records.json`, its sha256 and size filled in from `data/example.json`); tests (the registry round trip,
+  `node_failures` and `param_reach_failures` on the example entry, validity lines with none empty, a Hypothesis property with
+  one planted error, a `@verification_benchmark` in the slow lane, an `assert_type` file); `benchmarks/build_case.py` with
+  `mime.toml`; `examples/`; a README whose "Use" blocks tagged `bash ci` are what CI runs, with the `jq` line for `mime registry
+  --json`; `CITATION.cff` and `LICENSE` (Apache-2.0's text, or a file naming the licence chosen); `.github/workflows/ci.yml` (a
+  default lane, a `slow` lane gated by a label, a weekly lane against MIME's release branch, the `mime registry` assertion, `mime
+  check`, `mime assets audit` on the built wheel and sdist, and a typing job); and a `pyrightconfig.json` that is strict over the
+  package and names `.venv` for an editor (measured: absent, pyright says so on stderr and still exits 0 with the environment it
+  is given, `--pythonpath`'s or the active one; present but not holding MIME, it overrides `--pythonpath`); MIME's own
+  `pyrightconfig.json` names the same `.venv`, and CI's typecheck is unchanged by it (466 files, 0 errors, before and after). The naming rule (`.`
+  for entries, `_` for records, `:` for an instance) is in the template's comments; the namespace is filled in the six places it
+  appears from one value; no file holds a machine path. The control now runs the scaffolded plugin's tests in a subprocess against
+  its temporary target: they pass, the slow lane passes, with the planted error in only the planted property fails, the README's
+  CI blocks run, and a misspelt key in each of five more files fails it. Review fixes: the engine's AST test also finds
+  `importlib.import_module("mime...")` and `__import__("mime...")` with a constant string (a computed name is its stated limit);
+  the template's `default` job does not re-run when a label is added (`if: github.event.action != 'labeled'`; the `slow` job
+  still runs on the label); the control's clean plugin is built and run once for its module, and each plant re-writes one file of
+  a copy and runs only the stage that catches it; the pyright tests skip, with a reason, on a machine without `node`.
 
 - **Static meshes in the in-loop camera, traced once a run** (`mime.sensing._mesh`, `mime.sensing.mesh_chords`,
   `MeshChords`, `MESH_SAMPLES`; `mime.observations.Camera`; `mime.viz.write_mesh(..., decimation_distance=)`; dev2, camera
