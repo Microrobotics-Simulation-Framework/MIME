@@ -279,3 +279,4 @@ docs/entries/observation/exposure.md  40  #1  # an example's limit in a line of 
 src/mime/fields/README.md  10  #1  # the mounted array's tolerance, SLACK eps / c (SLACK = 10, tests/oracles/test_calibrated_multipole.py's factor over the rounding floor eps / c), held by tests/fields/test_mounted_array.py
 src/mime/observations/README.md  1  #1  # the step index n - 1 in the one-step difference's formula, not a quantity
 src/mime/observations/README.md  0 0  #1  # step indices of a run (the first step is step 0, the field switched on before step 1), and the value held there (zero), a definition of what is measured, not a quantity
+docs/guide/camera_loop.md  43691394582 3c  #1  # a GitHub Actions run id and a branch name (probe/camera-3c-r2): identifiers that locate the probe whose rates the page cites, not claims

@@ -47,6 +47,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`mime.units.T_per_s`** (`FIELD_RATE`, `FieldRate`), a field's rate of change, so that a rate limit carries its
     reason (a quantity derived by division carries none). The saved form writes it as `unit_symbol` gives it, which
     `parse_unit` reads back.
+- **The closed loop through a camera, as an example** (`examples/camera_loop.py`, camera 3c, dev2): a magnetic sphere in
+  Navion_2's field steered by what a camera sees, in GRAPH mode. A camera port (`imaging.frames`, of `camera:.expected`)
+  feeds a tracker, then a PID, then the exact allocation (`ctx.allocator`), then the coils' command port (25 A). The
+  tracker and the PID are plain functions of the example, composed in one controller's law; the controller reads its
+  believed camera through `ctx.believed("camera")`. The tracker takes the frame's soft centroid and back-projects it onto a
+  declared plane by inverting the belief's `project`. It has a lost-target guard: the point is held, the law writes no
+  current, and the target is never a 0/0. It also has an out-of-plane flag from the shadow's area. Both flags live in the
+  controller's state and are printed from the run. The derivative's status is `piecewise_jump`. The coils' limit is a
+  port's bound, a constant of the build, and is not differentiated. `tests/examples/test_camera_loop.py` holds camera
+  spike R2's checks on R2's draws: reverse mode against forward mode, float32 against float64, central differences with
+  their order measured, SciPy's BVLS at every tick on the rows the law solved (the controller's state keeps them), the
+  CALLBACK and GRAPH modes as a mode test, the lightly damped loop's lost target, and the limit as latency goes to
+  nothing and the frame rate to the step rate.
+  `test_camera_loop_tracker.py` holds the tracker's gates (camera PR 3b's, which retired as a core PR). The user guide's
+  page is [A closed loop through a camera](docs/guide/camera_loop.md).
 
 - **The forward-model contract, calibration types and instances, and a controller's believed models and allocator**
   (apparatus lane, AP3a, dev2).
@@ -1435,6 +1450,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against `actuation` in both dtypes), and the exposure envelope reads its field this way. A point no law reads is still
   refused, its route the observation's own instance of the provider, later work.
 
+- **The run's precision is stated, and a GPU build warns when the matmul precision is not `highest`** (the build report, `RunResult`, `outputs.json`;
+  `mime.env._host.run_precision`, `precision_note`; usability bundle 3, F14). The README quickstart runs in float32 (JAX's default) and
+  neither the build report nor the result said so. The report's summary has a `precision: float32` (or `float64`) line, a result's
+  `text()` states it, and a run folder's `outputs.json` records it (`precision`; a folder written before it reads without the line).
+  On a GPU whose default matmul precision is not `highest` the build warns (`MatmulPrecisionReduced`, a `UserWarning`) and the report
+  carries the same text: the 0.2 line's drag was 15 % off under reduced-precision TF32 matmuls. The warning's logic is tested with the
+  device and precision read through a seam; **the real GPU path is not tested in CI** (no GPU there).
 - **A MIME refusal raised inside a controller's `law(ctx)` keeps its own code** (AP3a): `ctx.allocator`'s and
   `ctx.believed`'s refusals, and any other MIME refusal a law raises, are refused under their codes; until now every
   error a law raised was its entry's defect (`entry.defect`), as any other error still is. Likewise a MIME refusal an
