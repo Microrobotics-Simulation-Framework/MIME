@@ -33,21 +33,23 @@ registry` assertion, `mime check` of the benchmark, `mime assets audit` of the b
 strict, over the package and the `assert_type` file, so the types an editor completes from cannot rot). Every value is the one
 you give with `--set`, else your `defaults.toml` (the namespace, the licence of your code, your name), else scaffold's own, and
 `--dry-run` draws the files and says where each value came from before anything is written. It never overwrites: a folder that
-exists is refused. Its own control scaffolds the plugin with `--yes` into a temporary folder, unpacks its wheel there, and runs
+exists is refused. A namespace that is taken (the first word of one of MIME's entries or refusal codes, or one an installed
+package declares) is refused with a free word to try, since one clash breaks `mime registry` for the whole environment: a folder
+named `helix-robot` therefore needs `--set plugin.namespace=`. Its own control scaffolds the plugin with `--yes` into a temporary folder, unpacks its wheel there, and runs
 its tests in a subprocess that sees only that folder: the tests pass, and with the planted error in, only the planted property
 fails.
 
 <!-- mime-fragment: a shell session, not code a test runs; the command lines are parsed against the CLI by the docs check -->
 ```bash
-mime scaffold plugin labx-probes --set plugin.namespace=labx --dry-run --yes
-mime scaffold plugin labx-probes --set plugin.namespace=labx --yes
-pip install -e labx-probes
-mime registry | grep labx
+mime scaffold plugin acme-probes --set plugin.namespace=acme --dry-run --yes
+mime scaffold plugin acme-probes --set plugin.namespace=acme --yes
+pip install -e acme-probes
+mime registry | grep acme
 ```
 
-The namespace is the word before the dot in every entry's name (`labx.example_load`) and is filled in the six places it appears
-from one value; records use `_` where entries use `.` (`labx_example_record`), and an instance is named `entry:thing`
-(`labx.example_load:probe`): the template's comments say so, and nothing is renamed. The example entry delivers to the toy
+The namespace is the word before the dot in every entry's name (`acme.example_load`) and is filled in the six places it appears
+from one value; records use `_` where entries use `.` (`acme_example_record`), and an instance is named `entry:thing`
+(`acme.example_load:probe`): the template's comments say so, and nothing is renamed. The example entry delivers to the toy
 body's load, so it runs beside MIME's `toy` entries; replace it with your law. Pin a timed run to a single core and the CPU
 (`JAX_PLATFORMS=cpu taskset -c <core> pytest`): an unpinned JAX run on a shared machine was measured several times slower.
 

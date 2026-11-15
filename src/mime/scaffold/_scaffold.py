@@ -57,6 +57,7 @@ from mime.scaffold._values import (
     Held,
     check_of,
     mime_range,
+    namespace_clash,
     own_experiment_name,
     own_plugin_names,
     sets_of,
@@ -119,9 +120,21 @@ def _exists(kind: str, root: Path, given: str) -> None:
         if not (root.is_symlink() or root.exists()):
             return
         why = (f"{quoted(given)} exists and holds {' and '.join(holds)}" if holds else f"{quoted(given)} exists")
+    message = f"{why}: scaffold never overwrites"
+    if kind in ("bundle", "study"):
+        raise BuildRefused([Refusal("scaffold.exists", RefusalClass.USER, message,
+                                    f"`mime push {quoted(given)} --setup` edits its mime.toml in place")])
     edit = f"; `mime push {quoted(given)} --setup` edits its mime.toml in place" if holds else ""
-    raise BuildRefused([Refusal("scaffold.exists", RefusalClass.USER, f"{why}: scaffold never overwrites",
+    raise BuildRefused([Refusal("scaffold.exists", RefusalClass.USER, message,
                                 f"scaffold into another name, `mime scaffold {kind} <new path>`{edit}")])
+
+
+def _declared_licence(source: Path) -> str | None:
+    """The licence the saved experiment in ``source`` declares, ``None`` where its document declares none."""
+    from mime.saved import read_folder
+
+    licence = read_folder(source, absent_referenced=True).document.get("licence")
+    return str(licence) if licence else None
 
 
 def _no_terminal(kind: str, given: str) -> BuildRefused:
@@ -133,7 +146,7 @@ def _no_terminal(kind: str, given: str) -> BuildRefused:
 
 
 def _own(kind: str, root: Path, defaults: Defaults, facts: tuple[str, str, str | None] | None,
-         ) -> dict[str, Held]:
+         declared: str | None) -> dict[str, Held]:
     """The value of each key where nothing is set: the person's default where they have one, scaffold's own else."""
     content = defaults.licences.get("content")
     fallback = Held(content, DEFAULTS) if content else Held(DEFAULT_LICENCE, OWN)
@@ -142,14 +155,13 @@ def _own(kind: str, root: Path, defaults: Defaults, facts: tuple[str, str, str |
         found = {EXPERIMENT_NAME: Held(own_experiment_name(root.name), OWN), EXPERIMENT_LICENCE: fallback}
     elif kind in ("bundle", "study"):
         assert facts is not None
-        declared = facts[2]
         found = {f"{kind}.licence": Held(declared, OWN) if declared else fallback, TITLE: Held(facts[1], OWN)}
     elif kind == "block":
         namespace = Held(defaults.namespace, DEFAULTS) if defaults.namespace else Held(OWN_NAMESPACE, OWN)
         name = re.sub(r"[^a-z0-9_]+", "_", root.name.lower()).strip("_")
         name = name if re.match(r"[a-z]", name) else f"block_{name}".rstrip("_")
         found = {BLOCK_ID: Held(f"{namespace.value}.{name}", namespace.source), BLOCK_VERSION: Held("0.1.0", OWN),
-                 BLOCK_LICENCE: fallback, TITLE: Held(root.name, OWN)}
+                 BLOCK_LICENCE: Held(declared, OWN) if declared else fallback, TITLE: Held(root.name, OWN)}
     else:
         names = own_plugin_names(root.name)
         found = {DISTRIBUTION: Held(names["distribution"], OWN), PACKAGE: Held(names["package"], OWN),
@@ -166,7 +178,7 @@ def _own(kind: str, root: Path, defaults: Defaults, facts: tuple[str, str, str |
     return found
 
 
-def _ask(walk: Walk, key: str, head: str, declared: str | None) -> object:
+def _ask(walk: Walk, key: str, head: str, declared: str | None, needed: str | None = None) -> object:
     """A new value of ``key``, asked as ``mime push --setup`` asks the fields it shares; ``None`` where none was given."""
     if key in PEOPLE_KEYS:
         return asked(walk, "creators", head, None)
@@ -175,7 +187,7 @@ def _ask(walk: Walk, key: str, head: str, declared: str | None) -> object:
     if key.endswith(".licence"):
         return asked(walk, "licence", head, declared)
     check = None if key == DESCRIPTION else check_of(key, declared)
-    return walk.value(f"{head}\n{key}: ", check)
+    return walk.value(f"{head}\n{key}: ", check, needed=needed)
 
 
 def _walked(kind: str, walk: Walk, current: Mapping[str, Held], sets: Mapping[str, object],
@@ -188,10 +200,13 @@ def _walked(kind: str, walk: Walk, current: Mapping[str, Held], sets: Mapping[st
             continue
         head = f"{key}: {why}"
         held = current.get(key)
-        if held is not None and filled(held.value) and walk.keep(head, held.value):
-            chosen[key] = held
+        offered, refused = held, None
+        if key == NAMESPACE and held is not None and (refused := namespace_clash(str(held.value))) is not None:
+            head, offered = f"{head}\nthe value found, {text_of(held.value)}, cannot be used: {refused}", None
+        if offered is not None and filled(offered.value) and walk.keep(head, offered.value):
+            chosen[key] = offered
             continue
-        given = _ask(walk, key, "" if held is not None and filled(held.value) else head, declared)
+        given = _ask(walk, key, "" if offered is not None and filled(offered.value) else head, declared, needed=refused)
         if given is not None:
             chosen[key] = Held(given, ASKED)
         elif held is not None and key in _NEEDED:
@@ -203,7 +218,7 @@ def _values(kind: str, root: Path, defaults: Defaults, facts: tuple[str, str, st
             walk: Walk | None, declared: str | None) -> dict[str, Held]:
     """The value of each key, with its source: ``--set``, else the person's defaults, else scaffold's own, and under a
     walk each asked in turn."""
-    current = _own(kind, root, defaults, facts)
+    current = _own(kind, root, defaults, facts, declared)
     if walk is not None:
         chosen = _walked(kind, walk, current, sets, declared)
     else:
@@ -271,7 +286,8 @@ def _block(root: Path, held: Mapping[str, Held], defaults: Defaults, source: Pat
     if drafted is not None and source is not None:
         files["block.mime.yaml"] = ("# Written by `mime scaffold block --from`, from a saved experiment: its sockets are "
                                     "declared in mime.toml's [sockets].\n" + drafted.text)
-        notes["block.mime.yaml"] = f"the declarations of the saved experiment, its {', '.join(sockets)} as sockets"
+        notes["block.mime.yaml"] = ("the declarations of the saved experiment" +
+                                    (f", its {', '.join(sockets)} as sockets" if sockets else ""))
         for file in drafted.files:
             files[file] = source / file
             notes[file] = "a file the fragment reads, copied from the saved experiment"
@@ -325,10 +341,18 @@ def _tokens(plan: _Plan, held: Mapping[str, Held]) -> None:
             by_key = [key for key, value in held.items()
                       if any(each.occurs_in(text_of(value.value).encode("utf-8")) for each in tokens)]
             where = f" (in the value of {', '.join(by_key)})" if by_key else ""
-            raise BuildRefused([Refusal(
-                "scaffold.set", RefusalClass.USER,
-                f"{path} would hold a token MIME stores{where}, which never goes into a file that is shared; nothing was "
-                f"written", "remove the token from the value you gave with --set, and run scaffold again")])
+            message = (f"{path} would hold a token MIME stores{where}, which never goes into a file that is shared; "
+                       f"nothing was written")
+            if any(held[key].source == SET for key in by_key):
+                raise BuildRefused([Refusal("scaffold.set", RefusalClass.USER, message,
+                                            "remove the token from the value you gave with --set, and run scaffold again")])
+            if any(held[key].source == DEFAULTS for key in by_key):
+                raise BuildRefused([Refusal("scaffold.set", RefusalClass.USER, message,
+                                            "remove the token from your defaults (`mime defaults` shows them), and run "
+                                            "scaffold again")])
+            raise BuildRefused([Refusal("scaffold.set", RefusalClass.USER, message,
+                                        "the token is in the folder's name or a value taken from it: `mime scaffold <kind> "
+                                        "<another folder name>`")])
 
 
 def _written(kind: str, root: Path, plan: _Plan) -> None:
@@ -452,9 +476,14 @@ def scaffold(kind: str, path: str | os.PathLike[str], *, yes: bool = False, sets
     if kind in ("bundle", "study"):
         facts = folder_facts(root)
         if facts[0] != kind:
-            raise BuildRefused([Refusal("scaffold.set", RefusalClass.USER, f"{quoted(given)} is a {facts[0]} folder",
-                                        f"`mime scaffold {facts[0]} {quoted(given)}`")])
+            raise BuildRefused([Refusal(
+                "manifest.kind", RefusalClass.USER,
+                f"a {kind} was asked for, and {quoted(given)} is a {facts[0]} folder: its mime.toml would name "
+                f"[{kind}], which a {facts[0]} folder's cannot",
+                f"scaffold what it is, `mime scaffold {facts[0]} {quoted(given)}`")])
     declared = facts[2] if facts is not None else None
+    if kind == "block" and source is not None:
+        declared = _declared_licence(Path(os.fspath(source)))
     chosen_sockets: dict[str, str] = {}
     for each in sockets:
         name, equals, thing = each.partition("=")
@@ -468,6 +497,18 @@ def scaffold(kind: str, path: str | os.PathLike[str], *, yes: bool = False, sets
     if walk is not None:
         say(f"Scaffolding {_a(kind)} in {quoted(given)}, one field at a time: Enter skips a field, or keeps the value shown.")
     held = _values(kind, root, defaults, facts, explicit, walk, declared)
+    if kind == "plugin" and (clash := namespace_clash(str(held[NAMESPACE].value))) is not None:
+        raise BuildRefused([Refusal(
+            "scaffold.set", RefusalClass.USER,
+            f"--set plugin.namespace: {clash}" if held[NAMESPACE].source == SET else
+            f"the plugin's namespace, {held[NAMESPACE].value}, cannot be used: {clash}"
+            + (" (it is the first word of the folder's name)" if held[NAMESPACE].source == OWN else
+               " (it is your defaults' [scaffold] namespace)" if held[NAMESPACE].source == DEFAULTS else ""),
+            "choose the namespace of your entries with --set plugin.namespace=<a free word>"
+            + ("; `mime defaults` shows your defaults' namespace" if held[NAMESPACE].source == DEFAULTS else ""))])
+    if kind == "block" and source is not None and declared is None:
+        licence = held[BLOCK_LICENCE]
+        say(f"the saved experiment declares no licence: block.licence is {licence.value}, from {licence.source}")
     if kind == "experiment" or kind == "plugin":
         plan = _experiment(held) if kind == "experiment" else _plugin(held, defaults)
     elif kind == "block":

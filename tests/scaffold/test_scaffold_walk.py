@@ -141,17 +141,17 @@ def test_a_licence_the_experiment_does_not_declare_is_refused_for_a_bundle(tmp_p
 
 def test_a_plugins_names_come_from_its_folder_and_the_defaults_and_set(tmp_path: Path):
     _defaults.write_defaults({"creators": [{"family": "Carberry", "given": "Josiah"}]}, licences={"code": "MIT"},
-                             namespace="labx")
-    result = scaffold.scaffold("plugin", tmp_path / "labx-probes", yes=True, sets=["plugin.package=probes"],
+                             namespace="tstlab")
+    result = scaffold.scaffold("plugin", tmp_path / "tstlab-probes", yes=True, sets=["plugin.package=probes"],
                                say=lambda line: None)
     held = {key: (value.value, value.source) for key, value in result.values.items()}
-    assert held["plugin.distribution"] == ("labx-probes", "scaffold's own")
-    assert held["plugin.package"] == ("probes", "--set") and held["plugin.namespace"] == ("labx", "defaults.toml")
+    assert held["plugin.distribution"] == ("tstlab-probes", "scaffold's own")
+    assert held["plugin.package"] == ("probes", "--set") and held["plugin.namespace"] == ("tstlab", "defaults.toml")
     assert held["plugin.licence"] == ("MIT", "defaults.toml")
-    project = tomllib.loads((tmp_path / "labx-probes" / "pyproject.toml").read_text(encoding="utf-8"))
+    project = tomllib.loads((tmp_path / "tstlab-probes" / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["project"]["authors"] == [{"name": "Josiah Carberry"}] and project["project"]["license"] == "MIT"
-    assert project["project"]["entry-points"]["mime.entries"] == {"labx": "probes.entries"}
-    assert (tmp_path / "labx-probes" / "src" / "probes" / "entries" / "example_load.py").is_file()
+    assert project["project"]["entry-points"]["mime.entries"] == {"tstlab": "probes.entries"}
+    assert (tmp_path / "tstlab-probes" / "src" / "probes" / "entries" / "example_load.py").is_file()
 
 
 def test_the_namespace_a_plugin_takes_is_the_registrys_form(tmp_path: Path):
@@ -182,6 +182,67 @@ def test_from_writes_the_declarations_of_a_saved_experiment_with_the_named_thing
     held = tomllib.loads((folder / "mime.toml").read_text(encoding="utf-8"))
     assert held["sockets"] == {"water": {"kind": "medium"}}
     assert check_of("block", folder) == []
+
+
+def saved_with(licence: str | None, root: Path) -> Path:
+    experiment = coupled_toy()
+    if licence is not None:
+        experiment.licence(licence)
+    experiment.save(root / "coupled")
+    return root / "coupled"
+
+
+def licence_of(folder: Path) -> str:
+    return tomllib.loads((folder / "mime.toml").read_text(encoding="utf-8"))["block"]["licence"]
+
+
+def test_from_takes_the_saved_experiments_declared_licence_not_the_default(tmp_path: Path):
+    """A CC-BY-NC source gives a CC-BY-NC block, and ``mime check`` reads it as the experiment's (it was CC-BY-4.0 once,
+    the default, which silently relaxed the licence)."""
+    source = saved_with("CC-BY-NC-4.0", tmp_path / "src")
+    said: list[str] = []
+    result = scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"], say=said.append)
+    assert licence_of(tmp_path / "blk") == "CC-BY-NC-4.0"
+    assert (result.values["block.licence"].value, result.values["block.licence"].source) == ("CC-BY-NC-4.0", "scaffold's own")
+    assert check_of("block", tmp_path / "blk") == []
+    assert not any("declares no licence" in line for line in said)
+
+
+def test_a_licence_that_differs_from_the_saved_experiments_is_refused_and_the_same_one_is_not(tmp_path: Path):
+    source = saved_with("CC-BY-NC-4.0", tmp_path / "src")
+    for given in ("CC-BY-4.0", "MIT"):
+        with pytest.raises(BuildRefused) as refused:
+            scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"],
+                              sets=[f"block.licence={given}"], say=lambda line: None)
+        refusal = refused.value.refusals[0]
+        assert refusal.code == "scaffold.set" and "declares CC-BY-NC-4.0" in refusal.message
+        assert not (tmp_path / "blk").exists()
+    scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"],
+                      sets=["block.licence=CC-BY-NC-4.0"], say=lambda line: None)
+    assert licence_of(tmp_path / "blk") == "CC-BY-NC-4.0"
+
+
+def test_a_walk_over_from_offers_the_declared_licence_and_refuses_another_typed(tmp_path: Path):
+    source = saved_with("CC-BY-NC-4.0", tmp_path / "src")
+    person = Person(*([""] * 12))
+    scaffold.scaffold("block", tmp_path / "blk", source=source, sockets=["water=bath"], typed=person.typed, ask=person.ask,
+                      say=person.say)
+    assert any('use "CC-BY-NC-4.0"? [Y/n] ' in each for each in person.asked)
+    assert licence_of(tmp_path / "blk") == "CC-BY-NC-4.0"
+    typed = Person("", "", "n", "CC0-1.0", "CC-BY-NC-4.0", *([""] * 12))
+    scaffold.scaffold("block", tmp_path / "blk2", source=source, sockets=["water=bath"], typed=typed.typed, ask=typed.ask,
+                      say=typed.say)
+    assert any("declares CC-BY-NC-4.0" in each for each in typed.asked), "the other licence is said and asked again"
+    assert licence_of(tmp_path / "blk2") == "CC-BY-NC-4.0"
+
+
+def test_an_experiment_that_declares_no_licence_gives_the_defaults_content_licence_and_says_so(tmp_path: Path):
+    source = saved_with(None, tmp_path / "src")
+    _defaults.write_defaults({}, licences={"content": "CC0-1.0"})
+    said: list[str] = []
+    scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"], say=said.append)
+    assert licence_of(tmp_path / "blk") == "CC0-1.0"
+    assert "the saved experiment declares no licence: block.licence is CC0-1.0, from defaults.toml" in said
 
 
 def test_from_refuses_what_it_cannot_write_before_the_folder_is_made(toy: Path, tmp_path: Path):
