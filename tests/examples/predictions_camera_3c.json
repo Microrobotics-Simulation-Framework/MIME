@@ -1,0 +1,134 @@
+{
+  "written": "2026-11-15, committed before any probe arm of camera 3c ran (the commit that adds this file is the timestamp): the differentiable closed-loop example, examples/camera_loop.py, with camera spike R2's checks and camera PR 3b's tracker gates as its tests",
+  "phase": "camera 3c: camera port -> tracker -> PID -> allocator -> coil command port, one GRAPH controller, as an example",
+  "labels": "the 3c agent (Opus). R2's numbers are the predicted values where R2 measured one (camera spike R2's report, runs 43302252305 and 43313888566); the rest are derived from the mechanisms in the tests' docstrings, or are fits to the laptop development runs listed under seen_before, and say so",
+  "seen_before": [
+    "laptop (shared, load about 30), float64 and float32, draw 0 only (R2's round-2 redraw, seed 7000): reverse against forward ratio to 16 eps N S at most 0.0051 (float64) and 0.096 (float32, kd); float32 against float64: J relative 4.4e-6, derivatives at most 0.038 of their line; central differences h to h/16: every parameter discriminates, orders kd 1.53, ki 0.5, kp 2.0, fx 0.71, miss over line at most 0.22; BVLS worst ratio to R2's line 0.13 (float64), 0.46 (float32) over 39 ticks, 5 at a bound; z drift -4.6 mm at 0.2 s (R2's seed 0 number)",
+    "laptop, the mode test on draws 0 and 1: CALLBACK against GRAPH writes at most 7.0e-13 A over 50 steps (line 4.4e-12 A)",
+    "laptop, the lightly damped loop: R2's directions leave the frame on 5 of draws 0-9; steps within 30 degrees of +y on 10 of 10 (45 to 65 steps in)",
+    "laptop, the limit on the gentle draw 0: gaps 116, 82, 28, 5.6, 0.38 um rms at rungs (5,5,1) to (1,1,0); max gap 0.70 um against a floor of 1.53 um; the three one-step plants 22.5, 11.6, 11.6 um",
+    "laptop, the tracker: gate 1 truth arm miss at most 0.026 of its line on six placed points, both dtypes; belief_ignored misses 190-544 um against lines of about 31 um; the derivative's checks at most 0.33 of their lines, every parameter discriminating in both dtypes, from reset and continued",
+    "the bug-fixed AP3a (9290573e): the camera belief's leaf and the study's structure key, found by this build before any gate"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "GitHub runner, 4 vCPU, CPU (probe/camera-3c, one arm a job)",
+    "sizes_and_parameters": "R2's case: Navion_2, a 1 mm sphere of 4e-6 kg at the multipole oracle's point 52 with its moment, the force alone, no gravity, no medium, dt 1 ms; the camera 96 x 72, fx = fy = 400, 0.1 m above the start looking down, frame period 5 ms; the controller GRAPH every 5 ms, latency 1 ms; the coils' command port 25 A; 200 steps; the objective R2's J (mean over steps of |p - r|^2 in mm^2); parameters kd, ki, kp and the believed fx (dJ/dlimit is gone: the limit is a port bound, a build constant)",
+    "seeds_and_draws": "R2's round-2 draws (gains within 20 %, step 4.5-6 mm, redrawn until the first tick's demand exceeds 1.25 x the limit), DETECTION_SEED 0-19; the damped loop's step within 30 degrees of +y; the limit's gentle draws (0.5-1.5 mm); the tracker gate 1 Hypothesis over the frame's inner region, 100 examples a dtype"
+  },
+  "gate_1_reverse_vs_forward": {
+    "claim": "reverse mode equals forward mode through the whole loop, camera and allocation included, in both dtypes",
+    "kind": "equality",
+    "case": "tests/examples/test_camera_loop.py::test_reverse_mode_is_forward_mode_through_the_whole_loop",
+    "prediction": {"value": "every clean run passes; max ratio to 16 eps N S over draws 0-19: float64 at most 0.067 (R2's), float32 at most 0.2", "band": [0, 0.2], "unit": "ratio to the line", "basis": "measured-before (R2) and fit to draw 0 for float32 (0.096 seen, above R2's 0.073)", "why": "one program's rounding summed in two orders; R2 saw no growth with N"},
+    "metric": "|reverse - forward| / (16 eps N S) per parameter",
+    "control": {"plant": "reverse_chunk: the reverse arm's last 15 steps' poses stopped (a chunk's cotangent dropped)", "environment_variable": "CAMERA_LOOP_PLANT", "expected_rate": "20/20 each dtype", "runs": 20, "clean_expected": "0/20", "resolution": "the dropped steps carry about 7 % of S, against a line of 4e-4 S in float32"},
+    "if_wrong": "a clean failure: read the ratio by parameter; growth with the draw's saturated ticks would be the allocation's kinks met in two orders",
+    "cannot_discriminate_if": "a derivative identically zero (S = 0)"
+  },
+  "gate_2_float32_vs_float64": {
+    "claim": "float32 is judged against float64 at the same draw: J and every derivative within the line",
+    "kind": "bounds",
+    "case": "test_camera_loop.py::test_float32_is_judged_against_float64_at_the_same_draw",
+    "prediction": {"value": "every clean run passes; J relative median 1.7e-5 (R2), max 7.2e-5 (R2); dJ/dkp relative median 3.4e-5 (R2), max 1.2e-3 (R2); every ratio to the line under 0.5", "band": [0, 0.5], "unit": "ratio to the line", "basis": "measured-before (R2)", "why": "the chain's rounding plus the coverage's 3/2-power edge (gate T3 of the camera's reverse mode)"},
+    "metric": "|g32 - g64| / ((16 N eps32 + 1.5 sqrt(W eps32)) S); |J32 - J64| / (16 eps32 N J)",
+    "control": {"plant": "stop_branch_f32: the bound coils' share stopped in the float32 arm only", "environment_variable": "CAMERA_LOOP_PLANT", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/20", "resolution": "R2: planted at least 0.156 relative against a line about 5.5e-3 S"},
+    "if_wrong": "a clean failure on ki: ki's derivative is small beside its S (R2: CD could not judge it on 11 of 20 float32 draws)",
+    "cannot_discriminate_if": "a draw with no bound coil (the plant inert); the redraw prevents it"
+  },
+  "gate_3_central_differences": {
+    "claim": "the reverse derivative meets central differences whose order is measured, h to h/16 (float64)",
+    "kind": "bounds",
+    "case": "test_camera_loop.py::test_the_derivative_meets_central_differences_whose_order_is_measured",
+    "prediction": {"value": "0/20 clean flagged; orders 0.5 to 2 (R2's camera: about 0.5 to 0.9 over h to h/4); every draw has a discriminating parameter", "band": [0.5, 2.0], "unit": "measured order", "basis": "measured-before (R2), and derived: the last three of five levels remove R2's round-2 false alarm (seed 13 converged by h/8)", "why": "the exact disc coverage makes J C^(1,1/2)"},
+    "metric": "|reverse - CD(h/16)| / (3 tau + 3 rho), or the kink's line",
+    "control": {"plant": "edge (the coverage's edge pixels stopped) and stop_branch (the bound coils' share stopped)", "environment_variable": "CAMERA_LOOP_PLANT", "expected_rate": "20/20 each (R2 round 2: 20/20 each)", "runs": 20, "clean_expected": "0/20", "resolution": "lines 1e-8 to 1e-6 of the derivative on draw 0"},
+    "if_wrong": "a clean flag with a monotone ladder means an order below 1/2 there: read its ladder",
+    "cannot_discriminate_if": "every line above a tenth of its derivative (the test fails then, saying so)"
+  },
+  "gate_4_bvls": {
+    "claim": "every tick's allocation is SciPy's BVLS on the believed rows at the measured point, at R2's line",
+    "kind": "equality",
+    "case": "test_camera_loop.py::test_every_ticks_allocation_is_scipys_bvls_at_r2s_line",
+    "prediction": {"value": "every clean run passes; worst ratio float64 at most 0.505 (R2's swap), float32 at most 1", "band": [0, 1], "unit": "ratio to the line", "basis": "measured-before (R2) for float64; fit to draw 0 for float32 (0.46)", "why": "two exact least squares of one active set differ by rounding"},
+    "metric": "allocation_draws.verdict on each tick",
+    "control": {"plant": "limits: the allocation's bounds 1 % looser", "environment_variable": "CAMERA_LOOP_PLANT", "expected_rate": "20/20 each dtype", "runs": 20, "clean_expected": "0/20", "resolution": "a bound tick's command moves by 0.25 A against lines under 1e-3 A"},
+    "if_wrong": "a not-unique verdict: read the tick's rows",
+    "cannot_discriminate_if": "no tick at a bound (the redraw holds one)"
+  },
+  "gate_5_modes": {
+    "claim": "the CALLBACK and GRAPH modes write the same currents (a mode test: the allocation is one law in both)",
+    "kind": "equality",
+    "case": "test_camera_loop.py::test_the_callback_and_graph_modes_write_the_same_currents (50 steps, float64)",
+    "prediction": {"value": "at most 0.3 of 16 eps N_t times the limit", "band": [0, 0.3], "unit": "ratio to the line", "basis": "fit to draws 0 and 1 (0.16, 0.13)", "why": "host and compiled rounding carried by the loop"},
+    "metric": "max |written_graph - written_callback| over the ports' written currents",
+    "control": {"plant": "mode_bounds: the allocation's bounds 1 % looser in the GRAPH arm only", "environment_variable": "CAMERA_LOOP_PLANT", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/20", "resolution": "0.25 A on a bound tick against a 4.4e-12 A line"},
+    "if_wrong": "a clean failure: the two modes run different programs (a mode-dependent branch in the law)",
+    "cannot_discriminate_if": "no bound coil in 50 steps (the test asserts one)"
+  },
+  "gate_6_lost_target": {
+    "claim": "the lightly damped loop's lost target is held and flagged; the run stays finite",
+    "kind": "acceptance",
+    "case": "test_camera_loop.py::test_the_lightly_damped_loops_lost_target_is_held_and_flagged (kd x 0.3, 200 steps)",
+    "prediction": {"value": "20/20 draws leave the frame, 40 to 70 steps in; every clean run passes; unguarded non-finite from the step after the frame empties (R2: 51)", "band": [40, 70], "unit": "first lost step", "basis": "measured-before (R2, and 10 laptop draws: 45 to 65)", "why": "the overshoot leaves the frame's short side"},
+    "metric": "finiteness, state_lost, the held point, zero writes on lost ticks",
+    "control": {"plant": "unguarded: R2's tracker, no guard", "environment_variable": "CAMERA_LOOP_PLANT", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/20", "resolution": "a NaN, all or nothing"},
+    "if_wrong": "a draw that stays in view: the test's premise fails (it asserts the target left), a flag of the clean arm",
+    "cannot_discriminate_if": "the target never leaves the frame"
+  },
+  "gate_7_limit": {
+    "claim": "as latency goes to nothing and the frame rate to the step rate the loop meets the true-state run, within the floor of the tracker's own error and the loop's linear response",
+    "kind": "bounds",
+    "case": "test_camera_loop.py::test_the_loop_meets_the_true_state_run_as_latency_goes_to_nothing_and_frames_to_every_step",
+    "prediction": {"value": "the gap falls at every rung on 20/20 draws; at the limit gap/floor at most 0.7; the chain line '0 base steps'; the linear loop equals the true-state run to 1e-9 m", "band": [0, 0.7], "unit": "gap over floor", "basis": "fit to the gentle draw 0 (0.46)", "why": "the tracker's error is about 1 um at age 0; the floor is its worst case through |h_y|_1 = 1.46"},
+    "metric": "max |p_camera - p_truth| against |h_y|_1 max|delta| + |h_F|_1 max|dF|",
+    "control": {"plant": "extra_port, extra_controller, extra_command: one base step more latency in that home at the limit", "environment_variable": "CAMERA_LOOP_PLANT", "expected_rate": "20/20 each", "runs": 20, "clean_expected": "0/20", "resolution": "draw 0: planted gaps 7.7 to 12.9 times the floor, and the chain line changes"},
+    "if_wrong": "a rung that does not fall: the ladder's rungs not nested (4 to 2 to 1 are)",
+    "cannot_discriminate_if": "a coil at its bound (depth then unheld; the test asserts none)"
+  },
+  "gate_8_tracker_point": {
+    "claim": "the tracker's point is the believed back-projection of the silhouette's centroid within n_edge / (8 mass) px, true and miscalibrated beliefs, both dtypes",
+    "kind": "bounds",
+    "case": "tests/examples/test_camera_loop_tracker.py::test_the_tracker_finds_the_ball_within_its_soft_centroids_own_error (Hypothesis, 100 examples a dtype)",
+    "prediction": {"value": "every clean run passes; miss under 0.1 of the line", "band": [0, 0.1], "unit": "ratio to the line", "basis": "fit to six laptop points (0.026)", "why": "the first moments of the part-covered pixels cancel around the ellipse; the bound is their sum"},
+    "metric": "|point - on_plane(belief, ellipse centre)| against |J|_2 sqrt(2) (n_edge / (8 mass) + 64 eps W)",
+    "control": {"plant": "unnormalised (the centroid not divided by its darkness), belief_ignored (the true camera read)", "environment_variable": "CAMERA_LOOP_PLANT", "expected_rate": "20/20 each, each dtype", "runs": 20, "clean_expected": "0/20", "resolution": "belief_ignored misses 190-544 um against about 31 um"},
+    "if_wrong": "a clean failure near the frame's edge: the window or the border flag",
+    "cannot_discriminate_if": "the belief equal to the truth (the miscalibrated arm prevents it)"
+  },
+  "gate_9_tracker_derivative": {
+    "claim": "the tracker's forward derivative in the start, the camera's fx and cy and the believed fx meets central differences (order measured), from reset and continued; float32 meets float64 where CD cannot judge",
+    "kind": "bounds",
+    "case": "test_camera_loop_tracker.py::test_the_trackers_derivative_meets_central_differences_and_float32_meets_float64",
+    "prediction": {"value": "every clean run passes, miss under 0.5 of each line", "band": [0, 0.5], "unit": "ratio to the line", "basis": "fit to draw 0 (0.33)", "why": "as gate 3"},
+    "metric": "|forward - CD(h/16)| / line",
+    "control": {"plant": "edge", "environment_variable": "CAMERA_LOOP_PLANT", "expected_rate": "20/20 each arm", "runs": 20, "clean_expected": "0/20", "resolution": "the edge carries the whole position derivative"},
+    "if_wrong": "read the ladder",
+    "cannot_discriminate_if": "every line above a tenth of its derivative (the test fails then)"
+  },
+  "gate_10_guard_and_plane": {
+    "claim": "a ball outside the frame or on its border is lost, held and finite; a ball off the plane is placed by the plane's bias x h / (Z - h) and flagged past 0.5 mm, not within it",
+    "kind": "acceptance",
+    "case": "test_camera_loop_tracker.py: the guard's two cases, the plane's four heights (no draws)",
+    "prediction": {"value": "pass; depth miss within 2 % of the height; the bias 0.12 mm at 6 mm out and 2 mm up", "band": [0, 0.02], "unit": "relative depth miss", "basis": "derived (the conic's off-axis term, under 1 % at 6 mm)", "why": "the shadow's area is the ellipse's exactly"},
+    "metric": "lost count, held point; the point against the ray's foot on the plane; depth_miss; the flag",
+    "control": {"plant": "unguarded (the guard's cases), unnormalised (the plane's)", "environment_variable": "CAMERA_LOOP_PLANT", "expected_rate": "5/5 (one outcome: nothing is drawn)", "runs": 5, "clean_expected": "0/5", "resolution": "a NaN; a centroid scaled by its mass squared"},
+    "if_wrong": "read the failing height",
+    "cannot_discriminate_if": "none: deterministic"
+  },
+  "r2_numbers": {
+    "claim": "the example reproduces R2's numbers on R2's draws",
+    "kind": "estimates",
+    "case": "probe/r2_numbers.py, draws 0-19, both arms, both dtypes",
+    "prediction": {"value": "reverse vs forward max ratio: camera 0.067 (f64) / under 0.2 (f32), state 0.0011 / 0.0015; float32 vs float64: J median 1.7e-5 (max 7.2e-5), dJ/dkp median 3.4e-5 (max 1.2e-3); BVLS worst 0.505 (f64); camera J over state J median +26 % (range -15 % to +1040 %); damped unguarded non-finite near step 51; CD orders 0.5 to 0.9 on the camera arm", "band": [null, null], "unit": "as named", "basis": "measured-before (R2)", "why": "the same case, draws and objective; two changes: the guard loses the first tick (the camera's frame before its first), where R2's tracker read an empty frame as the image's centre (the start), and the currents pass a command port (the bound the allocation's)"},
+    "metric": "medians and maxima over the 20 draws",
+    "control": {"plant": "none: an estimate, its controls the gates above", "environment_variable": "", "expected_rate": "", "runs": 20, "clean_expected": "", "resolution": ""},
+    "if_wrong": "a moved number: measure the first-tick change (the unguarded arm on the same draw) before anything else",
+    "cannot_discriminate_if": ""
+  },
+  "costs": {
+    "prediction": "on a runner, one process: the camera draw's run and derivatives about 80 s float64 and 65 s float32 (paid once by the fixture_first tests), the limit 70 s, the mode test 40 s, the damped loop 10 s, the tracker's property 150 s both dtypes, its derivative 60 s an arm; the example adds about 8 to 10 minutes of test time to CI, on one shard's workers",
+    "measured_at": "the shared laptop at load about 30 (not timing claims); the durations arm measures them on a runner"
+  },
+  "outcomes": null
+}
