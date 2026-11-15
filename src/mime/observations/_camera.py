@@ -52,9 +52,9 @@ FLAG_MEANINGS = {
     "behind": "subjects whose enclosing ball reaches behind the camera's pinhole",
     "ghosting": "subjects that moved more than a pixel between the exposure's sub-frames",
     "thin_cap": "capped cylinders showing a cap nearly edge-on, where its outline is least resolved",
-    "corner_unverified": "pixels where two branches of a sampled body's outline cross (route 2's corners) whose reading "
-                         "could not be verified (a least reaching a sub-pixel left unread), each within its line and "
-                         "corner_bound; their share of the frame is this over its pixels",
+    "corner_unverified": "pixels where two branches of a sampled body's outline cross (the sampled route's corners) "
+                         "whose reading could not be verified (a least reaching a sub-pixel left unread), each within "
+                         "its line and corner_bound; their share of the frame is this over its pixels",
     "corner_bound": "the most an unverified corner pixel's share may lie beyond its line (a share of a pixel, the "
                     "largest in the frame, summed over subjects); zero where every corner is verified",
 }
