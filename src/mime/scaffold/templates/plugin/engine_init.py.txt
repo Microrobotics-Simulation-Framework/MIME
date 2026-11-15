@@ -1,0 +1,7 @@
+"""The engine: your law as pure JAX functions of arrays, with no `mime` import (tests/test_engine_imports.py holds it).
+
+Why the split: the engine can be tested against closed forms, reference numbers and Hypothesis properties with MIME out
+of the loop, and read by someone who has never opened MIME. The adapter (`${package}.entries`) is the thin layer that
+turns settings into arguments and hands the engine's results to MIME. Delete the example law (`load.py`) when you
+write your own; keep the rule.
+"""

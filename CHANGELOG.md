@@ -9,6 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The forward-model contract, calibration types and instances, and a controller's believed models and allocator**
+  (apparatus lane, AP3a, dev2).
+  - **`forward_model(ctx)`**, an optional capability of a field provider and a chain segment
+    (`mime.registry.ForwardModel`): the entry's node arithmetic as a pure JAX function `fn(u, x, theta) -> {quantity:
+    value}`, `u` its commands, `x` its inputs, `theta` its parameters by its node's leaf names, and `affine_in`, the
+    commands it is affine in. Its build context gives structure alone; every number it reads is in `u`, `x` or `theta`.
+    The calibrated multipole's: `flux_density`, `gradient` and, on a moment stated at the point, `force` and `torque`,
+    affine in `currents` (the force and torque too, for a fixed moment); the point dipole's (no command; its mount pose
+    an input); the kinematic arm's, every frame's world pose by forward kinematics. **What each bounds, and what it does
+    not**: the calibrated multipole's agrees with mag_manip's reference within ten times float64's rounding over the
+    field's cancellation (coefficients, and field, gradient, force and torque at drawn currents and moments) and with the
+    host's `actuation` in both dtypes at a drawn placement; the point dipole's with its closed form and central
+    differences of it; the arm's with `frame_pose` of its own description; each with its node to the rounding of its
+    terms; their derivatives in `u` and `theta` with central differences. A software oracle's agreement grounds no sign
+    and no frame against hardware.
+  - **Calibration types and instances** (`CalibrationType`, `register_calibration_type`, `CalibrationInstance`): a type is
+    a registered reader, `mpem/1` (the calibrated multipole's: fitted `Source_Position`, `Source_Direction`, `B_Coeff`;
+    declared `Workspace_Dimensions`) and `urdf/1` (an arm's description: authored, every field declared); an instance is
+    one asset, its sha256, licence, tier (a `mime.terms.Tier`: an arm's description with no terms declared is `carried`, the
+    author's own) and the unit its file names. The build report's new `calibrations` lists each. `register_calibration_type` is
+    the plugin's seam; there is no public lookup of a registered type.
+  - **A lab's own MPEM file**: `CalibratedMultipole(calibration=Asset("<record>", "<sha256>"))` names a record the
+    lab's package ships through the `mime.assets` entry point, read from the asset cache through its licence gate,
+    recorded in the lock (`assets_read`), held to the packaged files' checks and float32 guard. The lab fixture ships two
+    small synthetic ones, open and non-commercial.
+  - **Believed models**: `set_controller(..., believed={key: entry})` declares the controller's own model of an
+    apparatus's provider or chain segment (`<apparatus>.<field>`, `<apparatus>.<segment>`, the apparatus's name alone
+    where it holds one part) or of a camera (its id), an entry of the same kind taking the same commands. A belief that
+    cannot differ from the truth is refused (`controller.believed`): a `PointDipole`'s only setting names its part, its
+    moment being the apparatus's and its placement its part's, so its belief would be the truth; the message names
+    the route (vary the moment and the placement as study leaves). The saved form
+    holds it in form 15's `controller.believed` slot under its full key, which a load now reads (no saved-form step);
+    an older MIME refuses it by name. `ctx.believed(key)` gives the forward model or, for a camera, its projection
+    (`mime.control.CameraModel`, `Camera.project` with the controller's numbers). Inside the compiled step each number
+    the step reads is a leaf of the controller's node (`believed_<apparatus>__<part>__<parameter>`); a belief equal to
+    the truth gives the run of none bit for bit, and with none declared the report says `believed = true`.
+  - **`ctx.allocator(apparatus, commands=..., objective=..., owner=..., effort=None, toward="zero")`**: the exact
+    allocation through the believed model, its bounds the ports' (else the receiver's stated ones), narrowed where a
+    port declares a slew to `last` plus or minus the slew times the base step times `g` base steps, `g = R * floor(P / R)`
+    for a port period `R` at most the controller's `P`, else `R / ceil(R / P)`: what the stage delivers before the next
+    write arrives. **The box assumes the stage stood at `last`**, which holds only if every earlier command was
+    deliverable: not on the first tick from a rest the law does not start from, nor after a trip latches the port to its
+    rest. The build report says so beside each boxed command; the run flags a trip, and a delivery the slew limited is
+    disclosed at build only (no flag in a run), and read from the port's recorded traffic. `objective` names any of a
+    coil array's `flux_density`, `gradient` (declared in the base units MIME writes for T/m), `force` and `torque`, each
+    with its scale, held against SciPy's bounded least squares in both dtypes with a background field (the model's
+    offset), `effort` and `toward="last"`; a force or torque asked for without a `moment` in `at` is a `ValueError`
+    naming the input to give. One function inside the compiled step and as a callback. On camera spike R2's sphere it writes the currents
+    the hand-written law writes, bit for bit in float64.
+  - **A believed number's leaf name** is one encoding and its inverse (`believed_name`, `split_believed_name`, `leaf_param` in
+    `mime.nodes.control`): a key with a colon (a camera's observation id, `camera:`) no longer breaks a graph controller's
+    build (`ValueError`, `error.uncoded`), and the structure key reads each leaf of the controller's node through the same
+    function, so a study over a graph controller that holds a belief (every `ctx.allocator` law) plans (it raised a
+    `KeyError`). A belief's leaf is no study axis; a study differentiates the controller's settings through the belief.
+  - **Refusal codes**: `allocation.bounds`, `allocation.model`, `allocation.objective` and `controller.believed`; the
+    allocator refuses more than `EXACT_COMMANDS` commands as `allocation.exact-size`, citing the constant.
 - **`mime scaffold`: a new experiment, bundle, study, block or plugin from a template** (`mime.scaffold`, the help group Start;
   `scaffold.exists`, `scaffold.set`, `scaffold.no-terminal`; dev2, lane P's P7a). `mime scaffold <kind> <path>` writes an
   experiment (`experiment.py` over the toy entries, run once and saved into `saved/`), adds `mime.toml` to a saved folder
@@ -30,6 +86,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   saved experiment's declared licence as the block's and refuses another; a saved or study folder asked for as the other kind is
   `manifest.kind`; the symlink guard is tested.
   `mime new`, planned before, is `mime scaffold experiment`. `push._setup`'s `Walk`, `asked` and `filled` are public in that module.
+
+- **`mime scaffold plugin` writes the full plugin layout, with editor support and a typing check** (dev2, lane P's P7b; no new
+  verb, code, seam or saved form). No `--minimal`: each file is short and commented as optional. `pyproject.toml` (the
+  `mime.entries` and `mime.assets` entry points, a `slow` marker, `-m "not slow"` by default); `src/<package>/` with `entries/`
+  (the adapter), `engine/` (pure JAX, an AST test that it imports no `mime`, with a planted import shown to fail) and
+  `records/` (`records.json`, its sha256 and size filled in from `data/example.json`); tests (the registry round trip,
+  `node_failures` and `param_reach_failures` on the example entry, validity lines with none empty, a Hypothesis property with
+  one planted error, a `@verification_benchmark` in the slow lane, an `assert_type` file); `benchmarks/build_case.py` with
+  `mime.toml`; `examples/`; a README whose "Use" blocks tagged `bash ci` are what CI runs, with the `jq` line for `mime registry
+  --json`; `CITATION.cff` and `LICENSE` (Apache-2.0's text, or a file naming the licence chosen); `.github/workflows/ci.yml` (a
+  default lane, a `slow` lane gated by a label, a weekly lane against MIME's release branch, the `mime registry` assertion, `mime
+  check`, `mime assets audit` on the built wheel and sdist, and a typing job); and a `pyrightconfig.json` that is strict over the
+  package and names `.venv` for an editor (measured: absent, pyright says so on stderr and still exits 0 with the environment it
+  is given, `--pythonpath`'s or the active one; present but not holding MIME, it overrides `--pythonpath`); MIME's own
+  `pyrightconfig.json` names the same `.venv`, and CI's typecheck is unchanged by it (466 files, 0 errors, before and after). The naming rule (`.`
+  for entries, `_` for records, `:` for an instance) is in the template's comments; the namespace is filled in the six places it
+  appears from one value; no file holds a machine path. The control now runs the scaffolded plugin's tests in a subprocess against
+  its temporary target: they pass, the slow lane passes, with the planted error in only the planted property fails, the README's
+  CI blocks run, and a misspelt key in each of five more files fails it. Review fixes: the engine's AST test also finds
+  `importlib.import_module("mime...")` and `__import__("mime...")` with a constant string (a computed name is its stated limit);
+  the template's `default` job does not re-run when a label is added (`if: github.event.action != 'labeled'`; the `slow` job
+  still runs on the label); the control's clean plugin is built and run once for its module, and each plant re-writes one file of
+  a copy and runs only the stage that catches it; the pyright tests skip, with a reason, on a machine without `node`.
 
 - **Static meshes in the in-loop camera, traced once a run** (`mime.sensing._mesh`, `mime.sensing.mesh_chords`,
   `MeshChords`, `MESH_SAMPLES`; `mime.observations.Camera`; `mime.viz.write_mesh(..., decimation_distance=)`; dev2, camera
@@ -1313,6 +1392,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   On a GPU whose default matmul precision is not `highest` the build warns (`MatmulPrecisionReduced`, a `UserWarning`) and the report
   carries the same text: the 0.2 line's drag was 15 % off under reduced-precision TF32 matmuls. The warning's logic is tested with the
   device and precision read through a seam; **the real GPU path is not tested in CI** (no GPU there).
+- **A MIME refusal raised inside a controller's `law(ctx)` keeps its own code** (AP3a): `ctx.allocator`'s and
+  `ctx.believed`'s refusals, and any other MIME refusal a law raises, are refused under their codes; until now every
+  error a law raised was its entry's defect (`entry.defect`), as any other error still is. Likewise a MIME refusal an
+  entry's settings meet below it (an asset gate's, reading a lab's calibration) keeps its code in phase 1.
+
 - **`mime.toml` replaces `sharing.yaml`** (lane P, P6), one manifest for every kind of shared folder: `format`
   (`mime.toml/1`), one kind table (`[bundle] licence` at a saved folder, `[study] licence` at a study folder, a block's
   tables reserved and refused by name until a later release reads blocks) and `[record]`, the record's metadata with

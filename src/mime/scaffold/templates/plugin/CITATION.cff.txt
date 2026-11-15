@@ -1,0 +1,6 @@
+cff-version: 1.2.0
+message: "If you use this plugin, please cite it."
+title: ${cff_title}
+version: 0.1.0
+license: ${cff_licence}
+${authors}

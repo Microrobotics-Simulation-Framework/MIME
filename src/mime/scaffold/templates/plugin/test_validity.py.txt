@@ -1,0 +1,17 @@
+"""Every entry says where it is not valid, and no line is empty.
+
+Validity lines are listed in every build report that uses the entry, and on its card. An entry with none claims to be valid
+everywhere, which no law is; an empty line claims it and says nothing. Add each of your entries to ENTRIES.
+"""
+
+import pytest
+
+from ${package}.entries import ExampleLoad
+
+ENTRIES = [ExampleLoad]
+
+
+@pytest.mark.parametrize("entry", ENTRIES, ids=lambda entry: entry.name)
+def test_every_entry_declares_validity_lines_and_none_is_empty(entry):
+    assert entry.validity, f"{entry.name} declares no validity line"
+    assert all(line.strip() for line in entry.validity), f"{entry.name} declares an empty validity line"

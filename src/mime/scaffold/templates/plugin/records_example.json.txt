@@ -1,0 +1,4 @@
+{
+ "about": "Example data an entry could read: replace it, and the record's sha256 and size in ../records.json (the plugin's tests check them).",
+ "values": {"gain": 1.0}
+}

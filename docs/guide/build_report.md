@@ -116,7 +116,18 @@ The limits each record states of its model, printed as `limits of <entry> (state
 ## `controller`
 
 The controller, with the mode it is placed in, its period and its latency, what it reads, and what it writes in place of a
-drive. The line says when a tick reads the state and from which step its writes act.
+drive. The line says when a tick reads the state and from which step its writes act. Where its law reads a model of
+what it drives or observes (`ctx.believed`, `ctx.allocator`), a line per model says whose numbers it holds: `believed =
+true` where no belief is declared (the controller knows the model exactly), or the declared belief's entry; a belief
+declared and not read says so. To give the controller a model of its own, declare it:
+`exp.set_controller(..., believed={"emns.magnetic": CalibratedMultipole(...)})`.
+
+## `calibrations`
+
+Each calibration an entry reads, one line, as its calibration type reads it: the asset's name, the type (`mpem/1`,
+`urdf/1`), its sha256, licence and tier, the unit it describes as its file names it, and which of its fields are fitted
+and which declared. A line says what the file is and where its numbers come from, not that they are accurate: a fit's
+accuracy is its lab's to state. Empty where no entry reads a calibration.
 
 ## `ports`
 

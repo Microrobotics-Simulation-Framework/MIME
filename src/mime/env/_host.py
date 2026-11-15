@@ -23,6 +23,7 @@ from typing_extensions import TypedDict
 
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._maddening import devices
+from mime.core._node import run_dtype
 
 RUNNER_VARIABLE = "MIME_RUNNER"
 RUNNER_INFO_VARIABLE = "MIME_RUNNER_INFO"
@@ -236,7 +237,7 @@ class MatmulPrecisionReduced(UserWarning):
 def run_precision() -> str:
     """The floating-point precision a run computes in: ``float64`` under ``jax_enable_x64``, else JAX's default,
     ``float32``."""
-    return "float64" if cast(Any, jax.config).jax_enable_x64 else "float32"
+    return str(run_dtype().name)
 
 
 def device_and_matmul() -> tuple[str, str | None]:

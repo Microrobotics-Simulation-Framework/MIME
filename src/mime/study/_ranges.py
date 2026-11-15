@@ -62,6 +62,8 @@ from mime.build._plan import Section
 from mime.build._ranges import corners
 from mime.build._refusals import entry_defect
 from mime.control import law_and_models
+from mime.control._run import _law_refusals  # pyright: ignore[reportPrivateUsage]
+from mime.registry import Controller
 from mime.registry._ranges import pinned, pins_of
 from mime.study._axes import Axis, declared, resolve
 from mime.study._point import precision
@@ -114,7 +116,7 @@ def _built(settings: RunSettings, declarations: Sequence[Declaration]) -> Built:
     plans = plan_experiment(settings, list(declarations))
     law, problems, _ = law_and_models(plans)
     if problems and plans.controller is not None:
-        raise BuildRefused([entry_defect(plans.controller.registered.cls, problem) for problem in problems])
+        raise BuildRefused(_law_refusals(cast(type[Controller], plans.controller.registered.cls), problems))
     graph = assemble(plans, law).graph
     observing = [n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()]
     found = structure_key(graph, observing)

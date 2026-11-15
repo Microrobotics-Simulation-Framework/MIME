@@ -15,7 +15,6 @@ import jax
 import numpy as np
 
 from mime.build import BuildRefused, Declaration, PlanSet, Refusal, RunSettings, plan_experiment
-from mime.build._refusals import entry_defect
 from mime.build._checks import node_refusals, node_lines  # noqa: PLC2701 - a node's own checks, judged per point
 from mime.build._construct import assemble
 from mime.build._key import structure_key
@@ -23,7 +22,8 @@ from mime.build._maddening import initial_fields
 from mime.build._control import Mode
 from mime.build._plan import Section
 from mime.control import law_and_models
-from mime.registry import ControlLaw
+from mime.control._run import _law_refusals  # pyright: ignore[reportPrivateUsage]
+from mime.registry import ControlLaw, Controller
 from mime.drives import Ramp
 from mime.study._axes import Axis, Declared, built_values, declared
 from mime.study._protocol import Protocol, declared_with
@@ -132,7 +132,7 @@ def build_point(index: int, settings: RunSettings, declarations: Sequence[Declar
         point.plans = plans
         law, problems, models = law_and_models(plans)
         if problems and plans.controller is not None:
-            point.refusals = tuple(entry_defect(plans.controller.registered.cls, problem) for problem in problems)
+            point.refusals = tuple(_law_refusals(cast(type[Controller], plans.controller.registered.cls), problems))
             return point
         point.law, point.models = law, models
         try:

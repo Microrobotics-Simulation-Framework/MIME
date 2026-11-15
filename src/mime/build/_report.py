@@ -144,6 +144,8 @@ class BuildReport:
     #: Each declared port's line: what it does to its command or its read (``mime.build._ports``), and where it is
     #: computed. Empty where none is declared: every command and read is then ideal.
     ports: tuple[str, ...] = ()
+    #: Each calibration an entry reads, as its type reads it (``mime.registry.CalibrationInstance``), by entry.
+    calibrations: tuple[str, ...] = ()
 
     def stale_lines(self) -> list[str]:
         return [f"STALE: {self.stale}"] if self.stale else []
@@ -290,6 +292,9 @@ class BuildReport:
         if self.descriptions:
             lines.append("descriptions, each chain segment's as read:")
             lines += [f"  {line}" for line in self.descriptions]
+        if self.calibrations:
+            lines.append("calibrations, each as its type reads it:")
+            lines += [f"  {line}" for line in self.calibrations]
         if self.masses:
             lines.append("mounted masses, each with what carries it:")
             lines += [f"  {line}" for line in self.masses]
@@ -344,6 +349,9 @@ class BuildReport:
         if self.descriptions:
             lines.append("descriptions, each chain segment's as read:")
             lines += [f"  {line}" for line in self.descriptions]
+        if self.calibrations:
+            lines.append("calibrations, each as its type reads it:")
+            lines += [f"  {line}" for line in self.calibrations]
         lines += self.replaced_lines()
         lines += self.removed_lines()
         lines += self.asset_lines()

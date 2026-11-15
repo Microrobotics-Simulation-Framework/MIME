@@ -103,10 +103,63 @@ the least-effort tie-break then reads the least rescaled command.
 Each solve is a QR on columns of unit length, so float32 loses the scaled columns' condition times its rounding, not its
 square; what that costs on each array MIME ships is in the CHANGELOG's entry.
 
+## Through the controller's context: `ctx.allocator`
+
+A controller's law can ask its context for the allocation instead of writing the rows itself. The model is the
+controller's own, its belief of the apparatus (`ctx.believed`, the true declaration where it declares none), and the
+bounds are the commands' ports':
+
+<!-- mime-fragment: a law's lines, with names a reader fills in -->
+```python
+solve = ctx.allocator("emns", commands=("currents",), objective={"force": N(1e-3)}, owner="my_controller.active_set")
+
+def step(state, reads):
+    commands, report = solve({"force": wanted}, {"point": point, "moment": moment}, {"currents": state["last"]})
+```
+
+- **`objective`** names each quantity of the model to come near (a coil array's `flux_density`, `gradient`, and `force`
+  and `torque` on the moment given as `at["moment"]`) with its scale, in its own unit: a miss of one scale counts the
+  same in every row. For a fixed moment the force, `F_j = m_i dB_i/dx_j`, and the torque, `m x B`, are linear in the
+  field and its gradient, so they stay affine in the currents and the allocation stays exact. A gradient's rows are its
+  five independent entries, as `allocate()` stacks them. The model's `gradient` is declared in the base units MIME writes
+  for a field gradient (the form `unit_symbol` gives it), which the scale is checked against: write a scale in
+  `T_per_m` or `mT_per_m`.
+- **The bounds** are the port's declared `bounds`, else the bounds its receiver states (an arm's joint limits). A command
+  with neither is refused (`allocation.bounds`): the exact allocation chooses within bounds.
+- **The slew.** Where the port declares a `slew`, the bounds are narrowed to `last` plus or minus the slew times the
+  base step times `g` base steps: what the stage delivers before the next write arrives. For a port sampling every `R`
+  base steps and a controller writing every `P`, `g = R * floor(P / R)` where `R <= P`, else `R / ceil(R / P)`: with the
+  port's period at the controller's or dividing it, every write is sampled and the next is at least `R * floor(P / R)`
+  steps later; with the port slower, one sample can take several writes' moves at once, with `R` steps to make them.
+  Both give `P` where one period divides the other, and a latency on either side delays every write alike and changes
+  neither.
+  **The rule assumes the stage stood at `last`** (the commands the law wrote last), which holds by induction only if
+  every earlier command was deliverable. It does not hold on the first tick from rest where the law's initial `last` is
+  not the port's `rest`, nor after a `trip` latches the port to its `rest`: the stage is elsewhere, and the allocation
+  asks for more than it delivers. The build report says so beside each boxed command. A trip is flagged by the run
+  (`tripped_<command>`, a warning); a delivery the slew limited raises no flag, and is read from the port's recorded
+  traffic (`run(record=["ports:<apparatus>.written_<command>", "ports:<apparatus>.<command>"])`).
+- **`effort`** adds the regularisation towards zero or the last command (`toward="last"`); without it, ties among
+  several minimisers go to the commands nearest that reference.
+- **`owner`** is the switch's owner, which the controller declares, as for `exact_allocation`.
+
+What it refuses, at the build, each with its own code: a model not affine in the commands asked for
+(`allocation.model`: an arm's joint positions, which the iterative path will take), more commands than
+`EXACT_COMMANDS` (`allocation.exact-size`), an objective naming no quantity of the model or a scale of another unit
+(`allocation.objective`), and a command with no bounds (`allocation.bounds`). It is one function in both modes: traced
+inside the compiled step, called on the host as a callback, where no derivative passes through it.
+
+**What it bounds, and what it estimates.** On camera spike R2's sphere the allocator writes the currents a hand-written
+law writes from the same rows, bounds and scales, bit for bit in float64; its first tick in float32 agrees to rounding
+(`tests/control/test_allocator.py`). That says the allocator is the law, through the controller's model; whether the
+model is the hardware is the model's own claim (a software oracle's, for the coil arrays: see the calibrated
+multipole's validity).
+
 ## Which path to use
 
-- **Inside a controller's law** (a derivative wanted, or a controller in the compiled step): `exact_allocation`, with
-  the rows the law makes (for a coil array, `placed_unit_fields` at the body's point).
+- **Inside a controller's law, through its model and its ports**: `ctx.allocator(...)`, above.
+- **Inside a controller's law, with rows of its own** (a derivative wanted, or a controller in the compiled step):
+  `exact_allocation`, with the rows the law makes (for a coil array, `placed_unit_fields` at the body's point).
 - **Outside a run** (a script choosing currents once): `allocate(actuation, field=, gradient=, limits=, field_scale=,
   gradient_scale=)`, which runs the same law on the host in float64 and returns the currents with what they make and
   miss.
