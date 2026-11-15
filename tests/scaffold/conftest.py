@@ -1,6 +1,7 @@
 """``mime scaffold``'s tests run in a private home (the sharing tests' ``homes.isolate``): the defaults it reads and writes,
 the tokens it searches for and the acceptances it must not touch are in a folder of the test's own."""
 
+import os
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -12,6 +13,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from homes import isolate  # noqa: E402
 from scaffold_rig import PluginBase, PluginClean, plugin_base, plugin_clean  # noqa: E402
+
+
+@pytest.fixture(scope="module", autouse=True)
+def module_environment_restored() -> Iterator[None]:
+    """The process's environment as the module found it, put back after the module. The module-scoped fixtures below
+    first run inside a test, after ``private_home`` has set that test's own home and assets cache: the monkeypatch each
+    opens there takes those as the values to restore, so without this the module's last teardown left the *first test's*
+    ``MIME_ASSETS_DIR`` (a folder with no cache in it) for every later test of the worker: an ``asset.missing`` in
+    whichever file came next, only in a shard where one did (``tests/scaffold/test_environment_restored.py``)."""
+    before = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(before)
 
 
 @pytest.fixture(autouse=True)
