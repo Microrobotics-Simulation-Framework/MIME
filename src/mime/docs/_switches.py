@@ -61,7 +61,7 @@ import jax
 from jax.extend.core import Jaxpr, JaxprEqn
 from maddening.core.node import SimulationNode
 
-from mime.build._maddening import make_jaxpr
+from mime.build._maddening import held_programs, make_jaxpr
 from mime.core import MimeNode, shape_named, shape_names, shape_switches
 from mime.core.switch import SWITCH_FUNCTIONS, Declaration
 from mime.docs._lists import RatchetList
@@ -209,11 +209,8 @@ def _open(jaxpr: object) -> Jaxpr | None:
 
 
 def _inner_jaxprs(equation: JaxprEqn) -> Iterator[Jaxpr]:
-    for value in equation.params.values():
-        for held in cast(tuple[object, ...], value) if isinstance(value, (tuple, list)) else (value,):
-            inner = _open(held)
-            if inner is not None:
-                yield inner
+    """The programs ``equation`` holds, a root find's solve among them (``held_programs``)."""
+    return held_programs(equation.params)
 
 
 def equations(jaxpr: object, within: tuple[str, ...] = ()) -> Iterator[tuple[tuple[str, ...], JaxprEqn]]:

@@ -14,20 +14,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`mime.control.iterative_allocation(rows, start, *, lower, upper, owner)`** (`IterativeAllocation`): the commands
     within bounds (possibly infinite) that minimise half the squared rows a JAX function of them makes, for any number
     of commands and any model, by projected Newton: Newton's step on the exact Hessian where it is positive definite on
-    the free commands, Gauss-Newton's where it is not, the bounds a projection, Armijo's test on the decrease measured
-    as a difference of squares, a decrease within what the objective resolves passing. **Its guards, declared**: at
-    most `ITERATIONS` (50) iterations; `TOLERANCE` on the stationarity (the projected gradient's length in commands
-    scaled to unit columns, over the rows' miss plus what the commands make), 1e-10 in float64 and 1e-5 in float32, at
-    or above the floor measured; a stagnation stop; and **polishing**, full steps within the tolerance while they are
-    longer than the commands' rounding (`POLISHING_STEPS`, at most 3), so that the derivative is taken at the
-    minimiser: the tolerance alone left a warm-started, weakly regularised arm 4e-8 rad from it, its derivative 8e-5
-    off the minimiser's and a closed loop's (A0's rig, five ticks) 7.6e-4 off central differences, 1e-8 once polished. **`converged` is read at the commands returned**: the stationarity
-    within its tolerance there and the free commands' rows of full rank. Where it did not converge the commands are the
-    last iterate inside the bounds, and `converged` says so. **Its derivative** is the implicit function's
-    (`jax.lax.custom_root` on the projected gradient's fixed point): the exact Hessian's tangent system on the free
-    commands, a held command's derivative its bound's, one dense LU of order the commands; forward and reverse mode.
-    Status: `piecewise_kink` on an affine model (a convex quadratic), `piecewise_jump` on one that is not (the local
-    minimiser followed from the start can change branch).
+    the free commands, Gauss-Newton's where it is not, the bounds a projection, Armijo's test nonmonotone for Newton's
+    step on a positive definite Hessian that no bound cuts (against the largest objective of the last `MEMORY` (4)
+    points: in the curved valley of an arm's redundant joints that step first raises the objective, and a monotone test
+    took a warm start to the cap of 50 iterations; over 2220 such solves the most went from 47 to 35; a step the box
+    cuts or a Gauss-Newton one stays monotone, since with the allowance a float32 OctoMag draw cycled between two
+    corners of the box), Levenberg's damping (`DAMPING`) after a step that had to be cut, raised at each further cut and
+    lowered at each whole step (a warm start crawling by halvings met the cap 0.027 rad from the minimiser; over the
+    2220 solves, at most 15 iterations), the decrease measured as a difference of squares, a decrease within what the
+    objective resolves passing (each row's rounding judged on its terms' scale, the problem's size, not on the row's).
+    **Its guards, declared**: at most `ITERATIONS` (50) iterations, read at a point already weighed; `TOLERANCE` on the
+    stationarity (the projected gradient's length in commands scaled to unit columns, over the rows' miss plus what the
+    commands make), 1e-10 in float64 and 1e-5 in float32, at or above the floor measured; a stagnation stop; and **a
+    local phase**, from the first point within the tolerance: full Newton steps with no line search while they are
+    longer than the commands' rounding (`POLISHING_STEPS`, at most 8), returning the point within the tolerance whose
+    step was shortest, so that the derivative is taken at the minimiser. The tolerance alone left a warm-started, weakly
+    regularised arm 4e-8 rad from it, its derivative 8e-5 off the minimiser's and a closed loop's (A0's rig, five ticks)
+    7.6e-4 off central differences (1e-8 with the local phase), and a solve 0.2 mm further 2e-3 rad from it, where
+    Armijo's test refused the full step that converges (in the curved valley of redundant joints it first raises the
+    objective). **`converged` is read at the commands returned**: the stationarity within its tolerance there and the
+    free commands' rows of full rank. Where it did not converge the commands are the last iterate inside the bounds, and
+    `converged` says so. **Its derivative** is the implicit function's (`jax.lax.custom_root` on the projected
+    gradient's fixed point): the exact Hessian's tangent system on the free commands, a held command's derivative its
+    bound's, one dense LU of order the commands; forward and reverse mode. Status: `piecewise_kink` on an affine model
+    (a convex quadratic), `piecewise_jump` on one that is not (the local minimiser followed from the start can change
+    branch).
   - **`ctx.allocator` chooses the path when the law is made**, from the model's declaration and the commands' count:
     exact where the model is affine in every command asked for, at most `EXACT_COMMANDS` of them, each quantity's miss
     the difference of its rows; iterative otherwise. The refusals `allocation.exact-size` and `allocation.model`'s "not

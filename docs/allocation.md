@@ -193,24 +193,40 @@ the local one reached from there (the last command, in `ctx.allocator`).
 
 **The method** is Bertsekas's projected Newton, in commands scaled to unit columns: an epsilon-active set; Newton's step
 on the free commands where the exact Hessian is positive definite there, Gauss-Newton's where it is not (far from a
-minimiser); a scaled gradient step on the held ones; the bounds as a projection and Armijo's test on the projection arc.
-Its decrease is measured as a difference of squares, and a decrease within what the objective resolves passes: where a
-target cannot be met (an arm asked to reach past its length) the objective's own rounding hides every decrease near the
-minimiser, where Newton's step still lowers the stationarity. On an affine model Newton's and Gauss-Newton's steps are
-one, and the iteration is exact once its active set is the solution's.
+minimiser); a scaled gradient step on the held ones; the bounds as a projection and Armijo's test on the projection arc,
+nonmonotone (Grippo, Lampariello and Lucidi) for Newton's step on a positive definite Hessian that no bound cuts: it is
+judged against the largest objective of the last `MEMORY` points, since in the curved valley of an arm's redundant
+joints that step first raises the objective and then lowers it past where it began (the Maratos effect); judged against
+the current point alone, those steps were halved at every other iteration, and a warm start near the minimiser took the
+whole cap. A step the box cuts, and a Gauss-Newton step, are judged against the current point: with the allowance, a
+box's corners can trade places for the whole cap. Where a step had to be cut, the next is damped (Levenberg's term,
+`DAMPING`, raised at each further cut and lowered at each step taken whole), so that on a curved valley's floor the
+steps shorten and turn towards the gradient instead of crawling by halvings to the cap. Its decrease is measured as a
+difference of squares, and a decrease within what the objective resolves passes, judged on the scale the rows came from:
+a row is a difference of terms (a frame's position and its goal) whose rounding is the terms', not the row's, so each
+row's rounding is taken as the dtype's of the problem's size, which bounds its terms (exactly so on an affine model). On
+an affine model Newton's and Gauss-Newton's steps are one, and the iteration is exact once its active set is the
+solution's.
 
-**Its guards, declared**, as MIME's rule for single precision asks: a cap on its iterations (`ITERATIONS`), a tolerance
-by dtype at or above the dtype's reachable floor (`TOLERANCE`, on the stationarity over the problem's size; the
-CHANGELOG's entry gives the floor measured in each), and a stagnation stop (`STALLS` steps in a row whose decrease is within what the objective resolves and which do
-not halve the stationarity). **Within the tolerance it polishes**: full steps go on while they are longer than the
-commands' rounding, at most `POLISHING_STEPS` (3). The tolerance bounds the stationarity, not the distance to the
-minimiser, and the derivative is taken at the point returned: on a weakly regularised problem (an arm's three position
-rows over six joints with an effort of 20 rad, whose scaled Hessian's least eigenvalues are about 1e-8 of its largest)
-a warm start met the tolerance two steps in, 4e-8 rad from the minimiser, where the derivative read 8e-5 off the
-minimiser's, and 7.6e-4 off over five ticks of a closed loop; polished, the loop's derivative is central differences
-to 1e-8. The stationarity is the projected gradient's length in the scaled commands over the
-problem's size, the rows' miss plus what the commands make, so its floor is the dtype's rounding of that size whatever
-the rows cancel.
+**Its local phase.** From the first point within the tolerance on, the solve takes full Newton steps with no line
+search, while a step is longer than the commands' rounding, at most `POLISHING_STEPS`, and returns the point within the
+tolerance whose step was the shortest. The tolerance bounds the stationarity, not the distance to the minimiser, and
+the derivative is taken at the point returned. On a weakly regularised problem (an arm's position rows over more joints
+than they fix, a weak effort holding the rest, whose scaled Hessian's least eigenvalues are far below its largest) the
+two part far: a warm start met the tolerance a step or two in, where the derivative was measurably not the
+minimiser's, over a closed loop's ticks as well, and a solve from a little further met it with its objective well
+above the minimum. There the objective cannot judge a step: along a soft direction the decrease is below its rounding,
+and in the curved valley the full step can raise it while it converges quadratically. With the local phase, the
+loop's derivative is central differences to the differences' own truncation; the CHANGELOG's entry gives each
+measurement.
+
+**Its guards, declared**, as MIME's rule for single precision asks: a cap on its iterations (`ITERATIONS`, read at a
+point already weighed, so that one within the tolerance still goes on to its local phase), a tolerance by dtype at or
+above the dtype's reachable floor (`TOLERANCE`, on the stationarity over the problem's size; the CHANGELOG's entry gives
+the floor measured in each), and a stagnation stop (`STALLS` steps in a row whose decrease is within what the objective
+resolves and which do not halve the stationarity). The stationarity is the projected gradient's length in the scaled
+commands over the problem's size, the rows' miss plus what the commands make, so its floor is the dtype's rounding of
+that size whatever the rows cancel.
 
 **`converged` is read at the commands returned**, never from the loop's own account: the stationarity within its
 tolerance there, and the free commands' rows of full rank (the scaled normal matrix's least eigenvalue over its largest

@@ -8,6 +8,8 @@ accepted, (i) the controller's state not carried from one step to the next; and 
 Python state its calls change accepted, (k) the schedule's phase restarted at each run, (l) the lock recording a
 callback with its law's status. Each is measured over 20 runs."""
 
+from typing import Any
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -430,6 +432,31 @@ def test_a_callback_on_the_purity_checks_second_trace_only_is_refused_as_impure_
             assert caught.codes() == ["controller.impure"], caught.codes()
         else:
             raise AssertionError("built")
+
+
+def test_the_probe_sees_a_host_callback_inside_a_root_finds_solve():
+    """``jax.lax.custom_root`` (the iterative allocation's, where a law's rows run) writes its solve inside a
+    higher-order primitive, ``call_hi_primitive``, whose program is in the primitive object it passes, not among the
+    equation's parameters: the probe reads it there. Control: JAX's own listing of an equation's sub-programs
+    (``jax.extend.core.subjaxprs``), which the probe read before, does not see the callback."""
+    from jax.extend.core import subjaxprs
+
+    from mime.build._probes import host_callbacks
+
+    def solved(x: Any) -> Any:
+        def solve(_: Any, start: Any) -> Any:
+            jax.debug.print("{}", start)
+            return start * 0.5
+
+        return jax.lax.custom_root(lambda u: u - x, x, solve, lambda _, y: y)
+
+    program = jax.make_jaxpr(solved)(jnp.ones(2)).jaxpr
+    assert host_callbacks(program) == {"debug_print"}
+
+    def listed(jaxpr: Any) -> set[str]:
+        return {e.primitive.name for e in jaxpr.eqns} | {n for inner in subjaxprs(jaxpr) for n in listed(inner)}
+
+    assert "debug_print" not in listed(program) and "call_hi_primitive" in listed(program)
 
 
 def test_control_h_a_step_with_a_host_callback_accepted_for_mode_1_is_caught(monkeypatch):

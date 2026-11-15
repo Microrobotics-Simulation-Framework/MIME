@@ -1,11 +1,11 @@
 """Walking the programs a registered node kind's step traces for its linear solves (``mime.core.solves``).
 
 **What a walk finds.** Every equation of a traced step and of every program it holds (a ``jit``, a ``cond`` branch, a
-``scan`` or ``while`` body, a ``custom_linear_solve``'s sub-programs), with the name stack it ran under: the stack of
-the equation joined to the stacks of the equations that hold it, since a ``jit`` traced once keeps its inner stack
-apart from its caller's. A solve primitive (``mime.core.solves.SOLVE_PRIMITIVES``) is judged by its **innermost**
-``mime-solve`` scope: none is a solve that went through no shared function; a site whose kind does not own the primitive
-(``OWNED``) is a raw solve nested in another solve; an exempt site is also held to its declared size. A scope no site is
+``scan`` or ``while`` body, a ``custom_linear_solve``'s sub-programs, a ``custom_root``'s solve), with the name stack it
+ran under: the stack of the equation joined to the stacks of the equations that hold it, since a ``jit`` traced once
+keeps its inner stack apart from its caller's. A solve primitive (``mime.core.solves.SOLVE_PRIMITIVES``) is judged by
+its **innermost** ``mime-solve`` scope: none is a solve that went through no shared function; a site whose kind does
+not own the primitive (``OWNED``) is a raw solve nested in another solve; an exempt site is also held to its declared size. A scope no site is
 registered under is a name nobody registered. In a float64 run, no equation of the step holds a floating value narrower
 than float64 (:func:`narrow_anywhere`), inside a solve's scope or outside it, except in the steps of a node kind that
 reaches a site declared ``narrower``.
@@ -58,12 +58,24 @@ class Equation:
         return self.scopes[-1] if self.scopes else None
 
 
+def _held(value: Any) -> Iterator[Any]:
+    """The programs a parameter's value holds. A higher-order primitive JAX writes as ``call_hi_primitive`` (as
+    ``lax.custom_root``, the iterative allocation's) holds its programs in the primitive object it passes as a
+    parameter, which lists them by ``pp_params`` (as JAX's printer reads them), not as parameters of the equation."""
+    for held in value if isinstance(value, tuple | list) else (value,):
+        listed = getattr(held, "pp_params", None)
+        if callable(listed):
+            for inner in listed().values():
+                yield from _held(inner)
+            continue
+        inner = getattr(held, "jaxpr", held)
+        if hasattr(inner, "eqns"):
+            yield inner
+
+
 def _programs(equation: Any) -> Iterator[Any]:
     for value in equation.params.values():
-        for held in value if isinstance(value, tuple | list) else (value,):
-            inner = getattr(held, "jaxpr", held)
-            if hasattr(inner, "eqns"):
-                yield inner
+        yield from _held(value)
 
 
 def walk(jaxpr: Any, outer: str = "") -> Iterator[Equation]:

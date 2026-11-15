@@ -1,5 +1,5 @@
 {
-  "written": "2026-11-15, committed before AP4a's probe ran (the commit that adds this file is the timestamp): the iterative allocation with its implicit derivative and its polishing, ctx.allocator's structural choice of path, a controller's run flags (allocation_unconverged their first user; one path in both modes; refused below the step's level, under an undeclared name, and for a step compiled with nothing underneath), ForwardModel.misses and the arm's frame quantities",
+  "written": "2026-11-15, committed before AP4a's probe ran (the commit that adds this file is the timestamp): the iterative allocation with its implicit derivative and its polishing, ctx.allocator's structural choice of path, a controller's run flags (allocation_unconverged their first user; one path in both modes; refused below the step's level, under an undeclared name, and for a step compiled with nothing underneath), ForwardModel.misses and the arm's frame quantities; revised the same evening, still before the probe ran, after the solver's changes recorded in seen_before's last entries (a decrease's noise on its terms' scale, the local phase, the nonmonotone line search, the cap read at a weighed point) and the tests' fixes found with them",
   "phase": "apparatus lane AP4a",
   "labels": "the builder (Opus) from the pilot (tests/control/predictions_ap4_pilot.json's outcomes, the runner's) and from local runs of the touched tests on the laptop (correctness only, never timing); the probe's numbers are the runner's",
   "seen_before": [
@@ -8,7 +8,17 @@
     "test_allocator and the raw-raise and refusal-table ratchets passed locally after the hand-over",
     "locally, the follower's 7.6e-4, diagnosed before this file (float64): central differences of the sweep converge to 1.7598042 at every step from 1e-4 to 3e-7 m (7 digits) against Study.gradient's 1.7584646; with the contact off and the body's moment zero (the loop cut) still 6.5e-4; after one tick (2 ms) 9.1e-5, reproduced on the law's own step and on the solve alone. The implicit derivative is -H^-1 g_s at the point returned (2.6e-9), but that point, a warm start two Newton steps in, is 3.7e-8 rad from the minimiser, where on this weakly regularised problem (effort 20 rad, the scaled Hessian's least eigenvalues 1e-8 of its largest) the derivative is 8e-5 off the minimiser's (-H^-1 g_s there = central differences of polished minimisers to 3e-9)",
     "locally, after polishing (full steps within the tolerance while longer than the commands' rounding, at most 3): the law's step 1.2e-8 off central differences, the 10 ms follower Study.gradient 9.5e-9 (with the contact) and 2.0e-9 (loop cut); the warm-start draws' derivative within 1e-7 of central differences at 0.2 mm steps (at 2 um the reference solves' rounding reads 1e-5); without polishing (the plant) 7e-4 on the first draw",
-    "locally, the flag seam's changes: test_controller_flags.py 15 passed; its plant (unleveled) caught by all 8 loop-or-branch cases"
+    "locally, the flag seam's changes: test_controller_flags.py 15 passed; its plant (unleveled) caught by all 8 loop-or-branch cases",
+    "locally, the polish blocked on the warm-start test's seed 198: a reference solve stopped 3.3e-9 rad from the minimiser because Armijo's test refused its full Newton step (scaled 1.6e-7): the measured decrease, -4e-20 (true 1.6e-21), is the rows' rounding, and the noise was judged on the rows' own scale (4 eps |r|^2, 1e-22), not on their terms' (link_6 at 640 in rows of 4e-4). Fixed: each row's rounding taken as eps of the problem's size, which bounds its terms",
+    "locally, then seed 740: a reference solve met the tolerance (5.3e-11) 2.3e-3 rad from the minimiser, its objective 37 % above the minimum; its full Newton step raised the objective by 4.7e-9 (far above the noise) and converged: steps 0.24, 7e-4, 1e-3, 4e-8, 2e-12 (scaled), the Maratos effect in the curved valley of the redundant joints. Fixed: the polish became Newton's local phase (from the first point within the tolerance, full steps with no line search, at most POLISHING_STEPS, now 8; the point within the tolerance whose step was shortest returned)",
+    "locally, then seed 1195: a warm start 0.1 mrad from the minimiser took the cap of 50 iterations, Armijo halving the full step at every other iteration, and returned a point within the tolerance its local phase never reached (7e-7 of the derivative off). Fixed: the cap read at a weighed point, and Armijo's test nonmonotone (the largest objective of the last MEMORY, 4, points) for Newton's step on a positive definite Hessian that no bound cuts. Unrestricted, the allowance cut the follower's most iterations to 13 but cycled a float32 OctoMag draw between two corners of the box for the whole cap (the exact-path agreement test failed) and sent the inverse kinematics' solve to a limit on 6 of 200 draws (2 before); restricted, over 2220 of the warm-start test's solves (60 draws, each with its 36 differenced solves) every one converged and ended within the commands' rounding, iterations at most 35 (47 monotone), mean 4.77, and the inverse kinematics reached a limit on 3 of 200 draws, each one the library's solve misses as well",
+    "the tests' reference solves: the TOLERANCE 1e-15 patch around them never reached the compiled program in a clean run (the solve is jitted once, by the found solve, before the patch); removed, the references are the library's own solves, polished to rounding, each asserted converged",
+    "the inverse-kinematics test's other branch assumed the library fails only by leaving the limits; on seed 729201 its damped steps stopped 1.2e-7 m short of its 1e-9 tolerance in 200 iterations inside the limits, the solve here on the pose to 1e-16 m. Restated: a solve held at no limit reaches the reachable pose to 1e-9 m; the joints are compared where the library reaches the pose inside the limits",
+    "the loose plant redefined as the tolerance one AND no local phase: with the local phase a loose tolerance only starts Newton's full steps earlier, which end at the minimiser on an affine model, so there was no wrong claim to catch (the plants test caught nothing until then)",
+    "the solve walk saw no solve in the controller's step: JAX 0.12 writes lax.custom_root as call_hi_primitive, its solve in the primitive object (pp_params), not in the equation's parameters; the walk's reading was wrong, the dense site's registration right. The host-callback probe (a debug print inside the root find's solve went unseen) and the switch scan (the solve's 37 raw sites unseen) shared the blind spot; all three now read held_programs",
+    "the inverse-kinematics test's joint comparison assumed one joint solution per pose; the AR4's wrist has two (joints 4 and 6 turned by pi, joint 5 negated), and the solve from near the wrist's singular pose reaches the other on about 1.5 % of draws, before this round's changes too (seed 149). Restated: on the pose, and the joints within 1e-6 of the library's or on the other branch (more than 0.5 rad apart). The test's solve is now compiled once per plant, and its early plant is applied (it never was: its control arm would have read 0 caught)",
+    "arm_draw wrote into a read-only array (np.asarray of a JAX value) on every unreachable draw, so the unreachable derivative test could not have passed before; fixed with a copy",
+    "locally, then seed 1210936 (the warm-start test): a reference solve crawled by halvings in the indefinite region of the curved valley (Gauss-Newton steps of 1.5 to 3.5, scaled, cut each time) and met the cap 0.027 rad from the minimiser, unconverged. Fixed: Levenberg's damping after a cut step (DAMPING 1e-3, times 10 at each further cut, over 10 at each whole step, none in the local phase). With it and the restricted allowance, 2220 of 2220 follower solves converged within the commands' rounding, at most 15 iterations, mean 4.75 (without the allowance 3 met the cap); the inverse kinematics reached a limit on 3 of 200 draws, each one the library misses too; the float32 OctoMag draw converged in 5. The test files were not re-run after this change before the commit that records it"
   ],
   "operating_point": {
     "dtype": [
@@ -29,7 +39,7 @@
       "why": "on a convex quadratic projected Newton's step is the exact path's least squares once the active set is found"
     },
     "control": {
-      "plant": "early (two iterations), loose (tolerance one): each must leave a draw unconverged, past the declared line, or past the derived distance",
+      "plant": "early (two iterations), loose (tolerance one, no local phase): each must leave a draw unconverged, past the declared line, or past the derived distance",
       "environment_variable": "ITERATIVE_PLANT=early, =loose",
       "expected_rate": "20/20 each",
       "runs": 20,
@@ -47,7 +57,7 @@
       "why": "as gate 1, with BVLS's own line"
     },
     "control": {
-      "plant": "early, loose",
+      "plant": "early, loose (as gate 1)",
       "environment_variable": "ITERATIVE_PLANT",
       "expected_rate": "20/20 each",
       "runs": 20,
@@ -67,7 +77,7 @@
       ],
       "unit": "share of the largest entry",
       "basis": "measured-before (the pilot: medians 1e-9 to 3e-6 at steps of 1e-3; the probe takes 0.2 and 0.1, which keep the reference solves' noise at about 1e-7 of the move)",
-      "why": "Richardson's truncation at a 0.2 mm move is about 1e-10, the reference solves converge near 1e-15"
+      "why": "Richardson's truncation at a 0.2 mm move is about 1e-10; the reference solves are the library's own, polished to the commands' rounding by the local phase"
     },
     "control": {
       "plant": "gauss_newton (the root's Hessian Gauss-Newton's: 0.5 to 13 off on every unreachable draw in the pilot); bounds (a held command's derivative zero, where the box holds a joint on every draw, asserted)",
@@ -80,7 +90,7 @@
     "cannot_discriminate_if": "the box held no joint (asserted on every draw), or the residual were zero (the unreachable draws keep it far from zero)"
   },
   "gate_3b_warm_start": {
-    "claim": "at the follower's operating point (the joints read are the start and the effort's reference, the target 0.2 to 2 mm from where they put the flange, effort 20 rad), the derivative in the target and the joints read is central differences of converged reference solves within 1e-6 of its largest entry",
+    "claim": "at the follower's operating point (the joints read are the start and the effort's reference, the target 0.2 to 2 mm from where they put the flange, effort 20 rad), the derivative in the target and the joints read is central differences of the library's own reference solves, each converged within 1e-6 of its largest entry",
     "kind": "bounds",
     "case": "tests/control/test_iterative_allocation.py::test_a_warm_start_near_the_minimiser_gives_the_minimisers_derivative",
     "prediction": {
@@ -90,11 +100,11 @@
         1e-06
       ],
       "unit": "share of the largest entry",
-      "basis": "measured-before (local: 8.7e-8 on seed 0 at 0.2 mm steps)",
-      "why": "polished, the commands are the minimiser to rounding; the reference solves' rounding over a 0.2 mm step is about 1e-7"
+      "basis": "measured-before (local, after the three fixes: the 40-example run; the 2220-solve survey's solves all within rounding)",
+      "why": "the local phase takes the commands to the minimiser to rounding; the reference solves' rounding over a 0.2 mm step is about 1e-7"
     },
     "control": {
-      "plant": "unpolished (POLISHING_STEPS zero): the derivative at the first iterate the tolerance admits, 7e-4 off on the first local draw",
+      "plant": "unpolished (POLISHING_STEPS zero: no local phase): the derivative at the first point the tolerance admits, 7e-4 off on the first local draw",
       "environment_variable": "ITERATIVE_PLANT=unpolished",
       "expected_rate": "20/20",
       "runs": 20,
@@ -104,7 +114,7 @@
     "cannot_discriminate_if": "a draw's solve reaches rounding before the tolerance stops it (the plant then changes nothing): the rate says how often the draws reach the sensitive case"
   },
   "gate_4_inverse_kinematics": {
-    "claim": "on reachable poses the iterative solve converges, and where the library's inverse kinematics reaches the pose within the limits from the same start the two reach the same joints within 1e-6 rad and the frame within 1e-9 m",
+    "claim": "on reachable poses the iterative solve converges; where it holds no joint at a limit it reaches the pose within 1e-9 m; and where the library's inverse kinematics reaches the pose within the limits from the same start, the solve is on the pose and its joints are the library's within 1e-6 rad or the wrist's other solution (more than 0.5 rad apart)",
     "kind": "bounds",
     "case": "tests/control/test_iterative_allocation.py::test_iterative_inverse_kinematics_meets_the_librarys_on_reachable_poses",
     "prediction": {
@@ -119,7 +129,7 @@
       "runs": 20,
       "clean_expected": "0/20"
     },
-    "if_wrong": "a draw where both reach different joints inside the limits is a second solution of the arm's inverse kinematics, which the test then names"
+    "if_wrong": "a draw between 1e-6 and 0.5 rad of the library's joints on the pose is a defect of the solve's precision; one off the pose held at no limit is a local minimiser the claim does not admit"
   },
   "gate_5_float32": {
     "claim": "the arm's solve in float32 converges where float64's does, its joints within 1e-3 rad and its derivative within 1e-2 of float64's largest entry",
@@ -177,7 +187,7 @@
     "if_wrong": "a miss with each solve's derivative right (gate 3b) is a defect of how the derivative crosses ticks, the contact's or the controller node's"
   },
   "costs": {
-    "prediction": "per base step, compiled, one thread: the coil sphere's iterative allocation 1.5 to 5 times its exact one's step (polishing adds one or two iterations) (both a few tens of microseconds over a sphere's step of about the same); the follower's A0 step 2 to 10 times ArmTracking 0.1.0's (its five fixed damped steps against a converged solve with its line search); a controller that takes no iterative path: no node and no operation added (the bits arm's programs)",
+    "prediction": "per base step, compiled, one thread: the coil sphere's iterative allocation 1.5 to 5 times its exact one's step (the local phase adds one or two iterations; the follower's warm starts took 3 to 13, mean 4.75, locally) (both a few tens of microseconds over a sphere's step of about the same); the follower's A0 step 2 to 10 times ArmTracking 0.1.0's (its five fixed damped steps against a converged solve with its line search); a controller that takes no iterative path: no node and no operation added (the bits arm's programs)",
     "measured_at": "nowhere yet: the pilot's solves alone (a six-coil solve 0.07 ms, an arm solve 2 ms median, compiled, outside a graph), not through the real node"
   },
   "bits": {

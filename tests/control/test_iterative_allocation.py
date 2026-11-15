@@ -10,8 +10,10 @@ residual's error bound, ``|v - v*| <= (1 + L) / mu |pi|`` in the commands scaled
 scaled Hessian's least and largest eigenvalues, ``pi`` the projected gradient the stationarity measures). A solve that
 claims to converge where it did not is caught by one of the three.
 
-**Its plants** (``ITERATIVE_PLANT``): ``early``, the solve stopped after two iterations; ``loose``, its tolerance
-loosened to one (the stationarity of its start passes); ``gauss_newton``, the root's gradient taken with its Jacobian
+**Its plants** (``ITERATIVE_PLANT``): ``early``, the solve stopped after two iterations (a solve within its tolerance
+by then goes on to its local phase, as the clean one does); ``loose``, its tolerance loosened to one with no local
+phase, so that it stops at its start and claims to have converged (with the local phase a loose tolerance is only an
+earlier start of Newton's full steps, which on an affine model end at the minimiser: no wrong claim to catch); ``gauss_newton``, the root's gradient taken with its Jacobian
 held, so that its linearisation is the Gauss-Newton Hessian, which is wrong wherever the rows are not met (an
 unreachable target); ``bounds``, the root's bounds held, so that a command at a bound has no derivative in it;
 ``unpolished``, no polishing (``POLISHING_STEPS`` zero), so that a warm start near the minimiser returns the first
@@ -68,6 +70,7 @@ def planted(names: tuple[str, ...]) -> Iterator[None]:
                 patch.setattr(module, "ITERATIONS", 2)
             elif PLANT == "loose":
                 patch.setattr(module, "TOLERANCE", dict.fromkeys(module.TOLERANCE, 1.0))
+                patch.setattr(module, "POLISHING_STEPS", 0)
             elif PLANT == "gauss_newton":
                 patch.setattr(module, "_gradient", _gauss_newton)
             elif PLANT == "bounds":
@@ -181,7 +184,8 @@ def test_the_iterative_path_meets_bvls_above_the_exact_paths_size(dtype, seed, c
 
 def test_the_plants_of_the_claim_are_each_caught_at_one_problem(monkeypatch):
     """At one problem whose solve takes more than two iterations, the early stop leaves it unconverged and the loose
-    tolerance claims a stationarity past the line: the two plants' mechanisms, held here; their rates are measured."""
+    tolerance, with no local phase, claims a stationarity past the line: the two plants' mechanisms, held here; their
+    rates are measured."""
     rng = np.random.default_rng(11)
     matrix, target, limit = synthetic(rng, 12, 14)
     with in_dtype("float64"):
@@ -193,6 +197,7 @@ def test_the_plants_of_the_claim_are_each_caught_at_one_problem(monkeypatch):
         monkeypatch.setattr(module, "ITERATIONS", module.ITERATIONS)
         monkeypatch.undo()
         monkeypatch.setattr(module, "TOLERANCE", dict.fromkeys(module.TOLERANCE, 1.0))
+        monkeypatch.setattr(module, "POLISHING_STEPS", 0)
         loose = iterative(matrix, target, limit, "float64")
     problem = Problem("synthetic", "rows", matrix, target, np.ones(len(target)), limit)
     assert claim_problems(early, matrix, target, reference, line(problem, reference, "float64"), "float64") != []
@@ -279,7 +284,7 @@ def arm_draw(seed: int, reachable: bool) -> tuple[np.ndarray, np.ndarray]:
     joints = rng.uniform(lower + 0.1 * (upper - lower), upper - 0.1 * (upper - lower))
     last = np.clip(joints + rng.normal(scale=0.15, size=joints.size), lower, upper)
     with in_dtype("float64"):
-        target = np.asarray(model({"joint_positions": jnp.asarray(joints)}, {})["frame_poses"][frame])
+        target = np.array(model({"joint_positions": jnp.asarray(joints)}, {})["frame_poses"][frame])
     if not reachable:
         direction = rng.normal(size=3)
         target[:3] += 1.5 * direction / np.linalg.norm(direction)
@@ -312,32 +317,33 @@ def test_the_implicit_derivative_is_central_differences_and_reverse_mode_is_forw
 
 def central_differences(found: Any, forward: np.ndarray, target: np.ndarray, last: np.ndarray,
                         reachable: bool) -> np.ndarray:
-    """Each column of the derivative by a Richardson pair of central differences of reference solves (their tolerance
-    near float64's floor), over the widest of three step sizes whose solves stay on ``found``'s branch: its active set,
-    and commands within ten times the step's first-order move of its own (a local minimiser reached on another branch
-    of a nonlinear model jumps by far more). A draw near a kink or a branch's end is differenced over a smaller
-    segment, never left out."""
+    """Each column of the derivative by a Richardson pair of central differences of reference solves, over the widest
+    of three step sizes whose solves stay on ``found``'s branch: its active set, and commands within ten times the
+    step's first-order move of its own (a local minimiser reached on another branch of a nonlinear model jumps by far
+    more). A draw near a kink or a branch's end is differenced over a smaller segment, never left out. The reference
+    solves are the library's own, unplanted, each converged and polished to the commands' rounding (a tolerance
+    patched here would not reach them: the clean solve is compiled once, before them, and a patch after a trace is
+    ignored)."""
     columns = []
     base = np.asarray(found.commands)
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(module, "TOLERANCE", {**module.TOLERANCE, np.dtype(np.float64): 1e-15})
-        for i in range(12):
-            reach = float(np.max(np.abs(forward[:, i])))
-            for step in (0.2, 0.02, 0.002):
-                pair, kept = [], True
-                for h in (step, step / 2):
-                    e = np.zeros(12)
-                    e[i] = h
-                    for sign in (1.0, -1.0):
-                        moved = arm_call("solve", "float64", reachable, sign * e, target, last, plant=False)
-                        kept = kept and np.array_equal(np.asarray(moved.active), np.asarray(found.active)) and \
-                            float(np.max(np.abs(np.asarray(moved.commands) - base))) <= 10.0 * h * reach + 1e-9
-                        pair.append(np.asarray(moved.commands) * sign / (2 * h))
-                if kept:
-                    break
-            assert kept, f"the solution leaves its branch within {step / 2} of the draw along input {i}, both ways"
-            first, second = pair[0] + pair[1], pair[2] + pair[3]
-            columns.append((4 * second - first) / 3)
+    for i in range(12):
+        reach = float(np.max(np.abs(forward[:, i])))
+        for step in (0.2, 0.02, 0.002):
+            pair, kept = [], True
+            for h in (step, step / 2):
+                e = np.zeros(12)
+                e[i] = h
+                for sign in (1.0, -1.0):
+                    moved = arm_call("solve", "float64", reachable, sign * e, target, last, plant=False)
+                    assert bool(moved.converged), (i, sign * h, float(moved.stationarity))
+                    kept = kept and np.array_equal(np.asarray(moved.active), np.asarray(found.active)) and \
+                        float(np.max(np.abs(np.asarray(moved.commands) - base))) <= 10.0 * h * reach + 1e-9
+                    pair.append(np.asarray(moved.commands) * sign / (2 * h))
+            if kept:
+                break
+        assert kept, f"the solution leaves its branch within {step / 2} of the draw along input {i}, both ways"
+        first, second = pair[0] + pair[1], pair[2] + pair[3]
+        columns.append((4 * second - first) / 3)
     return np.stack(columns, axis=1)
 
 
@@ -377,11 +383,12 @@ def follower_call(name: str, *args: Any, plant: bool = True) -> Any:
 def test_a_warm_start_near_the_minimiser_gives_the_minimisers_derivative(seed):
     """float64, the follower's operating point: the joints read are the start and the effort's reference, and the
     target a fraction of a millimetre to two from where they put the flange, so that the solve meets its tolerance in a
-    step or two. Its derivative in the target and the joints read is central differences of converged reference solves
-    (a Richardson pair) within 1e-6 of its largest entry: the polishing step takes the commands to the minimiser, at
-    which the derivative is taken (the tolerance alone left A0's follower 4e-8 rad from it and its derivative 8e-5 off).
-    The differences' steps, 0.2 and 0.1 mm (and mrad), keep the reference solves' rounding, which smaller steps
-    amplify (1e-5 of the derivative at 2 um), near 1e-7."""
+    step or two. Its derivative in the target and the joints read is central differences of reference solves (a
+    Richardson pair; the library's own, unplanted, each converged) within 1e-6 of its largest entry: the local phase
+    takes the commands to the minimiser, at which the derivative is taken (the tolerance alone left A0's follower 4e-8
+    rad from it and its derivative 8e-5 off, and a reference solve here 2e-3 rad from it, its objective 37 % above the
+    minimum, where a full step first raises the objective). The differences' steps, 0.2 and 0.1 mm (and mrad), keep
+    the reference solves' rounding, which smaller steps amplify (1e-5 of the derivative at 2 um), near 1e-7."""
     model, frame, lower, upper = arm()
     rng = np.random.default_rng(seed)
     joints = rng.uniform(lower + 0.1 * (upper - lower), upper - 0.1 * (upper - lower))
@@ -394,57 +401,75 @@ def test_a_warm_start_near_the_minimiser_gives_the_minimisers_derivative(seed):
     assert bool(found.converged) and not np.any(np.asarray(found.active)), (float(found.stationarity), found.active)
     forward = np.asarray(follower_call("forward", zero, target, joints))
     columns = []
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(module, "TOLERANCE", {**module.TOLERANCE, np.dtype(np.float64): 1e-15})
-        for i in range(9):
-            pair = []
-            for h in (0.2, 0.1):
-                e = np.zeros(9)
-                e[i] = h
-                moved = [np.asarray(follower_call("solve", sign * e, target, joints, plant=False).commands)
-                         for sign in (1.0, -1.0)]
-                pair.append((moved[0] - moved[1]) / (2 * h))
-            columns.append((4 * pair[1] - pair[0]) / 3)
+    for i in range(9):
+        pair = []
+        for h in (0.2, 0.1):
+            e = np.zeros(9)
+            e[i] = h
+            moved = [follower_call("solve", sign * e, target, joints, plant=False) for sign in (1.0, -1.0)]
+            assert all(bool(each.converged) for each in moved), (i, h, [float(each.stationarity) for each in moved])
+            pair.append((np.asarray(moved[0].commands) - np.asarray(moved[1].commands)) / (2 * h))
+        columns.append((4 * pair[1] - pair[0]) / 3)
     differences = np.stack(columns, axis=1)
     miss = float(np.max(np.abs(forward - differences)))
     assert miss <= 1e-6 * float(np.max(np.abs(differences))), (miss, float(np.max(np.abs(differences))))
 
 
+@cache
+def inverse_kinematics_program(plant: str) -> Any:
+    """The arm's unregularised pose solve, compiled once per plant (``early`` is this test's), and the frame it puts
+    link_6 at."""
+    from mime.core.multibody._se3 import pose_error
+
+    model, frame, lower, upper = arm()
+
+    def solve(target: Any, last: Any) -> tuple[Any, Any]:
+        def rows(q: Any) -> Any:
+            reached = model({"joint_positions": q}, {})["frame_poses"][frame]
+            return pose_error(target, reached, owner=OWNER) * jnp.asarray([1e3] * 3 + [1e2] * 3)
+
+        found = iterative_allocation(rows, last, lower=jnp.asarray(lower), upper=jnp.asarray(upper), owner=OWNER)
+        return found, model({"joint_positions": found.commands}, {})["frame_poses"][frame]
+
+    return jax.jit(solve)
+
+
 @settings(max_examples=40, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
 @given(seed=st.integers(0, 2 ** 32 - 1))
 def test_iterative_inverse_kinematics_meets_the_librarys_on_reachable_poses(seed):
-    """Unregularised, from 0.15 rad away, with the limits but no box: the iterative solve puts link_6 on a reachable
-    pose to 1e-9 m and 1e-9 rad, as ``mime.core.multibody.inverse_kinematics`` does from the same start, and the two
-    reach the same joints where the pose fixes them (the AR4's six joints, away from its singular poses)."""
-    from mime.core.multibody import inverse_kinematics, read_urdf
-    from mime.core.multibody._se3 import pose_error
+    """Unregularised, from 0.15 rad away, with the limits but no box: the iterative solve converges, and where it holds
+    no joint at a limit it puts link_6 on the reachable pose to 1e-9 m; where ``mime.core.multibody.inverse_kinematics``
+    reaches the pose inside the limits from the same start, the two reach the same joints on the same branch (the AR4's
+    six joints fix a pose up to its wrist's flip, away from its singular poses)."""
+    from mime.core.multibody import compose, inverse, inverse_kinematics, read_urdf
 
     from chain_cases import AR4
 
-    model, frame, lower, upper = arm()
+    model, _, _, _ = arm()
     target, last = arm_draw(seed, True)
     tree = read_urdf(AR4).tree
+    held = PLANT if PLANT == "early" else ""
+    with in_dtype("float64"), planted((held,) if held else ()):
+        found, reached = inverse_kinematics_program(held)(jnp.asarray(target), jnp.asarray(last))
     with in_dtype("float64"):
-        def rows(q: Any) -> Any:
-            reached = model({"joint_positions": q}, {})["frame_poses"][frame]
-            return pose_error(jnp.asarray(target), reached, owner=OWNER) * jnp.asarray([1e3] * 3 + [1e2] * 3)
-
-        found = iterative_allocation(rows, jnp.asarray(last), lower=jnp.asarray(lower), upper=jnp.asarray(upper),
-                                     owner=OWNER)
         placed = model({"joint_positions": jnp.zeros(6)}, {})["frame_poses"][0]
-        local = np.asarray(target)
-        from mime.core.multibody import compose, inverse
-
         local = np.asarray(compose(inverse(placed), jnp.asarray(target)))
         theirs = inverse_kinematics(tree, "link_6", jnp.asarray(local), jnp.asarray(last), position_tolerance=1e-9,
                                     rotation_tolerance=1e-9, owner=OWNER, iterations=200)
-        reached = np.asarray(model({"joint_positions": found.commands}, {})["frame_poses"][frame])
+    reached = np.asarray(reached)
     assert bool(found.converged)
+    if not np.any(np.asarray(found.active) != 0):  # a solve held at no limit reaches the reachable pose
+        assert np.linalg.norm(reached[:3] - target[:3]) <= 1e-9, np.linalg.norm(reached[:3] - target[:3])
     if bool(theirs.reached) and bool(theirs.within_limits):
         assert np.linalg.norm(reached[:3] - target[:3]) <= 1e-9
-        assert np.max(np.abs(np.asarray(found.commands) - np.asarray(theirs.q))) <= 1e-6
-    else:  # the library's step ignores the limits: from here it ends outside them, and the solve at a limit
-        assert np.any(np.asarray(found.active) != 0)
+        apart = float(np.max(np.abs(np.asarray(found.commands) - np.asarray(theirs.q))))
+        # The same joints on the library's branch; the AR4's wrist has a second solution for a pose (joints 4 and 6
+        # turned by pi, joint 5 negated), which a solve from near the wrist's singular pose can reach instead (seed
+        # 149, before this path's line search changed as well): the pose is then met, as asserted, on that branch.
+        assert apart <= 1e-6 or apart > 0.5, apart
+    # Otherwise the library's solve is no oracle here: its step ignores the limits (from some starts it ends outside
+    # them, the solve here at a limit), or its damped steps stop short of its 1e-9 tolerances in its iterations
+    # (seed 729201: 1.2e-7 m off after 200, inside the limits, the solve here on the pose to 1e-16 m).
 
 
 @settings(max_examples=40, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])

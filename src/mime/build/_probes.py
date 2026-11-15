@@ -15,10 +15,11 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable, Iterator
 
-from jax.extend.core import Jaxpr, subjaxprs
+from jax.extend.core import Jaxpr
 from maddening import GraphManager
 
 from mime.build._maddening import (
+    held_programs,
     make_jaxpr,
     node_fluxes,
     node_state,
@@ -35,12 +36,14 @@ HOST_CALLBACKS = frozenset({"pure_callback", "io_callback", "debug_callback", "d
 
 def _jaxprs(jaxpr: Jaxpr) -> Iterator[Jaxpr]:
     yield jaxpr
-    for inner in subjaxprs(jaxpr):
-        yield from _jaxprs(inner)
+    for equation in jaxpr.eqns:
+        for inner in held_programs(equation.params):
+            yield from _jaxprs(inner)
 
 
 def host_callbacks(jaxpr: Jaxpr) -> set[str]:
-    """The host-callback primitives anywhere in ``jaxpr``, the bodies of its scans, loops and branches included."""
+    """The host-callback primitives anywhere in ``jaxpr``, the bodies of its scans, loops and branches included, and a
+    root find's solve (``lax.custom_root``)."""
     return {eqn.primitive.name for held in _jaxprs(jaxpr) for eqn in held.eqns if eqn.primitive.name in HOST_CALLBACKS}
 
 
