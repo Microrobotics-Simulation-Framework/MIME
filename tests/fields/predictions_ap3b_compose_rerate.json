@@ -43,5 +43,24 @@
     "if_wrong": "a planted draw that passes names a pose class the plant does not reach: report its pose; a clean draw above 10 floors means the term floor is not a bound there and the factor is not enough margin: report it, do not widen",
     "cannot_discriminate_if": "a draw puts the sphere at a singular point of the sources (the test's own NaN): counted inconclusive"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-16, after probe run 43762171161 (probe/ap3b-rerate at bb06085e = head 6b9fc5c9 plus probe/; GitHub runner, 4 vCPU; all 8 jobs succeeded; every arm's peak 0.72 to 0.74 GiB against its 1.13 to 1.15 GiB bound; the probe branch is deleted). The predictions above are unchanged.",
+    "detection_rates": {
+      "gate_1_moving_chain_test": {
+        "float64": "planted 20/20 (95 % lower bound 0.861), clean flagged 0/20",
+        "float32": "planted 20/20 (0.861), clean 0/20"
+      },
+      "gate_2_worst_pose_test": {
+        "float64": "planted 20/20 (0.861), clean 0/20",
+        "float32": "planted 20/20 (0.861), clean 0/20"
+      },
+      "gate_3_random_poses": {
+        "float64": "planted 30/30 (0.905), clean flagged 0/30 (seeds 100 to 129)",
+        "float32": "planted 30/30 (0.905), clean 0/30"
+      }
+    },
+    "inconclusive": "none in any arm",
+    "what_was_not_recorded": "the per-seed largest clean miss and smallest planted miss that gate 3 predicted (at most 4 and 3 floors clean, above 1e3 planted) were printed by the script but the harness keeps no output of runs that behave as predicted, so they are not in the artifacts: gate 3's numeric prediction is unchecked. What the rates show is that no clean draw exceeded SLACK (10 floors) or fell under the control's threshold, and every planted draw failed one of the two checks (the script exits 1 on either); which of the two failed is not recorded. The node arms repeat one fixed pose in fresh processes, so they rate the test across processes and the runner's bits, not across poses; gate 3 is the across-pose rate, 30 poses a dtype.",
+    "reading": "the composition-order plant is caught every run under the term-floor tolerance, in the moving chain's test, the worst pose's test and on 30 random poses a dtype, with the clean arms quiet (0 false alarms in 20 and 30 runs). The 95 % lower bounds are 0.861 (20 runs) and 0.905 (30): the rate is 'every run observed', not a proven one."
+  }
 }
