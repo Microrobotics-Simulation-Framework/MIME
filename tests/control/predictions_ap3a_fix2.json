@@ -39,5 +39,8 @@
   "if_wrong": "a miss is a draw where max |J_k| is below the line's share (a moment along the force's null for every coil): read the missed seed",
   "cannot_discriminate_if": "both arms fail or both pass"
  },
- "outcomes": null
+ "outcomes": {
+  "recorded": "2026-11-15",
+  "gate_1_the_affine_control_fires_every_run": "NOT JUDGED: the arms (200 runs a dtype in one job each) were still running after 5.5 h and were cancelled; relaunched as 4 arms of 50 runs a dtype with fresh seeds (predictions_ap3a_fix3.json). The prediction stands unedited above"
+ }
 }

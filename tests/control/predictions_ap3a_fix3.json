@@ -1,0 +1,74 @@
+{
+ "written": "2026-11-15, committed before the third probe of PR 312's fix round (the commit that adds this file is the timestamp): the affine control's rate in shorter arms, the allocator file's stability after its judge was widened, bits on the merged head",
+ "phase": "apparatus lane AP3a, fix round 3: rates in arms short enough to finish",
+ "labels": "the fix agent (Sonnet); the first two probes' affine arms ran over 5.5 h and were cancelled unjudged (outcomes in predictions_ap3a_fix.json and _fix2.json)",
+ "seen_before": [
+  "probe 1: offset 20/20 and clean 0/20; the allocator file failed 1 run of 100 (classified and fixed in the judge); bits equal with differing one-ulp controls; the affine arms never judged",
+  "locally, the new plant's smallest planted ratio over the line was 355 in float32 over 1200 draws; the clean model's largest 1.3e-4"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "CPU; GitHub runner, 4 vCPU",
+  "sizes_and_parameters": "as predictions_ap3a_fix2.json; the allocator file at 25 Hypothesis examples a property",
+  "seeds_and_draws": "the affine control: four arms of 50 runs a dtype (seed bases 0, 50, 100, 150), the clean arm beside each; the allocator file: two arms of 25 runs with nothing planted (seed bases 100 and 150)"
+ },
+ "gate_1_the_affine_control_fires_every_run": {
+  "claim": "the planted term sum_k |J_k| u_k^2 / 1 A is caught on every run on fresh draws, in each dtype, with nothing flagged on the clean arm",
+  "kind": "equality to rounding, with a control",
+  "case": "tests/oracles/test_forward_models.py::test_the_coil_model_is_affine_in_its_currents_force_and_torque_included[float32] and [float64], AP3_PLANT=affine",
+  "prediction": {
+   "value": "200/200 caught per dtype (50 of 50 in each of four arms); clean 0/200",
+   "band": [
+    199,
+    200
+   ],
+   "unit": "runs caught of 200",
+   "basis": "derived (the added term is at least 0.25 max |J_k|, at least 7.8 times the line in float32) and measured-before (355 times over 1200 draws)",
+   "why": "every term has the same sign: nothing cancels"
+  },
+  "control": {
+   "plant": "AP3_PLANT=affine",
+   "environment_variable": "AP3_PLANT=affine",
+   "expected_rate": "200/200",
+   "runs": 200,
+   "clean_expected": "0/200"
+  },
+  "if_wrong": "read the missed seed; a miss is a draw where max |J_k| is below the line's share",
+  "cannot_discriminate_if": "both arms fail or both pass"
+ },
+ "gate_2_the_allocator_file_is_stable": {
+  "claim": "tests/control/test_allocator_objectives.py never fails with nothing planted",
+  "kind": "stability",
+  "case": "the whole file, 25 runs an arm in two arms, both arms of each with nothing planted: 100 runs of the file in all",
+  "prediction": {
+   "value": "0 failing of 100",
+   "band": [
+    0,
+    0
+   ],
+   "unit": "failing runs of 100",
+   "basis": "guess: one run of 100 failed before the judge accepted the law's documented tie, a draw class now covered; another class may exist",
+   "why": "see the first probe's outcome"
+  },
+  "control": {
+   "plant": "none",
+   "environment_variable": "AP3_PLANT=none",
+   "expected_rate": "0 failing",
+   "runs": 50,
+   "clean_expected": "0"
+  },
+  "if_wrong": "capture the blob, classify by the five causes, fix the judge or the draw; no tolerance of the law changed",
+  "cannot_discriminate_if": "n/a"
+ },
+ "bits": {
+  "cases": "A0, script A, the tutorials and the sphere, both dtypes, base (release/v0.3.0 at its tip, P7a included) against this head; a one-ulp control",
+  "prediction": "every array equal; the controls differ",
+  "controls": {
+   "one_ulp": "differs in both dtypes"
+  }
+ },
+ "outcomes": null
+}
