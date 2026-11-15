@@ -139,6 +139,34 @@ def test_a_unique_minimiser_binds_the_law_only_past_its_tie_window_in_float32():
     assert verdict(problem, bvls(problem) * np.asarray([-1, 1, 1, 1, 1, 1, 1, 1]), "float64") != []
 
 
+def cardiomag_tie_draw() -> Problem:
+    """Release run 43748061840's second swap red (PR 325's CI, float32): CardioMag at the centre of its region asked for a
+    field along z and a gradient's last entries, the field rows over 10 mT and the gradient's over 1 T/m, 5 A."""
+    matrix = provider("cardiomag").actuation(m((0.0, 0.0, 0.0))).matrix()
+    wanted = np.asarray([0.0, 0.0, 0.03585362502957054, 0.0, 0.0, 0.0, 0.057365800047312863, 0.043024350035484646])
+    return Problem("cardiomag", "both", matrix, wanted, np.asarray([1e-2] * 3 + [1.0] * 5), 5.0)
+
+
+def test_a_unique_minimiser_with_a_command_off_its_bound_is_held_to_the_tie_window_too():
+    """The second draw of the same cause. Unique (columns alike), float64 agrees with BVLS to 3e-14 A; in float32 the law
+    puts command 5 at its +5 A bound where BVLS leaves it at 4.95 A, and the commands differ by 0.062 A against a line of
+    0.00083. The residuals differ by 3.4e-5, inside the windows (1.3e-4), and the law's effort is the lower. The law's
+    float32 commands at the draw are held here as numbers, so that the case does not move with the law's rounding."""
+    problem = cardiomag_tie_draw()
+    a, b = problem.scaled("float32")
+    reference = bvls(problem, "float32")
+    law = np.asarray([5.0, -4.20883465, 4.74467897, -4.38866854, 5.0, -4.01990557, 3.06744909, -3.12709117])
+    gap = float(np.linalg.norm(a @ law - b) - np.linalg.norm(a @ reference - b))
+    window = tie_window(problem, law, "float32") + tie_window(problem, reference, "float32")
+    assert unique(problem, "float32") and float(np.max(np.abs(law - reference))) > line(problem, reference, "float32")
+    assert 0.0 < gap < window
+    assert verdict(problem, law, "float32") == []
+    far = reference.copy()
+    far[2] *= -1  # a command whose flip costs far more than the windows
+    assert verdict(problem, far, "float32") != []
+    assert verdict(problem, solved(problem, "float64"), "float64") == []
+
+
 def fixed_problems() -> list[Problem]:
     """A problem on each array and kind, drawn once by a fixed seed, its wanted value three times what the limit
     reaches."""

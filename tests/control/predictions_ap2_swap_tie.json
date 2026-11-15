@@ -64,7 +64,8 @@
     },
     "gate_2_regression_draw": {
       "hit": true,
-      "note": "passes with the change; fails without it (measured on the laptop before the commit); and run in CI by the PR's default lane"
+      "note": "passes with the change; fails without it (measured on the laptop before the commit); and run in CI by the PR's default lane",
+      "second_draw": "PR 325's CI (run 43748061840, float32): CardioMag 'both' at the centre, the law's command 5 at its +5 A bound where BVLS leaves 4.95 A, 0.062 A over a line of 0.00083 A; the residuals differ by 3.4e-5 inside the windows (1.3e-4), the law's effort lower (144.83 against 145.02). Covered by the same rule; its test fails on the old verdict (measured)."
     }
   }
 }
