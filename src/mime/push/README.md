@@ -82,7 +82,7 @@ full-width or another script's digit, which a terminal shows as a digit, is refu
 (`mime.toml`, the defaults, `--setup`). `pack` neither carries nor refuses the file (the bundle's bytes are the same with
 it and without it), and `mime card` names its creators.
 
-**`--init` is the alias of `mime scaffold bundle|study <folder> --yes`** (the cli README): both write what `mime.push._draft.new_manifest` returns, the same bytes (a test holds them equal), and differ in one thing, an existing `mime.toml`, which `--init` keeps with a line and exit zero and scaffold refuses (`scaffold.exists`).
+**`--init` is the alias of `mime scaffold bundle|study <folder> --yes`** (the cli README): both write what `mime.push._draft.new_manifest` returns, the same bytes (a test holds them equal), and differ in two things: an existing `mime.toml`, which `--init` keeps with a line and exit zero and scaffold refuses (`scaffold.exists`), and a folder holding `sharing.yaml`, whose values `--init` migrates into `mime.toml` and scaffold refuses (`scaffold.exists`).
 
 **`sharing.yaml` is no longer read** (a development release keeps no reading period). A folder holding it alone is refused
 (`manifest.missing`) with the route: `mime push <folder> --setup` writes `mime.toml` from it, a field at a time, each

@@ -13,7 +13,15 @@ refuse) and a plant that shows the check can fail:
   is caught in the file;
 - **``--dry-run`` writes nothing**, draws the tree and where each value came from; planted as a real run, the writing is caught;
 - **the alias**: ``mime push --init`` and ``mime scaffold bundle|study --yes`` write the same bytes, and differ in what an
-  existing ``mime.toml`` meets (kept softly, refused); planted with one writer's text changed, the bytes are caught apart."""
+  existing ``mime.toml`` meets (kept softly, refused) and in a ``sharing.yaml`` (migrated, refused); planted with one
+  writer's text changed, the bytes are caught apart;
+- **a plugin's namespace is never one that is taken** (``scaffold.set``): each first word of MIME's refusal codes and entries,
+  read from the registry, is refused at ``--set`` and where the folder's name or the defaults give it, and the core's own
+  ``register_namespace`` refuses the same words (the two are held together); a walk asks again;
+- **a kind that is not the folder's** is ``manifest.kind``, naming both; the ``scaffold.exists`` action of a bundle or a study
+  names ``--setup``, never a new name;
+- **a link is a path that exists**: a dangling symlink where a kind is scaffolded, or as the ``mime.toml`` of a saved folder, is
+  ``scaffold.exists`` and nothing is written; planted with ``is_symlink`` answering no, the same check sees the error."""
 
 import tomllib
 from pathlib import Path
@@ -25,10 +33,11 @@ from study_rigs import write_study
 
 from mime import credentials, push, scaffold
 from mime.assets._acceptances import acceptances_path
-from mime.build import BuildRefused
+from mime.build import REFUSAL_TABLE, BuildRefused
 from mime.cli import main as mime_main
 from mime.push import _defaults, _draft
-from mime.scaffold import _scaffold
+from mime.scaffold import _scaffold, _values
+from mime.vocabulary import register_namespace
 
 
 def quiet(line: str) -> None:
@@ -89,6 +98,8 @@ def test_a_second_scaffold_is_refused_and_changes_nothing(kind: str, tmp_path: P
     assert "scaffold never overwrites" in refused.refusals[0].message
     if kind in ("bundle", "study", "block"):
         assert f"mime push {path} --setup" in refused.refusals[0].action
+    assert ("another name" in refused.refusals[0].action) == (kind not in ("bundle", "study")), \
+        "a bundle or a study adds to an existing folder: scaffolding into another name is no route for it"
 
 
 @pytest.mark.parametrize("kind", ["experiment", "block", "plugin"])
@@ -314,3 +325,132 @@ def test_an_existing_mime_toml_is_kept_softly_by_init_and_refused_by_scaffold(sa
     assert mime_main(["scaffold", "bundle", str(folder), "--yes"]) == 2
     assert "scaffold.exists" in capsys.readouterr().err
     assert (folder / "mime.toml").read_bytes() == held
+
+
+# -- a plugin's namespace -----------------------------------------------------------------------------------------------
+
+
+def mime_words() -> list[str]:
+    """The words MIME's own refusal codes and entries begin with, as the core's ``register_namespace`` reads them."""
+    return sorted(word for word, held in _values.taken_namespaces().items() if held.startswith("the first word of MIME's"))
+
+
+def test_each_first_word_of_mimes_codes_and_entries_is_refused_as_a_namespace_and_the_core_refuses_the_same():
+    words = mime_words()
+    assert {"helix", "camera", "tube", "sphere"} <= set(words), "the words come from the registry and the table"
+    assert {code.split(".", 1)[0] for code in REFUSAL_TABLE} <= set(words)
+    for word in words:
+        assert _values.namespace_check(word) is not None, word
+        with pytest.raises(ValueError):
+            register_namespace(word, "0.0.1")
+    assert _values.namespace_check("a_free_lab_word") is None
+
+
+def test_a_namespace_an_installed_distribution_declares_is_refused_read_from_the_environment(tmp_path: Path):
+    """``labx`` is MIME's lab fixture's, installed in the environment the suite runs in (``lab_fixture/``)."""
+    held = _values.taken_namespaces()
+    assert "labx" in held and "mime-lab-fixture" in held["labx"]
+    refused = refusal_of(lambda: scaffold.scaffold("plugin", tmp_path / "p", yes=True, sets=["plugin.namespace=labx"], say=quiet))
+    assert codes(refused) == ["scaffold.set"] and "mime-lab-fixture" in refused.refusals[0].message
+    assert not (tmp_path / "p").exists()
+
+
+def test_set_refuses_a_taken_namespace_naming_it_and_a_free_one(tmp_path: Path):
+    for word in ("helix", "camera"):
+        refused = refusal_of(lambda word=word: scaffold.scaffold("plugin", tmp_path / "p", yes=True,
+                                                                  sets=[f"plugin.namespace={word}"], say=quiet))
+        refusal = refused.refusals[0]
+        assert codes(refused) == ["scaffold.set"] and word in refusal.message and f"lab_{word}" in refusal.message
+        assert not (tmp_path / "p").exists()
+    scaffold.scaffold("plugin", tmp_path / "p", yes=True, sets=["plugin.namespace=lab_helix"], say=quiet)
+    assert (tmp_path / "p" / "pyproject.toml").is_file()
+
+
+def test_a_namespace_derived_from_the_folders_name_is_refused_too(tmp_path: Path):
+    refused = refusal_of(lambda: scaffold.scaffold("plugin", tmp_path / "helix-robot", yes=True, say=quiet))
+    refusal = refused.refusals[0]
+    assert codes(refused) == ["scaffold.set"] and "helix" in refusal.message and "folder's name" in refusal.message
+    assert "--set plugin.namespace=" in refusal.action and not (tmp_path / "helix-robot").exists()
+    dry = refusal_of(lambda: scaffold.scaffold("plugin", tmp_path / "helix-robot", yes=True, dry_run=True, say=quiet))
+    assert codes(dry) == ["scaffold.set"], "a dry run shows what --yes would do, which is the refusal"
+
+
+def test_a_namespace_the_defaults_hold_is_refused_naming_the_defaults(tmp_path: Path):
+    _defaults.write_defaults({}, namespace="helix")
+    refused = refusal_of(lambda: scaffold.scaffold("plugin", tmp_path / "robot", yes=True, say=quiet))
+    assert codes(refused) == ["scaffold.set"] and "defaults" in refused.refusals[0].message
+    assert "mime defaults" in refused.refusals[0].action
+    scaffold.scaffold("plugin", tmp_path / "robot", yes=True, sets=["plugin.namespace=lab_robot"], say=quiet)
+
+
+def test_a_walk_does_not_offer_a_taken_namespace_and_asks_until_a_free_one_is_typed(tmp_path: Path):
+    """The distribution kept, then at the namespace: Enter (refused, asked again), a taken word (said, asked again), a free one."""
+    person = Person("", "", "helix", "lab_robot", "", "", "", "", "")
+    scaffold.scaffold("plugin", tmp_path / "helix-robot", typed=person.typed, ask=person.ask, say=person.say)
+    assert not any("use helix?" in each or 'use "helix"?' in each for each in person.asked), "never offered to keep"
+    assert any("cannot be used" in each for each in person.asked), "the reason is said at the question"
+    assert sum("first word of MIME's" in each for each in person.asked) >= 3, "Enter and the typed word are each told why"
+    project = tomllib.loads((tmp_path / "helix-robot" / "pyproject.toml").read_text(encoding="utf-8"))
+    assert list(project["project"]["entry-points"]["mime.entries"]) == ["lab_robot"]
+
+
+# -- a kind that is not the folder's ---------------------------------------------------------------------------------------
+
+
+def test_a_kind_that_is_not_the_folders_is_manifest_kind_naming_both(tmp_path: Path, saved: Path, study: Path):
+    for asked, folder, found in (("study", copy_of(saved, tmp_path / "a"), "bundle"),
+                                 ("bundle", copy_of(study, tmp_path / "b"), "study")):
+        before = tree_of(folder)
+        refused = refusal_of(lambda asked=asked, folder=folder: scaffold.scaffold(asked, folder, yes=True, say=quiet))
+        refusal = refused.refusals[0]
+        assert codes(refused) == ["manifest.kind"]
+        assert f"a {asked} was asked for" in refusal.message and f"is a {found} folder" in refusal.message
+        assert f"mime scaffold {found} " in refusal.action
+        assert tree_of(folder) == before
+
+
+def test_an_existing_mime_toml_of_another_kind_is_scaffold_exists_with_the_route_to_edit_it(tmp_path: Path, saved: Path):
+    folder = copy_of(saved, tmp_path)
+    scaffold.scaffold("bundle", folder, yes=True, say=quiet)
+    refused = refusal_of(lambda: scaffold.scaffold("study", folder, yes=True, say=quiet))
+    assert codes(refused) == ["scaffold.exists"] and f"mime push {folder} --setup" in refused.refusals[0].action
+
+
+# -- a link is a path that exists ----------------------------------------------------------------------------------------
+
+
+def linked(kind: str, tmp_path: Path, saved: Path, study: Path) -> tuple[Path, Path]:
+    """A path where ``kind`` would be scaffolded, with a dangling symlink in the way: at the path itself, or for a bundle and a
+    study as the folder's ``mime.toml``; and the path to scaffold at."""
+    path = target(kind, tmp_path, saved, study)
+    link = path / "mime.toml" if kind in ("bundle", "study") else path
+    link.symlink_to(tmp_path / "nowhere")
+    return path, link
+
+
+def link_problems(kind: str, tmp_path: Path, saved: Path, study: Path) -> list[str]:
+    """Empty where a scaffold meets the dangling link with ``scaffold.exists`` and leaves it be."""
+    path, link = linked(kind, tmp_path, saved, study)
+    try:
+        scaffold.scaffold(kind, path, yes=True, say=quiet)
+    except BuildRefused as refused:
+        found = codes(refused)
+        problems = [] if found == ["scaffold.exists"] else [f"refused as {found}"]
+    except Exception as error:  # noqa: BLE001 - what the planted guard lets through is the finding
+        return [f"raised {type(error).__name__}"]
+    else:
+        return ["scaffolded over a dangling link"]
+    return problems if link.is_symlink() and not link.exists() else [*problems, "the link was changed"]
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_dangling_symlink_is_refused_as_a_path_that_exists(kind: str, tmp_path: Path, saved: Path, study: Path):
+    assert link_problems(kind, tmp_path, saved, study) == []
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_the_symlink_check_fails_when_the_guard_does_not_see_a_link(kind: str, tmp_path: Path, saved: Path, study: Path,
+                                                                    monkeypatch: pytest.MonkeyPatch):
+    """The planted guard: ``is_symlink`` answering no, as a guard that asked only ``exists()`` would."""
+    monkeypatch.setattr(Path, "is_symlink", lambda self: False)
+    assert link_problems(kind, tmp_path, saved, study) != []

@@ -24,17 +24,19 @@ start from is `mime scaffold plugin`, below.
 example entry in `src/<package>/entries.py`, and a test that the entry round-trips, as MIME's own registry walk asks of each
 of its entries. Every value is the one you give with `--set`, else your `defaults.toml` (the namespace, the licence of your
 code, your name), else scaffold's own, and `--dry-run` draws the files and says where each value came from before anything
-is written. It never overwrites: a folder that exists is refused.
+is written. It never overwrites: a folder that exists is refused. A namespace that is taken (the first word of one of MIME's
+entries or refusal codes, or one an installed package declares) is refused with a free word to try, since one clash breaks
+`mime registry` for the whole environment: a folder named `helix-robot` therefore needs `--set plugin.namespace=`.
 
 <!-- mime-fragment: a shell session, not code a test runs; the command lines are parsed against the CLI by the docs check -->
 ```bash
-mime scaffold plugin labx-probes --set plugin.namespace=labx --dry-run --yes
-mime scaffold plugin labx-probes --set plugin.namespace=labx --yes
-pip install -e labx-probes
-mime registry | grep labx
+mime scaffold plugin acme-probes --set plugin.namespace=acme --dry-run --yes
+mime scaffold plugin acme-probes --set plugin.namespace=acme --yes
+pip install -e acme-probes
+mime registry | grep acme
 ```
 
-The namespace is the word before the dot in every entry's name (`labx.example_load`); records use `_` where entries use `.`, and
+The namespace is the word before the dot in every entry's name (`acme.example_load`); records use `_` where entries use `.`, and
 an instance is named `name:thing`. The example entry delivers to the toy body's load, so it runs beside MIME's `toy` entries;
 replace it with your law.
 

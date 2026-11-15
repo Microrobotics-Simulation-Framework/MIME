@@ -76,9 +76,6 @@ DEFAULT_OF: Mapping[str, str] = {
     EXPERIMENT_LICENCE: "content", BLOCK_LICENCE: "content", PLUGIN_LICENCE: "code",
     NAMESPACE: "namespace",
 }
-#: The keys a walk keeps the own value of at Enter (a record always has them); the others may be left empty.
-_NEEDED = (EXPERIMENT_NAME, EXPERIMENT_LICENCE, BUNDLE_LICENCE, STUDY_LICENCE, BLOCK_ID, BLOCK_VERSION,
-           BLOCK_LICENCE, TITLE, DISTRIBUTION, NAMESPACE, PACKAGE, PLUGIN_LICENCE)
 LIST_KEYS = (KEYWORDS,)
 PEOPLE_KEYS = (CREATORS, AUTHORS)
 #: A distribution's name as PEP 508 writes it.
@@ -163,11 +160,60 @@ def package_problem(given: str) -> str | None:
         f"{plain(repr(given))} is not a Python package's name (lower-case letters, digits and '_', not a keyword)"
 
 
+def taken_namespaces() -> dict[str, str]:
+    """Every namespace a plugin may not take, each with who holds it: the first word of one of MIME's refusal codes or of
+    one of MIME's registered entries (the words :func:`mime.vocabulary.register_namespace` refuses, read from the same
+    two places), a namespace registered in this process, and one an installed distribution declares in its
+    ``mime.entries`` entry points. Read from the registry and the environment at the time of asking, never listed here."""
+    from mime.build import REFUSAL_TABLE
+    from mime.registry import registered
+    from mime.saved._resolve import namespace_providers
+    from mime.vocabulary import MIME_NAMESPACE, versions
+
+    taken: dict[str, str] = {}
+    for first in sorted({code.split(".", 1)[0] for code in REFUSAL_TABLE}):
+        taken[first] = "the first word of MIME's refusal codes"
+    for record in registered():
+        if record.namespace == MIME_NAMESPACE:
+            taken[record.name.split(".", 1)[0]] = "the first word of MIME's entries"
+    for name, point in namespace_providers().items():
+        taken.setdefault(name, f"a namespace {point.dist.name if point.dist is not None else 'a package'} declares here")
+    for name in versions():
+        taken.setdefault(name, "a namespace registered in this environment")
+    return taken
+
+
+def free_namespace(stem: str) -> str:
+    """A namespace near ``stem`` that nothing holds: ``lab_<stem>``, then that with a number."""
+    taken = taken_namespaces()
+    candidate = f"lab_{stem}"
+    number = 2
+    while candidate in taken:
+        candidate = f"lab_{stem}{number}"
+        number += 1
+    return candidate
+
+
+def namespace_clash(name: str) -> str | None:
+    """Why a plugin may not take ``name`` as its namespace (MIME's own first word, or one this environment already holds),
+    naming a free one near it; ``None`` where it is free. :func:`~mime.push._defaults.namespace_problem` checks the form."""
+    held = taken_namespaces().get(name)
+    if held is None:
+        return None
+    return (f"{plain(name)} is {held}: a plugin that takes it breaks `mime registry` for the whole environment; "
+            f"try {free_namespace(name)}")
+
+
+def namespace_check(given: str) -> str | None:
+    """A plugin's namespace as the registry would take it: one lower-case word that nothing holds."""
+    return namespace_problem(given) or namespace_clash(given)
+
+
 def check_of(key: str, declared: str | None = None) -> Callable[[str], str | None]:
     """The check a text value of ``key`` is held to."""
     if key.endswith(".licence"):
         return licence_check(declared)
-    return {BLOCK_ID: id_problem, BLOCK_VERSION: version_problem, NAMESPACE: namespace_problem,
+    return {BLOCK_ID: id_problem, BLOCK_VERSION: version_problem, NAMESPACE: namespace_check,
             DISTRIBUTION: distribution_problem, PACKAGE: package_problem,
             EXPERIMENT_NAME: experiment_problem}.get(key, _plain_text)
 
@@ -185,14 +231,14 @@ def parse(key: str, text: str, declared: str | None) -> object:
         problem = check_of(key, declared)(text)
     if problem is not None:
         raise BuildRefused([Refusal("scaffold.set", RefusalClass.USER, f"--set {key}=...: {problem}",
-                                    f"give {key} a value that is {_what(key)} with --set, or leave it out")])
+                                    f"give {key} {_what(key)} with --set, or leave it out")])
     return value
 
 
 def _what(key: str) -> str:
-    return {CREATORS: "`family, given[, orcid]`, separated by semicolons",
-            AUTHORS: "`family, given[, orcid]`, separated by semicolons",
-            KEYWORDS: "words separated by commas"}.get(key, "as `mime check` reads it")
+    return {CREATORS: "people as `family, given[, orcid]`, separated by semicolons",
+            AUTHORS: "people as `family, given[, orcid]`, separated by semicolons",
+            KEYWORDS: "words separated by commas"}.get(key, "a different value")
 
 
 def sets_of(kind: str, given: Sequence[str], declared: str | None) -> dict[str, object]:
@@ -234,7 +280,7 @@ def own_plugin_names(folder: str) -> dict[str, str]:
     if not _PACKAGE.fullmatch(package) or keyword.iskeyword(package):
         package = f"mime_{package}"
     stem = package.removeprefix("mime_").split("_")[0]
-    namespace = stem if namespace_problem(stem) is None else "labx"
+    namespace = stem if namespace_problem(stem) is None else "mylab"
     return {"distribution": distribution or package.replace("_", "-"), "package": package, "namespace": namespace}
 
 
@@ -246,5 +292,5 @@ def person_name(person: Mapping[str, str]) -> str:
 __all__ = ["ASKED", "AUTHORS", "BLOCK_ID", "BLOCK_LICENCE", "BLOCK_VERSION", "BUNDLE_LICENCE", "CREATORS", "DESCRIPTION",
            "DISTRIBUTION", "EXPERIMENT_LICENCE", "EXPERIMENT_NAME", "KEYWORDS", "NAMESPACE", "PACKAGE", "PLUGIN_LICENCE",
            "STUDY_LICENCE", "TITLE", "DEFAULTS", "DEFAULT_OF", "KEYS", "KINDS", "LIST_KEYS", "OWN", "PEOPLE_KEYS", "SET", "Held",
-           "check_of", "licence_check", "mime_range", "own_experiment_name", "own_plugin_names", "parse", "person_name", "sets_of",
-           "text_of"]
+           "check_of", "licence_check", "mime_range", "namespace_check", "namespace_clash", "own_experiment_name",
+           "own_plugin_names", "parse", "person_name", "sets_of", "taken_namespaces", "text_of"]

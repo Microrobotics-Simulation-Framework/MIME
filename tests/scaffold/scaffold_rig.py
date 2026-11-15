@@ -124,20 +124,22 @@ def verified(folder: Path) -> list[str]:
     return [] if code == 0 else [f"mime verify exited {code}:\n{out.getvalue()[-400:]}"]
 
 
-def made(kind: str, root: Path) -> Path:
-    """The path to scaffold ``kind`` at, in ``root``: a saved or study folder for a bundle and a study."""
+def made(kind: str, root: Path, name: str | None = None) -> Path:
+    """The path to scaffold ``kind`` at, in ``root``: a saved or study folder for a bundle and a study; ``name`` is the
+    folder of the other kinds."""
     if kind == "bundle":
         return saved_toy(root)
     if kind == "study":
         return write_study(root / "toy_study", figure=False)
-    return root / ("scafx-probes" if kind == "plugin" else f"new_{kind}")
+    return root / (name or ("scafx-probes" if kind == "plugin" else f"new_{kind}"))
 
 
-def failures_of(kind: str, root: Path) -> list[str]:
-    """Scaffold ``kind`` with ``--yes`` at a path in ``root`` and run its check: every failure, empty when it passes."""
-    path = made(kind, root)
+def failures_of(kind: str, root: Path, name: str | None = None, sets: list[str] | None = None) -> list[str]:
+    """Scaffold ``kind`` with ``--yes`` at a path in ``root`` (``name`` its folder, ``sets`` its ``--set`` words: for a plugin
+    the namespace ``scafx``) and run its check: every failure, empty when it passes."""
+    path = made(kind, root, name)
     try:
-        sets = [f"plugin.namespace={NAMESPACE}"] if kind == "plugin" else []
+        sets = sets if sets is not None else [f"plugin.namespace={NAMESPACE}"] if kind == "plugin" else []
         scaffold.scaffold(kind, path, yes=True, sets=sets, say=lambda line: None)
         if kind == "experiment":
             return verified(path / "saved")

@@ -23,7 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verifies; the plugin is built with the environment's own build backend into a temporary target only a subprocess sees, where
   `mime registry --json` lists it and its own test passes, so the suite's registry is never changed); a misspelt key planted in each
   kind's template fails it (caught 5 of 5). `mime push --init` is kept as the alias of `mime scaffold bundle|study <folder>
-  --yes`, one writer and the same bytes, a test holds them equal; it keeps an existing `mime.toml` softly where scaffold refuses.
+  --yes`, one writer and the same bytes, a test holds them equal; it keeps an existing `mime.toml` softly where scaffold refuses, and migrates a folder's `sharing.yaml` where scaffold refuses it.
+  A plugin's namespace that is taken (the first word of one of MIME's refusal codes or entries, or a namespace an installed
+  distribution declares, read from the registry and the environment) is refused (`scaffold.set`) with a free word to try, also
+  where it is derived from the folder's name or your defaults (`helix-robot` does not default to `helix`); `block --from` takes the
+  saved experiment's declared licence as the block's and refuses another; a saved or study folder asked for as the other kind is
+  `manifest.kind`; the symlink guard is tested.
   `mime new`, planned before, is `mime scaffold experiment`. `push._setup`'s `Walk`, `asked` and `filled` are public in that module.
 
 - **Static meshes in the in-loop camera, traced once a run** (`mime.sensing._mesh`, `mime.sensing.mesh_chords`,
