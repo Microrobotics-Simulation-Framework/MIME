@@ -16,6 +16,8 @@ the concept pages, which this guide links to where you meet each idea and does n
   overrides.
 - [Ports](ports.md): the links between a controller and what it drives, a command's rate, latency, bounds, slew and
   response, and a measurement's.
+- [A closed loop through a camera](camera_loop.md): a sphere steered by a camera's frames through a tracker, a PID and the
+  exact allocation, differentiable end to end, with what its checks bound and what the camera cannot see.
 - [Showing an experiment](graph_and_tree.md): its topology as a tree and the graph it compiles to as Mermaid, from Python, the
   command line and a notebook.
 - [The command line](cli.md): every command and flag, generated from the parser.
