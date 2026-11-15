@@ -15,8 +15,30 @@ in MIME's repository so that CI builds and installs it in every lane and shows t
 MIME registers for itself. If the fixture ever needed an edit to MIME to pass, the extension contract would be wrong;
 `tests/test_lab_fixture.py` is the control that registering from outside works. Every piece of code on this page is included
 from its files, so the page shows code a test runs. A real plugin has the same shape in a repository of its own, with its own
-tests and versions. Publishing one (versions and compatibility, releasing it, and a template to start from) is documented in
-a later release.
+tests and versions. Publishing one (versions and compatibility, releasing it) is documented in a later release; the template to
+start from is `mime scaffold plugin`, below.
+
+## Starting from a template
+
+`mime scaffold plugin` writes a plugin of your own to start from: a `pyproject.toml` with its `mime.entries` entry point, one
+example entry in `src/<package>/entries.py`, and a test that the entry round-trips, as MIME's own registry walk asks of each
+of its entries. Every value is the one you give with `--set`, else your `defaults.toml` (the namespace, the licence of your
+code, your name), else scaffold's own, and `--dry-run` draws the files and says where each value came from before anything
+is written. It never overwrites: a folder that exists is refused. A namespace that is taken (the first word of one of MIME's
+entries or refusal codes, or one an installed package declares) is refused with a free word to try, since one clash breaks
+`mime registry` for the whole environment: a folder named `helix-robot` therefore needs `--set plugin.namespace=`.
+
+<!-- mime-fragment: a shell session, not code a test runs; the command lines are parsed against the CLI by the docs check -->
+```bash
+mime scaffold plugin acme-probes --set plugin.namespace=acme --dry-run --yes
+mime scaffold plugin acme-probes --set plugin.namespace=acme --yes
+pip install -e acme-probes
+mime registry | grep acme
+```
+
+The namespace is the word before the dot in every entry's name (`acme.example_load`); records use `_` where entries use `.`, and
+an instance is named `name:thing`. The example entry delivers to the toy body's load, so it runs beside MIME's `toy` entries;
+replace it with your law.
 
 ## What a lab registers
 

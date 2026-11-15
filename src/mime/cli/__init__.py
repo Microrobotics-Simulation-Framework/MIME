@@ -1274,6 +1274,21 @@ def _check(folder: Path, profile: str | None) -> int:
     return 1 if checked.findings else 0
 
 
+def _scaffold(arguments: argparse.Namespace) -> int:
+    """``mime scaffold <kind> <path>``: the folder made, its tree and where each value came from said."""
+    from mime import scaffold
+
+    voice = _Voice("uploading")
+    with _setup_questions(voice) as (typed, ask):
+        try:
+            scaffold.scaffold(arguments.kind, arguments.path, yes=arguments.yes, sets=arguments.sets,
+                              dry_run=arguments.dry_run, source=arguments.from_folder, sockets=arguments.sockets,
+                              typed=typed, ask=ask, say=voice.say)
+        finally:
+            voice.close()
+    return 0
+
+
 def _push(arguments: argparse.Namespace) -> int:
     from mime import push
     from mime.push._defaults import read_all
@@ -1652,7 +1667,9 @@ def build_parser() -> _guide.MimeParser:
     pushing_mode = pushing.add_mutually_exclusive_group()
     pushing_mode.add_argument("--init", action="store_true", help="write mime.toml, the record's manifest, from what "
                                                                   "the folder knows (or its sharing.yaml) and your "
-                                                                  "defaults")
+                                                                  "defaults: an alias of `mime scaffold bundle|study "
+                                                                  "<folder> --yes`, which refuses an existing one "
+                                                                  "(scaffold.exists) where --init keeps it")
     pushing_mode.add_argument("--setup", action="store_true",
                               help="make or edit mime.toml a field at a time, in a terminal: each field explained, "
                                    "Enter skips it or keeps the value shown; then save your defaults if you like")
@@ -1680,6 +1697,28 @@ def build_parser() -> _guide.MimeParser:
     site_edits.add_argument(push.OVERWRITE_FLAG, dest="overwrite_site_edits", action="store_true",
                          help="write the draft's metadata from mime.toml and the folder over what was edited on the "
                               "service's site since push last wrote it (without it, such an edit stops the push)")
+    from mime.scaffold import KINDS as scaffold_kinds
+
+    scaffolding = commands.add_parser(
+        "scaffold", help="start a new experiment, bundle, study, block or plugin from a template, its values from your "
+                         "defaults (never overwrites; --yes asks nothing)",
+        usage="%(prog)s [-h] [--yes] [--set KEY=VALUE]... [--dry-run] [--from FOLDER --socket NAME=THING]...\n"
+              "                 {" + ",".join(scaffold_kinds) + "} path")
+    scaffolding.add_argument("kind", choices=list(scaffold_kinds), metavar="kind", help="what to scaffold: a bundle or a study adds "
+                                                                         "mime.toml to the saved or study folder at path")
+    scaffolding.add_argument("path", type=Path, help="the new folder (for a bundle or a study, the existing folder)")
+    scaffolding.add_argument("--yes", "-y", action="store_true",
+                             help="ask nothing: each value from --set, then your defaults, then scaffold's own (it accepts no "
+                                  "licence and declares no permission, which scaffold never asks)")
+    scaffolding.add_argument("--set", dest="sets", metavar="KEY=VALUE", action="append", default=[],
+                             help="a value, by its key in mime.toml (block.id, record.title, plugin.namespace, ...); repeat "
+                                  "it, an unknown key names the known ones")
+    scaffolding.add_argument("--dry-run", action="store_true", help="draw the tree and where each value came from, and write "
+                                                                    "nothing")
+    scaffolding.add_argument("--from", dest="from_folder", type=Path, metavar="FOLDER",
+                             help="a block only: write its declarations from this saved experiment")
+    scaffolding.add_argument("--socket", dest="sockets", metavar="NAME=THING", action="append", default=[],
+                             help="with --from: the saved experiment's THING becomes the block's socket NAME")
     checking = commands.add_parser("check", help="check a shared folder's mime.toml offline, under a profile: what "
                                                  "must change, what push still needs, what a reviewer would ask")
     checking.add_argument("folder", type=Path, help="a saved folder or a study folder that holds mime.toml")
@@ -2097,6 +2136,8 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         return _credentials(arguments.credentials_command, arguments.service)
     if arguments.command == "check":
         return _check(arguments.folder, arguments.profile)
+    if arguments.command == "scaffold":
+        return _scaffold(arguments)
     if arguments.command == "defaults":
         return _defaults(arguments.defaults_command)
     if arguments.command == "push":

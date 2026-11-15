@@ -1,0 +1,80 @@
+"""One example entry of the namespace `${namespace}`: a constant load on a body, to replace with your law.
+
+MIME imports this module through the `mime.entries` entry point in pyproject.toml, so it registers the namespace and
+its entries. An entry is a frozen dataclass whose fields are its settings; its node does the arithmetic. This one
+delivers to the toy body's load, so it runs beside MIME's `toy` entries (tests/); a real one delivers to MIME's own
+interfaces (`mime.vocabulary`).
+"""
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Annotated, Any, cast, override
+
+import jax.numpy as jnp
+from jax import Array
+from jaxtyping import Float
+from maddening.core.node import SimulationNode
+from typing_extensions import ReadOnly, TypedDict
+
+from mime.build import InteractionBuilder
+from mime.core import NodeFields, node_fields, typed_view
+from mime.gradients import GradientStatus
+from mime.registry import (
+    DESIGN,
+    BuildContext,
+    Delivery,
+    Interaction,
+    RoleKind,
+    convention,
+    register_interaction,
+)
+from mime.testing.toys import LOAD
+from mime.units import Force, N, Quantity
+from mime.vocabulary import register_namespace
+
+register_namespace("${namespace}", "0.1.0")
+
+
+class LoadState(TypedDict, closed=True):
+    load: ReadOnly[Float[Array, "3"]]
+
+
+class ExampleLoadNode(SimulationNode):
+    """A constant load: its law, in SI, on arrays."""
+
+    def __init__(self, name: str, timestep: float, force: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> None:
+        super().__init__(name, timestep, force=tuple(force))
+
+    @override
+    def initial_state(self) -> NodeFields:
+        return node_fields(LoadState(load=jnp.asarray(cast(dict[str, Any], self.params)["force"],
+                                                      dtype=jnp.zeros(()).dtype)))
+
+    @override
+    def update(self, state: NodeFields, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeFields:
+        force = cast(dict[str, Any], self.params)["force"] if params is None else params["force"]
+        return node_fields(LoadState(load=jnp.asarray(force, dtype=typed_view(LoadState, state)["load"].dtype)))
+
+
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class ExampleLoad(Interaction):
+    """A constant load on a body."""
+
+    name = "${namespace}.example_load"
+    version = "0.1.0"
+    # Each setting says what it is: a physical one is a measured quantity, a design one a choice, a convention a default.
+    setting_roles = {"force": convention(DESIGN, "an example's constant load: replace it with your own")}
+    differentiability = GradientStatus.EXACT
+    builds = {"": (ExampleLoadNode,)}
+    roles = {"body": RoleKind.BODY}
+    delivers = {"load": Delivery("body", LOAD.name)}
+    # What the entry does not cover, one line each: they are listed in every build report, and say where it is invalid.
+    validity = ("an example: a constant load on a body, which models no device",)
+    force: Annotated[Quantity, Force] = N((0.0, 0.0, -0.05))
+
+    @override
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        node = b.add_response_node(ExampleLoadNode(ctx.node_name(), ctx.timestep, force=ctx.vector("force")))
+        b.connect(node["load"], into=b.target("load"))

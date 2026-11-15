@@ -34,6 +34,7 @@ LAYOUT = {
     "registry",
     "results",
     "saved",
+    "scaffold",
     "scene",
     "sensing",
     "study",

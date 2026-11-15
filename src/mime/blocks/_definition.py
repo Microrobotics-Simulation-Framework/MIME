@@ -76,6 +76,23 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 #: The block's id, version and licence as they are written, for a problem's line.
 LINES = {"id": 'id = "<namespace>.<name>"', "version": 'version = "0.1.0"', "licence": 'licence = "CC-BY-4.0"',
          "mime-engine": 'mime-engine = ">=0.3.0.dev1,<0.4"', "shows": 'shows = "<what the cases show, a paragraph>"'}
+def id_problem(text: str) -> str | None:
+    """Why ``text`` is not a block's id, ``<namespace>.<name>``, or ``None``."""
+    if _ID.fullmatch(text):
+        return None
+    return (f"{plain(repr(text))} is not <namespace>.<name> (lower-case letters, digits and '_', each starting with a "
+            f"letter)")
+
+
+def version_problem(text: str) -> str | None:
+    """Why ``text`` is not a PEP 440 version, or ``None``."""
+    try:
+        Version(text)
+    except InvalidVersion:
+        return f"{plain(repr(text))} is not a PEP 440 version"
+    return None
+
+
 #: The content hash's recipe, so that a later one is never compared with this one.
 CONTENT_RECIPE = "mime.block-content/1"
 
@@ -396,17 +413,13 @@ def read_definition(folder: str | os.PathLike[str], *, record: bool = True) -> t
     licences = _licences(licences_reader, raw.get("licences", {}))
     if table is not None:
         identifier = block.text(table, "id", "", required=True)
-        if identifier is not None and not _ID.fullmatch(identifier):
-            block.problem("id", f"{plain(repr(identifier))} is not <namespace>.<name> (lower-case letters, digits and "
-                                f"'_', each starting with a letter)", LINES["id"])
+        if identifier is not None and (problem := id_problem(identifier)) is not None:
+            block.problem("id", problem, LINES["id"])
             identifier = None
         version = block.text(table, "version", "", required=True)
-        if version is not None:
-            try:
-                Version(version)
-            except InvalidVersion:
-                block.problem("version", f"{plain(repr(version))} is not a PEP 440 version", LINES["version"])
-                version = None
+        if version is not None and (problem := version_problem(version)) is not None:
+            block.problem("version", problem, LINES["version"])
+            version = None
         licence = block.text(table, "licence", "", required=True)
         if licence is not None and (problem := licence_problem(licence)) is not None:
             block.problem("licence", plain(problem), LINES["licence"])
@@ -458,4 +471,4 @@ def definition_of(folder: str | os.PathLike[str]) -> Definition:
 __all__ = ["ASSETS", "CASES", "CONTENT_RECIPE", "DESCRIPTIONS", "FRAGMENT_FILE", "FRAME_KIND", "FRAME_ROUTE",
            "MANIFEST_FILE", "MANIFEST_FORMAT", "MIME_DISTRIBUTION", "RECORDS", "RESERVED_SOCKETS", "SOCKET_KINDS",
            "TABLES", "Definition", "Tier", "Validity", "content_files", "content_hash", "definition_of",
-           "is_block_folder", "read_definition"]
+           "id_problem", "is_block_folder", "read_definition", "version_problem"]

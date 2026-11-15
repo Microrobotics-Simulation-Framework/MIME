@@ -1,0 +1,1 @@
+"""${distribution}: entries for MIME, in the namespace `${namespace}` (see entries.py)."""
