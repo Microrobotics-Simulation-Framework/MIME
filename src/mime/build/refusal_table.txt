@@ -233,6 +233,7 @@ env.variant                   user
 error.uncoded                 internal
 error.unrecognised            unrecognised
 experiment.name               user
+exposure.declaration          user
 fit.box                       user
 fit.callback                  user
 fit.line-unjudged             user
@@ -395,6 +396,7 @@ medium.flow-twice             user
 modal.study-base              user
 modal.study-shards            user
 modal.wheel                   environment
+mount.provider                user
 observation.field-read        user
 observation.lag-ambiguous     user
 override.baked-leaf           user

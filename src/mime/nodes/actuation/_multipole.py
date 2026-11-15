@@ -23,6 +23,7 @@ from maddening.core.params import ParamSpec
 from typing_extensions import ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_input, quaternion, switch
+from mime.core.multibody import compose
 from mime.nodes.actuation._chain import POSE_UNITS, flattened
 
 #: Where a padded source sits, in the calibration's frame (m): far enough that no reader comes near it, and its
@@ -263,8 +264,11 @@ class CalibratedMultipoleNode(MimeNode):
     ``background``, a uniform field in the world frame: each
     coil's ``sources[k]`` fitted sources (``source_positions``, ``source_directions``, unit, and ``coefficients``,
     each a ``params`` leaf, flattened from ``(K, S, 3)`` and ``(K, S)``, padding included), in the calibration's frame,
-    which ``at`` and ``orientation`` place in the world. A slot reads at the position of the pose it takes as
-    ``points_<slot>``, or, in ``offset_slots``, at the point fixed in that pose at its row of ``offsets``.
+    which ``at`` and ``orientation`` place in the world; or, with ``mount_index`` from zero, in the frame at that row
+    of the ``mount_count`` frame poses it takes as ``mount_poses`` (this step's), each step: the array mounted on a
+    frame of its apparatus's chain. A node placed in the world declares no ``mount_poses`` and holds no mount constant,
+    so it is the node it was before there were mounts. A slot reads at the position of the pose it takes as ``points_<slot>``,
+    or, in ``offset_slots``, at the point fixed in that pose at its row of ``offsets``.
 
     Each step it raises ``outside_region`` where a reader lies outside the declared ``region`` (``x0, x1, y0, y1, z0,
     z1`` in the calibration's frame), and ``near_source`` where a reader is near a fitted source: with ``guard``
@@ -312,7 +316,8 @@ class CalibratedMultipoleNode(MimeNode):
                  source_positions: ArrayLike, source_directions: ArrayLike, coefficients: ArrayLike,
                  at: Sequence[float], orientation: Sequence[float], background: Sequence[float],
                  region: ArrayLike, gradient_limit: ArrayLike, guard: str = "gradient", source_clearance: float = 0.0,
-                 offset_slots: Sequence[str] = (), offsets: Sequence[float] = ()) -> None:
+                 offset_slots: Sequence[str] = (), offsets: Sequence[float] = (), mount_index: int = -1,
+                 mount_count: int = 0) -> None:
         counts = tuple(int(c) for c in sources)
         width = max(counts)
         if guard not in ("gradient", "distance"):
@@ -325,11 +330,12 @@ class CalibratedMultipoleNode(MimeNode):
             raise ValueError(f"{len(counts)} coils of up to {width} sources take {len(counts) * width} coefficients "
                              f"and three times as many position and direction numbers")
         at_body_points = {"offset_slots": tuple(offset_slots), "offsets": flattened(offsets)} if offset_slots else {}
+        mounted = {"mount_index": int(mount_index), "mount_count": int(mount_count)} if mount_index >= 0 else {}
         super().__init__(name, timestep, slots=tuple(slots), sources=counts,
                          source_positions=held[0], source_directions=held[1], coefficients=held[2], at=flattened(at),
                          orientation=flattened(orientation), background=flattened(background), region=flattened(region),
                          gradient_limit=limits, guard=guard, source_clearance=float(source_clearance),
-                         **at_body_points)
+                         **at_body_points, **mounted)
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -378,6 +384,20 @@ class CalibratedMultipoleNode(MimeNode):
         coefficients = jnp.reshape(jnp.asarray(p["coefficients"], dtype=dtype), shape[:2])
         return positions, coefficients[..., None] * directions
 
+    def mounted(self) -> bool:
+        return "mount_index" in self.constants()
+
+    def placement(self, p: Mapping[str, Any], boundary_inputs: Mapping[str, Array], dtype: Any) -> tuple[Array, Array]:
+        """Where the calibration's frame sits in the world, ``(at, orientation)``: ``at`` and ``orientation``, or
+        those composed onto this step's pose of the frame it is mounted on."""
+        at = jnp.asarray(p["at"], dtype=dtype)
+        orientation = jnp.asarray(p["orientation"], dtype=dtype)
+        if not self.mounted():
+            return at, orientation
+        frame = jnp.asarray(boundary_inputs["mount_poses"], dtype=dtype)[cast(int, self.constants()["mount_index"])]
+        world = compose(frame, jnp.concatenate([at, orientation]))
+        return world[:3], world[3:]
+
     def reader_point(self, p: Mapping[str, Any], slot: str, pose: Array) -> Array:
         """Where ``slot`` reads the field from the pose it takes: its position, or for an offset slot the point fixed
         in it, ``x + R(u) o``."""
@@ -399,8 +419,10 @@ class CalibratedMultipoleNode(MimeNode):
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
+        mount = {"mount_poses": node_input(POSE_UNITS, (cast(int, self.constants()["mount_count"]), 7))} \
+            if self.mounted() else {}
         return {"delivered_currents": node_input("A", (self.coils,)),
-                **{f"points_{slot}": node_input(POSE_UNITS, (7,)) for slot in self._slots()}}
+                **{f"points_{slot}": node_input(POSE_UNITS, (7,)) for slot in self._slots()}, **mount}
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
@@ -408,8 +430,7 @@ class CalibratedMultipoleNode(MimeNode):
         zero = as_run_array(0.0)
         dtype = zero.dtype
         positions, vectors = self.arrays(p, dtype)
-        at = jnp.asarray(p["at"], dtype=dtype)
-        orientation = jnp.asarray(p["orientation"], dtype=dtype)
+        at, orientation = self.placement(p, boundary_inputs, dtype)
         background = jnp.asarray(p["background"], dtype=dtype)
         currents = jnp.asarray(boundary_inputs["delivered_currents"], dtype=dtype)
         region = jnp.reshape(jnp.asarray(p["region"], dtype=dtype), (3, 2))

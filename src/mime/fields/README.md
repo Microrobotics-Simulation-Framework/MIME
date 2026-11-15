@@ -44,8 +44,10 @@ magnet's declared direction; its node holds the magnet's radius, against which i
 **`CalibratedMultipole`** (`calibrated_multipole` 0.1.0): an electromagnet array whose coils are a calibrated multipole model of order one, from one of the three packaged calibrations, ETH MSRL's published calibrations of Navion_2, OctoMag and CardioMag, evaluated by MIME (`asset("navion_2")`, `"octomag"`, `"cardiomag"`), on
 `CoilArray`, the contract every kind of coil array keeps (not registered; coils from their geometry join it later): a
 field linear in the command `currents`, which reaches the node as `delivered_currents`, so a stage between a command and
-the coils can sit there later; the array placed by `at` and `orientation`, one exact transform; a uniform `background`,
-zero unless declared. Its sources, its pose and its background are its node's leaves. It raises `outside_region` (a
+the coils can sit there later; the array placed by `at` and `orientation`, one exact transform, in the world or, with
+`mount="<segment>.<frame>"`, in a frame of its own apparatus's chain that carries it (composed onto the frame's pose each
+step, so still affine in the currents there; a segment that takes loads is refused, `mount.provider`, the array's mass
+and the reaction on it not being modelled); a uniform `background`, zero unless declared. Its sources, its pose and its background are its node's leaves. It raises `outside_region` (a
 reader outside the calibration's declared region, which is not a fit domain) and `near_source` (a coil's gradient per
 unit current above 30 times its median over the declared region, a fitted source's own term; `source_clearance`
 replaces it with a distance), and refuses float32 where
@@ -72,7 +74,10 @@ float32 guard, and recorded in the lock (`assets_read`). Nothing judges its fit;
 as a pure function `fn(u, x, theta)`, every number from its commands, inputs or parameters (the node's own leaves), for a
 controller's model of it. The calibrated multipole's is affine in `currents`: at a world point (`x["point"]`) it gives
 `flux_density`, `gradient`, and, with a moment stated there (`x["moment"]`), the `force` on it, `F_j = m_i dB_i/dx_j`,
-and the `torque`, `m x B`, which for a fixed moment stay affine in the currents. The point dipole's takes no command (its
+and the `torque`, `m x B`, which for a fixed moment stay affine in the currents; mounted, it takes the frame's world pose
+too (`x["mount_pose"]`), and stays affine at each. A mounted array's field against the same array placed in the world at
+the frame's pose (`actuation`, float64) agrees to `10 eps / c` along a moving chain in both dtypes
+(`tests/fields/test_mounted_array.py`). The point dipole's takes no command (its
 magnet moves with what carries it, at `x["mount_pose"]` where mounted). **What they bound:** the calibrated multipole's
 against mag_manip's reference (field and gradient per unit current, and at drawn currents the field, gradient, force and
 torque, within ten times float64's rounding over the field's cancellation) and the host's `actuation` in both dtypes; the

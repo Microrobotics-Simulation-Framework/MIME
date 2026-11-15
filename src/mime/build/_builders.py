@@ -374,7 +374,8 @@ class DynamicsBuilder(RestrictedBuilder):
 class ProviderBuilder(RestrictedBuilder):
     """A field provider's builder: its one node, with a points input and a field output per reader slot, which the
     readers' builders wire, and an input per command, which its drives wire. A part it reads that is mounted on a
-    segment of its apparatus's chain takes that segment's frame poses with :meth:`part`."""
+    segment of its apparatus's chain takes that segment's frame poses with :meth:`part`; a provider mounted on such a
+    frame itself (its ``mount`` setting, ``ctx.mount``) takes them with :meth:`mount`."""
 
     def add_node(self, node: SimulationNode, local: str = "") -> NodeRef:
         return self._add(node, local)
@@ -387,10 +388,18 @@ class ProviderBuilder(RestrictedBuilder):
             raise EntryBuildError(f"it reads the mount of {setting!r}, which names no part mounted on a segment")
         self._mounted(("part", setting), held.mount, into)
 
+    def mount(self, into: PortRef) -> None:
+        """The frame poses of the segment the provider is mounted on (``ctx.mount``), into ``into``: its row
+        ``ctx.mount.index`` is the frame, this step's."""
+        mount = self._plan.mount
+        if mount is None:
+            raise EntryBuildError("it takes a mount, and it names none (its mount setting)")
+        self._mounted(("mount",), mount, into)
+
     @override
     def finish(self) -> list[str]:
         return self._expect([("part", setting) for setting, held in self._plan.parts.items()
-                             if held.mount is not None])
+                             if held.mount is not None] + ([("mount",)] if self._plan.mount is not None else []))
 
 
 class DriveBuilder(RestrictedBuilder):

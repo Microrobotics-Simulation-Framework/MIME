@@ -145,6 +145,8 @@ FORCE = MASS * ACCELERATION
 MAGNETIC_FLUX_DENSITY = MASS / (CURRENT * TIME**2)
 #: A magnetic field's gradient, ``dB_i/dx_j``, in T/m.
 FIELD_GRADIENT = MAGNETIC_FLUX_DENSITY / LENGTH
+#: A magnetic field's rate of change, ``dB/dt``, in T/s.
+FIELD_RATE = MAGNETIC_FLUX_DENSITY / TIME
 #: An area, and a porous material's Darcy permeability (m^2).
 AREA = LENGTH**2
 VOLUME = LENGTH**3
@@ -172,6 +174,7 @@ _NAMED = {
     FORCE: "force (N)",
     MAGNETIC_FLUX_DENSITY: "magnetic flux density (T)",
     FIELD_GRADIENT: "magnetic field gradient (T/m)",
+    FIELD_RATE: "magnetic field rate of change (T/s)",
     AREA: "area (m^2)",
     VOLUME: "volume (m^3)",
     DENSITY: "density (kg/m^3)",
@@ -198,6 +201,7 @@ Acceleration = ACCELERATION
 Force = FORCE
 MagneticFluxDensity = MAGNETIC_FLUX_DENSITY
 FieldGradient = FIELD_GRADIENT
+FieldRate = FIELD_RATE
 Area = AREA
 Volume = VOLUME
 Density = DENSITY
@@ -684,6 +688,7 @@ mT = Unit("mT", 1e-3, MAGNETIC_FLUX_DENSITY, "Millitesla.")
 uT = Unit("uT", 1e-6, MAGNETIC_FLUX_DENSITY, "Microtesla.")
 T_per_m = Unit("T/m", 1.0, FIELD_GRADIENT, "Tesla per metre: a magnetic field's gradient.")
 mT_per_m = Unit("mT/m", 1e-3, FIELD_GRADIENT, "Millitesla per metre: an electromagnetic navigation system's gradients.")
+T_per_s = Unit("T/s", 1.0, FIELD_RATE, "Tesla per second: a magnetic field's rate of change.")
 m_per_s = Unit("m/s", 1.0, VELOCITY, "Metres per second.")
 m_per_s2 = Unit("m/s^2", 1.0, ACCELERATION, "Metres per second squared.")
 mm_per_s = Unit("mm/s", 1e-3, VELOCITY, "Millimetres per second.")
@@ -763,13 +768,14 @@ __all__ = [
     "ACCELERATION", "ANGULAR_VELOCITY", "AREA", "AngularVelocity", "Area", "COMPLIANCE", "Compliance", "HYDRAULIC_RESISTANCE",
     "HydraulicResistance", "PRESSURE", "Pressure", "VOLUME_FLUX", "VolumeFlux", "Pa", "Pa_s_per_m3", "m3_per_Pa",
     "m3_per_s", "mL_per_s", "SAY_THE_ANGLE", "rate_symbol", "says_its_angle", "CURRENT",
-    "DENSITY", "DIMENSIONLESS", "DYNAMIC_VISCOSITY", "FIELD_GRADIENT", "FORCE", "FREQUENCY", "LENGTH",
+    "DENSITY", "DIMENSIONLESS", "DYNAMIC_VISCOSITY", "FIELD_GRADIENT", "FIELD_RATE", "FORCE", "FREQUENCY", "LENGTH",
     "MAGNETIC_FLUX_DENSITY", "MAGNETIC_MOMENT", "MASS", "MOMENT_OF_INERTIA", "ROTATIONAL_DAMPING", "TEMPERATURE",
     "TIME", "TORQUE", "VELOCITY", "VOLUME", "Acceleration", "Current", "Density", "DynamicViscosity", "FieldGradient",
+    "FieldRate",
     "Force", "Frequency", "Length", "MagneticFluxDensity", "MagneticMoment", "Mass", "MomentOfInertia",
     "RotationalDamping", "Temperature", "Time", "Torque", "Velocity", "Volume", "Condition", "Dimension", "Quantity",
     "Unit", "UnitError", "VACUUM_PERMEABILITY", "Values", "ZERO_CELSIUS", "parse_unit", "si", "unit_symbol", "A",
-    "A_m2", "Hz", "K", "N", "N_m", "N_m_s", "Pa_s", "T", "T_per_m", "cm", "deg", "degC", "dimensionless", "g", "kHz",
+    "A_m2", "Hz", "K", "N", "N_m", "N_m_s", "Pa_s", "T", "T_per_m", "T_per_s", "cm", "deg", "degC", "dimensionless", "g", "kHz",
     "kg", "kg_m2", "kg_per_m3", "m", "m2", "m3", "m_per_s", "m_per_s2", "mPa_s", "mT", "mT_per_m", "mm", "mm3", "mm_per_s",
     "ms", "rad", "rad_per_s", "s", "standard_gravity", "uT", "um", "um2", "um_per_s", "us",
 ]

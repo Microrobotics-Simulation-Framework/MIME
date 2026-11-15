@@ -265,3 +265,17 @@ src/mime/sensing/README.md  1.07 1.15  #1  # the static structure's make time an
 src/mime/sensing/README.md  1.02 1.05  #1  # the static structure's make time and the step's compile and frame ratios with a mesh in view, estimates and ranges over four runner rounds (tests/sensing/predictions_camera_mesh*.json)
 src/mime/sensing/README.md  1 2 1 2013  #1  # the slab widening 1 + 2 gamma_3 (gamma_n = n u / (1 - n u)) and its source, Ize 2013
 src/mime/sensing/README.md  0.1 0.2  #1  # the share of rays at a rotated box's edges the slab lost, a laptop's draws, in percent
+docs/entries/field_provider/calibrated_multipole.md  10  #1  # the mounted array's tolerance, SLACK eps / c (SLACK = 10, tests/oracles/test_calibrated_multipole.py's factor over the rounding floor eps / c), held by tests/fields/test_mounted_array.py
+docs/entries/field_provider/calibrated_multipole.md  1  #1  # the controller's mode 1, a name of a mode (inside the compiled step), not a quantity
+docs/entries/field_provider/calibrated_multipole.md  2  #1  # the controller's mode 2, a name of a mode (a callback), not a quantity
+docs/entries/observation/exposure.md  40 1 2  #1  # an example's limits in a line of code (mT(40), T_per_m(1), T_per_s(2)), the experiment's to declare, not MIME's numbers
+docs/entries/observation/exposure.md  2  #1  # the square in the Frobenius norm's formula, sqrt(sum_ij G_ij^2), not a quantity
+docs/entries/observation/exposure.md  1  #1  # the step index n - 1 in the one-step difference's formula, not a quantity
+docs/entries/observation/exposure.md  2 2  #1  # the factors of the chord's formula, 2 B sin(pi f dt) / dt against 2 pi f B (tests/oracles/test_exposure.py holds the chord), not a quantity
+docs/entries/observation/exposure.md  0 0  #1  # step indices of a run (the first step is step 0, the field switched on before step 1), and the value held there (zero), a definition of what is measured, not a quantity
+docs/entries/observation/exposure.md  0  #1  # step indices of a run (the first step is step 0, the field switched on before step 1), and the value held there (zero), a definition of what is measured, not a quantity
+docs/entries/observation/exposure.md  0 1 1  #1  # step indices of a run (the first step is step 0, the field switched on before step 1), and the value held there (zero), a definition of what is measured, not a quantity
+docs/entries/observation/exposure.md  40  #1  # an example's limit in a line of code (mT(40)), the experiment's to declare, not MIME's number
+src/mime/fields/README.md  10  #1  # the mounted array's tolerance, SLACK eps / c (SLACK = 10, tests/oracles/test_calibrated_multipole.py's factor over the rounding floor eps / c), held by tests/fields/test_mounted_array.py
+src/mime/observations/README.md  1  #1  # the step index n - 1 in the one-step difference's formula, not a quantity
+src/mime/observations/README.md  0 0  #1  # step indices of a run (the first step is step 0, the field switched on before step 1), and the value held there (zero), a definition of what is measured, not a quantity

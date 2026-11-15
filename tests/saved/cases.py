@@ -504,6 +504,38 @@ def coil_array(*, ports: dict[str, Any] | None = None, name: str = "coil_array",
     return experiment
 
 
+def mounted_coil_array() -> Experiment:
+    """The coil array of :func:`coil_array` on the rotor of a motor turning in the world (``mount="motor.rotor"``), its
+    placement in the rotor's frame, and the exposure observing the body with its three limits: the mount's round trip,
+    and ``exposure``'s golden output."""
+    from mime.data import asset
+    from mime.dynamics import Motor, RigidInertial
+    from mime.fields import CalibratedMultipole
+    from mime.interactions import Magnetic
+    from mime.observations import Exposure
+    from mime.scene import Scene, Z
+    from mime.units import A, A_m2, T_per_m, T_per_s, m_per_s2, mT, rad
+
+    experiment = Experiment("mounted_coil_array", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    experiment.add_apparatus(Apparatus(
+        "coils", chain={"motor": Motor.Kinematic(axis=Z, prescribed="velocity", initial_angle=rad(0.0))},
+        fields={"magnetic": CalibratedMultipole(calibration=asset("navion_2"), mount="motor.rotor",
+                                                at=m((0.01, -0.02, 0.005)), orientation=(0.96, 0.0, 0.0, 0.28))},
+        commands={"currents": A((5.0, -3.0, 2.0)), "motor.velocity": rad_per_s(2.0)}))
+    experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
+        position=mm((3.0, 2.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((1e-3, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    for path, value in (("umr.mass", kg(4e-6)), ("umr.inertia", kg_m2((1.6e-10, 1.6e-10, 1.6e-10))),
+                        ("umr.magnetic_moment", A_m2((1e-3, 0.0, 5e-4))), ("umr.magnet_centre", mm((0.2, 0.0, 0.0)))):
+        experiment.declare(path, value, reason="a millimetre body's magnet, its order")
+    experiment.attach(Magnetic.Torque(), body="umr", field="coils.magnetic")
+    experiment.attach(Magnetic.Force(), body="umr", field="coils.magnetic")
+    reason = "the round trip's declared limit"
+    experiment.observe(Exposure("umr", field="coils.magnetic", flux_density=mT(5.0, reason=reason),
+                                field_gradient=T_per_m(0.05, reason=reason), rate_of_change=T_per_s(0.1, reason=reason)))
+    return experiment
+
+
 def lagged_coil_array() -> Experiment:
     """The coil array's currents through a port of every command rung, a first-order lag last (the stage computes it),
     and the body's pose measured two steps late: response.first_order_lag's round trip, and a measurement port's."""
@@ -699,6 +731,9 @@ CASES = (
     # that the ramp's and the gravity law's golden outputs stay their earlier cases'.
     Case("camera_scene", camera_scene),
     Case("camera_on_gantry", lambda: camera_scene("camera_on_gantry", gantry=True), lab=True),
+    # The coil array on a turning rotor's frame, observed by the exposure: the mount's round trip and the exposure's
+    # golden output; last, so that every other entry's golden output stays its earlier case's.
+    Case("mounted_coil_array", mounted_coil_array),
 )
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

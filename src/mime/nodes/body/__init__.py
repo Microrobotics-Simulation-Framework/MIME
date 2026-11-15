@@ -1,6 +1,7 @@
 """Nodes of a body and of the laws and observations that act on or read one body: the rigid inertial body, gravity
-with buoyancy, the swim speed, the phase lag."""
+with buoyancy, the swim speed, the phase lag, the exposure."""
 
+from mime.nodes.body._exposure import ExposureInputs, ExposureNode, ExposureState
 from mime.nodes.body._gravity import GravityInputs, GravityNode, Wrench
 from mime.nodes.body._phase_lag import PhaseLagInputs, PhaseLagNode, PhaseLagState
 from mime.nodes.body._rigid_inertial import (
@@ -22,6 +23,9 @@ from mime.nodes.body._swim_speed import SwimSpeedInputs, SwimSpeedNode, SwimSpee
 __all__ = [
     "HULL",
     "SURFACE",
+    "ExposureInputs",
+    "ExposureNode",
+    "ExposureState",
     "GravityInputs",
     "GravityNode",
     "PhaseLagInputs",

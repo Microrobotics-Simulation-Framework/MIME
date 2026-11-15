@@ -12,7 +12,8 @@ and the motor's step identities, and the impulses split by the friction's share)
 sphere above a plane within the film's window, whose drag takes lubrication's hand-over (``lubrication_cases``), which
 no round-trip case's body is fine enough for (where the package has the hand-over); the coil sphere with every rung of
 both port stages, its currents clipped and, in a second, tripped (``port_cases.staged_sphere``); the point body with its fitted
-self-history (``self_history="modes"``), which no round-trip case writes; and those steps, with each node's
+self-history (``self_history="modes"``), which no round-trip case writes; the exposure at a sphere round which a coil
+array moves on A0's rotor (``mount_cases``), its step and the mounted array's; and those steps, with each node's
 run-constants as a derivative's run makes them, traced and scanned, once per process, for the tests that read the scan.
 ``step_jaxprs.py`` also runs these configurations on a merge base, whose package has no switch scan, so the scan is
 imported only where it is used."""
@@ -74,6 +75,10 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
         found["ports/clipped"] = staged_sphere
         found["ports/tripped"] = partial(staged_sphere, trip=True, name="tripped_sphere")
     found["contact/rod_hull"] = rod_contact
+    import mime.observations
+
+    if hasattr(mime.observations, "Exposure"):  # a merge base before the exposure has neither it nor a mounted array
+        found["exposure/mounted_array"] = mounted_exposure
     found["ledger/massive_rpm"] = partial(metered, partial(massive_rpm, "massive_rpm_metered"))
     found["ledger/friction_arm"] = partial(metered, partial(friction_arm, "friction_arm_metered"))
     from mime.interactions import Drag
@@ -96,6 +101,20 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
             found["drag/lubricated_ellipsoid"] = partial(above_plane, 0.16, blob=0.25, name="lubricated_ellipsoid",
                                                          kind=Ellipsoid(semi_axes=mm((1.1, 1.0, 0.95))))
     return found
+
+
+def mounted_exposure() -> Experiment:
+    """The exposure, its three limits declared, at a still sphere round which Navion_2 moves on A0's rotor
+    (``mount_cases``): the exposure's step and the mounted array's, which no other configuration reaches."""
+    from mount_cases import mounted_rig
+
+    from mime.observations import Exposure
+    from mime.units import T_per_m, T_per_s, mT
+
+    reason = "the configuration's declared limit"
+    return mounted_rig("switch_exposure", observe=Exposure(
+        "sphere", field="rig.coils", flux_density=mT(3.3, reason=reason), field_gradient=T_per_m(0.05, reason=reason),
+        rate_of_change=T_per_s(0.02, reason=reason)))
 
 
 def capsule_camera() -> Experiment:

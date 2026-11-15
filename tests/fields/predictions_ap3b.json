@@ -1,0 +1,114 @@
+{
+ "written": "2026-11-15, committed before the probe of AP3b ran (the commit that adds this file is the timestamp): a coil array mounted on a frame of its own chain (CoilArray(mount=...), mount.provider) and the exposure envelope (Exposure, exposure.declaration), with the observation's shared point read",
+ "phase": "apparatus lane AP3b: a provider on its own chain frame, and the exposure envelope",
+ "labels": "the builder (Opus) from the design, the approved plan and local runs of the touched tests on the laptop (correctness only, never timing); the probe's rates, bits and costs are the runner's",
+ "seen_before": [
+  "tests/fields/test_mounted_array.py, tests/oracles/test_exposure.py and tests/oracles/test_shared_point_read.py passed on the laptop in float64 and float32",
+  "a scratch run on the laptop of the mounted rig, 40 steps: the mounted field against the host's actuation at the rotor's pose missed by 7.8e-14 (float64, eps / c 2.8e-14 over the declared region's grid) and 2.8e-5 (float32, eps / c 1.5e-5) of its peak",
+  "the rate of change on the mounted rig against the host's derivative, float64: missed by 1.7e-5 T/s at a rate of 9.2e-3 T/s, against dt |B''| = 4.5e-5 T/s and a rounding term of 1.2e-12 T/s (the order-dt term, not rounding); float32 missed by 2.5e-5 against a rounding term of 6.4e-4 T/s",
+  "each plant run once on the laptop: AP3B_PLANT=mount (the dynamic arm then plans: DID NOT RAISE), =declaration (the three refusals then build), =compose (the oracle fails in both dtypes)"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "CPU; the probe on a GitHub runner, 4 vCPU; bits on one CPU, one BLAS and XLA thread",
+  "sizes_and_parameters": "mount_cases: Navion_2 (3 coils, currents 5, -3, 2 A) on the rotor of A0's kinematic AR4 at its home pose, the rotor at 2 rad/s, the array placed at the sphere's point in the rotor's frame and turned 40 degrees; a still sphere (no moment, no gravity) at the world's origin, the force reading the field at its centre; dt 1 ms; the exposure's sphere at Navion_2's centre placed in the world, currents through a port delaying them one step",
+  "seeds_and_draws": "the flags' rates: 20 runs a quantity and dtype, currents 1 to 20 A of either sign per coil and a margin of 1e-3 to 0.5 (log-uniform) from each run's seed; the refusals' and the composition's: 20 runs each"
+ },
+ "gate_1_mounted_field_against_actuation": {
+  "claim": "along A0's moving chain, the mounted array's field and gradient at the sphere agree with the same array placed in the world at the rotor's pose that step (the host's actuation, float64) within 10 eps / c of the peak, c the worst field cancellation of Navion_2's sources at the points read, in float64 and float32; the rotor's published pose agrees with frame_pose of the AR4 turned by its angle within 256 eps",
+  "kind": "bounds (agreement to rounding with a software computation of the same transform; it grounds no frame against hardware)",
+  "case": "tests/fields/test_mounted_array.py::test_the_mounted_field_is_the_array_placed_at_the_frames_pose_along_the_moving_chain",
+  "prediction": {
+   "value": "every step within",
+   "band": [
+    0,
+    "10 eps / c"
+   ],
+   "unit": "share of the peak",
+   "basis": "measured-before (laptop) and derived",
+   "why": "the node composes the placement onto the frame's pose and evaluates the unmounted arithmetic there; two sums of the same near-cancelling sources agree to eps / c"
+  },
+  "control": {
+   "plant": "the node's composition the other way round (the frame inside the placement); in the test itself the wrong order misses by more than 100 times the tolerance at every step",
+   "environment_variable": "AP3B_PLANT=compose",
+   "expected_rate": "20/20",
+   "runs": 20,
+   "clean_expected": "0/20"
+  },
+  "if_wrong": "the mount edge reads another row, another step's pose, or the composition's order",
+  "cannot_discriminate_if": "the chain did not move (the test asserts the rotor turns by more than 0.05 rad and the array's centre moves by more than 1 mm)"
+ },
+ "gate_2_exact_allocation_each_tick": {
+  "claim": "at each tick the currents ctx.allocator writes on the mounted array make the wanted field at the pose the controller read, by the host's actuation there, within 10 eps / c of the field's terms, and are the host's exact allocation there within the condition number times that",
+  "kind": "bounds",
+  "case": "tests/fields/test_mounted_array.py::test_the_exact_allocation_holds_at_each_tick_of_the_moving_chain",
+  "prediction": {
+   "value": "every tick within, the currents moving with the chain",
+   "basis": "derived",
+   "why": "the model is affine in the currents at every pose: 3 field rows, 3 coils, reachable within the 25 A bounds"
+  },
+  "control": {
+   "plant": "none: the composition's plant (gate 1) is the transform's control",
+   "expected_rate": "n/a"
+  }
+ },
+ "gate_3_exposure_quantities": {
+  "claim": "flux_density and field_gradient (the Frobenius norm) against the host's actuation within 10 eps / c in both dtypes, each the norm of the law's slot to rounding; rate_of_change the one-step difference of the slot, against the host's derivative along the moving chain within dt times the second derivative plus 2 SLACK eps / c of the field over dt, the miss in float64 the order-dt term (above 1e-3 of it); in a uniformly turning field the chord 2 B sin(pi f dt) / dt to 256 eps; step 0's rate of change not measured (held 0, no flag at a limit of 1e-9 T/s), a field switched on at step 1 flagged at step 1 alone",
+  "kind": "bounds (the quantities) and estimates (the rate of change, an estimate of |dB/dt| with an error of order dt)",
+  "case": "tests/oracles/test_exposure.py",
+  "prediction": {
+   "value": "every assertion holds",
+   "basis": "measured-before (laptop) and derived"
+  }
+ },
+ "gate_4_flags": {
+  "claim": "each flag is raised wherever its quantity stands above its declared limit and never below: planted, the limit a margin of 1e-3 to 0.5 below the quantity's value, caught every run; clean, the limit that margin above, never raised",
+  "kind": "acceptance (a report against a declared number; it bounds nothing about what the field does)",
+  "case": "probe/rate_flag.py <quantity> <dtype> through detection_rate.py --script, on the exposure's sphere",
+  "prediction": {
+   "value": "20/20 planted, 0/20 clean, per quantity and dtype",
+   "basis": "derived",
+   "why": "the smallest margin, 1e-3, is about seven times float32's rounding of the field there (10 eps / c, 1.5e-4)"
+  },
+  "control": {
+   "plant": "the limit below the quantity's value",
+   "environment_variable": "AP3B_PLANT",
+   "expected_rate": "20/20",
+   "runs": 20,
+   "clean_expected": "0/20",
+   "resolution": "a margin of 1e-3 of the value"
+  }
+ },
+ "gate_5_refusals": {
+  "claim": "mount.provider refuses a mount on a segment that takes loads (the dynamic arm), its message the reason and its action a kinematic segment, the kinematic arm planning; exposure.declaration refuses a limit with no reason, a pending one and one not above zero, a limit with its reason building",
+  "kind": "acceptance",
+  "case": "tests/fields/test_mounted_array.py::test_a_mount_on_a_segment_that_takes_loads_is_refused_on_both_arm_rungs[dynamic_arm], tests/oracles/test_exposure.py::test_a_limit_with_no_reason_or_not_above_zero_is_refused[no_reason]",
+  "prediction": {
+   "value": "20/20 each, clean 0/20",
+   "basis": "measured-before (each plant once on the laptop)"
+  },
+  "control": {
+   "plant": "mount: the planner's load check removed; declaration: the reason check removed",
+   "environment_variable": "AP3B_PLANT",
+   "expected_rate": "20/20",
+   "runs": 20,
+   "clean_expected": "0/20"
+  }
+ },
+ "bits": {
+  "cases": "A0 and script A in float32 and float64, tutorial A and tutorial A0 (float32), AP3a's hand-written allocation's sphere and its believed allocator's sphere in both dtypes, nothing new declared; base origin/apparatus/ap3-forward (AP3a's head) against this head, one job, one CPU, one thread (bit_compare.py)",
+  "prediction": "every array np.array_equal, the derived hashes and the canonical texts included (the per-step cost unused: an unmounted array holds no mount constant and declares no mount input; no exposure is attached)",
+  "controls": {
+   "one_ulp": "A0's rotor moment one ulp of the dtype up on the head (nextafter in the dtype, so it survives the dtype's rounding): arrays differ in both dtypes"
+  }
+ },
+ "costs": {
+  "prediction": "the mount: nodes equal (the mount adds an edge, no node), the compiled step's operations within +5 % (one composition per step), the median chunk within 1.10x of the placed array's; the exposure: one node more, the operations within +10 %, the median chunk within 1.10x of the rig without it",
+  "measured_at": "nothing measured before: guesses from the arithmetic added (a pose composition; three norms, three maxima and three comparisons)",
+  "basis": "guess"
+ },
+ "outcomes": null
+}

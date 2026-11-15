@@ -90,7 +90,7 @@ from mime.nodes.actuation import RampNode
 from mime.nodes.control import STAGE_SWITCHES
 from port_cases import Link, stage_of
 from mime.nodes.flow.fvm._band import plug_depth
-from mime.nodes.body import PhaseLagNode
+from mime.nodes.body import ExposureNode, PhaseLagNode
 from mime.scene import Cylinder, Ellipsoid, Screw, Sphere
 from mime.units import dimensionless, mm
 from mime.docs import load_namespaces
@@ -128,6 +128,7 @@ def declarations() -> dict[str, switch.Declaration]:
                                 ("dynamics", "arm", "0.1.0"), ("controller", "arm_tracking", "0.1.0"),
                                 ("wall kind", "tube", "0.1.0"), ("geometry", "cylinder", "0.1.0"),
                                 ("observation", "phase_lag", "0.1.0"), ("drive", "drive.ramp", "0.1.0"),
+                                ("observation", "exposure", "0.1.0"),
                                 ("observation", "camera", "0.1.0")):
         record = lookup(EntryKind(kind), name, version)
         assert record is not None
@@ -395,6 +396,44 @@ def ramp_at(*, steps=10, hold=0.0, duration=1.0):
     node = RampNode("drive:field.frequency", DT, start=10.0, rate=2.0, duration=duration, hold=hold)
     state = {"value": jnp.asarray(10.0), "steps": jnp.asarray(steps, jnp.int32)}
     return node.fresh_update(state, {}, DT, params={"hold": jnp.asarray(hold), "duration": jnp.asarray(duration)})
+
+
+def exposure_at(*, size: float, peak: float = 0.0):
+    """The exposure's outputs after one step at which the flux density, the gradient's Frobenius norm and the field's
+    change over the step each have magnitude ``size`` (the change ``size`` itself, its rate ``size / dt``), from
+    maxima of ``peak``; no limit declared."""
+    node = ExposureNode("exposure:umr", DT)
+    zero = jnp.asarray(0.0)
+    field = jnp.asarray((size, 0.0, 0.0))
+    state = {name: zero for name in ("flux_density", "field_gradient", "rate_of_change", "above_flux_density",
+                                     "above_field_gradient", "above_rate_of_change")}
+    state.update({"max_flux_density": jnp.asarray(peak), "max_field_gradient": jnp.asarray(peak),
+                  "max_rate_of_change": jnp.asarray(peak), "last": field - jnp.asarray((0.0, size, 0.0)),
+                  "measured": jnp.asarray(1.0)})
+    given = {"flux_density": field, "gradient": jnp.asarray(((0.0, size, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)))}
+    return node.fresh_update(state, given, DT)
+
+
+def exposure_rows(declared) -> list[SwitchRow]:
+    """The norms placed at a magnitude of the offset (each of the three vectors normed at once, so every site's
+    indicator is the offset), and the maxima at a step's value the offset above the maximum before it (the change's
+    magnitude ``(1 mT + offset) * dt``, so its rate's value is too)."""
+    def maximum_at(o: float):
+        node = ExposureNode("exposure:umr", DT)
+        peak, size = 1e-3, 1e-3 + o
+        zero = jnp.asarray(0.0)
+        field = jnp.asarray((size, 0.0, 0.0))
+        state = {name: zero for name in ("flux_density", "field_gradient", "rate_of_change", "above_flux_density",
+                                         "above_field_gradient", "above_rate_of_change")}
+        state.update({"max_flux_density": jnp.asarray(peak), "max_field_gradient": jnp.asarray(peak),
+                      "max_rate_of_change": jnp.asarray(peak),
+                      "last": field - jnp.asarray((0.0, size * DT, 0.0)), "measured": jnp.asarray(1.0)})
+        given = {"flux_density": field, "gradient": jnp.asarray(((0.0, size, 0.0), (0.0, 0.0, 0.0),
+                                                                 (0.0, 0.0, 0.0)))}
+        return node.fresh_update(state, given, DT)
+
+    return [SwitchRow(declared["exposure.norm"], lambda o: exposure_at(size=o), 1e-6),
+            SwitchRow(declared["exposure.maximum"], maximum_at, 1e-6)]
 
 
 def lag_and_ramp_rows(declared) -> list[SwitchRow]:
@@ -929,7 +968,8 @@ def all_rows(graph) -> dict[str, SwitchRow]:
     declared = declarations()
     rows = [*body_rows(graph, declared), *cylinder_rows(declared), *solid_rows(declared), *drag_rows(graph, declared),
             *swim_rows(graph, declared), *chain_rows(declared), *tracking_rows(declared), *tube_rows(declared),
-            *hull_rows(declared), *lag_and_ramp_rows(declared), *port_rows(declared), *camera_rows(declared)]
+            *hull_rows(declared), *lag_and_ramp_rows(declared), *exposure_rows(declared), *port_rows(declared),
+            *camera_rows(declared)]
     return {row.declaration.owner: row for row in rows}
 
 
@@ -945,6 +985,7 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "arm_tracking.reach.low", "arm_tracking.reach.high", "arm_tracking.half_turn",
                  "arm_tracking.small_turn", "arm_tracking.parallel", "arm_tracking.hemisphere",
                  "tube.table", "tube.angle", "tube.axial", "tube.axis", "phase_lag.window", "phase_lag.mean",
+                 "exposure.norm", "exposure.maximum",
                  "ramp.start", "ramp.end", "port.bound.low", "port.bound.high", "port.trip", "port.slew.low",
                  "port.slew.high",
                  "camera.edge.out_far", "camera.edge.out_near", "camera.edge.in_far", "camera.edge.in_near",

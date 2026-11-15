@@ -18,6 +18,7 @@ from numpy.typing import NDArray
 
 from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, RefusalClass
 from mime.core import as_run_array, run_dtype
+from mime.core.multibody import compose
 from mime.data import Asset, asset_bytes, asset_problem
 from mime.fields._magnetic_model import INPUTS, MOMENT, QUANTITIES, ROWS, magnetic_outputs
 from mime.gradients import GradientStatus
@@ -332,16 +333,20 @@ def licence_tier(licence: str) -> str:
     return licence_verdict(licence).tier
 
 
-def _multipole_model(u: Any, x: Any, theta: Any, *, shape: tuple[int, int, int]) -> dict[str, Any]:
+def _multipole_model(u: Any, x: Any, theta: Any, *, shape: tuple[int, int, int], mounted: bool = False
+                     ) -> dict[str, Any]:
     """The calibrated multipole's forward model: the node's arithmetic, in the run's dtype, every number from
-    ``theta``, ``x`` or ``u``."""
+    ``theta``, ``x`` or ``u``; mounted, its placement composed onto ``x.mount_pose``, as the node composes it."""
     jnp: Any = jax.numpy
     dtype = as_run_array(0.0).dtype
     positions = jnp.reshape(jnp.asarray(theta["source_positions"], dtype=dtype), shape)
     directions = jnp.reshape(jnp.asarray(theta["source_directions"], dtype=dtype), shape)
     coefficients = jnp.reshape(jnp.asarray(theta["coefficients"], dtype=dtype), shape[:2])
-    fields, gradients = placed_unit_fields(jnp.asarray(x["point"], dtype=dtype), jnp.asarray(theta["at"], dtype=dtype),
-                                           jnp.asarray(theta["orientation"], dtype=dtype), positions,
+    at, orientation = jnp.asarray(theta["at"], dtype=dtype), jnp.asarray(theta["orientation"], dtype=dtype)
+    if mounted:
+        world = compose(jnp.asarray(x["mount_pose"], dtype=dtype), jnp.concatenate([at, orientation]))
+        at, orientation = world[:3], world[3:]
+    fields, gradients = placed_unit_fields(jnp.asarray(x["point"], dtype=dtype), at, orientation, positions,
                                            coefficients[..., None] * directions)
     currents = jnp.asarray(u["currents"], dtype=dtype)
     return magnetic_outputs(fields @ currents + jnp.asarray(theta["background"], dtype=dtype), gradients @ currents,
@@ -361,16 +366,22 @@ class CoilArray(FieldProvider):
     reaches the node as ``delivered_currents``, the current each coil carries, so that a stage between a command and
     the coils can sit there with no call site changed; plus ``background``, a uniform field (T, world frame), zero
     unless declared. The array is placed by one exact transform, ``at`` and ``orientation`` (a unit quaternion ``(w, x,
-    y, z)``), its own frame in the world. It publishes the flux density and its gradient per reader slot, at the
-    reader's point (a body's magnet's centroid where the read names it), and gives the field and gradient per unit
-    current at a point (:meth:`actuation`), for :func:`allocate`. Not registered: each kind is (``CalibratedMultipole``
-    now; coils from their geometry later, on this contract)."""
+    y, z)``), its own frame in the world; or, with ``mount="<segment>.<frame>"``, in that frame of its own apparatus's
+    chain, which carries it: the transform is composed onto the frame's pose each step, so its field stays linear in
+    the currents at every pose of the chain (a mobile electromagnet on an arm). A segment that takes loads (a dynamic
+    rung) is refused as its mount: the array's mass on the arm and the reaction on it are later work. It publishes the
+    flux density and its gradient per reader slot, at the reader's point (a body's magnet's centroid where the read
+    names it), and gives the field and gradient per unit current at a point (:meth:`actuation`), for
+    :func:`allocate`. Not registered: each kind is (``CalibratedMultipole`` now; coils from their geometry later, on
+    this contract)."""
 
     setting_roles: ClassVar[Mapping[str, SettingRole]] = {
         "at": convention(PHYSICAL, "an array's own frame is the world's unless it is placed"),
         "orientation": convention(PHYSICAL, "an array's own frame is not turned in the world unless it is turned"),
         "background": convention(PHYSICAL, "a calibration is fitted to its coils' field alone, so the field it gives "
-                                           "has no background unless one is declared")}
+                                           "has no background unless one is declared"),
+        "mount": convention(PHYSICAL, "an array is placed in the world unless it is mounted on a frame of its "
+                                      "apparatus's chain")}
     differentiability = GradientStatus.EXACT
     flags = frozenset({Capability.PROVISION_EVALUATED, Capability.BODY_POINTS})
     publishes = {FLUX_DENSITY.name: "flux_density", GRADIENT.name: "gradient"}
@@ -378,6 +389,22 @@ class CoilArray(FieldProvider):
     at: Annotated[Quantity, Length] = m((0.0, 0.0, 0.0))
     orientation: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
     background: Annotated[Quantity, MagneticFluxDensity] = T((0.0, 0.0, 0.0))
+    #: The frame of its apparatus's chain it is mounted on, ``<segment>.<frame>``; ``None``: placed in the world.
+    mount: str | None = None
+
+    @override
+    def unrecorded_settings(self) -> frozenset[str]:
+        """``mount`` came after the array's release: where it is not given, the record holds what the released version's
+        did, and every program placed in the world keeps its input hash."""
+        return frozenset({"mount"}) if self.mount is None else frozenset()
+
+    def _refuse_mounted(self, what: str) -> None:
+        if self.mount is not None:
+            raise ArgumentRefused([Refusal(
+                "mount.provider", RefusalClass.USER,
+                f"{what} of an array mounted on {self.mount!r}: its placement in the world moves with the chain",
+                "read its field at a pose of the frame through its forward model, x={'point': ..., 'mount_pose': ...}, "
+                "or place the same array at the frame's world pose (at=, orientation=, no mount=) and call its own")])
 
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
@@ -395,13 +422,16 @@ class CoilArray(FieldProvider):
         return found
 
     def placement(self) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
-        """``at`` (m), the turn of ``orientation`` as a matrix, and ``background`` (T), float64."""
+        """``at`` (m), the turn of ``orientation`` as a matrix, and ``background`` (T), float64: the array's frame in
+        the world, refused for one mounted on a chain's frame (``mount.provider``)."""
+        self._refuse_mounted("placement()")
         return (np.asarray(si(self.at, LENGTH, what="at"), dtype=np.float64), _turn(self.orientation),
                 np.asarray(si(self.background, MAGNETIC_FLUX_DENSITY, what="background"), dtype=np.float64))
 
     def actuation(self, point: Quantity) -> Actuation:
         """Each coil's field and gradient per unit current at the world ``point`` (a length, three entries), float64,
-        and the background there."""
+        and the background there. Refused for an array mounted on a chain's frame (``mount.provider``), whose placement
+        in the world is the chain's at each step."""
         raise NotImplementedError
 
 
@@ -459,6 +489,11 @@ class CalibratedMultipole(CoilArray):
         "on a field-aligned body does not change with it, the torque on a fixed moment does, so establish the "
         "convention on the hardware before relying on a direction of rotation (MIME-ANO-153)",
         "agreement with mag_manip is a software oracle's: it cannot ground sign or frame against hardware",
+        "mounted on a frame of its apparatus's chain (mount=), the array is placed by at and orientation in that frame "
+        "and moves with it: each step its field is the same exact transform at that frame's pose, so it stays linear "
+        "in the currents; the frame's motion enters the field only through the pose (no induced currents, no eddy "
+        "currents), and the segment must not take loads: the array's mass on the arm and the reaction on it are not "
+        "modelled",
         "the currents are ideal and unlimited here: allocate() takes the limits the user declares, and no calibration "
         "ships one, so a limit is MIME's declaration with its source and never a maker's specification; cited figures, none of them a rating of the rig a calibration was fitted on (which neither source "
         "states): OctoMag 16 A a coil, a published operating limit of ETH's rig (Zughaibi2025), and a 15 A amplifier "
@@ -539,17 +574,21 @@ class CalibratedMultipole(CoilArray):
     def forward_model(self, ctx: BuildContext) -> ForwardModel:
         """The field, its gradient, and the force and torque on a moment stated at the point, at a world point
         (``x.point``, and ``x.moment``), affine in ``currents``: the node's closed form, its parameters the node's
-        leaves under their names and in their shapes (each coil's sources padded to one count, which is structure)."""
+        leaves under their names and in their shapes (each coil's sources padded to one count, which is structure).
+        Mounted on a chain's frame, it takes that frame's world pose too (``x.mount_pose``, ``(x, y, z, qw, qx, qy,
+        qz)``), its ``at`` and ``orientation`` the placement in that frame: affine in the currents at every pose."""
         held = self._held()
         shape = (held.coils, int(held.positions.shape[1]), 3)
+        mounted = ctx.mount is not None
         theta = {"source_positions": held.positions.ravel(), "source_directions": held.directions.ravel(),
                  "coefficients": held.coefficients.ravel(), "at": np.asarray(ctx.vector("at")),
                  "orientation": np.asarray(_unit(self.orientation)), "background": np.asarray(ctx.vector("background"))}
         units = {"source_positions": "m", "source_directions": "1", "coefficients": "T m^3/A", "at": "m",
                  "orientation": "1", "background": "T"}
-        return ForwardModel(ctx.id, {"currents": Signal("A", (held.coils,))}, INPUTS, QUANTITIES,
+        inputs = {**INPUTS, **({"mount_pose": Signal("m; 1", (7,))} if mounted else {})}
+        return ForwardModel(ctx.id, {"currents": Signal("A", (held.coils,))}, inputs, QUANTITIES,
                             {k: np.asarray(v, dtype=np.float64) for k, v in theta.items()}, units,
-                            partial(_multipole_model, shape=shape), affine_in=frozenset({"currents"}),
+                            partial(_multipole_model, shape=shape, mounted=mounted), affine_in=frozenset({"currents"}),
                             optional=frozenset({MOMENT}), rows=ROWS)
 
     @override
@@ -574,6 +613,7 @@ class CalibratedMultipole(CoilArray):
 
     @override
     def actuation(self, point: Quantity) -> Actuation:
+        self._refuse_mounted("actuation()")
         held = self._held()
         at, turn, background = self.placement()
         where = np.asarray(si(point, LENGTH, what="the point"), dtype=np.float64)
@@ -590,7 +630,7 @@ class CalibratedMultipole(CoilArray):
         clearance = ctx.settings.get("source_clearance")
         by_distance = clearance is not None
         at_body_points = [slot for slot in slots if slot.offset is not None]
-        b.add_node(CalibratedMultipoleNode(
+        node = b.add_node(CalibratedMultipoleNode(
             ctx.node_name(), ctx.timestep, slots=[slot.name for slot in slots], sources=held.sources,
             source_positions=held.positions.ravel(), source_directions=held.directions.ravel(),
             coefficients=held.coefficients.ravel(), at=ctx.vector("at"), orientation=_unit(self.orientation),
@@ -599,7 +639,10 @@ class CalibratedMultipole(CoilArray):
             guard="distance" if by_distance else "gradient",
             source_clearance=float(cast(float, clearance)) if by_distance else 0.0,
             offset_slots=tuple(slot.name for slot in at_body_points),
-            offsets=tuple(c for slot in at_body_points for c in slot.offset or ())))
+            offsets=tuple(c for slot in at_body_points for c in slot.offset or ()),
+            **({"mount_index": ctx.mount.index, "mount_count": ctx.mount.count} if ctx.mount is not None else {})))
+        if ctx.mount is not None:
+            b.mount(node["mount_poses"])
 
 
 __all__ = ["CALIBRATIONS", "FLOAT32_BUDGET", "Actuation", "Allocation", "CalibratedMultipole", "CoilArray", "allocate",

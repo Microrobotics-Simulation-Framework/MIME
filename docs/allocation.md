@@ -153,6 +153,18 @@ law writes from the same rows, bounds and scales, bit for bit in float64; its fi
 model is the hardware is the model's own claim (a software oracle's, for the coil arrays: see the calibrated
 multipole's validity).
 
+**A coil array mounted on its chain's frame** (`CalibratedMultipole(mount="motor.rotor", ...)`): its model takes the
+frame's world pose as an input, `x["mount_pose"]`, and stays affine in the currents at every pose, so the allocation
+is exact at each tick: `solve({"flux_density": wanted}, {"point": point, "mount_pose": frames[row]})`. At each tick of a
+moving chain the currents written make the wanted field at the pose the controller read, by the host's `actuation`
+there, and are the host's own exact allocation at that pose (`tests/fields/test_mounted_array.py`). The field delivered
+later is the array's at the pose the chain has moved to by then. The law reads the frame's pose as a state read
+(`reads={"frames": "<apparatus>.<segment>.frame_poses"}`), which a controller inside the compiled step cannot
+make: its node runs first in each step and each of its read edges must carry the state at the step's start, and nothing
+it writes reaches the chain, so the schedule runs the chain before it and the read would carry the pose at the step's
+end. The build refuses it (`controller.unreached-read`, from `mime.build._in_graph.order_refusals`) rather than give the
+law a late pose; a callback (`mode="callback"`) reads the pose at the start of its period.
+
 ## Which path to use
 
 - **Inside a controller's law, through its model and its ports**: `ctx.allocator(...)`, above.
