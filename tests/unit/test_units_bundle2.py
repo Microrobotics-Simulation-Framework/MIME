@@ -363,7 +363,7 @@ def test_a_bare_number_is_read_as_one_with_no_unit_and_a_dimensioned_setting_ref
     assert bare is not None and bare.dimension == DIMENSIONLESS
     from control_cases import spun_magnet
 
-    built = spun_magnet("bare").build()
+    built = spun_magnet("bare", uncontrolled=True, drive=units.rad(0.25)).build()
     with pytest.raises(MimeError) as caught:
-        built.run(units.ms(2), override={"field.frequency": bare})
-    assert caught.value.codes()[0] in {"setting.units", "call.units", "override.units"}, caught.value.codes()
+        built.run(units.ms(2), override={"spin.magnetic_moment": bare})
+    assert caught.value.codes()[0] == "value.units", caught.value.codes()

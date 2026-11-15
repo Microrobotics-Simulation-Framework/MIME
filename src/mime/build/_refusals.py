@@ -1,5 +1,6 @@
 """MIME's refusals and errors, which live in :mod:`mime._refusals` (below ``mime.units``, whose errors are MIME's); the
-names stay importable from here."""
+names stay importable from here, and so do the two functions that a pickle of an error standing for one from below
+names (``_made``, ``_rebuilt_plain``), so that a pickle written at this path still loads."""
 
 from mime._refusals import (
     DOCS,
@@ -33,6 +34,9 @@ from mime._refusals import (
     read_table,
     standing_for,
 )
+
+from mime._refusals import _made as _made  # pyright: ignore[reportPrivateUsage] - a pickle names it by this module
+from mime._refusals import _rebuilt_plain as _rebuilt_plain  # pyright: ignore[reportPrivateUsage] - likewise
 
 __all__ = [
     "ArgumentRefused",
