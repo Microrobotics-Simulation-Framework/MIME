@@ -958,6 +958,45 @@ def refuse_out_over(out: Path, sources: Sequence[str | PathLike[str]]) -> None:
                     "the files being read")])
 
 
+#: What the top of a MIME run folder holds, besides ``outputs.npz`` and the rest above: the manifest, the report, the
+#: recording layer (``mime.viz``'s ``RECORDING_FILE``) and a live session's command log (``mime.live``'s ``COMMAND_LOG``;
+#: ``tests/experiment/test_out_folder.py`` keeps these in step with them).
+RUN_FOLDER_NAMES = frozenset({RUN_OUTPUTS, RUN_RECORD, RUN_EXPERIMENT, RUN_TOPOLOGY, RUN_MANIFEST, RUN_REPORT,
+                              "recording.usdc", "commands.jsonl"})
+
+
+def foreign_entries(out: Path) -> tuple[str, ...]:
+    """What keeps ``out`` from being a folder a run may be written into without ``force``: its entries, sorted (a folder
+    ends in ``/``), when it holds anything and is not MIME's own run folder (``run.json`` among files of the names a run
+    writes and nothing else), and ``()`` when it is not there, is empty, or is MIME's own. A file at ``out`` is named."""
+    if not out.exists():
+        return ()
+    if not out.is_dir():
+        return (out.name,)
+    held = sorted(child.name + ("/" if child.is_dir() else "") for child in out.iterdir())
+    own = (out / RUN_RECORD).is_file() and all(name.rstrip("/") in RUN_FOLDER_NAMES for name in held)
+    return () if own or not held else tuple(held)
+
+
+def refuse_out_not_own(out: Path, force: bool) -> None:
+    """Refuse, before a run starts, a folder that is neither new, empty nor MIME's own run folder: the run replaces the
+    files of its own names in it (``outputs.json``, ``run.json``, ``experiment/``'s saved form), and a file of yours of
+    one of those names is lost, with nothing said. ``force`` runs into it all the same."""
+    held = foreign_entries(Path(out))
+    if not held or force:
+        return
+    shown = ", ".join(held[:5]) + (", ..." if len(held) > 5 else "")
+    raise ArgumentRefused([Refusal(
+        "run.out-not-empty", RefusalClass.USER,
+        f"the run would be written into {out}, which holds {shown} and is not an empty folder or a MIME run folder",
+        "write it to a new folder or an empty one: --out <a new folder> (or out=); or run into this one with --force "
+        "(or force=True): it warns at the start of what the folder holds, Ctrl+C cancels the run until writing begins "
+        "(nothing is touched), an amber notice says when writing begins, and only the files a run writes are replaced",
+        why="a run writes outputs.npz, outputs.json, run.json, report.json, topology.json and the saved form in "
+            "experiment/ into its folder, replacing a file of those names, and a folder MIME did not write may hold "
+            "yours")])
+
+
 @dataclass(frozen=True)
 class RunWritten:
     """A run :meth:`BuiltExperiment.run_to` wrote: its steps, the files, the record (what ``run.json`` holds) and the
@@ -1780,7 +1819,8 @@ class BuiltExperiment:
                source: str | PathLike[str] | None = None, load_seconds: float | None = None,
                hook: ChunkHook | None = None, chunk: Quantity | None = None,
                stage_every: Quantity | None = None, stop: StopRequest | None = None,
-               progress: bool | None = None, override: Mapping[Any, object] | None = None) -> RunWritten:
+               progress: bool | None = None, override: Mapping[Any, object] | None = None, force: bool = False,
+               before_writing: Callable[[], None] | None = None) -> RunWritten:
         """Run for ``duration`` and write into ``out`` what ``mime run`` does: ``outputs.npz`` (every field after the
         last step, with ``history`` at every step, the series ``record`` names, one every ``every``, and the flags at
         every step when anything is recorded), ``outputs.json`` beside it (its manifest: every output with its unit,
@@ -1814,19 +1854,25 @@ class BuiltExperiment:
         its unit, its SI value and the leaves it writes), ``report.json`` is the point's, every output is stamped
         "overridden", and ``experiment/`` is this build's own saved form, unchanged; ``mime verify --run`` replays them.
 
+        ``out`` is a new folder, an empty one, or MIME's own run folder (``run.json`` and files of the names above): any
+        other folder is refused before the run starts (``run.out-not-empty``), since the run replaces the files of its
+        own names. ``force=True`` runs into it all the same. ``before_writing`` is called once, after the run and before
+        the first file is written, and may raise to cancel: nothing has been touched then.
+
         As :meth:`run`, a stale build is refused in a notebook or IPython and warned about in a script."""
         self._fresh()
+        refuse_out_not_own(Path(out), force)
         point = self._overridden(override)
         display = _python_display(progress)
         if display is None:
             return self._run_to(out, duration, history=history, record=record, every=every, source=source,
                                 load_seconds=load_seconds, hook=hook, chunk=chunk, stage_every=stage_every,
-                                stop=stop, watch=None, point=point)
+                                stop=stop, watch=None, point=point, before_writing=before_writing)
         try:
             watch = self._watch(display, duration, stop)
             return self._run_to(out, duration, history=history, record=record, every=every, source=source,
                                 load_seconds=load_seconds, hook=hook, chunk=chunk, stage_every=stage_every,
-                                stop=watch.stop, watch=watch, point=point)
+                                stop=watch.stop, watch=watch, point=point, before_writing=before_writing)
         finally:
             display.close()
 
@@ -1834,7 +1880,8 @@ class BuiltExperiment:
                 record: Sequence[OutputRef | ObservationHandle | str], every: Quantity | None,
                 source: str | PathLike[str] | None, load_seconds: float | None, hook: ChunkHook | None,
                 chunk: Quantity | None, stage_every: Quantity | None, stop: StopRequest | None,
-                watch: Watch | None, point: Overridden | None = None) -> RunWritten:
+                watch: Watch | None, point: Overridden | None = None,
+                before_writing: Callable[[], None] | None = None) -> RunWritten:
         import time
 
         started = time.perf_counter()
@@ -1852,6 +1899,8 @@ class BuiltExperiment:
             # outputs are what there is to look at.
             failed, result = error, error.result
         ran = time.perf_counter()
+        if before_writing is not None:
+            before_writing()
         if watch is not None:
             watch.saving(result.steps)
         target = Path(out)

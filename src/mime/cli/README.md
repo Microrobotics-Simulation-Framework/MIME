@@ -239,7 +239,7 @@
   output at the end written out, so the folder is readable without MIME), a record of the run (`run.json`: the steps,
   the time each stage took, the environment and the load report) and the run's own saved form (`experiment/`), whose
   lock records the environment the run was made in. It prints the result's summary (on a terminal, led by what needs
-  attention: see [On a terminal](#on-a-terminal)). A `<time>` is `10s`, `500ms`, `250us`, `2min` or `1h`; a bare number is seconds. It is thin over
+  attention: see [On a terminal](#on-a-terminal)). A `<time>` is a number and its unit, `10s`, `500ms`, `250us`, `2min` or `1h`; a bare number is refused, as the Python API refuses one (it was read as seconds before). It is thin over
   `BuiltExperiment.run_to`, which a script calls to write the same, and `mime.results.RunResult.read(<dir>)` reads the
   folder back. Exits zero, or two when the load, the build, the duration or what to record is refused.
   `--deterministic` turns XLA's deterministic GPU mode on before JAX starts, and the run folder's lock records it, so

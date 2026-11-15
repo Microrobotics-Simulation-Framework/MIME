@@ -1306,6 +1306,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`mime run --duration 3` is refused: a bare number is no duration** (`--duration`, `--every`, `--stage-every`, and `mime serve`'s
+  `--idle-timeout` and `--max-wall`; dev2, usability bundle 1, F4). The command line read a bare number as seconds, so `--duration 3`
+  ran 3 s, 30,000 steps of a 0.1 ms step and 1000 times what `3ms` runs, with no word, where the Python API refuses every bare
+  number. **This changes the command line** (0.3.0.dev1 is a pre-release: the cheap moment): write the unit, `10s`, `500ms`,
+  `250us`, `2min` or `1h`. The refusal (`run.duration`, `run.every`, `run.stage-every`, `live.timeout`) says the number has no
+  unit and writes the same number with two units. `mime serve --chunk` and the Modal script's `--duration <seconds>` are their own
+  options and unchanged (the script passes the unit on to `mime run`).
+- **A run is written only into a new folder, an empty one or MIME's own run folder, else refused before it starts** (`mime run --out`,
+  `BuiltExperiment.run_to`; `run.out-not-empty`; usability bundle 1, F2). A run replaced the files of its own names (`outputs.json`,
+  `run.json`, `report.json`, `topology.json`, `experiment/`'s saved form) in any folder, saying nothing: a user's folder with an
+  `outputs.json` of its own lost it. A MIME run folder is one with `run.json` and no file of a name a run does not write.
+  **`--force`** (`force=True`) runs into any other folder: a warning at the start says what it holds, **Ctrl+C before writing starts
+  cancels the run** (exit 130, nothing written, the folder as it was), and an amber notice says when writing begins; a file that is not
+  of a run's names is kept byte for byte. `run_to` takes `before_writing=`, called once after the run and before the first file, which
+  may raise to cancel. `mime serve --out` and `Experiment.save` are not changed.
+- **A mass, a density or a volume that cannot be what it is declared is refused** (`value.not-positive`; usability bundle 1, F1). A
+  body's mass is above zero where a dynamics divides by it (`rigid_inertial`'s step: a body no dynamics reads may be massless, and
+  the rule is read from `Dynamics.values`), below zero never; a part's density, an apparatus part's mass and density and a medium's
+  density are above zero; a buoyant volume is zero or more. A negative mass ran at 4.13 m/s, a negative medium density flipped
+  buoyancy, a part density of zero was an uncoded `ZeroDivisionError`, and a negative part density was refused as an indefinite
+  inertia tensor whose line sent the user to declare an inertia: each is now this refusal naming the value. `AboveZero` gained `zero`
+  (`ZeroIs`) and `not_above_zero` takes the dynamics that divides.
+- **A study with no member is refused** (`study.axis-values`, `study.no-member`; usability bundle 1, F3). An axis with no values in `grid` or
+  `along`, and a study that `drop_refused=True` leaves with no point (a refusal that applies to every point is a mistake in the
+  base, not a bad point), are refused by `Study.run`, `run_to` and `gradient`; a result of zero members reads "0 members", not "no
+  flag raised in any member".
+
 - **`mime.toml` replaces `sharing.yaml`** (lane P, P6), one manifest for every kind of shared folder: `format`
   (`mime.toml/1`), one kind table (`[bundle] licence` at a saved folder, `[study] licence` at a study folder, a block's
   tables reserved and refused by name until a later release reads blocks) and `[record]`, the record's metadata with
@@ -1658,6 +1685,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **One plugin that cannot register its namespace no longer takes the registry of the whole environment with it** (`mime registry`,
+  `mime.docs.load_namespaces`; `load.namespace-import`; G11). A distribution whose namespace is the first word of one of MIME's
+  entries (it registers `helix`) made `mime registry --json` exit 3 with an uncoded `ValueError` and list nothing. Now the refusal names
+  the distribution and its module, every other namespace is listed, and the command exits 2 (the user's or the environment's reason,
+  never MIME's defect). Any other failure of a plugin's import is the same refusal; `load_namespaces()` without a list to collect
+  into raises it.
+- **An entry setting named like an attribute of its class is refused at registration** (G12). A setting `gradient` replaced the entry's
+  `gradient` record and its declared switches went missing. The reserved names are read from the entry's base classes, naming the
+  setting and the attribute; a base's own settings (`rate`) stay settings with their own rule. As the registry's other
+  registration problems it is the `TypeError` "cannot register ...", with no code of its own. No MIME entry and no packaged plugin
+  is refused (a test walks the registry).
 
 - **SECURITY: a hostile folder could make MIME allocate gigabytes from an NPZ of a few kilobytes** (`mime verify`, any
   load of a saved folder, `RunResult.read`). NumPy allocates the array an entry's header names before it reads a byte of

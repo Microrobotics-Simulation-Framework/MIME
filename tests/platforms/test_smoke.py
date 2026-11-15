@@ -114,7 +114,7 @@ def test_off_linux_the_only_difference_from_the_environment_a_save_was_made_in_i
 def test_a_run_through_the_command_writes_a_folder_the_library_reads_and_the_command_verifies(saved, tmp_path):
     dt = read_folder(saved).lock["resolved"]["run"]["dt"]
     out = tmp_path / FOLDER / "run"
-    run = mime_command("run", str(saved), "--duration", repr(4 * dt), "--out", str(out), "--history", cwd=tmp_path)
+    run = mime_command("run", str(saved), "--duration", f"{4 * dt!r}s", "--out", str(out), "--history", cwd=tmp_path)
     assert run.returncode == 0, said(run)
     assert json.loads((out / "run.json").read_text(encoding="utf-8"))["steps"] == 4
     assert RunResult.read(out).steps == 4
@@ -146,7 +146,7 @@ def test_a_save_writes_the_same_bytes_on_every_platform(saved):
 def test_a_run_writes_the_same_bytes_on_every_platform(saved, tmp_path):
     dt = read_folder(saved).lock["resolved"]["run"]["dt"]
     out = tmp_path / "run"
-    assert mime_command("run", str(saved), "--duration", repr(2 * dt), "--out", str(out), cwd=tmp_path).returncode == 0
+    assert mime_command("run", str(saved), "--duration", f"{2 * dt!r}s", "--out", str(out), cwd=tmp_path).returncode == 0
     files = text_files(out)
     assert {"run.json", "outputs.json"} <= {path.name for path in files}
     assert [path.relative_to(out).as_posix() for path in files if b"\r" in path.read_bytes()] == []

@@ -545,6 +545,7 @@ run.every                     user
 run.no-node-at-dt             user
 run.non-finite                user
 run.nothing-to-step           user
+run.out-not-empty             user
 run.out-of-memory             environment
 run.out-over-source           user
 run.rate-not-multiple         user
