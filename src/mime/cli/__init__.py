@@ -567,7 +567,7 @@ def _non_finite_here(failed: RunFailed, folder: Path, duration: float, out: Path
 
     from mime.saved import DOCUMENT_FILE
 
-    rerun = f"`mime run {quoted(str(folder))} --duration {duration!r} --out <another folder> --history`"
+    rerun = f"`mime run {quoted(str(folder))} --duration {duration!r}s --out <another folder> --history`"
     smaller = (f"give a smaller base step: in {folder / DOCUMENT_FILE}, set dt under run: to {dt / 10!r} s, then save "
                f"the folder again (Experiment.from_document(document).save(folder))")
     refusals: list[Refusal] = []

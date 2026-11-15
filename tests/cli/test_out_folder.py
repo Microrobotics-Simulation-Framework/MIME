@@ -19,8 +19,8 @@ stronger one, that nothing which is not a run's name is touched, and that a refu
 from __future__ import annotations
 
 import io
+import shutil
 import signal
-import threading
 from pathlib import Path
 
 import jax
@@ -182,27 +182,33 @@ def test_force_is_a_flag_of_run_and_listed_in_its_help(capsys):
 # -- Ctrl+C before writing starts cancels ------------------------------------------------------------------------------
 
 
-def press_after(seconds: float, monkeypatch) -> None:
-    """A real SIGINT raised ``seconds`` after the run is under way."""
-    started = Interrupt.running
+def press_at_first_chunk(monkeypatch) -> list[int]:
+    """A real SIGINT raised by the run itself at a known point, the end of its first chunk, where the run asks whether
+    to stop: the press is made there and waited for until the interrupt's watcher has taken it (``Interrupt.pressed``),
+    so the run's next question is answered by it on every run, whatever the machine's speed. The list is the chunks
+    the run asked about (a press that was never made leaves it empty)."""
+    asked: list[int] = []
+    asks = Interrupt.stop
 
-    def running(self: Interrupt) -> None:
-        started(self)
-        timer = threading.Timer(seconds, signal.raise_signal, args=(signal.SIGINT,))
-        timer.daemon = True
-        timer.start()
+    def stop(self: Interrupt, progress: object = None) -> str | None:
+        asked.append(len(asked))
+        if len(asked) == 1:
+            signal.raise_signal(signal.SIGINT)
+            assert self._first.wait(timeout=60), "the press was not taken by the interrupt's watcher"
+        return asks(self, progress)
 
-    monkeypatch.setattr(Interrupt, "running", running)
+    monkeypatch.setattr(Interrupt, "stop", stop)
+    return asked
 
 
 def test_ctrl_c_during_a_forced_run_cancels_it_and_writes_nothing(saved, tmp_path, monkeypatch, capfd):
     out = ux1_folder(tmp_path)
     before = state_of(out)
-    press_after(1.5, monkeypatch)
-    steps = 64 * 4 * 10**6
+    asked = press_at_first_chunk(monkeypatch)
     with untouched(out):
-        assert run(saved, out, "--force", steps=steps) == INTERRUPTED
+        assert run(saved, out, "--force", steps=8) == INTERRUPTED
     captured = capfd.readouterr()
+    assert asked == [0], "the run was ended at the chunk the press was made at, not run to its end"
     assert captured.err.count("Ctrl+C: cancelling at the end of this chunk, and nothing will be written") == 1
     assert f"cancelled: the run ended without writing anything; {out} is as it was" in captured.out
     assert "writing into" not in captured.err
@@ -213,10 +219,9 @@ def test_control_the_same_press_on_a_run_that_is_not_forced_stops_it_and_writes_
                                                                                                  monkeypatch, capfd):
     """Without ``--force`` Ctrl+C is as it was: the run stops at its chunk and is written, marked stopped."""
     out = tmp_path / "run"
-    press_after(1.5, monkeypatch)
-    steps = 64 * 4 * 10**6
-    assert run(saved, out, steps=steps) == INTERRUPTED
-    assert "Ctrl+C: stopping at the end of this chunk" in capfd.readouterr().err
+    asked = press_at_first_chunk(monkeypatch)
+    assert run(saved, out, steps=8) == INTERRUPTED
+    assert asked == [0] and "Ctrl+C: stopping at the end of this chunk" in capfd.readouterr().err
     assert RunResult.read(out).stopped is not None
 
 
@@ -299,3 +304,124 @@ def test_writing_over_the_folder_the_run_reads_is_still_that_refusal_and_not_thi
         assert run(saved, saved) == 2
     err = capsys.readouterr().err
     assert "run.out-over-source" in err and CODE not in err
+
+
+# -- a folder that changes while the run computes (the review's mid-run hook) -----------------------------------------
+
+
+def test_a_folder_that_became_a_stranger_while_the_run_computed_is_refused_where_writing_begins(saved, tmp_path):
+    """``out`` was empty when the run started (the first look let it through), and a chunk hook wrote an ``outputs.json``
+    of the user's into it: the base replaced it with nothing said. The folder is judged again where writing begins and
+    refused (``run.out-not-empty``, naming the change), the file left byte for byte and nothing of the run written."""
+    built = Experiment.load(saved).build()
+    out = tmp_path / "out"
+
+    def hook(chunk) -> None:
+        out.mkdir(exist_ok=True)
+        (out / RUN_MANIFEST).write_text("USER DATA", encoding="utf-8")
+
+    dt = dt_of(saved)
+    with pytest.raises(ArgumentRefused) as refused:
+        built.run_to(out, s(4 * dt), hook=hook, chunk=s(2 * dt))
+    assert refused.value.codes() == [CODE] and "changed while the run computed" in refused.value.refusals[0].message
+    assert files(out) == {RUN_MANIFEST: b"USER DATA"}
+
+
+def test_control_a_hook_that_writes_nothing_into_the_folder_leaves_the_run_written(saved, tmp_path):
+    built = Experiment.load(saved).build()
+    dt = dt_of(saved)
+    written = built.run_to(tmp_path / "out", s(4 * dt), hook=lambda chunk: None, chunk=s(2 * dt))
+    assert written.steps == 4 and RunResult.read(tmp_path / "out").steps == 4
+
+
+def test_control_the_same_hook_under_force_is_run_into_as_asked(saved, tmp_path):
+    built = Experiment.load(saved).build()
+    out = tmp_path / "out"
+    dt = dt_of(saved)
+
+    def hook(chunk) -> None:
+        out.mkdir(exist_ok=True)
+        (out / "mine.txt").write_text("mine", encoding="utf-8")
+
+    built.run_to(out, s(4 * dt), hook=hook, chunk=s(2 * dt), force=True)
+    assert (out / "mine.txt").read_text(encoding="utf-8") == "mine" and RunResult.read(out).steps == 4
+
+
+# -- "MIME's own" is judged by what a folder holds, not by its names --------------------------------------------------
+
+
+def run_folder(saved: Path, root: Path) -> Path:
+    out = root / "genuine"
+    assert run(saved, out, "--history") == 0
+    return out
+
+
+def test_a_folder_holding_a_strangers_run_json_alone_is_not_mimes_own(saved, tmp_path, capsys):
+    out = tmp_path / "o"
+    out.mkdir()
+    (out / RUN_RECORD).write_text('{"other tool": 1}', encoding="utf-8")
+    with untouched(out):
+        assert run(saved, out) == 2
+    assert CODE in capsys.readouterr().err
+
+
+def test_a_strangers_run_json_with_a_users_outputs_npz_is_not_mimes_own(saved, tmp_path, capsys):
+    out = tmp_path / "o"
+    out.mkdir()
+    (out / RUN_RECORD).write_text('{"other tool": 1}', encoding="utf-8")
+    (out / RUN_OUTPUTS).write_text("my data", encoding="utf-8")
+    with untouched(out):
+        assert run(saved, out) == 2
+    assert (out / RUN_OUTPUTS).read_text(encoding="utf-8") == "my data" and CODE in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("name, data", [(RUN_OUTPUTS, "my data"), (RUN_MANIFEST, '{"mine": 1}'), (RUN_REPORT, "notes"),
+                                        ("topology.json", "[1, 2]")])
+def test_a_run_folder_whose_file_of_a_runs_name_is_not_what_a_run_writes_is_not_mimes_own(saved, tmp_path, capsys, name,
+                                                                                      data):
+    out = run_folder(saved, tmp_path)
+    (out / name).write_text(data, encoding="utf-8")
+    with untouched(out):
+        assert run(saved, out) == 2
+    assert CODE in capsys.readouterr().err
+
+
+def test_control_a_genuine_run_folder_is_run_into_again_whatever_it_holds_of_a_runs_own(saved, tmp_path):
+    out = run_folder(saved, tmp_path)
+    assert run(saved, out) == 0 and run(saved, out, "--history") == 0 and RunResult.read(out).steps == 4
+
+
+# -- links ------------------------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("flags", [(), ("--force",)], ids=["without --force", "with --force"])
+def test_a_link_to_nowhere_as_out_is_a_refusal_before_the_run_computes(saved, tmp_path, capsys, monkeypatch, flags):
+    """It was ``error.uncoded`` (exit 3), after the run: ``mkdir`` met the link."""
+    link = tmp_path / "link"
+    link.symlink_to(tmp_path / "nowhere")
+    monkeypatch.setattr(Experiment, "load", lambda folder: (_ for _ in ()).throw(AssertionError("loaded")))
+    assert run(saved, link, *flags) == 2
+    err = capsys.readouterr().err
+    assert CODE in err and "a link to nowhere" in err and "error.uncoded" not in err
+    assert link.is_symlink() and not (tmp_path / "nowhere").exists()
+
+
+@pytest.mark.parametrize("name", [RUN_REPORT, RUN_EXPERIMENT])
+def test_a_link_inside_a_run_folder_makes_it_not_mimes_own_and_is_never_written_through(saved, tmp_path, capsys, name):
+    out = run_folder(saved, tmp_path)
+    precious = tmp_path / "precious"
+    precious.mkdir()
+    (precious / "keep.txt").write_text("precious", encoding="utf-8")
+    (out / name).unlink() if (out / name).is_file() else shutil.rmtree(out / name)
+    (out / name).symlink_to(precious if name == RUN_EXPERIMENT else precious / "keep.txt")
+    before = files(precious)
+    assert run(saved, out) == 2
+    assert files(precious) == before and CODE in capsys.readouterr().err
+
+
+def test_a_link_to_a_folder_of_the_users_as_out_is_judged_by_what_it_leads_to(saved, tmp_path):
+    real = thesis_folder(tmp_path)
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    with untouched(real):
+        assert run(saved, link) == 2

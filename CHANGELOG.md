@@ -1390,12 +1390,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ran 3 s, 30,000 steps of a 0.1 ms step and 1000 times what `3ms` runs, with no word, where the Python API refuses every bare
   number. **This changes the command line** (0.3.0.dev1 is a pre-release: the cheap moment): write the unit, `10s`, `500ms`,
   `250us`, `2min` or `1h`. The refusal (`run.duration`, `run.every`, `run.stage-every`, `live.timeout`) says the number has no
-  unit and writes the same number with two units. `mime serve --chunk` and the Modal script's `--duration <seconds>` are their own
+  unit and writes the same number with two units; `--duration 3 s` (the unit apart) says to write `3s`, or `"3 s"` in quotes, and every command line a refusal prints (`run.non-finite`'s rerun too) is written with its unit and read back by a test. `mime serve --chunk` and the Modal script's `--duration <seconds>` are their own
   options and unchanged (the script passes the unit on to `mime run`).
 - **A run is written only into a new folder, an empty one or MIME's own run folder, else refused before it starts** (`mime run --out`,
   `BuiltExperiment.run_to`; `run.out-not-empty`; usability bundle 1, F2). A run replaced the files of its own names (`outputs.json`,
   `run.json`, `report.json`, `topology.json`, `experiment/`'s saved form) in any folder, saying nothing: a user's folder with an
-  `outputs.json` of its own lost it. A MIME run folder is one with `run.json` and no file of a name a run does not write.
+  `outputs.json` of its own lost it. A MIME run folder is judged by what it holds: `run.json` that reads as a run's record, every other entry a file of a name a run writes and reading as one (an `outputs.npz` that is a zip, an `outputs.json` of the manifest's format), and no symbolic link inside; a stranger's `run.json`, a user's `outputs.npz` beside a MIME `run.json` and a link in the folder each make it someone else's. A file or a link to nowhere as `--out` is refused before the run (not `error.uncoded` after it), `--force` or not. The folder is judged again where writing begins, after the run, and refused if a chunk hook (or anything else) changed it meanwhile; the moment between that second look and the first file written is the one window left. `Study.run_to` and `mime study run --out` refuse a file or a link to nowhere (`study.folder-not-empty`) and a folder inside the saved experiment they read (`run.out-over-source`) as well; a folder holding anything but a study was already refused by them.
   **`--force`** (`force=True`) runs into any other folder: a warning at the start says what it holds, **Ctrl+C before writing starts
   cancels the run** (exit 130, nothing written, the folder as it was), and an amber notice says when writing begins; a file that is not
   of a run's names is kept byte for byte. `run_to` takes `before_writing=`, called once after the run and before the first file, which

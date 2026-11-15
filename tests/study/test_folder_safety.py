@@ -231,3 +231,28 @@ def test_a_member_manifest_of_the_wrong_shapes_is_refused_when_the_member_is_rea
     with pytest.raises(ArgumentRefused) as refused:
         result.member(0)
     assert refused.value.codes() == ["result.format"]
+
+
+# -- the folder is a folder a study can be written into (the fix round on #316) ---------------------------------------
+
+
+def test_a_study_into_a_file_or_a_link_to_nowhere_is_a_coded_refusal_before_anything_runs(tmp_path):
+    """``mkdir`` met the link or the file after the study had run: ``error.uncoded``, exit 3."""
+    study = sweep_of(toy())
+    link = tmp_path / "link"
+    link.symlink_to(tmp_path / "nowhere")
+    file = tmp_path / "file"
+    file.write_text("mine", encoding="utf-8")
+    for out in (link, file):
+        with pytest.raises(BuildRefused) as refused:
+            study.run_to(out)
+        assert refused.value.codes() == ["study.folder-not-empty"]
+    assert file.read_text(encoding="utf-8") == "mine" and not (tmp_path / "nowhere").exists()
+
+
+def test_a_study_written_inside_the_saved_experiment_it_reads_is_refused_as_a_run_is(tmp_path):
+    base = tmp_path / "base"
+    toy().build().save(base)
+    with pytest.raises(ArgumentRefused) as refused:
+        sweep_of(Experiment.load(base)).run_to(base / "study")
+    assert refused.value.codes() == ["run.out-over-source"] and not (base / "study").exists()

@@ -1,5 +1,5 @@
 """A duration on the command line: ``10s``, ``500ms``, ``250us``, ``2min`` or ``1h``. A bare number is refused, as the
-Python API refuses one (``mime run --duration 3`` once ran three seconds, 1000 times what ``3ms`` runs): units are never
+Python API refuses one (``--duration 3`` once ran three seconds, 1000 times what ``3ms`` runs): units are never
 assumed.
 
 The units are ``mime.units``' own (``s``, ``ms``, ``us``): their factors, taken from the units. A minute and an hour are
@@ -37,7 +37,7 @@ _PLAIN_NUMBER = re.compile(r"\d+\.?\d*|\.\d+")
 _WRITTEN = re.compile(r"(?P<number>[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*(?P<unit>[A-Za-z]+)")
 
 #: The forms, as a refusal and the help name them.
-FORMS = "10s, 500ms, 250us, 2min, 1h: a number and its unit, written together or apart"
+FORMS = "10s, 500ms, 250us, 2min, 1h: a number and its unit as one word (3s), or in quotes (\"3 s\")"
 
 
 def is_bare_number(text: str) -> bool:

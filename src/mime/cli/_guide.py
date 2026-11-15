@@ -170,6 +170,7 @@ def hints_for(message: str, parser: argparse.ArgumentParser, words: Sequence[str
         near = _close(wrong.group(1), choices)
         if near is not None:
             hints.append(f"did you mean {near}?")
+    hints += _split_unit_hints(message, words)
     top = MimeParser.top
     if top is None:
         return hints
@@ -187,6 +188,37 @@ def hints_for(message: str, parser: argparse.ArgumentParser, words: Sequence[str
             if near is not None:
                 hints.append(f"did you mean {near}?")
     return hints
+
+
+#: The options that take a duration (``mime.cli._durations``), and the words a unit is written as.
+_DURATION_OPTIONS = ("--duration", "--every", "--stage-every", "--idle-timeout", "--max-wall")
+_UNIT_WORDS = ("s", "ms", "us", "min", "h")
+
+
+def _is_number(text: str) -> bool:
+    try:
+        float(text)
+    except ValueError:
+        return False
+    return True
+
+
+def _split_unit_hints(message: str, words: Sequence[str]) -> list[str]:
+    """The line for a duration written with a space before its unit (``--duration 3 s``): argparse takes ``3`` as the value
+    and ``s`` as a stray argument. It names the option and shows the two ways to write it, each with the generic number 3,
+    and never repeats the words the user typed."""
+    if "unrecognized arguments" not in message:
+        return []
+    for index, word in enumerate(words):
+        option, equals, value = word.partition("=")
+        if option not in _DURATION_OPTIONS:
+            continue
+        rest = list(words[index + 1:index + 3])
+        number, unit = (value, rest[:1]) if equals else (rest[0] if rest else "", rest[1:2])
+        if _is_number(number) and unit and unit[0] in _UNIT_WORDS:
+            return [f"a duration is a number and its unit written as one word, or in quotes: write {option} 3s, or "
+                    f"{option} \"3 s\" (3s is 3 seconds, 3ms is 3 milliseconds)"]
+    return []
 
 
 def bare(folder: Path) -> str:
