@@ -1,0 +1,82 @@
+{
+ "written": "2026-11-15, committed before round 3's probe ran (the commit that adds this file is the timestamp): the guard's rule, the descent's cost, and the corner plant at 128 px, on fresh draws with the corner line unchanged",
+ "phase": "camera PR 5a (route 2), round 3 after the tail round's confirmation (run 43654309266, predictions_camera_pr5a_tail.json's outcomes: the rule failed in 6 of 12 groups)",
+ "labels": "predictions by round 3's agent from seen draws only (2200 to 2399 and the earlier rounds'); the line is predictions_camera_pr5a_fix.json's, derived before its run and not moved; the plants' sizes were set from their defect classes before any rate was measured",
+ "seen_before": [
+  "the unbounded count at seed 2311 (coil2, 128 and 512 px), local, float64: pixel (94, 38) at 128 px. The centre ray's second minimum b is a fold of the helix sign function's turn guess: it reads 23 px where the exact distance to the coil is 9.7 px, and tb sits at a local maximum of the exact distance (14.3 px); b's descent runs towards a and b takes a's piece (both lines +0.057 px). On sub-rays (-0.375, +0.125) and (-0.375, +0.375) the fold has moved off, tb lies on a ridge of the exact distance, and b's descent runs away from a down to another turn's basin, whose least is 7.3 to 7.4 px out, 14.6 spacings away: the count flagged a descent into a basin seven pixels outside the sub-cell, which no reading of it changes (the pixel's error 0.0007). The descent did not fail; the count's rule was wrong",
+  "the premise guard (unread_leasts) on seen draws, local, float64 (tmp diagnosis, 41 draws a case: seeds 2200 to 2235, 2213, 2230, 2272, 2311, 2355): clean 0/41 at coil 128 px, coil2 128 px and coil 256 px (and 0 at 2311 at coil2 512 px, and 2312); with the second branch's search lost (the guard's control) above zero on 41/41 in each case, least 21, 37 and 28 leasts a draw; with the descent's reach cut to 0 above zero on 24/41, 20/41 and 10/41 (not every draw: the quartic alone reaches a least within a spacing). The guard's first form (each local minimum, no union) flagged seed 2230 (coil, 128 px) at pixel (91, 55): b's narrow basin 1.8 spacings from tb, skipped by the descent (b merged into a), in a sub-cell wholly inside a's half-plane (a's line -0.62 px): the union is the whole cell there, so the rule leaves out a sub-cell wholly inside a read branch",
+  "the single edge on seen draws (the same diagnosis, planted change against clean): coil 128 px least 0.68 L (seed 2355), 3/41 under 1.25 L; coil2 128 px least 1.20 L (seed 2213); coil 256 px least 3.47 L",
+  "the compacted descent, local: bitwise equal to 1a5b5937's frame at seeds 2052, 2129 (coil, 128 px), 2311 (coil2, 128 px), float64, 2152 (coil2, 512 px, float32), and the in-loop coil's step at 160 px float64 (17 of 17 leaves); its control (LEAST_REACH 0 against 6 at 2052) differs by 0.037 on 34 pixels",
+  "the pieces whose descent moves (the lower neighbour a spacing away below the held point), local: at most 2.43 % of the pieces (the in-loop coil at 160 px), 1.39 % (640 px), 3.38 % (coil2 at 128 px, seed 2311), 1.65 % (coil at 512 px, seed 2052), at the worst sub-offset",
+  "local timings, exploration only (a shared 24-core laptop at load 8 to 19, never a claim): the in-loop coil at 320 px float32, base 478 ms, head 930, compact 140; at one core base 700, compact 925, head 1279. A local profile (jax.profiler, XLA:CPU thunks): in base and head the corner sub-samples' cond runs as one `call` thunk on one thread, about the whole step; in compact its work is spread over the threads",
+  "the stop_gradient's place (on the held search's inputs or outputs) does not change the time: base 478 against 477 ms, head 930 against 924 (local)",
+  "the misread plant on seen draws (planted frame against clean, no truth), local, float64: see gate_round3_corner's control_misread"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "GitHub runner, 4 vCPU, CPU (JAX_PLATFORMS=cpu); every arm through probe_launch.sh; timings only from the P arms, each of which measures base, head and compact in one job (one CPU model)",
+  "sizes_and_parameters": "the corner gate as predictions_camera_pr5a_tail.json's (the coil and coil2 from 0.1 m across a 3 mm field at 128, 256 and 512 px; 4 x 4 corner sub-samples; the truth at 64 x 64 jittered samples a pixel and 512 signs, float64), route 2's least by descent (LEAST_REACH = 6), the descent gathered to the pieces that move (DESCENT_SHARE 1/8 of the pieces a turn); the premise guard's dense profile 16 a spacing across the whole march; the cost on the in-loop coil (scripts/camera_route2/cases.py) at 160, 320 and 640 px",
+  "seeds_and_draws": "corner: DETECTION_SEED 2400 to 2599 (never run: the PR's draws were 0 to 59, the review's 1000 to 1059, the fix round's 2000 to 2199, the tail round's 2200 to 2399), 200 a coil, width and dtype, clean, single edge and misread, in arms of 100 (128, 256 px) or 50 (512 px); the cost at 20 steps, 3 repeats (node_measure.py), at the runner's threads and at one (taskset -c 0, XLA's Eigen threads off)"
+ },
+ "gate_round3_corner": {
+  "claim": "on every pixel where two branches of a coil's outline cross, route 2 (the compacted descent) is within the corner line of the sign-only truth, at 128, 256 and 512 px, float64 and float32, on two coils; on every such pixel's sub-rays each least that reaches its sub-cell is read by a piece (the derivation's premise), and the guard sees a lost second branch on every draw",
+  "kind": "bounds",
+  "case": "tests/sensing/test_sampled.py::test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth[<dtype>-<width>-<coil>] through detection_rate.py (CAMERA_PLANT=single-edge, clean and planted; CAMERA_PLANT=misread, planted only), CORNER_RECORD holding each draw's largest error, its unread count and its lost-branch count",
+  "prediction": {
+   "value": "the lines unchanged; the clean largest over 200 draws at most 0.35 of its line at every case (the scheme is the tail round's, whose fresh draws read at most 0.27), no clean draw with an unread least, the lost-branch count above zero on every draw",
+   "band": [
+    0.0,
+    0.8
+   ],
+   "unit": "the clean largest's share of its line",
+   "basis": "measured",
+   "why": "the compacted descent gives the tail round's scheme's values (bitwise on the frames compared); the guard tests the premise itself, and a reading the descent reached (or a basin outside the sub-cell) is not counted"
+  },
+  "required": "per case, as the tail round's: clean 0/200 and planted 200/200 (single edge), the clean largest at most 0.8 of the line and the planted least at least 1.25 of it; no clean draw with an unread least; the lost-branch count above zero on every draw",
+  "control": {
+   "plant": "CAMERA_PLANT=single-edge, unchanged (the second branch dropped): its class, the corner treatment lost (the march's second minimum not kept, or the union replaced by one edge); its size is the dropped branch's area in each pixel, set by where the notch falls on the pixel grid, not by any parameter",
+   "environment_variable": "CAMERA_PLANT",
+   "expected_rate": "200/200 with the planted least at least 1.25 of the line at 256 and 512 px (the tail round's least 2.8 to 4.2 L at 256, 1.55 to 2.97 L at 512; the fix round's seed 2022 at 256 px, 0.017, is the one draw in 600 at 256 px under it); at 128 px predicted to FAIL the rule: about 1 draw in 100 missed on the coil (the tail round's 2230, 2355) and the planted least near 1.0 to 1.2 L on coil2 (the tail round's 1.03, 1.18)",
+   "runs": 200,
+   "clean_expected": "0/200 a case",
+   "resolution": "the single edge at 128 px is under the gate's resolution (1.25 L) at some poses: its error is the dropped branch's area, which a vertex near a pixel's corner makes small, and the line at 128 px is the largest (its cell term grows with the pixel)"
+  },
+  "control_guard": {
+   "plant": "in every run, the guard's count with the scheme's search losing its second branch (the second piece read at the first's point, as the two halves of _sampled._leasts' list mis-sliced would): asserted above zero",
+   "expected_rate": "above zero on every draw, clean and planted (seen: 26 to 229 a draw)",
+   "runs": "every run of the gate"
+  },
+  "control_misread": {
+   "plant": "CAMERA_PLANT=misread: the second branch read MISREAD = 0.1 of a pixel's footprint farther out on every ray. Its class: the tail round's defect, a branch's least on corner sub-rays misread so that the branch is read too far out (by a search that does not reach the sub-ray's least); its size, the least of the misreads measured where it occurred, 0.10 to 0.17 px (seeds 2052, 2129, 2049), set before any rate was measured; on every ray, where the defect as it occurred misread one or two sub-rays of one pixel",
+   "environment_variable": "CAMERA_PLANT",
+   "runs": 200,
+   "expected_rate": "at 128 px predicted to FAIL the rule: on the coil about one draw in seven under 1.25 L (seen 6/41, the least 0.41 L at seed 2230, where the single edge is also small) and on coil2 the least near 1.2 L; at 256 and 512 px caught 200/200 with the least at or above 1.25 L, the coil at 256 px thinnest (seen least 1.43 L at seed 2230); the misread's change is about a tenth of a pixel times the branch's own length in the pixel (seen median 0.088 to 0.100 at every case measured), while the line shrinks with the pixel",
+   "seen": "local, float64, the planted frame against the clean (no truth) on the 41 seen draws a case: coil 128 px least 0.0194 (0.41 L) at seed 2230, median 0.088, 6/41 under 1.25 L less 0.004; coil2 128 px least 0.0308 (1.19 L) at 2213, median 0.100, 0/41 under 1.25 L less 0.004; coil 256 px least 0.0423 (1.43 L) at 2230, median 0.095, 0/41; coil2 at 256 px and both coils at 512 px not measured locally",
+   "if_under_the_line": "if the misread is under 1.25 L at 128 px on some draws, the gate at 128 px does not resolve the tail's defect class at its measured size: an option for the maintainer (the gate at 256 px and up only, or 128 px's power stated); the plant is not resized"
+  },
+  "if_wrong": "a clean draw over 0.8 of its line, or a clean draw with an unread least, is a finding against the scheme or the guard, reported with its pixel's cause; a draw on which the lost-branch count is zero says the guard cannot discriminate there; a planted draw under 1.25 of the line is the plant's resolution, reported as such; the line is not moved and the claim not loosened",
+  "cannot_discriminate_if": "a draw with no two-branch pixel (the test asserts some), the lost-branch count zero, or the truth's re-measurement at four times its samples moving the worst clean draw by more than the truth's floor"
+ },
+ "gate_round3_cost": {
+  "claim": "where the descent's time went, and the compacted descent's frame against 5d4b2724's (base) on one CPU model in one job, through the in-loop camera at 160, 320 and 640 px in both dtypes",
+  "kind": "estimates",
+  "case": "probe arms P-<width>-<dtype>: scripts/camera_route2/g19.py (node_measure.py) for base, head (1a5b5937's _sampled.py) and compact (this branch's), at the runner's threads and at one thread; probe/xprofile.py once for each",
+  "prediction": {
+   "value": "at one thread (the evaluations' count): head over base 1.7 to 2.0, compact over base 1.1 to 1.4; at the runner's threads: head over base 1.7 to 2.2 (the tail round's same-CPU pair 2.12), compact over base 0.25 to 0.9; the profile: in base and head one event (the corner pass's `call`) over half the step, in compact none over a tenth",
+   "band": [
+    0.25,
+    1.4
+   ],
+   "unit": "compact's frame over base's, at the runner's threads and at one thread",
+   "basis": "measured (local, exploration) and derived",
+   "why": "the descent costs head 22 held evaluations a sub-ray against base's 10 (the line's jvp tangents are cheap: the nearest angle is held), so head over base is near 1.9 at one thread; compact holds the base's 10 and gathers the moving pieces (under 3.4 %) into a turn of 1/8 of the list, so it is near the base at one thread; and in base and head XLA:CPU runs the corner pass whole on one thread (one `call` thunk), which compact's loop and gathers break up, so at the runner's four threads compact is faster than base"
+  },
+  "structural_estimate": "a ray's evaluations: base 48 + 16 + 16 x 16 = 320, head 48 + 28 + 16 x 28 = 524, compact 48 + 18 + 16 x 18 = 354 (1.11 x base): the estimate counts each piece's line as two evaluations and cannot see the threads",
+  "required": "the brief's target: compact's frame at most 2.0 times base's on the same CPU (1.2 to 2.0 or below), with the clean largest still at most 0.8 of the line (gate_round3_corner)",
+  "if_wrong": "a ratio over 2.0 is reported with the profile; COST_LINE's note is restated from the measured numbers only if the corner gate passes"
+ },
+ "outcomes": null
+}
