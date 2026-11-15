@@ -116,5 +116,1374 @@
   "required": "the brief's stop rule: head at most 1.5 times round 3's head",
   "if_wrong": "a ratio over 1.5: stop and return with the table"
  },
- "outcomes": null
+ "outcomes": {
+  "written": "2026-11-15, after runs 43699692574 (probe/cam-pr5a-round4 @24eb62f4, 53 of 54 arms; C-coil2-256-float64-2700-100's runner was lost with no artifact) and 43711276007 (probe/cam-pr5a-round4b @8d9ff062, that arm again); both branches deleted after download; the predictions above were committed before either ran and are unchanged",
+  "run": "every corner arm failed only the step Memory against the estimate (the estimator's known underestimate of an eager pytest process: peaks 2 to 3 GiB against bounds of 0.6), each wrote its results, no inconclusive run; the 6 cost arms passed",
+  "corner_verdict": "the required clean rule (gate_round4_corner) PASSES in 10 of 12 cases and FAILS at coil2 512 px in both dtypes on one draw, 2667: the guard counts one unread least there. No clean draw is over the line or over 0.8 L (largest 0.249 L, coil2 512 px float64), the truth at 4x moves at most 0.0038 (floor 0.0123), the guard's control is above zero on every draw (least 12). The line is not moved and the guard not changed",
+  "guard_2667": "diagnosed locally (now seen): sub-ray (-0.375, -0.375) of pixel 154473, coil2 512 px. The lost branch's held point lies 2.57 spacings past the read point; the hit is a dip 2e-11 m deep (3.4e-6 px) and 0.03 spacing wide at +3.649 spacings, where the nearest angle passes the arc's end (theta 18.8496 = the sweep: the helix.end clamp, a C1 kink), inside the body (value -4.957e-7 m, line -0.0846 px). It is below the window's resolution (a sixteenth of a spacing) and the window has no record of it; the run flag is down. The sub-cell is wholly inside the read branch (its line -0.1437 px with its normal within 4 degrees of an axis: covered share 1.000000, and with the hit read the union's share is 1.000000 too, a change of 0): the guard's inside test (line below minus the half-diagonal, 0.177 px) is sufficient, not necessary, and the hit changes nothing the cell reads. A finding against the guard's premise test, not the image; reported, not fixed (the rule does not move)",
+  "improvement_verdict": "the brief's stop rule is not met: after (i) and (ii) no clean draw of 2400 is flagged (0 of 200 in every case, both dtypes); the trigger fires on 161 to 191 of 200 draws, refinement at 2x leaves 161 to 179, at 4x 140 to 164 (it clears 2 to 26 % of the flagged draws, and of the triggered sub-rays about 30 % at 128 px, 64 to 71 % at 256 and 84 to 86 % at 512); the window clears every one. Refinement is not shipped: it does not clear a draw the window does not, and the cascade costs what the window alone does",
+  "flag_verdict": "corner_unverified (pixels) and corner_bound (the largest bound) raised on 0 clean draws of 2400: a false-alarm rate of 0/2400 (95 % upper bound 0.12 %); its control flags pixels on every draw (least 5), its bound holds on every draw (control_past at most -0.0108), and a flagged pixel's error is a median 0.60 to 0.68 of its bound (the largest ratios, up to 1e5, are pixels whose bound is near zero and whose error is the line's own terms)",
+  "ladder_verdict": "the misread caught on every draw (200/200, over the line): coil 128 px none up to 0.5 px; coil 256 px none; coil 512 px 0.15 (float32) and 0.1 (float64); coil2 128 and 256 px 0.1; coil2 512 px 0.15 (float32) and 0.1 (float64). The draws no size catches are 2624 and 2791 (coil 128 px) and 2750 (coil 256 px): poses where the dropped branch itself (the single edge, the most this class can move a pixel) moves no judged pixel above 0.10, 0.72 and 0.34 L, so no misread there exceeds the line either. On the draws where the single edge is caught, X is 0.5 (coil 128; 2732's misread plateaus at 0.75 L from 0.15 to 0.3 px and is caught at 0.5), 0.15 and 0.1 (coil 256 float32 and float64), and as above elsewhere",
+  "cost_verdict": "head (the window) over round 3's head 1.04 to 1.10 at the runner's threads and 1.01 to 1.05 at one thread (same CPU in each job), under the 1.5 stop line; refineonly 1.00 to 1.06 and 0.99 to 1.03; refine (both) 1.03 to 1.10 and 1.00 to 1.04",
+  "corner_groups": [
+   {
+    "coil": "coil",
+    "width": 128,
+    "dtype": "float32",
+    "line": 0.050487988631789604,
+    "clean_draws": 200,
+    "clean_largest": 0.0036769509315490723,
+    "clean_largest_over_line": 0.0728,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 12,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 164,
+     "refined_2x": 161,
+     "refined_4x": 161,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 3085,
+     "refined_2x": 2369,
+     "refined_4x": 2144
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.0885,
+     "refined_2x": 0.0649,
+     "refined_4x": 0.0647,
+     "after_window": 0.0728
+    },
+    "guard_before_draws": 5,
+    "flag_control": {
+     "least_pixels": 5,
+     "zero_seeds": [],
+     "past_most": -0.0159,
+     "tightness_median": 0.64
+    },
+    "single_edge": {
+     "caught": 198,
+     "draws": 200,
+     "missed_seeds": [
+      2624,
+      2791
+     ],
+     "least_over_line": 0.09253549989596933,
+     "least_seed": 2624,
+     "under_1_25_line": [
+      2624,
+      2791
+     ]
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 74,
+      "draws": 200,
+      "least_over_line": 0.064,
+      "missed_seeds": "126 seeds"
+     },
+     "0.1": {
+      "caught": 193,
+      "draws": 200,
+      "least_over_line": 0.093,
+      "missed_seeds": [
+       2624,
+       2719,
+       2732,
+       2748,
+       2760,
+       2791,
+       2792
+      ]
+     },
+     "0.15": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.095,
+      "missed_seeds": [
+       2624,
+       2732,
+       2791
+      ]
+     },
+     "0.2": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.095,
+      "missed_seeds": [
+       2624,
+       2732,
+       2791
+      ]
+     },
+     "0.3": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.095,
+      "missed_seeds": [
+       2624,
+       2732,
+       2791
+      ]
+     },
+     "0.5": {
+      "caught": 198,
+      "draws": 200,
+      "least_over_line": 0.095,
+      "missed_seeds": [
+       2624,
+       2791
+      ]
+     }
+    },
+    "ladder_x_every_draw": null,
+    "ladder_x_where_the_single_edge_is_caught": "0.5",
+    "ladder_x_at_1_25_line_there": "0.5",
+    "truth_at_4x_moved_by_at_most": 0.001580953598022461,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil",
+    "width": 128,
+    "dtype": "float64",
+    "line": 0.04689145755885998,
+    "clean_draws": 200,
+    "clean_largest": 0.0034026046032200608,
+    "clean_largest_over_line": 0.0726,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 12,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 164,
+     "refined_2x": 162,
+     "refined_4x": 162,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 3110,
+     "refined_2x": 2388,
+     "refined_4x": 2160
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.0726,
+     "refined_2x": 0.0726,
+     "refined_4x": 0.0726,
+     "after_window": 0.0726
+    },
+    "guard_before_draws": 5,
+    "flag_control": {
+     "least_pixels": 5,
+     "zero_seeds": [],
+     "past_most": -0.01076,
+     "tightness_median": 0.662
+    },
+    "single_edge": {
+     "caught": 198,
+     "draws": 200,
+     "missed_seeds": [
+      2624,
+      2791
+     ],
+     "least_over_line": 0.09933174416343468,
+     "least_seed": 2624,
+     "under_1_25_line": [
+      2624,
+      2791
+     ]
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 126,
+      "draws": 200,
+      "least_over_line": 0.069,
+      "missed_seeds": "74 seeds"
+     },
+     "0.1": {
+      "caught": 194,
+      "draws": 200,
+      "least_over_line": 0.1,
+      "missed_seeds": [
+       2624,
+       2719,
+       2732,
+       2760,
+       2791,
+       2792
+      ]
+     },
+     "0.15": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.102,
+      "missed_seeds": [
+       2624,
+       2732,
+       2791
+      ]
+     },
+     "0.2": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.102,
+      "missed_seeds": [
+       2624,
+       2732,
+       2791
+      ]
+     },
+     "0.3": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.102,
+      "missed_seeds": [
+       2624,
+       2732,
+       2791
+      ]
+     },
+     "0.5": {
+      "caught": 198,
+      "draws": 200,
+      "least_over_line": 0.102,
+      "missed_seeds": [
+       2624,
+       2791
+      ]
+     }
+    },
+    "ladder_x_every_draw": null,
+    "ladder_x_where_the_single_edge_is_caught": "0.5",
+    "ladder_x_at_1_25_line_there": "0.5",
+    "truth_at_4x_moved_by_at_most": 0.0030517578125,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil",
+    "width": 256,
+    "dtype": "float32",
+    "line": 0.03688879092528923,
+    "clean_draws": 200,
+    "clean_largest": 0.0062143802642822266,
+    "clean_largest_over_line": 0.1685,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 15,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 175,
+     "refined_2x": 174,
+     "refined_4x": 162,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 4763,
+     "refined_2x": 2390,
+     "refined_4x": 1729
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1221,
+     "refined_2x": 0.1213,
+     "refined_4x": 0.1213,
+     "after_window": 0.1685
+    },
+    "guard_before_draws": 3,
+    "flag_control": {
+     "least_pixels": 7,
+     "zero_seeds": [],
+     "past_most": -0.0296,
+     "tightness_median": 0.614
+    },
+    "single_edge": {
+     "caught": 199,
+     "draws": 200,
+     "missed_seeds": [
+      2750
+     ],
+     "least_over_line": 0.26893094685220986,
+     "least_seed": 2750,
+     "under_1_25_line": [
+      2750
+     ]
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 171,
+      "draws": 200,
+      "least_over_line": 0.184,
+      "missed_seeds": "29 seeds"
+     },
+     "0.1": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.242,
+      "missed_seeds": [
+       2670,
+       2750,
+       2791
+      ]
+     },
+     "0.15": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.242,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.2": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.242,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.3": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.242,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.5": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.242,
+      "missed_seeds": [
+       2750
+      ]
+     }
+    },
+    "ladder_x_every_draw": null,
+    "ladder_x_where_the_single_edge_is_caught": "0.15",
+    "ladder_x_at_1_25_line_there": "0.2",
+    "truth_at_4x_moved_by_at_most": 0.001953125,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil",
+    "width": 256,
+    "dtype": "float64",
+    "line": 0.029695728779429983,
+    "clean_draws": 200,
+    "clean_largest": 0.0033765768811712116,
+    "clean_largest_over_line": 0.1137,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 15,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 176,
+     "refined_2x": 173,
+     "refined_4x": 164,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 4933,
+     "refined_2x": 2461,
+     "refined_4x": 1797
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1137,
+     "refined_2x": 0.1137,
+     "refined_4x": 0.1137,
+     "after_window": 0.1137
+    },
+    "guard_before_draws": 3,
+    "flag_control": {
+     "least_pixels": 7,
+     "zero_seeds": [],
+     "past_most": -0.02635,
+     "tightness_median": 0.637
+    },
+    "single_edge": {
+     "caught": 199,
+     "draws": 200,
+     "missed_seeds": [
+      2750
+     ],
+     "least_over_line": 0.342576812682286,
+     "least_seed": 2750,
+     "under_1_25_line": [
+      2750
+     ]
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 186,
+      "draws": 200,
+      "least_over_line": 0.239,
+      "missed_seeds": "14 seeds"
+     },
+     "0.1": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.312,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.15": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.312,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.2": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.312,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.3": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.312,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.5": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.312,
+      "missed_seeds": [
+       2750
+      ]
+     }
+    },
+    "ladder_x_every_draw": null,
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.15",
+    "truth_at_4x_moved_by_at_most": 0.003335185012342423,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil",
+    "width": 512,
+    "dtype": "float32",
+    "line": 0.03548398868143349,
+    "clean_draws": 200,
+    "clean_largest": 0.004478931427001953,
+    "clean_largest_over_line": 0.1262,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 17,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 191,
+     "refined_2x": 173,
+     "refined_4x": 142,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 9484,
+     "refined_2x": 2340,
+     "refined_4x": 1553
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1279,
+     "refined_2x": 0.1181,
+     "refined_4x": 0.1181,
+     "after_window": 0.1262
+    },
+    "guard_before_draws": 2,
+    "flag_control": {
+     "least_pixels": 5,
+     "zero_seeds": [],
+     "past_most": -0.02884,
+     "tightness_median": 0.599
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 1.0713671233763715,
+     "least_seed": 2750,
+     "under_1_25_line": [
+      2750
+     ]
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 174,
+      "draws": 200,
+      "least_over_line": 0.417,
+      "missed_seeds": "26 seeds"
+     },
+     "0.1": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.812,
+      "missed_seeds": [
+       2603,
+       2750,
+       2788
+      ]
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.009,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.058,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.058,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.058,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.15",
+    "ladder_x_where_the_single_edge_is_caught": "0.15",
+    "ladder_x_at_1_25_line_there": "0.2",
+    "truth_at_4x_moved_by_at_most": 0.00384521484375,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil",
+    "width": 512,
+    "dtype": "float64",
+    "line": 0.02109786438971499,
+    "clean_draws": 200,
+    "clean_largest": 0.0038273946559463923,
+    "clean_largest_over_line": 0.1814,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 17,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 191,
+     "refined_2x": 178,
+     "refined_4x": 153,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 10034,
+     "refined_2x": 2549,
+     "refined_4x": 1625
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1814,
+     "refined_2x": 0.1814,
+     "refined_4x": 0.1814,
+     "after_window": 0.1814
+    },
+    "guard_before_draws": 2,
+    "flag_control": {
+     "least_pixels": 5,
+     "zero_seeds": [],
+     "past_most": -0.01751,
+     "tightness_median": 0.625
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 1.7991629419410506,
+     "least_seed": 2750,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 196,
+      "draws": 200,
+      "least_over_line": 0.69,
+      "missed_seeds": [
+       2603,
+       2717,
+       2750,
+       2788
+      ]
+     },
+     "0.1": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.354,
+      "missed_seeds": []
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.698,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.782,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.782,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.782,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.1",
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.1",
+    "truth_at_4x_moved_by_at_most": 0.0033463504803841193,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil2",
+    "width": 128,
+    "dtype": "float32",
+    "line": 0.02948911893685113,
+    "clean_draws": 200,
+    "clean_largest": 0.004583895206451416,
+    "clean_largest_over_line": 0.1554,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 26,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 161,
+     "refined_2x": 161,
+     "refined_4x": 158,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 3227,
+     "refined_2x": 2477,
+     "refined_4x": 2211
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1342,
+     "refined_2x": 0.1342,
+     "refined_4x": 0.1342,
+     "after_window": 0.1554
+    },
+    "guard_before_draws": 2,
+    "flag_control": {
+     "least_pixels": 9,
+     "zero_seeds": [],
+     "past_most": -0.02282,
+     "tightness_median": 0.661
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 2.653739109985292,
+     "least_seed": 2677,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 192,
+      "draws": 200,
+      "least_over_line": 0.569,
+      "missed_seeds": [
+       2611,
+       2629,
+       2653,
+       2677,
+       2735,
+       2738,
+       2773,
+       2796
+      ]
+     },
+     "0.1": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.019,
+      "missed_seeds": []
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.523,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.884,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.256,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.56,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.1",
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.15",
+    "truth_at_4x_moved_by_at_most": 0.0020029544830322266,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil2",
+    "width": 128,
+    "dtype": "float64",
+    "line": 0.025892587863921505,
+    "clean_draws": 200,
+    "clean_largest": 0.003928486822477595,
+    "clean_largest_over_line": 0.1517,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 26,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 164,
+     "refined_2x": 164,
+     "refined_4x": 161,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 3309,
+     "refined_2x": 2532,
+     "refined_4x": 2247
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1517,
+     "refined_2x": 0.1517,
+     "refined_4x": 0.1517,
+     "after_window": 0.1517
+    },
+    "guard_before_draws": 2,
+    "flag_control": {
+     "least_pixels": 9,
+     "zero_seeds": [],
+     "past_most": -0.02187,
+     "tightness_median": 0.679
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 3.0191214403857036,
+     "least_seed": 2677,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 193,
+      "draws": 200,
+      "least_over_line": 0.641,
+      "missed_seeds": [
+       2611,
+       2629,
+       2653,
+       2677,
+       2735,
+       2738,
+       2773
+      ]
+     },
+     "0.1": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.16,
+      "missed_seeds": []
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.728,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.139,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.57,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.91,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.1",
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.15",
+    "truth_at_4x_moved_by_at_most": 0.0030962314574551897,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil2",
+    "width": 256,
+    "dtype": "float32",
+    "line": 0.026389356077820003,
+    "clean_draws": 200,
+    "clean_largest": 0.004452943801879883,
+    "clean_largest_over_line": 0.1687,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 31,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 172,
+     "refined_2x": 168,
+     "refined_4x": 158,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 4219,
+     "refined_2x": 1845,
+     "refined_4x": 1241
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1457,
+     "refined_2x": 0.1457,
+     "refined_4x": 0.1457,
+     "after_window": 0.1687
+    },
+    "guard_before_draws": 2,
+    "flag_control": {
+     "least_pixels": 10,
+     "zero_seeds": [],
+     "past_most": -0.01917,
+     "tightness_median": 0.636
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 4.45655763031636,
+     "least_seed": 2786,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 198,
+      "draws": 200,
+      "least_over_line": 0.648,
+      "missed_seeds": [
+       2668,
+       2786
+      ]
+     },
+     "0.1": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.408,
+      "missed_seeds": []
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.785,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.328,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 3.339,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 4.157,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.1",
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.1",
+    "truth_at_4x_moved_by_at_most": 0.0020751953125,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil2",
+    "width": 256,
+    "dtype": "float64",
+    "line": 0.019196293931960755,
+    "clean_draws": 200,
+    "clean_largest": 0.0035249077443327836,
+    "clean_largest_over_line": 0.1836,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 31,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 173,
+     "refined_2x": 169,
+     "refined_4x": 158,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 4342,
+     "refined_2x": 1901,
+     "refined_4x": 1263
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1836,
+     "refined_2x": 0.1836,
+     "refined_4x": 0.1836,
+     "after_window": 0.1836
+    },
+    "guard_before_draws": 2,
+    "flag_control": {
+     "least_pixels": 10,
+     "zero_seeds": [],
+     "past_most": -0.01561,
+     "tightness_median": 0.662
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 6.165887553256474,
+     "least_seed": 2786,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.895,
+      "missed_seeds": [
+       2668
+      ]
+     },
+     "0.1": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.948,
+      "missed_seeds": []
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.438,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 3.183,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 4.572,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 5.73,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.1",
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.1",
+    "truth_at_4x_moved_by_at_most": 0.00341796875,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil2",
+    "width": 512,
+    "dtype": "float32",
+    "line": 0.030234271257698873,
+    "clean_draws": 200,
+    "clean_largest": 0.006829380989074707,
+    "clean_largest_over_line": 0.2259,
+    "clean_over_line": [],
+    "unread_seeds": [
+     2667
+    ],
+    "lost_branch_least": 22,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 186,
+     "refined_2x": 175,
+     "refined_4x": 140,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 9339,
+     "refined_2x": 2249,
+     "refined_4x": 1355
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1497,
+     "refined_2x": 0.1497,
+     "refined_4x": 0.1497,
+     "after_window": 0.2259
+    },
+    "guard_before_draws": 1,
+    "flag_control": {
+     "least_pixels": 9,
+     "zero_seeds": [],
+     "past_most": -0.0234,
+     "tightness_median": 0.643
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 1.810593620025989,
+     "least_seed": 2751,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 193,
+      "draws": 200,
+      "least_over_line": 0.359,
+      "missed_seeds": [
+       2628,
+       2670,
+       2716,
+       2724,
+       2733,
+       2748,
+       2751
+      ]
+     },
+     "0.1": {
+      "caught": 198,
+      "draws": 200,
+      "least_over_line": 0.696,
+      "missed_seeds": [
+       2628,
+       2751
+      ]
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.009,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.298,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.774,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.807,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.15",
+    "ladder_x_where_the_single_edge_is_caught": "0.15",
+    "ladder_x_at_1_25_line_there": "0.2",
+    "truth_at_4x_moved_by_at_most": 0.003173828125,
+    "rule": "FAIL"
+   },
+   {
+    "coil": "coil2",
+    "width": 512,
+    "dtype": "float64",
+    "line": 0.015848146965980376,
+    "clean_draws": 200,
+    "clean_largest": 0.0039486994562417665,
+    "clean_largest_over_line": 0.2492,
+    "clean_over_line": [],
+    "unread_seeds": [
+     2667
+    ],
+    "lost_branch_least": 22,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 190,
+     "refined_2x": 179,
+     "refined_4x": 141,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 9667,
+     "refined_2x": 2359,
+     "refined_4x": 1400
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.2492,
+     "refined_2x": 0.2492,
+     "refined_4x": 0.2492,
+     "after_window": 0.2492
+    },
+    "guard_before_draws": 1,
+    "flag_control": {
+     "least_pixels": 9,
+     "zero_seeds": [],
+     "past_most": -0.01188,
+     "tightness_median": 0.669
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 3.4447655059488995,
+     "least_seed": 2751,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 198,
+      "draws": 200,
+      "least_over_line": 0.678,
+      "missed_seeds": [
+       2628,
+       2751
+      ]
+     },
+     "0.1": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.321,
+      "missed_seeds": []
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.918,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.47,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 3.377,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 3.438,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.1",
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.1",
+    "truth_at_4x_moved_by_at_most": 0.00347900390625,
+    "rule": "FAIL"
+   }
+  ],
+  "cost": {
+   "P-160-float32": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "r3_default_ms": 69.565,
+    "r3_one_ms": 153.685,
+    "refineonly_default_ms": 73.347,
+    "refineonly_one_ms": 157.483,
+    "head_default_ms": 73.501,
+    "head_one_ms": 159.131,
+    "refine_default_ms": 76.471,
+    "refine_one_ms": 158.582,
+    "refineonly_over_r3_default": 1.0544,
+    "refineonly_over_r3_one": 1.0247,
+    "head_over_r3_default": 1.0566,
+    "head_over_r3_one": 1.0354,
+    "refine_over_r3_default": 1.0993,
+    "refine_over_r3_one": 1.0319
+   },
+   "P-160-float64": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "r3_default_ms": 134.352,
+    "r3_one_ms": 287.94,
+    "refineonly_default_ms": 134.693,
+    "refineonly_one_ms": 295.869,
+    "head_default_ms": 140.072,
+    "head_one_ms": 299.747,
+    "refine_default_ms": 137.764,
+    "refine_one_ms": 296.601,
+    "refineonly_over_r3_default": 1.0025,
+    "refineonly_over_r3_one": 1.0275,
+    "head_over_r3_default": 1.0426,
+    "head_over_r3_one": 1.041,
+    "refine_over_r3_default": 1.0254,
+    "refine_over_r3_one": 1.0301
+   },
+   "P-320-float32": {
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "r3_default_ms": 253.408,
+    "r3_one_ms": 545.388,
+    "refineonly_default_ms": 268.85,
+    "refineonly_one_ms": 560.866,
+    "head_default_ms": 270.12,
+    "head_one_ms": 569.213,
+    "refine_default_ms": 267.576,
+    "refine_one_ms": 569.141,
+    "refineonly_over_r3_default": 1.0609,
+    "refineonly_over_r3_one": 1.0284,
+    "head_over_r3_default": 1.0659,
+    "head_over_r3_one": 1.0437,
+    "refine_over_r3_default": 1.0559,
+    "refine_over_r3_one": 1.0436
+   },
+   "P-320-float64": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "r3_default_ms": 487.128,
+    "r3_one_ms": 1140.955,
+    "refineonly_default_ms": 513.285,
+    "refineonly_one_ms": 1179.716,
+    "head_default_ms": 514.141,
+    "head_one_ms": 1180.04,
+    "refine_default_ms": 535.237,
+    "refine_one_ms": 1158.241,
+    "refineonly_over_r3_default": 1.0537,
+    "refineonly_over_r3_one": 1.034,
+    "head_over_r3_default": 1.0555,
+    "head_over_r3_one": 1.0343,
+    "refine_over_r3_default": 1.0988,
+    "refine_over_r3_one": 1.0152
+   },
+   "P-640-float32": {
+    "cpu": "AMD EPYC 9V45 96-Core Processor",
+    "r3_default_ms": 574.999,
+    "r3_one_ms": 1511.058,
+    "refineonly_default_ms": 592.618,
+    "refineonly_one_ms": 1493.938,
+    "head_default_ms": 600.33,
+    "head_one_ms": 1529.164,
+    "refine_default_ms": 605.121,
+    "refine_one_ms": 1516.307,
+    "refineonly_over_r3_default": 1.0306,
+    "refineonly_over_r3_one": 0.9887,
+    "head_over_r3_default": 1.0441,
+    "head_over_r3_one": 1.012,
+    "refine_over_r3_default": 1.0524,
+    "refine_over_r3_one": 1.0035
+   },
+   "P-640-float64": {
+    "cpu": "Intel(R) Xeon(R) 6973P-C",
+    "r3_default_ms": 1401.703,
+    "r3_one_ms": 3073.01,
+    "refineonly_default_ms": 1484.052,
+    "refineonly_one_ms": 3104.975,
+    "head_default_ms": 1541.968,
+    "head_one_ms": 3232.982,
+    "refine_default_ms": 1516.733,
+    "refine_one_ms": 3131.576,
+    "refineonly_over_r3_default": 1.0587,
+    "refineonly_over_r3_one": 1.0104,
+    "head_over_r3_default": 1.1001,
+    "head_over_r3_one": 1.0521,
+    "refine_over_r3_default": 1.0821,
+    "refine_over_r3_one": 1.0191
+   }
+  }
+ }
 }
