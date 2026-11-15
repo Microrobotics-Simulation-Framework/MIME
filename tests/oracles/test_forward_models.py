@@ -18,9 +18,12 @@ Against independent oracles:
 - **The kinematic arm** against ``mime.core.multibody.frame_pose`` of its own description, placed at its base, and
   against its node's published ``frame_poses``.
 - **Affine in the currents** (the force and torque on a fixed moment too): ``f(u) = f(0) + J u`` to rounding at drawn
-  ``u``; the planted control, a model whose force reads each current at ``u (1 + |u| / 10 A)`` (a coil whose field per
-  ampere grows with the current), departs from affine by ``J u |u| / 10 A``, nonzero at every ``u`` the draws allow
-  (each ``|u_i| >= 0.5 A``), so it fails on every draw, where a plant at ``u |u|`` is exact where every ``|u_i| = 1 A``.
+  ``u``; the planted control, a force with an unmodelled term quadratic in each coil's current, ``sum_k |J_k| u_k^2 / 1 A``
+  (each coil's force per ampere, its magnitude, times the current squared), departs from affine by at least
+  ``0.25 max |J_k|`` at every ``u`` the draws allow (each ``|u_k| >= 0.5 A``) whatever the coils' terms do to each other:
+  no sum of signed terms to cancel, which a plant through the model's own sum (``u |u|``, then ``u (1 + |u| / 10 A)``)
+  has (the first is exact where every ``|u_k| = 1 A``; the second vanished where three coils' columns summed to nothing,
+  which CI's stress run found at ``u = (-1, -1, -1)``).
 - **Derivatives**: forward mode in ``u`` and in ``theta`` against central differences, float64, the step's truncation
   and rounding bounding the tolerance.
 
@@ -33,8 +36,9 @@ force, which hold the central differences' truncation too): at most 0.12 of each
 is exact, float32 at most 0.0074 of it (1.9 eps), 136 times; its node's ``64 eps``: 1.5 eps observed, 43 times. The
 derivative's ``1e-5`` of the tangent's scale (the central difference's rounding is ``eps / h`` = 2e-10, its truncation
 ``h^2``): at most 1.9e-3 of it, 500 times. The affine line (``64 eps`` of the product's terms over the worst cancellation)
-sits between the clean model's error (at most 1.1e-4 of it over 1500 draws, both dtypes) and the planted gain's (at
-least 11 times it, float32; 1.5e10 float64): 11 times on the side the control needs."""
+sits between the clean model's error (at most 1.3e-4 of it over 1200 draws with the corners, both dtypes) and the planted
+quadratic term's (at least 355 times it in float32, 2e11 in float64, the same draws; by construction at least 7.8 times
+in float32, the term being at least 0.25 max |J_k| against a line of 1.6e-3 of the largest term)."""
 
 from __future__ import annotations
 
@@ -71,8 +75,8 @@ SLACK = 10.0
 #: The plant a control's detection rate is measured with (``AP3_PLANT``): ``affine``, the model's force read at the
 #: currents with a gain growing with them in the as-built arm of the affine test.
 PLANT = os.environ.get("AP3_PLANT", "")
-#: The current (A) at which the planted gain has grown by its own size: a coil's field per ampere rising by ``|u| / 10 A``.
-GAIN_CURRENT = 10.0
+#: The current (A) the planted quadratic term is stated per: each coil's force per ampere times ``u^2 / 1 A``.
+QUADRATIC_CURRENT = 1.0
 
 
 @contextlib.contextmanager
@@ -199,9 +203,10 @@ def test_the_coil_model_is_its_nodes_arithmetic(dtype):
                 assert np.max(np.abs(found)) <= floor * np.max(terms), (step, quantity)
 
 
-def grown(currents: np.ndarray) -> np.ndarray:
-    """The planted defect: each current read at ``u (1 + |u| / 10 A)``, a gain that grows with the current."""
-    return currents * (1.0 + np.abs(currents) / GAIN_CURRENT)
+def quadratic_term(coefficients: np.ndarray, currents: np.ndarray) -> np.ndarray:
+    """The planted defect: ``sum_k |J_k| u_k^2 / 1 A``, an unmodelled term quadratic in each coil's current whose
+    terms all add (the magnitude of each coil's force per ampere): no draw makes them cancel."""
+    return np.abs(coefficients) @ (currents ** 2) / QUADRATIC_CURRENT
 
 
 def affine_misses(model: ForwardModel, currents: np.ndarray, moment: np.ndarray, point: np.ndarray, dtype: str,
@@ -213,7 +218,8 @@ def affine_misses(model: ForwardModel, currents: np.ndarray, moment: np.ndarray,
     coefficients, offset = model.affine(at)
     made = as_numpy(model({"currents": currents}, at))
     if planted:
-        made = dict(made, force=np.asarray(model({"currents": grown(currents)}, at)["force"], dtype=np.float64))
+        made = dict(made, force=made["force"] + quadratic_term(np.asarray(coefficients["force"]["currents"],
+                                                                          dtype=np.float64), currents))
     ratios = []
     for quantity, value in made.items():
         part = np.asarray(coefficients[quantity]["currents"], dtype=np.float64) * currents
@@ -228,8 +234,9 @@ def affine_misses(model: ForwardModel, currents: np.ndarray, moment: np.ndarray,
 @given(data=st.data())
 def test_the_coil_model_is_affine_in_its_currents_force_and_torque_included(dtype, data):
     """``f(u) = f(0) + J u`` for every quantity, the force and torque on a fixed moment among them, to the rounding of
-    the product's terms; the planted control (the force read at ``u (1 + |u| / 10 A)``, a gain growing with the current)
-    fails on every draw: its departure from affine, ``J u |u| / 10 A``, is nonzero for every ``u`` drawn."""
+    the product's terms; the planted control (the force with an added ``sum_k |J_k| u_k^2 / 1 A``) fails on every draw:
+    its departure from affine is at least ``0.25 max |J_k|`` for every ``u`` drawn, with no sum of signed terms to
+    cancel."""
     currents = np.asarray(data.draw(st.tuples(*[st.builds(lambda c, sign: sign * c, st.floats(0.5, 20.0),
                                                           st.sampled_from((-1.0, 1.0)))] * 3)))
     moment = np.asarray(data.draw(st.tuples(*[st.builds(lambda c, sign: sign * c, st.floats(1e-5, 1e-3),
@@ -244,14 +251,19 @@ def test_the_coil_model_is_affine_in_its_currents_force_and_torque_included(dtyp
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
-@pytest.mark.parametrize("currents", [(1.0, 1.0, 1.0), (-1.0, 1.0, -1.0), (0.5, 0.5, 0.5), (-20.0, 20.0, 0.5), (1.0, 1.0, -1.0)],
-                         ids=["unit", "unit_signed", "smallest", "extremes", "unit_mixed"])
-def test_the_planted_departure_from_affine_is_there_at_the_draws_corners_where_a_square_plant_was_blind(dtype, currents):
+@pytest.mark.parametrize("currents, moment, centre", [
+    ((1.0, 1.0, 1.0), (1e-4, -2e-4, 3e-4), None), ((-1.0, 1.0, -1.0), (1e-4, -2e-4, 3e-4), None),
+    ((0.5, 0.5, 0.5), (1e-4, -2e-4, 3e-4), None), ((-20.0, 20.0, 0.5), (1e-4, -2e-4, 3e-4), None),
+    ((1.0, 1.0, -1.0), (1e-4, -2e-4, 3e-4), None),
+    ((-1.0, -1.0, -1.0), (-6.366703020483019e-4, -1e-5, -1e-5), (0.0, 0.0, -0.09375))],
+    ids=["unit", "unit_signed", "smallest", "extremes", "unit_mixed", "the_draw_a_uniform_gain_plant_missed"])
+def test_the_planted_departure_from_affine_is_there_at_the_draws_corners_where_a_square_plant_was_blind(
+        dtype, currents, moment, centre):
     """The control's own premise, checked at the draws' corners (the unit currents among them, where ``u |u| = u`` made
     the earlier plant, ``u |u|``, exact, and blind on about 8 draws in 20,000): at each, the as-built model is within its
-    line and the planted one is over it, with a margin (at least 10x, measured at 11x in float32 over 1500 draws)."""
-    point = np.asarray(calibration("navion_2").region.mean(axis=1))
-    moment = np.asarray((1e-4, -2e-4, 3e-4))
+    line and the planted one is over it, with a margin (at least 10x, which the added term's lower bound gives)."""
+    point = np.asarray(calibration("navion_2").region.mean(axis=1) if centre is None else centre)
+    moment = np.asarray(moment)
     with in_dtype(dtype):
         model = planned("coils")
         clean = affine_misses(model, np.asarray(currents), moment, point, dtype, planted=False)
@@ -262,7 +274,7 @@ def test_the_planted_departure_from_affine_is_there_at_the_draws_corners_where_a
     assert max(clean) < 1.0 and max(planted) > 10.0, (clean, planted)
     if all(abs(abs(c) - 1.0) < 1e-12 for c in currents):
         assert np.max(np.abs(old - linear)) <= 64 * float(np.finfo(np.dtype(dtype)).eps) * np.max(np.abs(linear)), \
-            "the square plant is blind here: that is what the grown gain replaces"
+            "the square plant is blind here: that is what the quadratic term replaces"
 
 
 # -- the point dipole ---------------------------------------------------------------------------------------------
