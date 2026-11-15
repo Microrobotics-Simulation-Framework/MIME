@@ -1859,6 +1859,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Two commands writing one program into the user's XLA cache no longer leave an entry that warns on every later run**
+  (`mime run`, `mime serve`, `mime study run`). JAX writes an entry in place with no lock, so two processes that compile
+  one program together can leave a complete zstd frame plus the longer writer's tail; JAX never rewrites it, so each run
+  that reads it printed `UserWarning: Error reading persistent compilation cache entry ... Unknown frame descriptor` and
+  compiled again (Python 3.14, which compresses with zstd; zlib reads that damage without complaint). **Measured** (Python 3.14): two
+  children through `user_xla_cache` held in step left 3 to 13 damaged entries of 152 in 12 of 13 trials before, none in 8 of 8
+  after. At its end each command now deletes the entries written during it that JAX's own decompressor refuses, and says
+  how many; JAX's own warning is untouched. It does not reach an entry already damaged on disk (`mime cache clear`
+  removes the cache: `mime serve` and `mime study run` now print that beside the warning on a terminal, as `mime run`
+  did) nor a command killed before it ends. JAX's own locking path needs the `filelock` package, which MIME does not
+  depend on. See [XLA's compilation cache](docs/compilation_cache.md).
+
 - **SECURITY: a hostile folder could make MIME allocate gigabytes from an NPZ of a few kilobytes** (`mime verify`, any
   load of a saved folder, `RunResult.read`). NumPy allocates the array an entry's header names before it reads a byte of
   it, and `reference.npz` of a saved folder and `outputs.npz` of a run (or the NPZ `to_npz` writes) were opened with

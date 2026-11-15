@@ -100,6 +100,16 @@ def _xla_cache(arguments: argparse.Namespace) -> AbstractContextManager[object]:
     return user_xla_cache(say=_warn)
 
 
+@contextmanager
+def _xla_cache_and_its_note(arguments: argparse.Namespace) -> Generator[None]:
+    """:func:`_xla_cache` for a command that does not show its own note of a damaged entry (``mime run`` does): the
+    warning of one, on a terminal, gets the command that clears it beside it."""
+    from mime.cli._display import damaged_cache_note
+
+    with _xla_cache(arguments), damaged_cache_note(sys.stderr):
+        yield
+
+
 def _cache_clear() -> int:
     from mime.env import clear_user_xla_cache, user_xla_cache_root
 
@@ -2087,10 +2097,10 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
             return _run(arguments.folder, duration, arguments.out, arguments.history, arguments.record,
                         every, stage_every, arguments.commands, arguments.full, arguments.override)
     if arguments.command == "study":
-        with _xla_cache(arguments) if arguments.study_command == "run" else nullcontext():
+        with _xla_cache_and_its_note(arguments) if arguments.study_command == "run" else nullcontext():
             return _study(arguments)
     if arguments.command == "serve":
-        with _xla_cache(arguments):
+        with _xla_cache_and_its_note(arguments):
             return _serve(arguments)
     if arguments.command == "cache":
         return _cache_clear()

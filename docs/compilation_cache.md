@@ -22,12 +22,28 @@ The numbers a run gives are the same with it and without it; what changes is the
 - **`mime cache clear`** deletes the directory and says how much it held.
 - **A cache that cannot be written** (a read-only home, a full disk) does not stop the run: the command says so once on
   standard error and compiles without it.
+- **Two commands at once.** JAX writes an entry in place, with no lock, so two `mime run`s (or a `mime serve`, or the
+  shards of a study run at once) that compile one program together can both write its entry, and when their frames
+  differ in length the file ends as a complete frame plus the longer one's tail. Each of those commands, as it ends,
+  deletes the entries written during it that JAX cannot read back (and says how many, once on standard error), so the
+  next run compiles the program again and writes it whole. A command killed before it ends (a second Ctrl+C) does not
+  get to do that. The check is the decompressor JAX itself reads with: on Python 3.14 a frame followed by other bytes
+  is refused and is removed; before 3.14 JAX compresses with zlib, which reads it, so that damage costs nothing and is
+  not looked for. Two commands that are both still running can see each other's half-written entry, which one of them
+  then deletes: the program costs that command one more compile, and nothing is damaged.
 - **What it cannot do.** It holds compiled programs, not tracing: a second run still traces and lowers each program,
-  and the first run of an experiment, or of a changed one, pays in full. JAX writes an entry in place, so a
-  process killed mid-write (a second Ctrl+C) can leave a truncated one. The next run that reads it gets a warning from
-  JAX and compiles instead: it succeeds and its numbers are those of a run with no cache (tested with entries cut to
-  half and to nothing). JAX does not rewrite an entry whose file exists, so the warning repeats on every run that
-  reads it, until `mime cache clear` removes it.
+  and the first run of an experiment, or of a changed one, pays in full. A process killed mid-write (a second
+  Ctrl+C), or an entry written before this repair existed, can leave a truncated or damaged one. The next run that
+  reads it gets a warning from JAX and compiles instead: it succeeds and its numbers are those of a run with no cache
+  (tested with entries cut to half and to nothing). JAX does not rewrite an entry whose file exists, so the warning
+  repeats on every run that reads it.
+
+## If a run prints `Error reading persistent compilation cache entry`
+
+That is JAX saying an entry of the cache is damaged (`Unknown frame descriptor`, `ended before the end-of-stream
+marker`): the run went on and compiled the program instead, and its numbers are right. The warning comes back on every
+run that reads the entry, so remove the cache once with `mime cache clear`. The next run builds it again. On a terminal, `mime run`, `mime serve` and `mime study run` print that command beside
+the first such warning. To keep a command out of it meanwhile, `--no-xla-cache`.
 
 ## In a script of your own
 

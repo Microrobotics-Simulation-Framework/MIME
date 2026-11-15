@@ -8,16 +8,20 @@ for the 40 GB and the 80 GB A100 alike), not by the device kind's string, which 
 own key still decides whether an entry is a hit, so a directory shared by two device kinds is never a wrong hit; whether
 the entries of one kind are hits for the other is JAX's, and was not measured.
 
-``mime run`` and ``mime serve`` keep the cache in the user's cache directory (:func:`user_xla_cache`), capped in size;
+``mime run`` and ``mime serve`` keep the cache in the user's cache directory (:func:`user_xla_cache`), capped in size and
+cleared of the damaged entries the block's own writes may have left with another process's (:func:`remove_damaged_entries`);
 ``mime env check --xla-cache`` and the Modal script name their own directory."""
 
 from __future__ import annotations
 
 import contextlib
 import importlib.metadata
+import os
 import re
 import shutil
 import sys
+import time
+import zlib
 from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any, cast
@@ -74,6 +78,9 @@ def point_xla_cache(directory: str | None) -> None:
 USER_CACHE_CAP_BYTES = 2 * 1024**3
 #: The thresholds the cache is written with (CI's): every program is stored, however quick to compile or small.
 _MIN_COMPILE_SECONDS, _MIN_ENTRY_BYTES = 0, -1
+#: How far before a block's start an entry's modification time may fall and still count as written during it (a coarse
+#: filesystem clock).
+_CLOCK_SLACK_SECONDS = 2.0
 _SETTINGS = ("jax_compilation_cache_dir", "jax_persistent_cache_min_compile_time_secs",
              "jax_persistent_cache_min_entry_size_bytes")
 
@@ -125,6 +132,52 @@ def clear_user_xla_cache(root: Path | None = None) -> int:
     return held
 
 
+def _decompressor() -> Callable[[bytes], bytes]:
+    """The call JAX's reader decompresses an entry with: ``compression.zstd`` (Python 3.14), else ``zstandard`` if
+    installed, else ``zlib``."""
+    try:
+        from compression import zstd  # pyright: ignore[reportMissingImports, reportUnknownVariableType]
+    except ImportError:
+        pass
+    else:
+        return cast(Any, zstd).decompress
+    try:
+        return cast(Any, importlib.import_module("zstandard")).ZstdDecompressor().decompress
+    except ImportError:
+        return zlib.decompress
+
+
+def _reads_whole(entry: bytes) -> bool:
+    """Whether JAX's own reader takes the entry. A complete zstd frame followed by other bytes, which is what two
+    processes writing one entry leave, is refused by the zstd readers; zlib reads it, so on a Python that compresses with
+    zlib that damage costs nothing and is not found."""
+    try:
+        _decompressor()(entry)
+    except Exception:  # noqa: BLE001 - every kind of refusal is damage: the decompressor's, not ours
+        return False
+    return True
+
+
+def remove_damaged_entries(directory: Path, since: float) -> int:
+    """Delete the entries under ``directory`` written at or after ``since`` (seconds since the epoch) that JAX could not
+    read back, and say how many. JAX writes an entry in place, with no temporary file and no lock, so two processes
+    that compile one program at once can leave a complete frame and the longer writer's tail; JAX never rewrites an
+    existing entry, so every later run that read it would warn and compile again. Deleted, the next run writes it
+    whole. An entry another process is still writing reads as cut, and is deleted too: its writer finishes into a file
+    no longer there, which costs that program one compile and damages nothing. Run by each process at its end, the last
+    of the processes that wrote an entry looks at it after both are done."""
+    removed = 0
+    for path in directory.glob("*-cache"):
+        try:
+            if path.stat().st_mtime < since or _reads_whole(path.read_bytes()):
+                continue
+            path.unlink()
+            removed += 1
+        except OSError:  # gone (pruned, or deleted by another process doing this), or unreadable: nothing to repair
+            continue
+    return removed
+
+
 def _restore(held: dict[str, Any]) -> None:
     for name, value in held.items():
         if name != "jax_compilation_cache_dir":
@@ -151,13 +204,14 @@ def user_xla_cache(*, root: Path | None = None, cap: int = USER_CACHE_CAP_BYTES,
     held = {name: getattr(config, name) for name in _SETTINGS}
     base = user_xla_cache_root() if root is None else root
     chosen: Path | None
+    started = time.time() - _CLOCK_SLACK_SECONDS
     try:
         if base.exists():
             prune_to_cap(base, cap)
         config.update("jax_persistent_cache_min_compile_time_secs", _MIN_COMPILE_SECONDS)
         config.update("jax_persistent_cache_min_entry_size_bytes", _MIN_ENTRY_BYTES)
         chosen = use_xla_cache(base)
-        probe = chosen / ".mime-write-probe"
+        probe = chosen / f".mime-write-probe-{os.getpid()}"  # one per process: two commands start at once
         probe.write_bytes(b"")
         probe.unlink()
     except OSError as error:
@@ -169,7 +223,11 @@ def user_xla_cache(*, root: Path | None = None, cap: int = USER_CACHE_CAP_BYTES,
         yield chosen
     finally:
         if chosen is not None:
+            removed = remove_damaged_entries(chosen, started)
             _restore(held)
+            if removed:
+                say(f"mime: removed {removed} damaged {'entry' if removed == 1 else 'entries'} of XLA's compilation "
+                    f"cache that two commands had written at once; the next run compiles them again")
 
 
 __all__ = ["USER_CACHE_CAP_BYTES", "clear_user_xla_cache", "point_xla_cache", "prune_to_cap", "use_xla_cache",
