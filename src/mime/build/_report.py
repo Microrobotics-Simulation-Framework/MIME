@@ -262,9 +262,9 @@ class BuildReport:
         MADDENING's warnings with their text, the refusals, and the hash."""
         lines = [f"build report: experiment {self.experiment!r}, "
                  + (f"base step {self.dt!r} s" if self.dt else "no base step") + f", run as {self.run.text()}",
+                 *self.stale_lines(),
                  *([f"precision: {self.precision}"] if self.precision else []),
-                 *([f"WARNING: {self.matmul_warning}"] if self.matmul_warning else []),
-                 *self.stale_lines()]
+                 *([f"WARNING: {self.matmul_warning}"] if self.matmul_warning else [])]
         if self.profile is not None:
             lines += self.profile.report_lines()
             if self.profile.items:

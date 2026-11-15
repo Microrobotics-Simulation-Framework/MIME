@@ -35,7 +35,7 @@ def test_the_build_report_and_the_result_state_the_precision_in_both_dtypes(x64)
     assert f"precision: {x64}" in built.report.summary() and built.report.precision == x64
     assert f"precision: {x64}" in built.report.text()
     result = built.run(s(0.04))
-    assert f"precision: {x64}" in result.text().splitlines()[1]
+    assert f"precision: {x64}" in result.text().splitlines()
     assert ("float64" if jax.config.jax_enable_x64 else "float32") == x64
 
 

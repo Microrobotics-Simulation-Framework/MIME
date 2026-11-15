@@ -701,12 +701,12 @@ class RunResult:
         unmetered: Mapping[str, str] = account.unmetered if account is not None else {}
         lines = [f"run of {self.layout.experiment}: {self.steps} steps of {self.dt!r} s, "
                  f"{window_text(self.start_step * self.dt, self.end_step * self.dt)}",
-                 *([f"precision: {self.layout.precision}"] if self.layout.precision else []),
                  *([f"STALE: {stale}"] if stale is not None else []),
                  *([f"STALENESS UNKNOWN: {self.stale_unknown}"] if self.stale_unknown is not None else []),
                  *([f"STOPPED, {self.stopped.reason}: {self.steps} of the {self.stopped.steps_asked} steps asked "
                     f"for"] if self.stopped is not None else []),
                  *([self.overridden_text()] if self.overrides else []),
+                 *([f"precision: {self.layout.precision}"] if self.layout.precision else []),
                  *(ObservationOutputs(self, held).text() for held in self.layout.observations),
                  f"over the run, {flags_text(self.flags, meaning=True)}",
                  watches_text(self.watches),
