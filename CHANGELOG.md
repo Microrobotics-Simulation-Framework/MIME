@@ -16,9 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     through the existing mount edge (`ProviderBuilder.mount`, `ctx.mount`), so the field stays linear in the currents at
     every pose: its forward model takes the frame's pose as `x.mount_pose`, and the exact allocation holds at each
     tick. **What it bounds**: along A0's moving chain (the rotor turning), the mounted field and gradient agree with the
-    same array placed in the world at the frame's pose (the host's `actuation`, float64) within `10 eps / c` of the field
-    in float64 and float32, `c` the worst cancellation of the array's sources at the point read: agreement to rounding,
-    not bit for bit (different programs). At each tick the currents a controller allocates make the wanted field at the
+    same array placed in the world at the frame's pose (the host's `actuation`, float64) within 10 times `eps` times the
+    sum of the magnitudes of the terms each entry is summed from, over its peak, in float64 and float32 (a first-order
+    running-error bound, the factor of 10 empirical; on 72 random chain poses the largest miss was 2.3 times that floor
+    in float64 and 1.9 in float32, where the sources' own cancellation `eps / c` is not the floor: 9.4 times):
+    agreement to rounding, not bit for bit (different programs). At each tick the currents a controller allocates make the wanted field at the
     pose it read, and are the host's exact allocation there. The frame's motion enters only through the pose (no induced
     currents). An array placed in the world keeps its record, its program and its input hash: `mount` is left out of the
     record where it is not given.
@@ -41,7 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     gives its quantity a flag (`above_<quantity>`), raised at each step it stands above the limit. A flag says a modelled
     quantity passed a declared number, nothing more. **What it bounds**: `flux_density` and `field_gradient` against the
     host's `actuation` within `10 eps / c`, in both dtypes; `rate_of_change` against the host's derivative along a moving
-    chain within `dt` times the second derivative there plus its rounding, and the chord in a uniformly turning field.
+    chain within `dt` times the second derivative there plus its rounding, and the chord in a uniformly turning field. In
+    float32 the rate carries rounding noise of order `eps |B| / dt` (more where the provider's sources cancel), so a flag
+    limit near the true rate flickers and `max_rate_of_change` reads high; computing the difference in float64 would not
+    remove it (the readings arrive rounded), and float64 does (documented on the page, held by a test).
     Acoustic quantities arrive with the first acoustic provider.
   - **`exposure.declaration`**, a new refusal code: a limit with no reason, a pending one, or one not above zero.
   - **`mime.units.T_per_s`** (`FIELD_RATE`, `FieldRate`), a field's rate of change, so that a rate limit carries its

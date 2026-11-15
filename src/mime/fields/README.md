@@ -76,8 +76,9 @@ controller's model of it. The calibrated multipole's is affine in `currents`: at
 `flux_density`, `gradient`, and, with a moment stated there (`x["moment"]`), the `force` on it, `F_j = m_i dB_i/dx_j`,
 and the `torque`, `m x B`, which for a fixed moment stay affine in the currents; mounted, it takes the frame's world pose
 too (`x["mount_pose"]`), and stays affine at each. A mounted array's field against the same array placed in the world at
-the frame's pose (`actuation`, float64) agrees to `10 eps / c` along a moving chain in both dtypes
-(`tests/fields/test_mounted_array.py`). The point dipole's takes no command (its
+the frame's pose (`actuation`, float64) agrees to 10 times `eps` times the sum of the magnitudes of the terms it is
+summed from (over its peak) along a moving chain in both dtypes (`tests/fields/test_mounted_array.py`: on 72 random
+chain poses the largest miss was 2.3 times that floor in float64; `eps / c` was not the floor, 9.4 times). The point dipole's takes no command (its
 magnet moves with what carries it, at `x["mount_pose"]` where mounted). **What they bound:** the calibrated multipole's
 against mag_manip's reference (field and gradient per unit current, and at drawn currents the field, gradient, force and
 torque, within ten times float64's rounding over the field's cancellation) and the host's `actuation` in both dtypes; the

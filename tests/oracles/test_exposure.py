@@ -42,7 +42,7 @@ import numpy as np
 import pytest
 
 from mount_cases import CURRENTS, ROTOR, ROTOR_AT, exposure_sphere, mounted_rig, still_sphere, \
-    scene_experiment
+    scene_experiment, term_sums
 from mount_cases import TURN as PLACEMENT_TURN
 
 from mime import Apparatus
@@ -205,6 +205,58 @@ def test_the_rate_of_change_estimates_dB_dt_along_the_moving_chain_to_order_dt(d
     assert max(misses) <= 1.0, max(misses)
     if dtype == "float64":
         assert np.median(first_order) > 1e-3, "the miss is the estimate's order-dt term, not rounding"
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_each_maximum_is_the_runs_maximum_where_the_quantities_rise_and_fall(dtype):
+    """Where a quantity only rises (the rotor at 2 rad/s, 40 steps), a maximum set to the step's own value reads right at
+    every step: nothing in the other tests sees it. The rotor here turns at 30 rad/s for 60 ms, past the array's
+    nearest approach to the sphere, so each of the three quantities rises to a peak inside the run and falls after it
+    (its peak at step 45, 45 and 39 of 59 in float64): ``max_<quantity>`` is the running maximum at every step, its last
+    value is the run's peak and above the quantity's last value, and the peak sits inside the run. The planted error,
+    each maximum set to the step's own value, ends the run at the quantity's last value, which is below the peak."""
+    with in_dtype(dtype):
+        seen = run(mounted_rig("exposure_maxima", speed=30.0, observe=Exposure("sphere", field="rig.coils")), 60)[OBSERVER]
+    for quantity in ("flux_density", "field_gradient", "rate_of_change"):
+        value, peak = seen[quantity], seen[f"max_{quantity}"]
+        assert np.array_equal(peak, np.maximum.accumulate(value)), quantity
+        assert peak[-1] == value.max()
+        assert 5 < int(np.argmax(value)) < len(value) - 5, f"{quantity}: the peak sits inside the run"
+        assert value[-1] < 0.9 * peak[-1], f"{quantity}: the run ends well below its peak"
+
+
+def test_the_float32_rate_carries_rounding_noise_the_float64_rate_does_not():
+    """A sphere carried at 5.6 cm/s through Navion_2's field at a millisecond step: the rate estimates ``|G v|``. In
+    float64 it does so to order ``dt`` (a part in a thousand here); in float32 it misses by several per cent at a step
+    (8 % at the worst of ten on the laptop, ``max_rate_of_change`` 6.56e-4 against 6.07e-4 T/s), because the difference
+    of two readings rounded at ``eps / c`` of the field is divided by ``dt``: within ``2 SLACK`` times the floor over
+    ``dt`` (the floor, ``eps`` times the sum of the magnitudes the field is summed from, ``mount_cases.term_sums``), and
+    above float64's miss by more than ten times. And it is not the node's difference: taken in float64 from the same
+    stored float32 readings it is the node's rate, to a part in a million, so computing the difference in float64
+    would not remove it (the readings are already rounded)."""
+    velocity = np.array([0.05, -0.02, 0.03])
+    worst, rate = {}, {}
+    for dtype in ("float64", "float32"):
+        with in_dtype(dtype):
+            history = run(exposure_sphere("exposure_moving", observe=reasoned(), latency=False,
+                                          velocity=tuple(velocity)))
+        seen, slot = history[OBSERVER], history["coils.magnetic"]
+        gradient = slot["gradient_magnetic_force_sphere"]
+        along = np.linalg.norm(gradient @ velocity, axis=1)
+        rate[dtype] = seen["rate_of_change"][1:]
+        worst[dtype] = np.abs(rate[dtype] - along[1:])
+        if dtype == "float32":
+            readings = slot["flux_density_magnetic_force_sphere"]
+            difference = np.linalg.norm(np.diff(readings, axis=0), axis=1) / DT
+            assert np.allclose(difference, rate[dtype], rtol=1e-6, atol=0.0), "the difference in float64: the same"
+            eps = float(np.finfo(np.float32).eps)
+            host = host_field()[0]
+            floor = eps * np.max(term_sums(np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]), np.zeros(3))[0]) \
+                / np.max(np.abs(host))
+            assert np.all(worst[dtype] <= 2 * SLACK * floor * np.linalg.norm(host) / DT + 1e-3 * along[1:])
+        else:
+            assert np.all(worst[dtype] <= 1e-3 * along[1:]), "float64: the estimate's order-dt error"
+    assert np.max(worst["float32"]) > 10 * np.max(worst["float64"]), "the noise is visible in float32"
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])

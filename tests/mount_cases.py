@@ -15,11 +15,12 @@ port with a latency of one step, so that the field is off at step 0 and on from 
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 import jax
+import numpy as np
 
 import allocation_cases  # noqa: F401 - registers the oracle namespace
 from chain_cases import AR4, AR4_BASE, AR4_HOME
@@ -30,6 +31,7 @@ from mime.data import asset as packaged
 from mime.drives import Constant
 from mime.dynamics import Arm, Motor, RigidInertial
 from mime.fields import CalibratedMultipole
+from mime.fields._coil_array import calibration_of
 from mime.gradients import GradientStatus
 from mime.interactions import Magnetic
 from mime.registry import ControlLaw, Controller, GradientRecord, Signal, register_controller
@@ -60,14 +62,16 @@ def coils(*, mount: str | None = "motor.rotor", at=ROTOR_AT, orientation=TURN, s
     return CalibratedMultipole(calibration=packaged(system), mount=mount, at=m(at), orientation=orientation)
 
 
-def still_sphere(exp: Experiment, *, position=(0.0, 0.0, 0.0), moment=(0.0, 0.0, 0.0)) -> None:
-    """A millimetre sphere at rest at ``position``, its magnet (of ``moment``) at its centre: with no moment, no force
-    or torque moves it."""
+def still_sphere(exp: Experiment, *, position=(0.0, 0.0, 0.0), moment=(0.0, 0.0, 0.0),
+                 orientation=(1.0, 0.0, 0.0, 0.0), centre=(0.0, 0.0, 0.0), velocity=(0.0, 0.0, 0.0)) -> None:
+    """A millimetre sphere at ``position`` moving at ``velocity`` (at rest unless given), turned by ``orientation``, its
+    magnet (of ``moment``) at ``centre`` in the body's frame: with no moment, no force or torque acts, so it keeps its
+    velocity."""
     exp.add_body(Body("sphere", dynamics=RigidInertial(), parts={"shell": Part(Sphere(radius=m(1e-3)))},
-                      initial=State(position=m(position), orientation=(1.0, 0.0, 0.0, 0.0),
-                                    velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+                      initial=State(position=m(position), orientation=orientation,
+                                    velocity=m_per_s(velocity), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     for path, value in (("sphere.mass", kg(4e-6)), ("sphere.inertia", kg_m2((1.6e-12,) * 3)),
-                        ("sphere.magnetic_moment", A_m2(moment)), ("sphere.magnet_centre", m((0.0, 0.0, 0.0)))):
+                        ("sphere.magnetic_moment", A_m2(moment)), ("sphere.magnet_centre", m(centre))):
         exp.declare(path, value, reason="a millimetre test sphere")
 
 
@@ -77,20 +81,22 @@ def scene_experiment(name: str) -> Experiment:
 
 def mounted_rig(name: str = "mounted_coils", *, array: CalibratedMultipole | None = None, speed: float = SPEED,
                 controller: Controller | None = None, believed: Mapping[str, Any] | None = None,
-                observe: Any = None, mode: str = "callback") -> Experiment:
+                observe: Any = None, mode: str = "callback", joints: Sequence[float] = AR4_HOME,
+                angle: float = 0.0, sphere_at: Sequence[float] = (0.0, 0.0, 0.0)) -> Experiment:
     """The mounted rig: the AR4 and its motor, kinematic, the array on the rotor (:func:`coils` unless ``array`` is
     given), its currents constant or written by ``controller`` (every 2 ms, no latency, ``mode`` a callback unless
     given: inside the compiled step a controller cannot read the chain's frames, ``controller.unreached-read``)
-    through a 25 A port; the still sphere under the array's force; ``observe``, an observation to add."""
+    through a 25 A port; the still sphere (at ``sphere_at``) under the array's force; ``observe``, an observation to
+    add. The arm holds ``joints`` (rad) and the rotor starts at ``angle`` (rad)."""
     exp = scene_experiment(name)
     exp.add_apparatus(Apparatus("rig", chain={
-        "arm": Arm.Kinematic(description=asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE)),
-        "motor": Motor.Kinematic(axis=Z, prescribed="velocity", initial_angle=rad(0.0), mount="link_6")},
+        "arm": Arm.Kinematic(description=asset(AR4), initial_positions=rad(tuple(joints)), at=m(AR4_BASE)),
+        "motor": Motor.Kinematic(axis=Z, prescribed="velocity", initial_angle=rad(angle), mount="link_6")},
         fields={"coils": array if array is not None else coils()},
-        commands={"arm.joint_positions": Constant(rad(AR4_HOME)), "motor.velocity": Constant(rad_per_s(speed)),
+        commands={"arm.joint_positions": Constant(rad(tuple(joints))), "motor.velocity": Constant(rad_per_s(speed)),
                   **({} if controller is not None else {"currents": Constant(A(CURRENTS))})},
         ports={"currents": CommandPort(bounds=A(LIMIT), reason=REASON)}))
-    still_sphere(exp)
+    still_sphere(exp, position=tuple(sphere_at))
     exp.attach(Magnetic.Force(), body="sphere", field="rig.coils")
     if observe is not None:
         exp.observe(observe)
@@ -151,18 +157,53 @@ class MountedFieldControl(Controller):
         return ControlLaw(state=start, held={"currents": zero}, step=step)
 
 
+def term_sums(world: Any, point: Any, currents: Any = CURRENTS, *, system: str = "navion_2"
+              ) -> tuple[np.ndarray, np.ndarray]:
+    """The magnitudes the field and the gradient at the world ``point`` are summed from, per entry, for the array
+    placed at ``world`` (``(x, y, z, qw, qx, qy, qz)``, the quaternion normalised here, float64) at ``currents``:
+    ``(3,)`` (T) and ``(3, 3)`` (T/m). Rounding at ``eps`` in a sum of terms costs at most ``eps`` times the sum of their
+    magnitudes at each entry, once through the evaluation's own roundings (the factor a test's slack carries): each
+    source's terms, ``3 (d . r) r / r^5`` and ``d / r^3`` for the field and the four terms of its gradient, summed over
+    its sources, the coils through ``|i_k|`` (so the cancellation between coils, which the currents make, is counted),
+    and turned into the world by ``|R|``. This, not the sources' own cancellation ``c`` (per coil, as the field's
+    magnitude), is the scale a field built by currents that cancel has: on 72 random chain poses the mounted array's
+    misses against ``actuation`` reach 9.4 times ``eps / c`` and 2.3 times this."""
+    held = calibration_of(packaged(system))
+    pose = np.asarray(world, dtype=np.float64)
+    w, x, y, z = pose[3:] / np.linalg.norm(pose[3:])
+    turn = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                     [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                     [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]])
+    offsets = turn.T @ (np.asarray(point, dtype=np.float64) - pose[:3]) - held.positions
+    distance = np.linalg.norm(offsets, axis=-1)
+    vectors = held.coefficients[..., None] * held.directions
+    along = np.abs(np.sum(vectors * offsets, axis=-1))
+    field = 3.0 * along[..., None] * np.abs(offsets) / distance[..., None] ** 5 + np.abs(vectors) / distance[..., None] ** 3
+    outer = np.abs(offsets[..., :, None] * offsets[..., None, :])
+    gradient = (3.0 / distance[..., None, None] ** 5) * (
+        along[..., None, None] * np.eye(3) + np.abs(vectors[..., :, None] * offsets[..., None, :])
+        + np.abs(offsets[..., :, None] * vectors[..., None, :]) + 5.0 * along[..., None, None] * outer
+        / distance[..., None, None] ** 2)
+    weights = np.abs(np.asarray(currents, dtype=np.float64))
+    return (np.abs(turn) @ (field.sum(axis=1).T @ weights),
+            np.abs(turn) @ (np.einsum("kab->abk", gradient.sum(axis=1)) @ weights) @ np.abs(turn).T)
+
+
 def exposure_sphere(name: str = "exposure_sphere", *, observe: Any = None, currents=CURRENTS, latency: bool = True,
-                    laws: tuple[Any, ...] = (Magnetic.Force,)) -> Experiment:
+                    laws: tuple[Any, ...] = (Magnetic.Force,), position=(0.0, 0.0, 0.0),
+                    orientation=(1.0, 0.0, 0.0, 0.0), centre=(0.0, 0.0, 0.0),
+                    velocity=(0.0, 0.0, 0.0)) -> Experiment:
     """Navion_2 at the world's origin and the still sphere at its centre, the field's ``laws`` on it, the currents
     constant through a port delaying them a step where ``latency`` (the field off at step 0, on from step 1), and
-    ``observe``, an observation to add."""
+    ``observe``, an observation to add. The sphere is at ``position`` unless given, turned by ``orientation``, its
+    magnet at ``centre`` in its frame, moving at ``velocity``."""
     exp = scene_experiment(name)
     port = CommandPort(latency=ms(1), reason="the field switched on at step 1") if latency else None
     exp.add_apparatus(Apparatus("coils", fields={"magnetic": coils(mount=None, at=(0.0, 0.0, 0.0),
                                                                    orientation=(1.0, 0.0, 0.0, 0.0))},
                                 commands={"currents": Constant(A(currents))},
                                 ports={"currents": port} if port is not None else {}))
-    still_sphere(exp)
+    still_sphere(exp, position=position, orientation=orientation, centre=centre, velocity=velocity)
     for law in laws:
         exp.attach(law(), body="sphere", field="coils.magnetic")
     if observe is not None:
@@ -171,4 +212,4 @@ def exposure_sphere(name: str = "exposure_sphere", *, observe: Any = None, curre
 
 
 __all__ = ["CURRENTS", "LIMIT", "OWNER", "ROTOR", "ROTOR_AT", "SPEED", "TURN", "WANTED", "MountedFieldControl",
-           "arm_mounted", "coils", "exposure_sphere", "mounted_rig", "still_sphere"]
+           "arm_mounted", "coils", "exposure_sphere", "mounted_rig", "still_sphere", "term_sums"]

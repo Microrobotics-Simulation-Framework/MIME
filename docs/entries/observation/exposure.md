@@ -39,6 +39,24 @@ at the body, the exposure is refused (`observation.field-read`): a point no law 
 instance of the provider, which is later work (the route named in the refusal: attach the law the field acts through at
 that body, or observe the state the field acts on).
 
+**The rate's rounding in float32.** The rate is a difference of two consecutive readings over `dt`, so the rounding of
+each reading enters as its size over `dt`: noise of order `eps |B| / dt` (`eps` float32's), and more where the provider's
+sources cancel (a coil array's field is a sum of sources that cancel to a small share `c` of their size, and rounds at
+`eps / c` of itself). Shrinking `dt` makes it larger, while the estimate's own error shrinks with it. On a sphere
+carried through a coil array's field at a millisecond step (`tests/oracles/test_exposure.py`), the float32 rate misses
+`|G v|` (the gradient times the point's velocity, which the rate estimates) by several per cent at a step, where the
+float64 rate of the same run misses it by a few parts in ten thousand: the excess is rounding, and the test holds it
+within the noise's scale and above the float64 miss. Three consequences:
+- **A flag limit near the true rate flickers in float32**: `above_rate_of_change` is raised at some steps and not at
+  their neighbours, for a limit within the noise of the rate (several per cent of it at that step size). Declare the
+  limit with the margin the noise needs, or run the experiment in float64.
+- **`max_rate_of_change` reads high**: a maximum of noisy readings is biased upwards, by the noise's size.
+- **Computing the difference in float64 inside the node would not help**: the two readings arrive already rounded to
+  float32, their difference is exact there, and the same difference taken in float64 from the same stored readings is
+  the node's rate (measured, equal to a part in ten million). The rounding is in the provider's field, which float64
+  (the run's dtype) removes. The flux density and its gradient have no such noise: it is the difference that amplifies
+  it.
+
 **When not to use it.**
 - At a point no law reads: refused, as above.
 - For the field's change at a point fixed in space while the body moves: the rate of change is along the body's path.

@@ -23,8 +23,11 @@ which carries it: a mobile electromagnet on an arm. Each step the node composes 
 the chain publishes it that step, and evaluates the same exact transform there, so the field stays linear in the currents
 at every pose and an exact allocation (`ctx.allocator`) holds at each tick, its model taking the frame's pose as
 `x.mount_pose`. The mounted field agrees with the same array placed in the world at the frame's pose (the host's
-`actuation`, float64) to the rounding of the sum of its sources, `10 eps / c` of the field in float64 and float32 (`c`
-the worst cancellation of the sources at the point read). The frame's motion enters only through the pose: no current is
+`actuation`, float64) to the rounding of the sums it is made of: within 10 times `eps` (the run's dtype's) times the sum
+of the magnitudes of the terms each entry is summed from, over the field's peak, in float64 and float32 (a first-order
+running-error bound, with an empirical factor of 10). On a scan of 72 random chain poses the largest miss was 2.3 times
+that floor in float64 and 1.9 in float32. The sources' own cancellation, `eps / c`, is not the floor: the scan's largest
+miss against it was 9.4 times. The frame's motion enters only through the pose: no current is
 induced by it. A mount on a segment that takes loads (a dynamic rung) is refused (`mount.provider`): the array's mass on
 the segment and the reaction on it are not modelled, so the segment would move as if it carried neither; mount it on a
 kinematic segment. `actuation()` of a mounted array is refused too (its placement in the world is the chain's at each

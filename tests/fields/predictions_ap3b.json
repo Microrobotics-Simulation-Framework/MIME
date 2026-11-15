@@ -163,5 +163,12 @@
    "verdict": "every cost prediction held; exposed/mounted 1.080 against a 1.10 bound, a runner's 60-chunk median on one CPU model",
    "unused": "an unmounted, unexposed array: derived hash and canonical text unchanged (bits)"
   }
- }
+ },
+  "amendments": [
+    {
+      "written": "2026-11-16, after the refuting review of #314 (head e3d737a6); the predictions above are unchanged",
+      "gate_1_and_3_tolerance": "the floor 'eps / c' that gates 1 to 3 name was not a bound for the mounted array on random chain poses: on a laptop scan of 72 random poses (12 seeds of 6) the largest miss against actuation was 9.4 times eps / c in float64 (0.94 of the 10 eps / c tolerance; float32 4.3), not the 0.43 and 0.28 of the rig's own poses. The floor that predicts it is eps times the sum of the magnitudes the quantity is summed from over its peak (mount_cases.term_sums: each source's terms, the coils through |i_k|, turned into the world): the largest miss against it was 2.3 (float64) and 1.9 (float32), under SLACK 10 by 4.3 and 5.2. SLACK 10 stays, an empirical factor; the pose's rounding was not the cause (a perturbation by eps of its size moves the field by under 1e-15 of itself). The mounted tests use the term floor, with a worst-pose test; the still-sphere exposure comparison (one fixed pose) sat at 0.28 and 0.40 of eps / c in float64, 1.5 and 1.3 in float32, and keeps eps / c.",
+      "float32_rate": "rate_of_change in float32 misses |G v| by several per cent at a step at dt = 1 ms (8 % at the worst of ten; max_rate_of_change 6.56e-4 against 6.07e-4 T/s), float64 by 1.7e-4: the noise is the provider's field's rounding over dt. The same difference taken in float64 from the same stored float32 readings equals the node's rate (to 4e-8), so computing it in float64 inside the node removes nothing: no src change. Documented on docs/entries/observation/exposure.md and held by test_the_float32_rate_carries_rounding_noise_the_float64_rate_does_not."
+    }
+  ]
 }
