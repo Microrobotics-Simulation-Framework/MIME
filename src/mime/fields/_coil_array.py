@@ -60,6 +60,7 @@ from mime.vocabulary import FLUX_DENSITY, GRADIENT, Capability
 
 if TYPE_CHECKING:
     from mime.build import ProviderBuilder, Slot
+    from mime.terms import Tier
 
 @cache
 def _host_allocation(rows: int, coils: int) -> Any:
@@ -325,7 +326,7 @@ def _a_record(name: str) -> bool:
     return True
 
 
-def licence_tier(licence: str) -> str:
+def licence_tier(licence: str) -> Tier:
     """The tier of a licence, the verdict of its expression (``mime.terms``)."""
     from mime.terms import licence_verdict
 

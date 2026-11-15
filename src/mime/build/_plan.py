@@ -3008,9 +3008,25 @@ class _Planner:
                             f"believe {key} by a declaration of its kind taking its commands, "
                             f"set_controller(..., believed={{{key!r}: {type(truth.entry).__name__}(...)}})")
                 continue
+            if isinstance(truth.entry, FieldProvider) and self.belief_names_parts_only(cast(FieldProvider, entry)):
+                self.refuse("controller.believed", RefusalClass.USER,
+                            f"{entry_where} ({record.cls.label()}) cannot differ from the truth: its only settings name "
+                            f"parts ({', '.join(sorted(type(cast(FieldProvider, entry)).parts))}), and its numbers "
+                            f"come from the apparatus's declared values and its parts' placement, which are the "
+                            f"truth's, so the belief would be the truth itself",
+                            f"leave {key} out of believed= (the controller then knows it exactly, as the report says), "
+                            f"or vary the moment and the placement as study leaves (mime.study), the run's own numbers; "
+                            f"a belief of them is not a setting of {type(cast(Entry, entry)).__name__}")
+                continue
             if not self.setting_problems(cast(Entry, entry), settings, entry_where):
                 planned[key] = BeliefPlan(key, str(written), cast(Entry, entry), record, settings)
         return tuple(planned[key] for key in sorted(planned))
+
+    @staticmethod
+    def belief_names_parts_only(entry: FieldProvider) -> bool:
+        """Whether every setting of ``entry`` names a part, so that a belief of its kind holds the truth's numbers
+        whatever it says (a point dipole's moment is its apparatus's, its placement its part's)."""
+        return all(item.name in type(entry).parts for item in dataclasses.fields(cast(Any, entry)))
 
     def belief_mismatch(self, entry: Entry, truth: EntryPlan, settings: Mapping[str, Magnitude]) -> str | None:
         """Why ``entry`` cannot be a belief of the part ``truth`` plans, or ``None``: another set of commands, or other

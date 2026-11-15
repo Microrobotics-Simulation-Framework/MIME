@@ -183,6 +183,12 @@ class Allocator:
         dtype = as_run_array(0.0).dtype
         sizes = [self.model.commands[c].shape[0] for c in self.commands]
         coefficients, offset = self.model.affine(at, commands=self.commands, dtype=dtype)
+        absent = [quantity for quantity in sorted(self.scales) if quantity not in coefficients]
+        if absent:
+            raise ValueError(f"the allocation of {', '.join(self.commands)} is asked for {', '.join(absent)}, which the "
+                             f"model gives only where {', '.join(sorted(set(self.model.optional) - set(at))) or 'an input'} "
+                             f"is given (the force or torque on a moment): give solve(..., at={{'point': ..., "
+                             f"'moment': ...}})")
         rows: list[Any] = []
         target: list[Any] = []
         zero: list[Any] = []

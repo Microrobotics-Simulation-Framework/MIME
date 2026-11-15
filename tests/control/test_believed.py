@@ -165,7 +165,9 @@ def test_a_bare_key_of_an_apparatus_of_several_parts_is_refused_naming_each():
         declared({"rpm": PointDipole(part="rotor_magnet")}).plan()
     assert refused.value.codes() == ["controller.believed"]
     assert all(key in str(refused.value) for key in ("rpm.arm", "rpm.motor", "rpm.magnetic"))
-    declared({"rpm.magnetic": PointDipole(part="rotor_magnet")}).plan()  # the control: keyed in full
+    with pytest.raises(BuildRefused) as keyed:  # the control: keyed in full, the key is read (a point dipole's belief
+        declared({"rpm.magnetic": PointDipole(part="rotor_magnet")}).plan()  # is the truth's own, which is refused)
+    assert "cannot differ from the truth" in str(keyed.value) and "rpm.arm" not in str(keyed.value)
 
 
 @pytest.mark.parametrize("belief, code", [
@@ -179,6 +181,21 @@ def test_a_belief_that_cannot_be_the_parts_is_refused_and_its_control_plans(beli
     with pytest.raises(BuildRefused) as refused:
         believed_sphere(believed=made).plan()
     assert code in refused.value.codes(), refused.value
+    believed_sphere(believed={"coils.magnetic": coils()}).plan()
+
+
+def test_a_belief_that_can_only_be_the_truth_is_refused_naming_the_route_and_a_belief_that_can_differ_plans():
+    """A point dipole's settings name its part alone: its moment is its apparatus's and its placement its part's, so a
+    ``PointDipole`` belief holds the truth's numbers whatever it says. It is refused, naming where to vary them; the
+    control, a coil array's belief (its calibration, placement and background are settings), plans."""
+    exp = kinematic_rpm(controlled=("arm.joint_positions",))
+    exp.set_controller(tracking(), reads=TRACKING_READS, writes=TRACKING_WRITES, mode="callback", rate=ms(2),
+                       believed={"rpm.magnetic": PointDipole(part="rotor_magnet")})
+    with pytest.raises(BuildRefused) as refused:
+        exp.plan()
+    text = str(refused.value)
+    assert refused.value.codes() == ["controller.believed"] and "cannot differ from the truth" in text
+    assert "study leaves" in text and "leave rpm.magnetic out of believed=" in text
     believed_sphere(believed={"coils.magnetic": coils()}).plan()
 
 

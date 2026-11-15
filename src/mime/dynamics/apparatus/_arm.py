@@ -32,6 +32,7 @@ from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, JOINT_POSITIO
 
 if TYPE_CHECKING:
     from mime.build import DynamicsBuilder, ResolvedRegistration
+    from mime.terms import Tier
 
 #: Where to ask for what MIME does not do.
 ISSUES = "https://github.com/Microrobotics-Simulation-Framework/MIME/issues"
@@ -435,8 +436,9 @@ class Arm(ChainSegment):
             return None
         sha256 = reading.classification.source.sha256
         terms = held.terms
+        tier: Tier
         if terms is None:
-            licence, tier = "none declared: the experiment's own file", "own"
+            licence, tier = "none declared: the experiment's own file", "carried"  # the author's own, packed by its author
         else:
             from mime.terms import expression_of, licence_verdict
 

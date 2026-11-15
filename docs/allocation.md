@@ -121,7 +121,9 @@ def step(state, reads):
   and `torque` on the moment given as `at["moment"]`) with its scale, in its own unit: a miss of one scale counts the
   same in every row. For a fixed moment the force, `F_j = m_i dB_i/dx_j`, and the torque, `m x B`, are linear in the
   field and its gradient, so they stay affine in the currents and the allocation stays exact. A gradient's rows are its
-  five independent entries, as `allocate()` stacks them.
+  five independent entries, as `allocate()` stacks them. The model's `gradient` is declared in the base units MIME writes
+  for a field gradient (the form `unit_symbol` gives it), which the scale is checked against: write a scale in
+  `T_per_m` or `mT_per_m`.
 - **The bounds** are the port's declared `bounds`, else the bounds its receiver states (an arm's joint limits). A command
   with neither is refused (`allocation.bounds`): the exact allocation chooses within bounds.
 - **The slew.** Where the port declares a `slew`, the bounds are narrowed to `last` plus or minus the slew times the

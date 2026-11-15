@@ -10,6 +10,7 @@ from typing import Any
 import jax
 
 from mime.registry import Signal
+from mime.units import FIELD_GRADIENT, unit_symbol
 
 jnp: Any = jax.numpy
 
@@ -17,9 +18,11 @@ jnp: Any = jax.numpy
 #: a call may leave out, its force and torque then not given.
 POINT, MOMENT = "point", "moment"
 INPUTS = {POINT: Signal("m", (3,)), MOMENT: Signal("A m^2", (3,))}
+#: The gradient's units as MIME writes a unit it has no symbol for (``parse_unit`` reads it back): base units, T/m.
+GRADIENT_UNITS = unit_symbol(FIELD_GRADIENT)
 #: What it gives: the flux density (T), its gradient ``dB_i/dx_j`` (T/m, row by row), and the force (N) and torque
 #: (N m) on the moment.
-QUANTITIES = {"flux_density": Signal("T", (3,)), "gradient": Signal("T/m", (3, 3)), "force": Signal("N", (3,)),
+QUANTITIES = {"flux_density": Signal("T", (3,)), "gradient": Signal(GRADIENT_UNITS, (3, 3)), "force": Signal("N", (3,)),
               "torque": Signal("N m", (3,))}
 
 

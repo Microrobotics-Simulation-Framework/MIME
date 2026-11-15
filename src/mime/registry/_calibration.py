@@ -7,14 +7,17 @@ It holds no settings and builds no node, so it is not an entry kind: a lab adds 
 :func:`register_calibration_type`, from its package.
 
 An **instance** is one asset a type reads: its name and sha256, its tier (the verdict of its licence: ``open``,
-``conditional`` or ``referenced``), the unit it was fitted on as the file names it, and its fitted and declared fields.
+``conditional``, ``referenced``, or ``carried`` for the author's own file under none), the unit it was fitted on as the file names it, and its fitted and declared fields.
 An entry that reads one gives it (``calibration_instance``), and the build report prints it."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mime.terms import Tier
 
 
 def _no_unit(_: Any) -> str | None:
@@ -51,7 +54,7 @@ class CalibrationInstance:
     asset: str
     sha256: str
     licence: str
-    tier: str
+    tier: Tier
     unit: str | None
     fitted: tuple[str, ...]
     declared: tuple[str, ...]
@@ -77,15 +80,4 @@ def register_calibration_type(held: CalibrationType) -> CalibrationType:
     return held
 
 
-def calibration_type(label: str) -> CalibrationType | None:
-    """The registered type ``label`` (``mpem/1``), or ``None``."""
-    return _TYPES.get(label)
-
-
-def calibration_types() -> tuple[CalibrationType, ...]:
-    """Every registered type, by label."""
-    return tuple(_TYPES[label] for label in sorted(_TYPES))
-
-
-__all__ = ["CalibrationInstance", "CalibrationType", "calibration_type", "calibration_types",
-           "register_calibration_type"]
+__all__ = ["CalibrationInstance", "CalibrationType", "register_calibration_type"]
