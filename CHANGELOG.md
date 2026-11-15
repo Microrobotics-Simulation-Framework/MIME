@@ -65,6 +65,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `KeyError`). A belief's leaf is no study axis; a study differentiates the controller's settings through the belief.
   - **Refusal codes**: `allocation.bounds`, `allocation.model`, `allocation.objective` and `controller.believed`; the
     allocator refuses more than `EXACT_COMMANDS` commands as `allocation.exact-size`, citing the constant.
+- **`mime scaffold`: a new experiment, bundle, study, block or plugin from a template** (`mime.scaffold`, the help group Start;
+  `scaffold.exists`, `scaffold.set`, `scaffold.no-terminal`; dev2, lane P's P7a). `mime scaffold <kind> <path>` writes an
+  experiment (`experiment.py` over the toy entries, run once and saved into `saved/`), adds `mime.toml` to a saved folder
+  (bundle) or a study folder, writes a block (`mime.toml`, `block.mime.yaml`, `cases/`; with `--from <saved folder> --socket
+  <name>=<thing>` the declarations of a saved experiment, through `fragment_from`) or a plugin (`pyproject.toml`, an example
+  entry, a round-trip test). Each value is the `--set key=value` one (named as `mime.toml` names it), else your `defaults.toml`,
+  else scaffold's own; without `--yes` or `--dry-run` it walks them as `mime push --setup` does and asks at the end whether to
+  save what it was told as your defaults. It never overwrites, asks nothing and accepts no licence under `--yes`, refuses with
+  no terminal and no `--yes`, searches everything it writes for a token MIME holds, and writes nothing under `--dry-run`, which
+  draws the tree and where each value came from. Templates are package data filled by `string.Template`, no network. The CI
+  control scaffolds each kind with `--yes` and runs its check (`mime check` with exactly the kind's to-do list; the experiment
+  verifies; the plugin is built with the environment's own build backend into a temporary target only a subprocess sees, where
+  `mime registry --json` lists it and its own test passes, so the suite's registry is never changed); a misspelt key planted in each
+  kind's template fails it (caught 5 of 5). `mime push --init` is kept as the alias of `mime scaffold bundle|study <folder>
+  --yes`, one writer and the same bytes, a test holds them equal; it keeps an existing `mime.toml` softly where scaffold refuses, and migrates a folder's `sharing.yaml` where scaffold refuses it.
+  A plugin's namespace that is taken (the first word of one of MIME's refusal codes or entries, or a namespace an installed
+  distribution declares, read from the registry and the environment) is refused (`scaffold.set`) with a free word to try, also
+  where it is derived from the folder's name or your defaults (`helix-robot` does not default to `helix`); `block --from` takes the
+  saved experiment's declared licence as the block's and refuses another; a saved or study folder asked for as the other kind is
+  `manifest.kind`; the symlink guard is tested.
+  `mime new`, planned before, is `mime scaffold experiment`. `push._setup`'s `Walk`, `asked` and `filled` are public in that module.
 
 - **Static meshes in the in-loop camera, traced once a run** (`mime.sensing._mesh`, `mime.sensing.mesh_chords`,
   `MeshChords`, `MESH_SAMPLES`; `mime.observations.Camera`; `mime.viz.write_mesh(..., decimation_distance=)`; dev2, camera

@@ -566,6 +566,9 @@ rung.unknown                  user
 save.not-loadable             user
 save.not-writable             environment
 save.unsavable                user
+scaffold.exists               user
+scaffold.no-terminal          user
+scaffold.set                  user
 scene.asset-changed           user
 scene.asset-default-prim      user
 scene.asset-dependencies      user

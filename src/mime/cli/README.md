@@ -189,6 +189,30 @@
   `--defaults`. A push stopped at any request is resumed by running it again. Exits zero, two when refused, three when
   the service refuses a field MIME builds: that is a MIME defect (`push.rejected`, classed internal), the exit every
   command gives one (below).
+- `mime scaffold <kind> <path> [--yes] [--set <key>=<value>]... [--dry-run] [--from <saved folder> --socket <name>=<thing>]...`:
+  start something new from a template, in the help group Start. The kinds: `experiment` (a new folder with `experiment.py`,
+  a minimal experiment over MIME's toy entries, run once and saved into `saved/`), `bundle` and `study` (`mime.toml` added to
+  the saved or study folder at `<path>`, which `mime push --init` has always written), `block` (`mime.toml`, an empty
+  `block.mime.yaml` and `cases/`; with `--from` the declarations of a saved experiment, the things named by `--socket` becoming
+  its sockets, through `fragment_from`) and `plugin` (`pyproject.toml`, `src/<package>/entries.py` with one example entry, and a
+  round-trip test). Every value is the `--set` one (named as `mime.toml` names it: `block.id`, `record.title`,
+  `plugin.namespace`, ...; an unknown key is refused naming the known), else your `defaults.toml`, else scaffold's own;
+  without `--yes` or `--dry-run` it asks for each in a terminal, as `mime push --setup` does (Enter keeps the value shown),
+  and at the end asks "Save these as your defaults?" for what `defaults.toml` holds. **It never overwrites**: a path that
+  exists (a dangling link too), or a folder holding `mime.toml` or `sharing.yaml`, is `scaffold.exists`: a block, plugin or experiment is scaffolded into another name, and a saved or study folder's `mime.toml` is edited with `mime push <folder> --setup`. **`--yes` asks nothing** and accepts no
+  licence (scaffold asks for none); with no terminal and no `--yes` it is refused, `scaffold.no-terminal`, naming `--yes`.
+  `--dry-run` writes nothing and draws the tree with where each value came from. Everything it writes is searched for a token
+  MIME holds first (`scaffold.set`, naming the value). `scaffold.set` is also an unknown or invalid `--set` value, `--from`
+  or `--socket` where the kind takes none, and a plugin namespace that is already taken: the first word of one of MIME's
+  refusal codes or entries, or a namespace an installed distribution declares (read from the registry and the environment, so
+  `mime registry` keeps working; the folder's name `helix-robot` therefore does not default to `helix`, it is refused with a
+  free word to try). A saved or study folder asked for as the other kind is `manifest.kind`, naming both. `block --from`
+  takes the saved experiment's declared licence as the block's (`--set block.licence=` another one is refused); an experiment
+  that declares none gives your `[licences] content`, said. Exits zero, or two when refused. **`mime push <folder> --init`
+  is the alias** of `mime scaffold bundle|study <folder> --yes` (one writer, the same bytes, a test holds them equal) and
+  differs in two things: an existing `mime.toml` is kept with a line and exit zero by `--init`, and refused by scaffold; and a
+  folder holding `sharing.yaml` is migrated by `--init` (its values become `mime.toml`) and refused by scaffold
+  (`scaffold.exists`). `mime new`, planned here before, is `mime scaffold experiment`.
 - `mime check <folder> [--profile exploratory|research]`: the folder's `mime.toml` (a saved folder's or a study
   folder's) checked offline, nothing built, packed or sent, on the profile workflow a build follows: a defect (a key
   of another type, an ORCID iD's check digit, a licence unlike the experiment's) is a finding in every profile; what push
@@ -279,7 +303,6 @@ field MIME builds (`push.rejected`, classed internal), is one such defect, not a
 
 Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).
-- `mime new`: scaffold a new experiment folder (0.3.0).
 - `mime push --metadata`, `mime cite`, `mime search`: a published record's metadata updated, its citation, and the
   community's index (later).
 
