@@ -25,25 +25,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the line. A dense window on the pixels a guard flags verifies each flagged pixel, and the guard's test of whether a
     least is already covered by the branch read is exact (the covered share positive and the read lines' union under the
     whole sub-cell), not a sufficient half-diagonal one.
-  - **What the verification reports.** `corner_unverified` (the unverified corner pixels a frame) and `corner_bound` (the
-    largest bound on a flagged pixel's error) are state on a camera node that images a shape by route 2, and only there:
+  - **What the verification reports.** `corner_unverified` (the unverified corner pixel-frames: it sums over an exposure's
+    sub-frames, so a pixel unverified in each of K counts K times) and `corner_bound` (the largest bound on a flagged
+    pixel's error; the tests check `error <= line + bound`, nothing tighter) are state on a camera node that images a shape by route 2, and only there:
     they warn and never refuse, a scene whose bodies all take route 1 has neither in its state, and its compiled programs
     are bit for bit the release's in float32 and float64 (a one-ulp control differs on the runner). Over 2400 clean fresh
-    draws (seeds 2800 to 2999, the twelve groups) none was flagged, the flag's planted control fired on 200 of 200, and a
-    flagged pixel's error held under its bound.
+    draws (seeds 2800 to 2999, the twelve groups: 200 poses, each seen in 12 groups, since a pose is drawn from its seed
+    alone) none was flagged: a 95 % upper bound of about 1.5 % of poses (3 in 200), not 0.12 %. The flag's planted control
+    fired on 200 of 200, and a flagged pixel's error held under its bound (a median 0.58 to 0.67 of it); the only
+    flagged pixels ever observed are the control's.
+  - **The line did not move; the rule did.** The corner line (derived in `scripts/camera_route2/corner_line.py` before
+    its draws) never changed in any round. The confirmation's rule did: the fix's predictions required the single edge
+    (the second branch dropped) caught on 200 of 200 draws with its least at 1.25 of the line; after the maintainer's answer
+    (keep the corner gate and state each width's measured power per plant) round 5 **states** the single edge's power
+    instead (197 to 200 of 200 a group, its least 0.26 to 3.0 of the line, under 1.25 in 8 of 12 groups). The derivation's
+    refinement term (`refined_residual`) also changed its scan domain after the first confirmation failed (252c05ed): it
+    scanned the held point anywhere within the sub-ray's reach of the centre ray's least, and now within half a spacing of
+    the least (the descent's lowest sample on the symmetric filament), the term's value staying 1e-4 (the residual 4.7e-6
+    to 1.06e-5 px); the new premise is checked by the gate's guard on each draw.
   - **What the gate bounds, in image terms.** A misread whose image effect exceeds the line is caught at the measured rate
-    (the smallest misread caught on every draw, in pixels, float32 / float64: the coil 0.5 at 128 pixels, 0.15 / 0.1 at 256 and 512; the second coil 0.1 / 0.1 at 128 and 256 and 0.15 / 0.1 at 512, leaving out the named draws below; the sensing README holds the per-width table). At poses where even a dropped branch moves no
+    (the smallest misread caught on every draw, in pixels, float32 / float64: the coil 0.5 at 128 pixels, 0.15 / 0.1 at 256 and 512; the second coil 0.1 / 0.1 at 128 and 256 and 0.15 / 0.1 at 512, leaving out the named draws below, from round 4's seeds 2600 to 2799 with the three draws excluded afterwards, not
+    re-measured on fresh seeds; the corner gate's docstring holds the per-width table). At poses where even a dropped branch moves no
     pixel past the line (draws 2624, 2791 and 2750) there is no image error to catch. This is a bound on the misreads the
     plants represent, not a proof for every pose.
-  - **Derivatives.** The coil's motion derivative against the truth's central difference reads within 0.42 % even at the
-    worst sub-pixel position. The earlier 0.6 to 1 % residual at three entries was the one-pixel central difference's own
-    error (its step sweep converges to the derivative within 2.2e-4 at steps of 1/512 or finer), not the derivative's:
-    nothing to fix. The image's refinement from N to 2N samples moves by 1.8e-6.
+  - **Derivatives.** The collected gates are the pointwise ripple's line (1 %) and the derivative's mean over a pixel of
+    motion against the image's change over it (5e-4); the tighter numbers are probe measurements of `scripts/`, which CI does
+    not collect. The coil's motion derivative against the truth's central difference reads within 0.42 % even at the worst
+    sub-pixel position (G20, a probe). The earlier 0.6 to 1 % residual at three entries was the one-pixel central difference's own
+    error (its step sweep converges to the derivative within 2.21e-4 at steps of 1/512 or finer), not the derivative's:
+    nothing to fix. The image's refinement from N to 2N samples moves by 1.8e-6, and the motion by 4.2e-5.
   - **The cost.** The build reports each sampled body's structural cost estimate (its window's rays, sub-frames,
     evaluations a ray and one evaluation's flops-equivalents from XLA's cost analysis: a count, never a time) and warns
     above 1e9 flops-equivalents a frame, naming the offline renderer. At the rates measured through the in-loop camera
     (27 to 30 G a second in float32 and 15 to 18 in float64 on a four-core runner) that line is about 33 to 37 ms and
-    56 to 66 ms a frame.
+    56 to 66.4 ms a frame. The frame's cost against the original base, at round 3's compacted head, is 0.63 to 0.69 on four threads
+    and 1.16 to 1.48 on one (the compaction runs on the threads a runner has); round 4's verification adds 1.04 to 1.10 of
+    that on four threads and 1.01 to 1.05 on one (the final head's own ratio was not measured).
   - **The route is chosen by capability**: a creased kind (a solid whose body is the intersection of two or more regions: the
     cylinder, the box, the screw) takes route 2 only with its crease measure, so the box and the screw are refused
     (`camera.crease-unmeasured`) until the screw's measure comes; a kind with neither a closed form nor a sign function is

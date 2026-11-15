@@ -21,21 +21,42 @@
   draw: the same count with the second branch's reading lost is not zero. **The run flag** (``corner_unverified``,
   ``corner_bound``): its count is recorded on every clean draw (a flagged draw within the line is a false alarm), and
   its control, on every draw (``unread_second``: the second branch lost before the verification, which then bounds what
-  it finds without reading it), flags pixels, each within the line and its bound. ``CORNER_RECORD`` names a file each
-  run appends its numbers to; ``CORNER_TRUTH_CACHE`` a folder that keeps each draw's truth across a probe's passes.
+  it finds without reading it), flags pixels. The test's check of ``corner_bound`` is that every pixel's error is at
+  most the line plus its bound (``error <= line + bound``), nothing tighter; across round 5's groups a flagged
+  pixel's error is a median 0.58 to 0.67 of its bound. **The only flagged pixels ever observed come from this planted
+  control**: the flag was raised on none of round 5's 2400 clean draws, which are 200 poses (``drawn_pose(seed)``
+  takes neither the coil, the width nor the dtype) each rendered in 12 groups, so the 95 % upper bound on the share
+  of poses it flags is about 1.5 % (3 in 200), not 0.12 %. ``corner_unverified`` sums over an exposure's sub-frames
+  (``_render._factor``): it counts pixel-frames, and a pixel unverified in each of K sub-frames counts K times
+  (``test_corner_unverified_counts_pixel_frames``). ``CORNER_RECORD`` names a file each run appends its numbers to;
+  ``CORNER_TRUTH_CACHE`` a folder that keeps each draw's truth across a probe's passes.
   **What the gate bounds, in image terms**: on a clean draw, every two-branch pixel within the line, and every least
   that changes a sub-cell's share read. **Its power, by its plants** (each a pose drawn from ``DETECTION_SEED``): a
   misread branch whose image effect exceeds the line is caught at the measured rate. The single edge
-  (``CAMERA_PLANT=single-edge``, the second branch dropped: the most a misread of this class can move a pixel) and the
-  misread (``CAMERA_PLANT=misread``, the second branch read ``CAMERA_PLANT_SIZE`` of a pixel out on every ray, a tenth
-  by default: the tail round's defect class) were rated on fresh draws (``predictions_camera_pr5a_round4.json``, seeds
-  2600 to 2799, 200 a case). The smallest misread caught on every draw, float32 / float64: coil 512 px 0.15 / 0.1 px;
-  coil2 128 and 256 px 0.1 / 0.1; coil2 512 px 0.15 / 0.1. At coil 128 and 256 px no size is caught on every draw:
-  at 2624 and 2791 (128 px) and 2750 (256 px) dropping the second branch entirely moves no judged pixel past 0.10, 0.72
-  and 0.34 of the line, so there is no image error of this class above the line to catch; on the other draws the
-  smallest caught on every one is 0.5 px (coil 128) and 0.15 / 0.1 px (coil 256).
+  (``CAMERA_PLANT=single-edge``, the second branch dropped: the most a misread of this class can move a pixel) was
+  first required to be caught on 200 of 200 draws with its least at 1.25 of the line; the maintainer's answer
+  (keep the corner gate and state each width's measured power per plant) made round 5 **state** it instead: 197 to 200
+  of 200 a group on seeds 2800 to 2999, its least a draw's error 0.26 to 3.0 of the line (under 1.25 in 8 of 12
+  groups). The misread (``CAMERA_PLANT=misread``, the second branch read ``CAMERA_PLANT_SIZE`` of a pixel out on
+  every ray, a tenth by default: the tail round's defect class) was rated on round 4's draws
+  (``predictions_camera_pr5a_round4.json``, seeds 2600 to 2799, 200 a case; three draws, 2624, 2791 and 2750, were
+  excluded from the table afterwards, so the table below was not re-measured on fresh seeds). The smallest misread
+  caught on every draw, float32 / float64: coil 512 px 0.15 / 0.1 px; coil2 128 and 256 px 0.1 / 0.1; coil2 512 px
+  0.15 / 0.1. At coil 128 and 256 px no size is caught on every draw: at 2624 and 2791 (128 px) and 2750 (256 px)
+  dropping the second branch entirely moves no judged pixel past 0.10, 0.72 and 0.34 of the line, so there is no image
+  error of this class above the line to catch; on the other draws the smallest caught on every one is 0.5 px (coil 128)
+  and 0.15 / 0.1 px (coil 256).
+  **The scheme's own code, pinned** (``TAIL_POSES``, ``test_the_tail_poses_the_scheme_was_fixed_on_stay_read``, five poses in both dtypes): the
+  gate's fresh draws at CI's seed meet none of the poses where the descent and the verification matter, so two
+  regressions of the scheme pass it: the verification that never reads the lost branch it finds
+  (``CAMERA_PLANT=unread-verification``) and the descent off (``CAMERA_PLANT=no-descent``, ``LEAST_REACH`` zero). Each
+  is caught on the pinned poses on every run (the poses are fixed): the descent off fails five of them in both dtypes,
+  the verification unread two (seeds 2453 and 2667).
 - **The motion's derivative across a pixel**: a coil's darkness centroid's forward-mode derivative, at 16 positions over
-  one pixel of motion, is within ``RIPPLE_LINE`` of the central difference over that pixel. **Control**
+  one pixel of motion, is within ``RIPPLE_LINE`` (1 %) of the central difference over that pixel at each position, and
+  its mean over them within ``INTEGRAL_LINE`` (5e-4) of it. These are the collected gates: the tighter numbers (the
+  worst-position step sweep within 2.2e-4, G20's truth check at 0.42 %) are probe measurements of ``scripts/``, which
+  CI never collects. **Control**
   (``CAMERA_PLANT=lesser``): the PR's first composition (one straight edge a cell, the least of the two branches'
   lines, each read at its pixel's held point), whose image ripples with the sub-samples' period, fails it, every run.
 - **An ellipsoid** (no closed form) by route 2: its image's area against the projected ellipse's, in both dtypes.
@@ -62,7 +83,7 @@ from camera_cases import PLANT, PLANT_SIZE, SEED, across, planted
 
 import mime.sensing._sampled as sampled_route
 from mime.core import quaternion
-from mime.sensing import Appearance, Subject, render
+from mime.sensing import Appearance, Exposure, Subject, render
 from mime.sensing import _coverage as coverage
 from mime.sensing import _render as render_module
 
@@ -96,8 +117,15 @@ def corner_line(coil: str, width: int, dtype: str) -> float:
     return CELL_COEFFICIENT * pixel / NOTCH_RADIUS[coil] + REFINED + TRUTH_SIGNS + TRUTH_FLOOR + rounding
 
 
-#: The motion's derivative across a pixel: the design's G20 line, 1 % of the motion.
+#: The motion's derivative across a pixel: the design's G20 line, 1 % of the motion, on each position's jvp.
 RIPPLE_LINE = 0.01
+#: The jvp's mean over a pixel of motion against the image's change over it (the central difference over that pixel,
+#: which is the integral of the derivative where the image is continuous): the band written before probe 2's rerun
+#: (``predictions_camera_pr5a_round5_gates.json``, ``gate_deriv``), 5e-4, where the measured fix reads at most 1.9e-4 and
+#: the first composition (``CAMERA_PLANT=lesser``) 1.3e-3 to 6.4e-3, the jumps a jvp leaves out. The first is the
+#: image's derivative with the ripple across the pixel allowed (``RIPPLE_LINE``, 0.58 % measured at worst); this one
+#: holds the jvp to the image's change.
+INTEGRAL_LINE = 5e-4
 
 
 LENS, POSE = across(128, field=3e-3)
@@ -380,6 +408,35 @@ def misread(monkeypatch, width: int) -> None:
     monkeypatch.setattr(sampled_route, "pieces", pieces)
 
 
+#: The scheme's own regressions, planted (``CAMERA_PLANT``): each passes the corner gate on its fresh draws at the CI
+#: seed, which draws no tail pose, and is caught by the pinned tail poses (``TAIL_POSES``), on every run.
+SCHEME_PLANTS = ("unread-verification", "no-descent")
+
+
+def unread_verification(monkeypatch) -> None:
+    """The plant: the verification finds the lost branch's least and bounds it as it does, but never reads it (the
+    reading it was given stays): the flag stays down, the least is unread."""
+    found_verified = sampled_route._verified
+
+    def verified(sampled, held, p, o, d, shape, first, second, merged, **written):
+        _, _, bound = found_verified(sampled, held, p, o, d, shape, first, second, merged, **written)
+        return first, second, bound
+    monkeypatch.setattr(sampled_route, "_verified", verified)
+
+
+def no_descent(monkeypatch) -> None:
+    """The plant: no descent (``LEAST_REACH`` zero), a branch's least read where the march's quartic puts it; the
+    verification's window (``VERIFY_REACH``, fixed at import) as wide as before."""
+    monkeypatch.setattr(sampled_route, "LEAST_REACH", 0)
+
+
+def scheme_plant(monkeypatch) -> None:
+    if planted("unread-verification"):
+        unread_verification(monkeypatch)
+    if planted("no-descent"):
+        no_descent(monkeypatch)
+
+
 def held_truth(body: Subject, view, position, orientation, pixels, side: int, signs: int, key: str) -> np.ndarray:
     """The sign-only truth on the pixels, kept in ``CORNER_TRUTH_CACHE`` (a folder) where it is set, so that a
     probe's arms over one draw (clean, then each plant) make it once."""
@@ -406,6 +463,7 @@ def corner_errors(seed: int, monkeypatch, width: int = 128, coil: str = "coil", 
     error lies past the line and its own bound (at most zero: the bound holds)."""
     view = across(width, field=3e-3)
     position, orientation = drawn_pose(seed)
+    scheme_plant(monkeypatch)
     with enabled_x64():
         body = subject("helix", COILS[coil])
         pixels = two_branch_pixels(body, position, orientation, view)
@@ -446,8 +504,9 @@ def corner_errors(seed: int, monkeypatch, width: int = 128, coil: str = "coil", 
 @pytest.mark.parametrize("coil", sorted(COILS))
 @pytest.mark.parametrize("width", [128, 256, 512])
 def test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth(width, coil, monkeypatch, dtype):
-    # The guard and the flag judge the scheme as it is: a planted run is judged by the line alone.
-    guard: dict | None = None if PLANT else {}
+    # The guard and the flag judge the scheme as it is: a planted run is judged by the line alone, except a plant of
+    # the scheme's own code (``SCHEME_PLANTS``), which the guard is there to catch.
+    guard: dict | None = None if PLANT and PLANT not in SCHEME_PLANTS else {}
     errors, count = corner_errors(SEED, monkeypatch, width, coil, guard=guard, dtype=dtype)
     line = corner_line(coil, width, dtype)
     largest = float(errors.max()) if count else float("nan")
@@ -464,14 +523,70 @@ def test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth(width, co
             handle.write(json.dumps({"seed": SEED, "coil": coil, "width": width, "dtype": dtype, "plant": PLANT,
                                      "size": MISREAD if planted("misread") else None, "pixels": count,
                                      "largest": largest, "line": line, **(guard or {})}) + "\n")
-    assert count > 0, "the drawn pose shows no crossing of the coil's turns: the gate is silent"
-    assert largest <= line
+    failures = corner_failures(errors, count, line, guard)
+    assert not failures, "; ".join(failures)
+
+
+def corner_failures(errors: np.ndarray, count: int, line: float, guard: dict | None) -> list[str]:
+    """What a draw of the corner gate fails: its pixels' errors against the line and, where the guard ran, the guard
+    and the flag's controls."""
+    failures = []
+    if count == 0:
+        return ["the drawn pose shows no crossing of the coil's turns: the gate is silent"]
+    if not float(errors.max()) <= line:
+        failures.append(f"the largest error {float(errors.max()):.4f} is past the line {line:.4f}")
     if guard is None:
-        return
-    assert guard["unread"] == 0, "a least that reaches a sub-cell is read by no piece: the line does not bound the pixel"
-    assert guard["lost_branch"] > 0, "the guard does not see a lost branch at this draw: it cannot discriminate here"
-    assert guard["control_flagged"] > 0, "the flag does not see a reading the verification cannot mend at this draw"
-    assert guard["control_past"] <= 0.0, "a flagged pixel's error lies past the line and its bound: the bound fails"
+        return failures
+    if guard["unread"] != 0:
+        failures.append(f"{guard['unread']} leasts that reach a sub-cell are read by no piece: the line does not bound "
+                        "the pixel")
+    if guard["lost_branch"] <= 0:
+        failures.append("the guard does not see a lost branch at this draw: it cannot discriminate here")
+    if guard["control_flagged"] <= 0:
+        failures.append("the flag does not see a reading the verification cannot mend at this draw")
+    if guard["control_past"] > 0.0:
+        failures.append("a flagged pixel's error lies past the line and its bound: the bound fails")
+    return failures
+
+
+#: The poses the scheme's own code is pinned on, ``(coil, width, seed)`` of ``drawn_pose``: draws on which a regression in
+#: it shows, which the gate's one pose a case at CI's seed does not draw. Measured on each pose in both dtypes (seeds
+#: 2052, 2129 and 2049 are the descent's tails, 2453 and 2667 the verification's): the clean scheme passes; the descent
+#: off (``no-descent``) fails 2052, 2129, 2453, 2049 and 2667 (and 2450); the verification unread
+#: (``unread-verification``) fails 2453 and 2667. Poses that discriminate neither plant (2575 at coil 128, 2311 at
+#: coil2 128 and 512, 2152 at coil2 512) are not pinned.
+TAIL_POSES = (("coil", 128, 2052), ("coil", 128, 2129), ("coil", 128, 2453), ("coil", 256, 2049), ("coil2", 512, 2667))
+
+
+@pytest.mark.parametrize(("coil", "width", "seed"), TAIL_POSES)
+def test_the_tail_poses_the_scheme_was_fixed_on_stay_read(coil, width, seed, monkeypatch, dtype):
+    """Pinned poses where a regression in the descent or in the verification shows: the guard's count of unread leasts
+    is zero, the scheme's flag stays down, and every two-branch pixel is within the line (the gate's body, on a fixed
+    pose); its plants (``CAMERA_PLANT=no-descent``, ``unread-verification``) fail it, on every run."""
+    guard: dict = {}
+    errors, count = corner_errors(seed, monkeypatch, width, coil, guard=guard, dtype=dtype)
+    failures = corner_failures(errors, count, corner_line(coil, width, dtype), guard)
+    if guard["flagged"] != 0:
+        failures.append(f"{guard['flagged']} pixels flagged corner_unverified on the scheme as it is")
+    assert not failures, "; ".join(failures)
+
+
+def test_corner_unverified_counts_pixel_frames(float64):
+    """``corner_unverified`` sums over an exposure's sub-frames: with the flag's control planted (pixels flagged), the
+    same pose held through K sub-frames raises K times its count at one, and ``corner_bound`` (a largest) the same."""
+    view = across(128, field=3e-3)
+    position, orientation = drawn_pose(0)
+    held = {"body": (jnp.asarray(position), jnp.asarray(orientation))}
+    with pytest.MonkeyPatch.context() as control:
+        gathered, verified = unread_second(sampled_route._gathered, sampled_route._verified)
+        control.setattr(sampled_route, "_gathered", gathered)
+        control.setattr(sampled_route, "_verified", verified)
+        flags = [render([subject("helix", COIL)], view[0], view[1], held, exposure=Exposure(sub_frames=k)).flags
+                 for k in (1, 2, 3)]
+    one = int(flags[0]["corner_unverified:body"])
+    assert one > 0, "the control flags no pixel at this pose: the test cannot discriminate"
+    assert [int(f["corner_unverified:body"]) for f in flags] == [one, 2 * one, 3 * one]
+    assert float(flags[1]["corner_bound:body"]) == float(flags[0]["corner_bound:body"])
 
 
 # -- the motion's derivative across a pixel -----------------------------------------------------------------------------
@@ -513,17 +628,22 @@ def test_the_coils_motion_derivative_holds_across_a_pixel_of_motion(float64, mon
 
     found = jax.jit(centroid)
     tangent = jax.jit(lambda at, e: jax.jvp(centroid, (at,), (e,))[1])
-    worst = 0.0
+    worst, integral = 0.0, 0.0
     for axis in (0, 2):
         e = np.zeros(3)
         e[axis] = 1.0
         reference = (np.asarray(found(jnp.asarray(start + pixel * e))) - np.asarray(found(jnp.asarray(start)))) / pixel
+        derivatives = []
         for k in range(16):
             at = jnp.asarray(start + (k / 16.0) * pixel * e)
-            derivative = np.asarray(tangent(at, jnp.asarray(e)))
-            worst = max(worst, float(np.linalg.norm(derivative - reference) / np.linalg.norm(reference)))
-    print(f"\nseed {SEED}: the jvp's largest relative deviation from the central difference over a pixel {worst:.4g}")
+            derivatives.append(np.asarray(tangent(at, jnp.asarray(e))))
+            worst = max(worst, float(np.linalg.norm(derivatives[-1] - reference) / np.linalg.norm(reference)))
+        integral = max(integral, float(np.linalg.norm(np.mean(derivatives, axis=0) - reference)
+                                       / np.linalg.norm(reference)))
+    print(f"\nseed {SEED}: the jvp's largest relative deviation from the central difference over a pixel {worst:.4g}, "
+          f"its mean over the pixel's from the same {integral:.4g}")
     assert worst <= RIPPLE_LINE
+    assert integral <= INTEGRAL_LINE
 
 
 # -- an ellipsoid -----------------------------------------------------------------------------------------------------

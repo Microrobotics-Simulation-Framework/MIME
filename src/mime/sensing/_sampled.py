@@ -26,7 +26,7 @@ Where a corner pixel's sub-ray reads both branches at one point (one merged into
 descended into it), a dense window about the lost branch's held point (``VERIFY_STEPS`` a spacing) finds the basins
 of its own that reach the sub-cell: none, the reading stands, verified; one, the lost branch is read there, verified;
 more, the nearest is read and the others' share of the sub-cell is the pixel's bound, raised as the run flag
-``corner_unverified`` (its pixels) with ``corner_bound`` (the largest bound), never a refusal. The lost rays are a few
+``corner_unverified`` (its pixel-frames: summed over an exposure's sub-frames) with ``corner_bound`` (the largest bound), never a refusal. The lost rays are a few
 a frame, gathered.
 
 **The chord** (for an attenuating body) is the samples' sign changes, each refined by linear interpolation: a body
