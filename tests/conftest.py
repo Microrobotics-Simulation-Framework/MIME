@@ -241,3 +241,32 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) ->
         children_now = children_cpu()
         if children is not None and children_now is not None:
             item.user_properties.append(("children_cpu_seconds", f"{children_now - children:.3f}"))
+
+
+def pytest_configure(config: pytest.Config) -> None:  # TEMPORARY DIAGNOSTIC, removed in the next commit
+    from mime.assets import _cache
+
+    original = _cache.cheap_problem
+
+    def wrapped(ref, checksum=None):
+        found = original(ref, checksum)
+        if found is not None and "isn't downloaded" in found:
+            import os as _os
+            import traceback
+
+            where = _os.environ.get("MIME_ASSETS_DIR")
+            try:
+                _cache.file_path(ref).stat()
+                problem = "stat now works"
+            except OSError as error:
+                problem = repr(error)
+            try:
+                listing = sorted(_os.listdir(where)) if where else None
+            except OSError as error:
+                listing = repr(error)
+            print(f"ASSETDIAG {_os.environ.get('PYTEST_CURRENT_TEST')} dir={where} path={_cache.file_path(ref)} stat={problem} "
+                  f"listing={listing} cwd={_os.getcwd()} uid={_os.getuid()} pid={_os.getpid()}", file=sys.stderr, flush=True)
+            traceback.print_stack(limit=6, file=sys.stderr)
+        return found
+
+    _cache.cheap_problem = wrapped
