@@ -78,5 +78,774 @@
   "required": "the brief's target: compact's frame at most 2.0 times base's on the same CPU (1.2 to 2.0 or below), with the clean largest still at most 0.8 of the line (gate_round3_corner)",
   "if_wrong": "a ratio over 2.0 is reported with the profile; COST_LINE's note is restated from the measured numbers only if the corner gate passes"
  },
- "outcomes": null
+ "outcomes": {
+  "written": "2026-11-15, after run 43678278617 (probe/cam-pr5a-round3 @176cf079, deleted after download); the predictions above were committed before it ran and are unchanged",
+  "run": "43678278617: 38 arms. The 32 corner arms failed only the step Memory against the estimate (peak 1.5 to 3.6 times the bound: eager pytest processes against a raw program's estimate, the estimator's known underestimate); each wrote its results, no traceback in any log; the 6 cost arms passed",
+  "corner_verdict": "FAIL the rule in 12 of 12 groups. The clean error is at most 0.25 of its line everywhere (none over the line, none over 0.8 L) and the truth at 4x moves it at most 0.0044 (floor 0.0123); the guard's control is above zero on every draw (least 19). The failures: the premise guard counts unread leasts on 1 to 7 clean draws a group (every one within 0.25 L); the single edge under 1.25 L at coil2 256 px float32 (1.08 L) and coil2 512 px (float32 missed seed 2503, 0.59 L; float64 1.16 L); at 128 px the single edge is 200/200 at 1.62 to 2.32 L on these draws. The line is not moved and the claim not relabelled.",
+  "corner_groups": [
+   {
+    "coil": "coil",
+    "width": 128,
+    "dtype": "float32",
+    "line": 0.050487988631789604,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.004169464111328125,
+    "clean_largest_over_line": 0.08258328811108223,
+    "unread_seeds": [
+     2450,
+     2453,
+     2547,
+     2581
+    ],
+    "lost_branch_least": 19,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0028076171875,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.10868817567825317,
+     "least_over_line": 2.152753132451349,
+     "least_seed": 2455,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 193,
+     "missed_seeds": [
+      2400,
+      2459,
+      2460,
+      2475,
+      2479,
+      2510,
+      2523
+     ],
+     "least": 0.023866355419158936,
+     "least_over_line": 0.4727135317910359,
+     "least_seed": 2475,
+     "under_1_25_line": [
+      2400,
+      2416,
+      2419,
+      2436,
+      2447,
+      2459,
+      2460,
+      2462,
+      2472,
+      2475,
+      2479,
+      2507,
+      2508,
+      2510,
+      2523,
+      2529,
+      2544,
+      2571,
+      2575,
+      2578
+     ]
+    }
+   },
+   {
+    "coil": "coil",
+    "width": 128,
+    "dtype": "float64",
+    "line": 0.04689145755885998,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.00347510358188563,
+    "clean_largest_over_line": 0.07410952362748685,
+    "unread_seeds": [
+     2450,
+     2453,
+     2547,
+     2581
+    ],
+    "lost_branch_least": 19,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.00299072265625,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.10857059472982145,
+     "least_over_line": 2.3153597772801033,
+     "least_seed": 2455,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 196,
+     "missed_seeds": [
+      2400,
+      2459,
+      2475,
+      2523
+     ],
+     "least": 0.02381125571718745,
+     "least_over_line": 0.5077951711630768,
+     "least_seed": 2475,
+     "under_1_25_line": [
+      2400,
+      2416,
+      2419,
+      2436,
+      2459,
+      2460,
+      2462,
+      2475,
+      2479,
+      2507,
+      2508,
+      2510,
+      2523,
+      2529,
+      2578
+     ]
+    }
+   },
+   {
+    "coil": "coil",
+    "width": 256,
+    "dtype": "float32",
+    "line": 0.03688879092528923,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.0076448917388916016,
+    "clean_largest_over_line": 0.2072415914735395,
+    "unread_seeds": [
+     2528
+    ],
+    "lost_branch_least": 19,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0028467178344726562,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.05590176582336426,
+     "least_over_line": 1.51541333888069,
+     "least_seed": 2453,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 199,
+     "missed_seeds": [
+      2438
+     ],
+     "least": 0.03497636318206787,
+     "least_over_line": 0.9481569415735367,
+     "least_seed": 2438,
+     "under_1_25_line": [
+      2421,
+      2438,
+      2453,
+      2477,
+      2487,
+      2585
+     ]
+    }
+   },
+   {
+    "coil": "coil",
+    "width": 256,
+    "dtype": "float64",
+    "line": 0.029695728779429983,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.0033526920909577873,
+    "clean_largest_over_line": 0.11290149219305144,
+    "unread_seeds": [
+     2528
+    ],
+    "lost_branch_least": 19,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0028076171875,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.056004908465366654,
+     "least_over_line": 1.8859583774270208,
+     "least_seed": 2453,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.034890060247814825,
+     "least_over_line": 1.1749184708335199,
+     "least_seed": 2438,
+     "under_1_25_line": [
+      2438,
+      2585
+     ]
+    }
+   },
+   {
+    "coil": "coil",
+    "width": 512,
+    "dtype": "float32",
+    "line": 0.03548398868143349,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.006612598896026611,
+    "clean_largest_over_line": 0.18635444158752545,
+    "unread_seeds": [
+     2528,
+     2557,
+     2581
+    ],
+    "lost_branch_least": 20,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0013427734375,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.1137310266494751,
+     "least_over_line": 3.2051364819926036,
+     "least_seed": 2536,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.039505600929260254,
+     "least_over_line": 1.1133359691868863,
+     "least_seed": 2580,
+     "under_1_25_line": [
+      2415,
+      2458,
+      2494,
+      2580
+     ]
+    }
+   },
+   {
+    "coil": "coil",
+    "width": 512,
+    "dtype": "float64",
+    "line": 0.02109786438971499,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.0035652170844138187,
+    "clean_largest_over_line": 0.16898473791270685,
+    "unread_seeds": [
+     2528,
+     2557,
+     2581
+    ],
+    "lost_branch_least": 20,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0032958984375,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "PASS",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.11428471626725156,
+     "least_over_line": 5.4168855271893905,
+     "least_seed": 2536,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.040090425951787134,
+     "least_over_line": 1.9002125149373337,
+     "least_seed": 2580,
+     "under_1_25_line": []
+    }
+   },
+   {
+    "coil": "coil2",
+    "width": 128,
+    "dtype": "float32",
+    "line": 0.02948911893685113,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.007335543632507324,
+    "clean_largest_over_line": 0.24875424892197945,
+    "unread_seeds": [
+     2423,
+     2526,
+     2547,
+     2578
+    ],
+    "lost_branch_least": 24,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.004426360130310059,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.04778623580932617,
+     "least_over_line": 1.6204701100652423,
+     "least_seed": 2583,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 198,
+     "missed_seeds": [
+      2437,
+      2583
+     ],
+     "least": 0.024202406406402588,
+     "least_over_line": 0.8207232796012094,
+     "least_seed": 2583,
+     "under_1_25_line": [
+      2437,
+      2583
+     ]
+    }
+   },
+   {
+    "coil": "coil2",
+    "width": 128,
+    "dtype": "float64",
+    "line": 0.025892587863921505,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.004280928950174179,
+    "clean_largest_over_line": 0.16533414785237385,
+    "unread_seeds": [
+     2423,
+     2526,
+     2578
+    ],
+    "lost_branch_least": 24,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0041062914940983575,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.047808146104104,
+     "least_over_line": 1.8464027757812278,
+     "least_seed": 2583,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 198,
+     "missed_seeds": [
+      2437,
+      2583
+     ],
+     "least": 0.024102128639821863,
+     "least_over_line": 0.9308505108292225,
+     "least_seed": 2583,
+     "under_1_25_line": [
+      2437,
+      2583
+     ]
+    }
+   },
+   {
+    "coil": "coil2",
+    "width": 256,
+    "dtype": "float32",
+    "line": 0.026389356077820003,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.0055162906646728516,
+    "clean_largest_over_line": 0.20903468233198916,
+    "unread_seeds": [
+     2423,
+     2460,
+     2492,
+     2537,
+     2556
+    ],
+    "lost_branch_least": 21,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.003266453742980957,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.02861785888671875,
+     "least_over_line": 1.0844470324447129,
+     "least_seed": 2467,
+     "under_1_25_line": [
+      2450,
+      2467
+     ]
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 199,
+     "missed_seeds": [
+      2467
+     ],
+     "least": 0.0185239315032959,
+     "least_over_line": 0.7019470823263128,
+     "least_seed": 2467,
+     "under_1_25_line": [
+      2450,
+      2467
+     ]
+    }
+   },
+   {
+    "coil": "coil2",
+    "width": 256,
+    "dtype": "float64",
+    "line": 0.019196293931960755,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.0035642611655738454,
+    "clean_largest_over_line": 0.18567444206715078,
+    "unread_seeds": [
+     2423,
+     2460,
+     2492,
+     2537,
+     2556
+    ],
+    "lost_branch_least": 21,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.003466412956147691,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.028666276477488428,
+     "least_over_line": 1.4933234810371747,
+     "least_seed": 2467,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 199,
+     "missed_seeds": [
+      2467
+     ],
+     "least": 0.018640137583293304,
+     "least_over_line": 0.9710279311913701,
+     "least_seed": 2467,
+     "under_1_25_line": [
+      2467
+     ]
+    }
+   },
+   {
+    "coil": "coil2",
+    "width": 512,
+    "dtype": "float32",
+    "line": 0.030234271257698873,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.006024301052093506,
+    "clean_largest_over_line": 0.19925405182569017,
+    "unread_seeds": [
+     2423,
+     2492,
+     2526,
+     2537,
+     2557,
+     2575,
+     2578
+    ],
+    "lost_branch_least": 21,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0017557144165039062,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 199,
+     "missed_seeds": [
+      2503
+     ],
+     "least": 0.017854809761047363,
+     "least_over_line": 0.5905487057671617,
+     "least_seed": 2503,
+     "under_1_25_line": [
+      2503
+     ]
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 199,
+     "missed_seeds": [
+      2503
+     ],
+     "least": 0.015624165534973145,
+     "least_over_line": 0.5167700389337017,
+     "least_seed": 2503,
+     "under_1_25_line": [
+      2503
+     ]
+    }
+   },
+   {
+    "coil": "coil2",
+    "width": 512,
+    "dtype": "float64",
+    "line": 0.015848146965980376,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.003487065177198656,
+    "clean_largest_over_line": 0.2200298359602538,
+    "unread_seeds": [
+     2423,
+     2492,
+     2526,
+     2537,
+     2557,
+     2575,
+     2578
+    ],
+    "lost_branch_least": 21,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0032958984375,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.018438569256958415,
+     "least_over_line": 1.1634526923897561,
+     "least_seed": 2503,
+     "under_1_25_line": [
+      2503
+     ]
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.01622487810346729,
+     "least_over_line": 1.0237713051434723,
+     "least_seed": 2503,
+     "under_1_25_line": [
+      2503
+     ]
+    }
+   }
+  ],
+  "guard_findings": [
+   "the guard's hits on fresh clean draws, diagnosed locally (these seeds are now seen): a branch's own least on a sub-ray lies 0.3 to 0.8 spacing from its held point in a narrow basin, its line -0.15 to +0.17 px from the sub-cell's centre (it reaches the cell), and the scheme reads it at the other branch's point: the lower full-spacing neighbour lies on the other branch's slope, so the descent leaves the narrow basin and merges (2450, 2453 coil 128; 2528 coil 256; 2423 coil2 128), or descends into the other's basin without running its reach (2526 coil2 128, 2547 coil 128). The merge rule's premise, that a branch past its fold has its edge beyond its sub-cells, is contradicted: near the fold its basin is narrow and still reaches the cell",
+   "a candidate, diagnosis only (not committed): a piece whose five values show a local minimum at a half spacing does not descend and is read at the parabola through it: 15 of the 25 hits on 25 seen draws cleared, errors unchanged (at most 0.19 L); the rest are basins narrower than half a spacing, near a fold, which no fixed sampling reads every time",
+   "the misread, every case: under 1.25 L on 0 to 20 draws a group (coil 128: 193 and 196/200 caught, least 0.47 and 0.51 L); only coil 512 float64 passes (least 1.90 L): the tail's defect class at its least measured size is under the gate's resolution on some poses at every width"
+  ],
+  "cost_verdict": "the target met: compact over base 0.63 to 0.69 at the runner's threads at every size and dtype (same CPU in each job), 1.16 to 1.48 at one thread; head over base 1.93 to 2.15 at the runner's threads (640 float64: 0.96, the head's corner pass there compiled into parallel thunks) and 1.88 to 1.98 at one thread",
+  "cost_findings": [
+   "where the time went: in base and head XLA:CPU runs the corner pass whole as one thunk on one thread (its longest event 70 to 93 % of the traced step); the descent adds its evaluations there (22 held a sub-ray against 10), so head is about 1.9 times base at one thread and about 2 at four threads; the structural estimate (1.65) counts each piece's line as two evaluations, which its held angle makes cheap",
+   "the compacted descent (the pieces whose lower neighbour lies below the held point, at most 3.4 % measured) is the head's scheme bitwise on the frames compared; its corner pass runs over the threads (longest event at most 8.3 %), so it is faster than base at four threads; at one thread its gathering costs 1.16 to 1.48 times base",
+   "timing_on_loaded_machine is set on the one-thread runs and on compact's at 320 and 640: the load average on a four-vCPU runner still holds the job's own preceding measurement; base, head and compact ran in that order in each job"
+  ],
+  "cost": {
+   "P-160-float32": {
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "base_default_ms": 83.7362,
+    "base_estimate_M": 1438.0,
+    "base_default_loaded": false,
+    "base_one_ms": 108.3843,
+    "base_one_loaded": true,
+    "head_default_ms": 174.2934,
+    "head_estimate_M": 2378.0,
+    "head_default_loaded": false,
+    "head_one_ms": 204.1854,
+    "head_one_loaded": true,
+    "compact_default_ms": 55.4356,
+    "compact_estimate_M": 1595.0,
+    "compact_default_loaded": false,
+    "compact_one_ms": 129.8999,
+    "compact_one_loaded": true,
+    "head_over_base_default": 2.0815,
+    "compact_over_base_default": 0.662,
+    "head_over_base_one": 1.8839,
+    "compact_over_base_one": 1.1985,
+    "base_longest_event_share": 0.697,
+    "base_longest_event": "call.22",
+    "head_longest_event_share": 0.774,
+    "head_longest_event": "cond.11.clone",
+    "compact_longest_event_share": 0.031,
+    "compact_longest_event": "add_sqrt_fusion.49"
+   },
+   "P-160-float64": {
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "base_default_ms": 173.1822,
+    "base_estimate_M": 1438.0,
+    "base_default_loaded": false,
+    "base_one_ms": 213.1679,
+    "base_one_loaded": true,
+    "head_default_ms": 371.5761,
+    "head_estimate_M": 2378.0,
+    "head_default_loaded": false,
+    "head_one_ms": 412.6562,
+    "head_one_loaded": true,
+    "compact_default_ms": 118.9454,
+    "compact_estimate_M": 1595.0,
+    "compact_default_loaded": false,
+    "compact_one_ms": 248.0071,
+    "compact_one_loaded": true,
+    "head_over_base_default": 2.1456,
+    "compact_over_base_default": 0.6868,
+    "head_over_base_one": 1.9358,
+    "compact_over_base_one": 1.1634,
+    "base_longest_event_share": 0.775,
+    "base_longest_event": "call.22",
+    "head_longest_event_share": 0.841,
+    "head_longest_event": "cond.11.clone",
+    "compact_longest_event_share": 0.047,
+    "compact_longest_event": "add_sqrt_fusion.49"
+   },
+   "P-320-float32": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "base_default_ms": 398.3676,
+    "base_estimate_M": 5525.0,
+    "base_default_loaded": false,
+    "base_one_ms": 440.4146,
+    "base_one_loaded": true,
+    "head_default_ms": 767.068,
+    "head_estimate_M": 9137.0,
+    "head_default_loaded": false,
+    "head_one_ms": 873.1101,
+    "head_one_loaded": true,
+    "compact_default_ms": 250.9075,
+    "compact_estimate_M": 6127.0,
+    "compact_default_loaded": true,
+    "compact_one_ms": 652.4145,
+    "compact_one_loaded": true,
+    "head_over_base_default": 1.9255,
+    "compact_over_base_default": 0.6298,
+    "head_over_base_one": 1.9825,
+    "compact_over_base_one": 1.4814,
+    "base_longest_event_share": 0.842,
+    "base_longest_event": "call.22",
+    "head_longest_event_share": 0.898,
+    "head_longest_event": "call.22",
+    "compact_longest_event_share": 0.057,
+    "compact_longest_event": "add_sqrt_fusion.49"
+   },
+   "P-320-float64": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "base_default_ms": 762.2752,
+    "base_estimate_M": 5525.0,
+    "base_default_loaded": false,
+    "base_one_ms": 939.8425,
+    "base_one_loaded": true,
+    "head_default_ms": 1604.0865,
+    "head_estimate_M": 9137.0,
+    "head_default_loaded": false,
+    "head_one_ms": 1832.9262,
+    "head_one_loaded": true,
+    "compact_default_ms": 485.4517,
+    "compact_estimate_M": 6127.0,
+    "compact_default_loaded": true,
+    "compact_one_ms": 1130.8984,
+    "compact_one_loaded": true,
+    "head_over_base_default": 2.1043,
+    "compact_over_base_default": 0.6368,
+    "head_over_base_one": 1.9502,
+    "compact_over_base_one": 1.2033,
+    "base_longest_event_share": 0.863,
+    "base_longest_event": "call.22",
+    "head_longest_event_share": 0.91,
+    "head_longest_event": "call.22",
+    "compact_longest_event_share": 0.068,
+    "compact_longest_event": "add_sqrt_fusion.49"
+   },
+   "P-640-float32": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "base_default_ms": 1421.1193,
+    "base_estimate_M": 21290.0,
+    "base_default_loaded": false,
+    "base_one_ms": 1739.2408,
+    "base_one_loaded": true,
+    "head_default_ms": 2933.5574,
+    "head_estimate_M": 35220.0,
+    "head_default_loaded": false,
+    "head_one_ms": 3300.856,
+    "head_one_loaded": true,
+    "compact_default_ms": 956.314,
+    "compact_estimate_M": 23620.0,
+    "compact_default_loaded": true,
+    "compact_one_ms": 2384.3239,
+    "compact_one_loaded": true,
+    "head_over_base_default": 2.0643,
+    "compact_over_base_default": 0.6729,
+    "head_over_base_one": 1.8979,
+    "compact_over_base_one": 1.3709,
+    "base_longest_event_share": 0.878,
+    "base_longest_event": "call.22",
+    "head_longest_event_share": 0.927,
+    "head_longest_event": "cond.11.clone",
+    "compact_longest_event_share": 0.071,
+    "compact_longest_event": "add_sqrt_fusion.49"
+   },
+   "P-640-float64": {
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "base_default_ms": 2382.8769,
+    "base_estimate_M": 21290.0,
+    "base_default_loaded": false,
+    "base_one_ms": 2961.6626,
+    "base_one_loaded": true,
+    "head_default_ms": 2298.2446,
+    "head_estimate_M": 35220.0,
+    "head_default_loaded": true,
+    "head_one_ms": 5743.5542,
+    "head_one_loaded": true,
+    "compact_default_ms": 1505.5244,
+    "compact_estimate_M": 23620.0,
+    "compact_default_loaded": true,
+    "compact_one_ms": 3546.3125,
+    "compact_one_loaded": true,
+    "head_over_base_default": 0.9645,
+    "compact_over_base_default": 0.6318,
+    "head_over_base_one": 1.9393,
+    "compact_over_base_one": 1.1974,
+    "base_longest_event_share": 0.882,
+    "base_longest_event": "call.22",
+    "head_longest_event_share": 0.054,
+    "head_longest_event": "add_sqrt_fusion.101",
+    "compact_longest_event_share": 0.083,
+    "compact_longest_event": "add_sqrt_fusion.49"
+   }
+  }
+ }
 }
