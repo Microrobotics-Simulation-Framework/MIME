@@ -35,5 +35,9 @@
     "if_wrong": "a miss names its seed (missed_seeds), which reproduces it: the strategies or the clip are then wrong for the property (cause 1 of CLAUDE.md's property-test list, a draw a body cannot have, or cause 4, a control below the oracle's resolution), and the plant or the strategy is changed, never the example count; a clean-arm flag means the property flakes with nothing planted, which is a defect of the template before the control's",
     "cannot_discriminate_if": "the plant is applied after the node under test has compiled (it is not: the property calls the engine function directly, through its module attribute, so the patch is seen), or the clean arm and the planted arm fail alike (both would be caught by the clean arm's count)"
   },
-  "outcomes": null
+  "outcomes": {
+    "measured": "2026-11-15, detection_rate.py on a GitHub runner (a probe, branch probe/p7b-plant-rate at 06841f2b, one core, CPU, float32, Python 3.12): 40 of 40 planted runs caught, 0 of 40 clean runs flagged, none inconclusive; the one-sided 95 % lower bound on the rate is 0.928",
+    "gate_1_planted_property_detection": "as predicted (40 of 40 and 0 of 40): the planted saturation fails test_the_load_is_linear_in_the_force on every run of 40 and the property is quiet with nothing planted. It bounds the rate from below at 0.928 and does not show 1. The plant's size against the property's resolution was not measured separately (an error of order 1 N against a tolerance of order 1e-6 N, far above it)",
+    "memory": "the probe's largest process peaked at 0.44 GiB against an estimate of 0.44 GiB (bound 0.49): not exceeded"
+  }
 }
