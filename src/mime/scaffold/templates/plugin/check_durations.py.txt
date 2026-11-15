@@ -1,0 +1,108 @@
+"""The duration guard: a test that runs longer than the limit fails CI unless tests/duration_allowlist.txt lists it, with a reason.
+
+    pytest --junitxml=junit.xml
+    python scripts/check_durations.py junit.xml        # exit 0: every test is under the limit or listed
+
+Why: a default lane that grows a minute at a time is slow for everyone and nobody owns it. MIME's own CI judges every test
+this way (CONTRIBUTING.md, "CI: the duration gate", and `scripts/report_test_durations.py`); this is the same idea as one small
+script. It is simpler than MIME's, on purpose: it has no re-run of a slow test alone with a cold cache (the first test to pay
+for a JIT compile can read slow once: run it again before you list it), no ceiling on a listed test, and no difference
+between a change's own tests and the others. Grow it if you need that.
+
+The allowlist holds one pytest node id per line, then ` # ` and the reason it must run on every push (a line with no reason
+fails). A test that is slow because it is a benchmark belongs behind `@pytest.mark.slow`, which CI's default lane skips and its
+`slow` lane runs; a physics assertion behind that marker is documentation unless a lane runs it. A test is listed here when
+it has to be in the default lane and cannot be made faster; a test is never shrunk, derandomised or loosened to pass it.
+
+Exit codes: 0 passes, 1 a test is over the limit unlisted or a listing has no reason, 2 the report cannot be read or holds
+no test (a guard over nothing passes on nothing).
+"""
+
+import argparse
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+#: Seconds a test may take (setup, call and teardown) before it must be listed.
+LIMIT = 30.0
+ALLOWLIST = Path(__file__).resolve().parent.parent / "tests" / "duration_allowlist.txt"
+
+#: A test as the report names it: its dotted module path with its classes, and its own name.
+Key = tuple[str, str]
+
+
+def key_of(node_id: str) -> Key:
+    """The report's name for a pytest node id (``tests/test_a.py::Class::test_b[p]`` is ``tests.test_a.Class`` and ``test_b[p]``).
+    The ``::`` inside a parameter's brackets is not a separator."""
+    path, _, rest = node_id.partition("::")
+    head, bracket, tail = rest.partition("[")
+    *classes, name = head.split("::")
+    module = path.removesuffix(".py").replace("/", ".")
+    return ".".join([module, *classes]), name + bracket + tail
+
+
+def listed(text: str) -> tuple[dict[Key, str], list[str]]:
+    """The allowlist's tests with their reasons, and each line that has no reason."""
+    found: dict[Key, str] = {}
+    problems: list[str] = []
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        node_id, _, reason = line.partition(" # ")
+        if not reason.strip():
+            problems.append(f"{node_id.strip()} is listed with no reason: write ' # <why it must run on every push>'")
+        else:
+            found[key_of(node_id.strip())] = reason.strip()
+    return found, problems
+
+
+def durations(report: str) -> dict[Key, float]:
+    """Each test's seconds, from a JUnit XML report (a test run twice, a rerun for example, keeps its longest)."""
+    held: dict[Key, float] = {}
+    for case in ET.fromstring(report).iter("testcase"):
+        key = (case.get("classname", ""), case.get("name", ""))
+        held[key] = max(held.get(key, 0.0), float(case.get("time", "0")))
+    return held
+
+
+def judge(report: str, allowlist: str, limit: float = LIMIT) -> tuple[list[str], list[str]]:
+    """The failures and the notes: a test over ``limit`` that is not listed, a listing with no reason; and the listed tests that
+    were over (with their reasons), so that a kept test that grows is seen."""
+    seconds = durations(report)
+    reasons, failures = listed(allowlist)
+    notes: list[str] = []
+    for (module, name), took in sorted(seconds.items(), key=lambda item: -item[1]):
+        if took <= limit:
+            continue
+        if (module, name) in reasons:
+            notes.append(f"{module}::{name} took {took:.1f} s, listed: {reasons[(module, name)]}")
+        else:
+            failures.append(f"{module}::{name} took {took:.1f} s, over {limit:g} s, and is not in tests/duration_allowlist.txt")
+    return failures, notes
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("report", type=Path, help="the JUnit XML pytest wrote (--junitxml)")
+    parser.add_argument("--limit", type=float, default=LIMIT, help=f"seconds a test may take (default {LIMIT:g})")
+    parser.add_argument("--allowlist", type=Path, default=ALLOWLIST)
+    arguments = parser.parse_args(argv)
+    try:
+        report = arguments.report.read_text(encoding="utf-8")
+        if not durations(report):
+            print(f"{arguments.report} holds no test: the guard would pass on nothing")
+            return 2
+        allowlist = arguments.allowlist.read_text(encoding="utf-8") if arguments.allowlist.exists() else ""
+        failures, notes = judge(report, allowlist, arguments.limit)
+    except (OSError, ET.ParseError, ValueError) as error:
+        print(f"cannot read the report: {error}")
+        return 2
+    for note in notes:
+        print(f"listed: {note}")
+    for failure in failures:
+        print(f"FAIL: {failure}")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

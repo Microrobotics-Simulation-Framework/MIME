@@ -23,14 +23,14 @@ start from is `mime scaffold plugin`, below.
 `mime scaffold plugin` writes a plugin of your own to start from, in the layout of a typical plugin with no `--minimal`:
 each file is short and says whether it is optional. It holds a `pyproject.toml` with the `mime.entries` and `mime.assets` entry
 points; `src/<package>/` with the adapter (`entries/`, one example entry), the engine (`engine/`: your law as pure JAX, which
-imports no `mime`, and a test holds that) and the records (`records/`, one example record whose sha256 is filled in from its
+imports no `mime`, and a test holds that; `fit/` is a second such package, empty, for a fitting harness) and the records (`records/`, one example record whose sha256 is filled in from its
 data file); tests (the registry walk and the saved round trip, `node_failures` and `param_reach_failures` on the example entry,
-validity lines with none empty, the engine's import rule shown able to fail, a Hypothesis property with **one planted error that
+validity lines with none empty, the engine's import rule and the relative-import rule (the package imports itself relatively, so it can move into MIME as a directory), each shown able to fail, a duration guard with its allowlist, a Hypothesis property with **one planted error that
 its property catches every run**, a `@verification_benchmark` behind a `slow` marker, and an `assert_type` file); a `benchmarks/`
 folder with a `mime.toml`; an example; a README whose "Use" section is what CI runs; `CITATION.cff` and `LICENSE`; and a CI
 workflow with a default lane, a slow lane gated by a `slow` label, a weekly lane against MIME's release branch, the `mime
 registry` assertion, `mime check` of the benchmark, `mime assets audit` of the built wheel and sdist, and a typing job (pyright,
-strict, over the package and the `assert_type` file, so the types an editor completes from cannot rot). Every value is the one
+strict over the package and the `assert_type` file, so the types an editor completes from cannot rot; the packages that import no `mime` have only the unknown-type rules off, because jaxlib has no stubs). Every value is the one
 you give with `--set`, else your `defaults.toml` (the namespace, the licence of your code, your name), else scaffold's own, and
 `--dry-run` draws the files and says where each value came from before anything is written. It never overwrites: a folder that
 exists is refused. A namespace that is taken (the first word of one of MIME's entries or refusal codes, or one an installed

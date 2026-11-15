@@ -6,5 +6,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 .hypothesis/
-# Written by benchmarks/build_case.py: CI writes it again.
-/benchmarks/case/
+# A saved benchmark is a folder below benchmarks/, written by the script beside it (whatever it is called): CI writes it again.
+/benchmarks/*/
+# The duration guard's input (CI's default lane).
+/junit.xml

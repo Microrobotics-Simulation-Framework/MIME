@@ -9,7 +9,11 @@ The control (``test_scaffold_control.py``) runs the plugin; these hold what a ru
   benchmark's ``mime.toml``; none of them, and the files hold a placeholder to replace;
 - no file holds a machine path, a home folder or a token;
 - a licence whose text MIME does not ship gets a file that says so, and Apache-2.0 gets its text;
-- the engine's import rule is MIME's own at the scaffold: the AST test in the plugin is the one that holds it.
+- the engine's import rule is MIME's own at the scaffold: the AST test in the plugin is the one that holds it, over the
+  engine and the second MIME-free package (``fit/``);
+- the follow-ups of the clot port (P7c): the typing route (strict, with the unknown-type rules off for the packages that
+  import no ``mime`` and for them alone), the duration guard in the default lane, the sdist's ``scripts`` and ``docs``,
+  no stale case name in ``.gitignore``, the relative-import rule, the float64 reference advice.
 """
 
 import hashlib
@@ -35,12 +39,15 @@ EXPECTED = {
     ".github/workflows/ci.yml", ".gitignore", "CITATION.cff", "LICENSE", "README.md", "pyproject.toml",
     "pyrightconfig.json",
     "benchmarks/build_case.py", "benchmarks/mime.toml", "examples/example.py",
+    "scripts/check_durations.py",
     f"src/{PACKAGE}/__init__.py", f"src/{PACKAGE}/engine/__init__.py", f"src/{PACKAGE}/engine/load.py",
+    f"src/{PACKAGE}/fit/__init__.py",
     f"src/{PACKAGE}/entries/__init__.py", f"src/{PACKAGE}/entries/_vocabulary.py",
     f"src/{PACKAGE}/entries/example_load.py",
     f"src/{PACKAGE}/records/__init__.py", f"src/{PACKAGE}/records/records.json",
     f"src/{PACKAGE}/records/data/example.json",
     "tests/assert_types.py", "tests/conftest.py", "tests/plants.py", "tests/test_engine_imports.py",
+    "tests/import_rules.py", "tests/test_relative_imports.py", "tests/test_durations.py", "tests/duration_allowlist.txt",
     "tests/test_nodes.py", "tests/test_registry.py", "tests/test_validity.py",
     "tests/engine/test_properties.py", "tests/verification/test_example.py",
 }
@@ -169,6 +176,57 @@ def test_the_property_skeleton_tells_the_author_the_rules_that_cost_time(path: s
     assert all(each in text for each in expected), path
 
 
+def test_the_sdist_carries_scripts_and_docs_and_the_tests_find_scripts(tmp_path: Path):
+    options = tomllib.loads(files_of(scaffolded(tmp_path))["pyproject.toml"])["tool"]
+    assert {"scripts", "docs"} <= set(options["hatch"]["build"]["targets"]["sdist"]["include"])
+    assert "scripts" in options["pytest"]["ini_options"]["pythonpath"]  # tests import scripts/check_durations.py
+
+
+def test_gitignore_names_no_benchmark_script_and_ignores_any_saved_case(tmp_path: Path):
+    """The case's folder name was written in three files and went stale when the port renamed the case: the ignore is any
+    folder below ``benchmarks/``, and names no script. Read by git itself, not by the text."""
+    root = scaffolded(tmp_path)
+    assert "build_case" not in (root / ".gitignore").read_text(encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    for folder in ("case", "strip"):
+        (root / "benchmarks" / folder).mkdir()  # git matches a pattern ending in a slash against folders that exist
+
+    def ignored(path: str) -> bool:
+        return subprocess.run(["git", "check-ignore", "-q", path], cwd=root, check=False).returncode == 0
+
+    assert ignored("benchmarks/case/mime.toml") and ignored("benchmarks/strip/experiment.json") and ignored("junit.xml")
+    assert not ignored("benchmarks/build_case.py") and not ignored("benchmarks/mime.toml")
+
+
+def test_the_default_lane_runs_the_duration_guard_on_a_junit_report(tmp_path: Path):
+    steps = [step.get("run", "") for step in yaml.safe_load(files_of(scaffolded(tmp_path))[".github/workflows/ci.yml"])
+             ["jobs"]["default"]["steps"]]
+    assert "uv run --no-sync pytest --junitxml=junit.xml" in steps
+    assert steps.index("uv run --no-sync python scripts/check_durations.py junit.xml") > steps.index(
+        "uv run --no-sync pytest --junitxml=junit.xml")
+
+
+def test_the_second_mime_free_package_is_covered_by_the_import_rule(tmp_path: Path):
+    held = files_of(scaffolded(tmp_path))
+    assert 'MIME_FREE = ("engine", "fit")' in held["tests/test_engine_imports.py"]
+    assert f"src/{PACKAGE}/fit/__init__.py" in held and "imports no `mime`" in held[f"src/{PACKAGE}/fit/__init__.py"]
+
+
+def test_the_package_imports_itself_relatively_in_the_template(tmp_path: Path):
+    """The template's own modules: no absolute import of the package, in any file of ``src/`` (the plugin's own test holds the
+    rule from here on; this is the template keeping it)."""
+    for path, text in files_of(scaffolded(tmp_path)).items():
+        if path.startswith(f"src/{PACKAGE}/") and path.endswith(".py"):
+            assert not re.search(rf"^\s*(from|import) {PACKAGE}\b", text, re.MULTILINE), path
+    assert "from ..engine import load as law" in files_of(scaffolded(tmp_path / "again"))[f"src/{PACKAGE}/entries/example_load.py"]
+
+
+def test_the_readme_says_when_a_float64_only_reference_is_fine(tmp_path: Path):
+    readme = " ".join(files_of(scaffolded(tmp_path))["README.md"].split())
+    assert "reference the engine is computed *against*" in readme and "float64 alone" in readme
+    assert "Never let the law's own path be float64-only" in readme
+
+
 # -- the typing check ---------------------------------------------------------------------------------------------------
 
 #: pyright's PyPI package runs on node: the system's if there is one, else it downloads one from nodejs.org on first use. A
@@ -209,6 +267,34 @@ def test_a_changed_type_fails_the_assert_type_file(tmp_path: Path):
     report = pyright_report(root)
     messages = [(each["file"], each["message"]) for each in report["generalDiagnostics"]]
     assert any(file.endswith("assert_types.py") and "assert_type" in message for file, message in messages), messages
+
+
+@needs_node
+def test_the_unknown_type_rules_are_off_for_the_engine_and_fit_alone(tmp_path: Path):
+    """The typing route's control. An unannotated function, in the adapter, is reported (strict stays strict there); in the
+    engine and in ``fit`` the same function is not (jaxlib has no stubs, so untyped JAX reads as unknown), and every other
+    strict rule still is: an unused variable in each is reported. The route is both halves at once, every run."""
+    root = scaffolded(tmp_path)
+    unannotated = "def untyped(a, b):\n    return a + b\n\n\ndef unused() -> None:\n    value = 1\n"
+    for folder in ("engine", "fit", "entries"):
+        (root / "src" / PACKAGE / folder / "_planted.py").write_text(unannotated, encoding="utf-8")
+    rules: dict[str, set[str]] = {}
+    for each in pyright_report(root)["generalDiagnostics"]:
+        rules.setdefault(each["file"].split("/")[-2], set()).add(each["rule"])
+    assert rules["engine"] == {"reportUnusedVariable"}, rules
+    assert rules["fit"] == {"reportUnusedVariable"}, rules
+    assert {"reportUnusedVariable", "reportMissingParameterType"} <= rules["entries"], rules
+    assert set(rules) == {"engine", "fit", "entries"}, "nothing else is reported"
+
+
+def test_the_pyright_config_relaxes_the_unknown_type_rules_for_the_mime_free_packages_only(tmp_path: Path):
+    config = json.loads(files_of(scaffolded(tmp_path))["pyrightconfig.json"])
+    assert config["typeCheckingMode"] == "strict"
+    relaxed = {each["root"]: {rule for rule, value in each.items() if value is False} for each in config["executionEnvironments"]}
+    assert set(relaxed) == {f"src/{PACKAGE}/engine", f"src/{PACKAGE}/fit"}, "the adapter and the records are not relaxed"
+    assert all(rules == {"reportUnknownArgumentType", "reportUnknownMemberType", "reportUnknownVariableType",
+                         "reportUnknownParameterType", "reportUnknownLambdaType", "reportMissingParameterType"}
+               for rules in relaxed.values())
 
 
 def test_the_typing_extra_pins_the_pyright_this_suite_checks_the_template_with(tmp_path: Path):

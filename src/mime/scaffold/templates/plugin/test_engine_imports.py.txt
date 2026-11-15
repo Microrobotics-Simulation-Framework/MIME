@@ -1,57 +1,39 @@
-"""The engine imports no `mime`, held by reading its source, and shown able to fail.
+"""The engine and the fit package import no `mime`, held by reading their source, and shown able to fail.
 
-The engine is the part you can test against closed forms and reference numbers with MIME out of the loop (see
-src/${package}/engine/__init__.py). That holds only while it stays true, so this reads every engine module's imports
-(with `ast`, never importing it) and fails on any `mime` name: `import` and `from ... import`, and a call of
-`importlib.import_module("mime...")` or `__import__("mime...")` with a constant string. The second test is the control:
-each of those, planted, must be found, every time.
+`engine/` is the part you can test against closed forms and reference numbers with MIME out of the loop (see
+src/${package}/engine/__init__.py); `fit/` is the second such package, for a fitting or calibration harness or anything else
+that should run without MIME (src/${package}/fit/__init__.py). That holds only while it stays true, so this reads every module
+of both (with `ast`, never importing it) and fails on any `mime` name: `import` and `from ... import`, and a call of
+`importlib.import_module("mime...")` or `__import__("mime...")` with a constant string. The second test is the control: each of
+those, planted, must be found, every time. Add a folder to MIME_FREE for each further package that must not import `mime`;
+delete one you do not want, and this test says so rather than pass on nothing.
 
 What it cannot see: a module name that is computed (`importlib.import_module(prefix + "units")`, a name read from a file or
 the environment), an `exec` or `eval` of source text, and an import hidden in a string that something else imports. A computed
-import of `mime` in the engine passes this test; review is what catches it.
+import of `mime` in these packages passes this test; review is what catches it.
 """
 
-import ast
 from pathlib import Path
 
-ENGINE = Path(__file__).resolve().parent.parent / "src" / "${package}" / "engine"
+from import_rules import absolute_imports, top_level
 
-
-def is_mime(name: str) -> bool:
-    return name.split(".")[0] == "mime"
-
-
-def dynamic_import_name(node: ast.Call) -> str | None:
-    """The constant string a call of `importlib.import_module` or `__import__` names, `None` for any other call or for a name
-    that is not a constant string (a computed one is the limit of this test, above)."""
-    function = node.func
-    called = function.attr if isinstance(function, ast.Attribute) else function.id if isinstance(function, ast.Name) else ""
-    if called not in ("import_module", "__import__") or not node.args:
-        return None
-    first = node.args[0]
-    return first.value if isinstance(first, ast.Constant) and isinstance(first.value, str) else None
+PACKAGE = Path(__file__).resolve().parent.parent / "src" / "${package}"
+#: The folders of the package that import no `mime`.
+MIME_FREE = ("engine", "fit")
 
 
 def mime_imports(source: str) -> list[str]:
     """Every module a source imports whose top-level name is `mime` (so `mime`, `mime.units`, `from mime import x`, and the
     constant string of `importlib.import_module("mime.units")` or `__import__("mime")`)."""
-    found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Import):
-            found += [alias.name for alias in node.names if is_mime(alias.name)]
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and is_mime(node.module or ""):
-            found.append(node.module or "")
-        elif isinstance(node, ast.Call):
-            name = dynamic_import_name(node)
-            if name is not None and is_mime(name):
-                found.append(name)
-    return found
+    return [name for name in absolute_imports(source) if top_level(name) == "mime"]
 
 
-def test_the_engine_imports_no_mime():
-    modules = sorted(ENGINE.rglob("*.py"))
-    assert modules, f"no engine module found under {ENGINE}: the test would pass on nothing"
-    held = {str(path.relative_to(ENGINE)): mime_imports(path.read_text(encoding="utf-8")) for path in modules}
+def test_the_mime_free_packages_import_no_mime():
+    held: dict[str, list[str]] = {}
+    for folder in MIME_FREE:
+        modules = sorted((PACKAGE / folder).rglob("*.py"))
+        assert modules, f"no module found under {PACKAGE / folder}: the test would pass on nothing (drop it from MIME_FREE if you removed it)"
+        held.update({str(path.relative_to(PACKAGE)): mime_imports(path.read_text(encoding="utf-8")) for path in modules})
     assert {path: found for path, found in held.items() if found} == {}
 
 

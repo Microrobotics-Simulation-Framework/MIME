@@ -1,0 +1,39 @@
+"""What two AST tests of this plugin read from a source file: every module it imports by an absolute name.
+
+tests/test_engine_imports.py (the engine and the fit package import no `mime`) and tests/test_relative_imports.py (the
+package imports itself relatively) both ask this, and read source with `ast`, never importing it. Not a test file.
+"""
+
+import ast
+
+
+def dynamic_import_name(node: ast.Call) -> str | None:
+    """The constant string a call of `importlib.import_module` or `__import__` names, `None` for any other call or for a name
+    that is not a constant string (a computed one is the limit of both tests)."""
+    function = node.func
+    called = function.attr if isinstance(function, ast.Attribute) else function.id if isinstance(function, ast.Name) else ""
+    if called not in ("import_module", "__import__") or not node.args:
+        return None
+    first = node.args[0]
+    return first.value if isinstance(first, ast.Constant) and isinstance(first.value, str) else None
+
+
+def absolute_imports(source: str) -> list[str]:
+    """Every module a source imports by an absolute name: `import a.b`, `from a.b import c`, and the constant string of
+    `importlib.import_module("a.b")` or `__import__("a")`. A relative import (`from . import x`, `from ..engine import y`)
+    has `level > 0` and is not one."""
+    found: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            found += [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            found.append(node.module or "")
+        elif isinstance(node, ast.Call):
+            name = dynamic_import_name(node)
+            if name is not None:
+                found.append(name)
+    return found
+
+
+def top_level(name: str) -> str:
+    return name.split(".")[0]

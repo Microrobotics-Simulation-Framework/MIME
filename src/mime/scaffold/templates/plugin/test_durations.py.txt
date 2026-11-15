@@ -1,0 +1,50 @@
+"""The duration guard (scripts/check_durations.py) fails a slow unlisted test and passes a listed one, shown on a real report.
+
+Two kinds of check: the judging on a written report (a slow test, a listed slow test, a listing with no reason, a fast
+test), and one end to end, where pytest itself runs a test that sleeps and writes the report the guard reads, so a change
+in how pytest names its tests would fail here and not in CI's last step.
+"""
+
+import subprocess
+import sys
+from pathlib import Path
+
+import check_durations
+
+REPORT = """<testsuites><testsuite>
+<testcase classname="tests.test_a" name="test_fast" time="0.2"/>
+<testcase classname="tests.test_a.TestSlow" name="test_slow[p::q]" time="45.0"/>
+</testsuite></testsuites>"""
+
+
+def test_a_slow_test_that_is_not_listed_fails():
+    failures, notes = check_durations.judge(REPORT, "", limit=30.0)
+    assert len(failures) == 1 and "TestSlow" in failures[0] and "test_slow[p::q]" in failures[0] and notes == []
+
+
+def test_a_listed_slow_test_passes_and_is_noted_with_its_reason():
+    failures, notes = check_durations.judge(REPORT, "tests/test_a.py::TestSlow::test_slow[p::q] # kept: an example\n", limit=30.0)
+    assert failures == [] and len(notes) == 1 and "kept: an example" in notes[0]
+
+
+def test_a_listing_with_no_reason_fails():
+    failures, _ = check_durations.judge(REPORT, "tests/test_a.py::TestSlow::test_slow[p::q]\n", limit=30.0)
+    assert any("no reason" in failure for failure in failures)
+
+
+def test_a_test_under_the_limit_passes_and_the_limit_is_a_parameter():
+    assert check_durations.judge(REPORT, "", limit=60.0) == ([], [])
+    assert check_durations.LIMIT == 30.0, "the limit of this plugin's lane: change it on purpose, with this test"
+
+
+def test_end_to_end_on_the_report_pytest_writes(tmp_path: Path):
+    (tmp_path / "test_sleeps.py").write_text("import time\n\ndef test_sleeps():\n    time.sleep(0.4)\n", encoding="utf-8")
+    report = tmp_path / "junit.xml"
+    subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", f"--junitxml={report}"], cwd=tmp_path,
+                   capture_output=True, check=True)
+    allowlist = tmp_path / "allowlist.txt"
+    allowlist.write_text("", encoding="utf-8")
+    assert check_durations.main([str(report), "--limit", "0.2", "--allowlist", str(allowlist)]) == 1
+    allowlist.write_text("test_sleeps.py::test_sleeps # kept: it sleeps, on purpose\n", encoding="utf-8")
+    assert check_durations.main([str(report), "--limit", "0.2", "--allowlist", str(allowlist)]) == 0
+    assert check_durations.main([str(tmp_path / "absent.xml")]) == 2
