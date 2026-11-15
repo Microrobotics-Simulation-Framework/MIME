@@ -23,6 +23,8 @@ env:
 jobs:
   default:
     name: default (Python $${{ matrix.python }})
+    # Adding the `slow` label must not re-run this matrix: only the `slow` job below wants the label event.
+    if: github.event.action != 'labeled'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

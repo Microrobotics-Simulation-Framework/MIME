@@ -48,7 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for entries, `_` for records, `:` for an instance) is in the template's comments; the namespace is filled in the six places it
   appears from one value; no file holds a machine path. The control now runs the scaffolded plugin's tests in a subprocess against
   its temporary target: they pass, the slow lane passes, with the planted error in only the planted property fails, the README's
-  CI blocks run, and a misspelt key in each of five more files fails it.
+  CI blocks run, and a misspelt key in each of five more files fails it. Review fixes: the engine's AST test also finds
+  `importlib.import_module("mime...")` and `__import__("mime...")` with a constant string (a computed name is its stated limit);
+  the template's `default` job does not re-run when a label is added (`if: github.event.action != 'labeled'`; the `slow` job
+  still runs on the label); the control's clean plugin is built and run once for its module, and each plant re-writes one file of
+  a copy and runs only the stage that catches it; the pyright tests skip, with a reason, on a machine without `node`.
 
 - **Static meshes in the in-loop camera, traced once a run** (`mime.sensing._mesh`, `mime.sensing.mesh_chords`,
   `MeshChords`, `MESH_SAMPLES`; `mime.observations.Camera`; `mime.viz.write_mesh(..., decimation_distance=)`; dev2, camera

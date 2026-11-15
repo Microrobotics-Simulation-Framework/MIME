@@ -22,20 +22,27 @@ without importing the plugin into this process for good, which is what the test 
 imported-packages half sees.)"""
 
 import importlib.metadata
-import sys
 from pathlib import Path
 
 import pytest
-from scaffold_rig import KINDS, NAMESPACE, PLUGIN_PLANTS, failures_of, planted, unpacked
+from scaffold_rig import (KINDS, NAMESPACE, PLUGIN_PLANTS, PluginBase, PluginClean, environment, failures_of, planted,
+                          plugin_planted_failures, unpacked)
 
 from mime import scaffold
 from mime.build import BuildRefused
 from mime.scaffold import _values
 
 
-@pytest.mark.parametrize("kind", KINDS)
-def test_each_kind_scaffolded_with_yes_passes_its_own_check(kind: str, tmp_path: Path):
-    assert failures_of(kind, tmp_path) == []
+@pytest.mark.parametrize("kind", [pytest.param(each, marks=pytest.mark.fixture_first) if each == "plugin" else each
+                                  for each in KINDS])
+def test_each_kind_scaffolded_with_yes_passes_its_own_check(kind: str, tmp_path: Path, request: pytest.FixtureRequest):
+    """The plugin's check is run once for the module (``clean_plugin``), by the first test that reads it: its lanes run the
+    plugin's own tests in subprocesses, which is most of the module's time. ``fixture_first`` (tests/_fixture_first.py) keeps the
+    two tests that read it on one pytest-xdist worker, so that CI pays it once, not once for each worker the tests reach."""
+    if kind == "plugin":
+        assert request.getfixturevalue("clean_plugin").failures == []
+    else:
+        assert failures_of(kind, tmp_path) == []
 
 
 @pytest.mark.parametrize("kind", KINDS)
@@ -48,32 +55,26 @@ def test_a_planted_defect_in_the_kinds_template_is_caught(kind: str, tmp_path: P
 
 
 @pytest.mark.parametrize("which", PLUGIN_PLANTS)
-def test_a_planted_slip_in_another_file_of_the_plugin_is_caught(which: str, tmp_path: Path):
+def test_a_planted_slip_in_another_file_of_the_plugin_is_caught(which: str, clean_plugin_base: PluginBase, tmp_path: Path):
     """The plugin's other files: a misspelt key of the records' entry point, a planted error that does nothing (the plugin's
     own in-process control fails), the variable that plants it misspelt (the planted run finds no failure, and says only the one
-    property should fail), an import of mime in the engine and a misspelt command of the README each fail the plugin's check,
-    with the plugin's own message."""
-    with pytest.MonkeyPatch.context() as patch:
-        planted("plugin", which)(patch)
-        found = failures_of("plugin", tmp_path / "plugin")
+    property should fail), an import of mime in the engine (as a statement, through `importlib.import_module` and through `__import__`) and a misspelt command of the README each fail the stage of the
+    plugin's check that is there to catch it, with the plugin's own message. The clean plugin is scaffolded and built once for
+    the module; each plant is a copy of it with one file written again, and only its stage runs."""
+    assert clean_plugin_base.failures == [], "the clean plugin must pass the stages before the plant's, or the plant proves nothing"
+    plant = PLUGIN_PLANTS[which]
+    found = plugin_planted_failures(clean_plugin_base.folder, clean_plugin_base.target, plant, tmp_path)
     assert found, f"{which} passed the plugin's check"
-    assert PLUGIN_PLANTS[which][3] in "\n".join(found), f"{which} failed the check, but not by the plugin's own message: {found}"
+    assert plant.message in "\n".join(found), f"{which} failed the check, but not by the plugin's own message: {found}"
 
 
-def entry_points() -> list[str]:
-    return sorted(f"{each.name}={each.value}" for each in importlib.metadata.entry_points(group="mime.entries"))
-
-
-def environment() -> tuple[list[str], list[str], bool]:
-    """What every later test in this process would read of the plugin: the ``mime.entries`` entry points, the import path
-    and whether the plugin's package is imported."""
-    return entry_points(), list(sys.path), any(name.startswith("scafx_") for name in sys.modules)
-
-
-def test_the_plugin_control_leaves_this_process_registry_unchanged(tmp_path: Path):
-    before = environment()
-    assert failures_of("plugin", tmp_path) == []
-    assert environment() == before
+@pytest.mark.fixture_first
+def test_the_plugin_control_leaves_this_process_registry_unchanged(clean_plugin: PluginClean):
+    """What the clean plugin's control did to this process, read at its start (before the scaffold) and its end (after the
+    build and the subprocess runs), and now: the same, and no distribution of the plugin installed."""
+    assert clean_plugin.failures == []
+    assert clean_plugin.after == clean_plugin.before
+    assert environment() == clean_plugin.before
     assert not [each for each in importlib.metadata.distributions() if each.metadata["Name"] == "scafx-probes"]
 
 
@@ -115,7 +116,8 @@ def test_a_plugin_folder_named_for_one_of_mimes_words_is_refused_not_defaulted(t
     assert refusal.code == "scaffold.set" and "helix" in refusal.message and "lab_helix" in refusal.message
     assert not (tmp_path / RESERVED_FOLDER).exists()
     assert failures_of("plugin", tmp_path / "again", RESERVED_FOLDER, sets=[]) != [], "the control reports the refusal"
-    assert failures_of("plugin", tmp_path / "free", RESERVED_FOLDER, sets=["plugin.namespace=lab_helix"]) == []
+    assert failures_of("plugin", tmp_path / "free", RESERVED_FOLDER, sets=["plugin.namespace=lab_helix"], lanes=False) == [], (
+        "a free namespace given by --set is accepted, and the plugin is listed (its lanes are the clean plugin's, run once)")
 
 
 def test_the_reserved_namespace_control_fails_when_the_refusal_is_planted_away(tmp_path: Path):

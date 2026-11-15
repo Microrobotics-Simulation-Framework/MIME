@@ -15,6 +15,7 @@ The control (``test_scaffold_control.py``) runs the plugin; these hold what a ru
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -138,6 +139,8 @@ def test_the_ci_names_the_lanes_and_a_label_gates_the_slow_one(tmp_path: Path):
     ci = yaml.safe_load(text)
     assert set(ci["jobs"]) == {"default", "slow", "release", "typing"}
     assert "contains(github.event.pull_request.labels.*.name, 'slow')" in ci["jobs"]["slow"]["if"]
+    assert ci["jobs"]["default"]["if"] == "github.event.action != 'labeled'"  # a label does not re-run the default matrix
+    assert "labeled" in ci[True]["pull_request"]["types"], "the slow job runs on the label event, so the trigger names it"
     assert any(step.get("run", "").startswith("uv run --no-sync pytest -m slow") for step in ci["jobs"]["slow"]["steps"])
     assert "schedule" in ci[True] and ci[True]["schedule"][0]["cron"]  # PyYAML reads the key `on` as True
     release = " ".join(step.get("run", "") for step in ci["jobs"]["release"]["steps"])
@@ -168,6 +171,12 @@ def test_the_property_skeleton_tells_the_author_the_rules_that_cost_time(path: s
 
 # -- the typing check ---------------------------------------------------------------------------------------------------
 
+#: pyright's PyPI package runs on node: the system's if there is one, else it downloads one from nodejs.org on first use. A
+#: runner has node (GitHub's ``ubuntu-latest``); a machine without it would fail these tests on the network, not on the
+#: plugin's types, so they are skipped there, with this reason, rather than made to depend on a download.
+needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="pyright's package would download node from nodejs.org: "
+                                "no node on this machine's path, and these tests do not depend on the network")
+
 
 def pyright_report(root: Path) -> dict[str, Any]:
     """pyright's JSON for the scaffolded plugin, run as its CI runs it: in the plugin's folder, the environment given by
@@ -180,6 +189,7 @@ def pyright_report(root: Path) -> dict[str, Any]:
     return json.loads(done.stdout)
 
 
+@needs_node
 def test_the_scaffolded_plugin_type_checks_strictly_at_zero_errors(tmp_path: Path):
     report = pyright_report(scaffolded(tmp_path))
     summary = report["summary"]
@@ -187,6 +197,7 @@ def test_the_scaffolded_plugin_type_checks_strictly_at_zero_errors(tmp_path: Pat
     assert summary["filesAnalyzed"] >= 8  # the package's modules and the assert_type file: not a run over nothing
 
 
+@needs_node
 def test_a_changed_type_fails_the_assert_type_file(tmp_path: Path):
     """The control of the test above: the `assert_type` file can fail. A setting declared `float` and asserted `int` is
     reported, in that file, every time."""
