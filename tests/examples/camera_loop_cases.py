@@ -17,7 +17,8 @@ seeds were ``7000 + n``; a draw that binds no coil leaves the allocation's contr
 - ``limits``: the allocation's bounds 1 % looser (the BVLS check's, R2's swap plant);
 - ``reverse_chunk``: the reverse arm's objective with the last chunk's poses stopped (a chunk's cotangent dropped, the
   failure reverse mode alone can have; a ``stop_gradient`` anywhere in the loop moves forward mode alike);
-- ``stop_branch_f32``: the bound coils' share of the rows stopped in the float32 arm only (float32 against float64);
+- ``edge_f32``: the camera's edge pixels' coverage stopped in float32's arithmetic only (float32 against float64: a
+  float32-only defect in the camera's derivative, which every frame of every draw exercises);
 - ``edge``, ``stop_branch``: the camera's edge pixels' coverage, and the bound coils' share, stopped (the
   central-difference check's);
 - ``unguarded``: the tracker without its lost guard, R2's own (the lightly damped loop's);
@@ -96,13 +97,16 @@ def _plant_tracker(module: Any) -> None:
             return su * mass, sv * mass, mass, border
 
         module.soft_centroid = unnormalised
-    if planted("edge"):
+    if planted("edge") or planted("edge_f32"):
         from mime.sensing import _coverage
 
         disc = _coverage.disc
+        every = planted("edge")
 
         def edge_stopped(corners_x: Any, corners_y: Any, centre: Any, radius: Any) -> Any:
             share = disc(corners_x, corners_y, centre, radius)
+            if not (every or share.dtype == jnp.float32):
+                return share
             return jnp.where((share > 0.0) & (share < 1.0), jax.lax.stop_gradient(share), share)
 
         _coverage.disc = edge_stopped
@@ -247,6 +251,34 @@ def theta_of(built: Any, gains: Mapping[str, float]) -> dict[str, Any]:
     if leaf_param(FX) in held:  # the camera arm's: the true-state arm reads no camera
         found[FX] = jnp.asarray(held[leaf_param(FX)], dtype=dtype)
     return found
+
+
+def difference_verdict(rows: list[tuple[float, float, float]], noise: float, quantum: float,
+                       eps: float) -> dict[str, Any]:
+    """The central-difference check of both test files, on ``rows`` ``(D(h_k), second difference, h_k)`` at ``h`` to
+    ``h/16``: the order ``p`` measured from the last three levels and clamped to [1/2, 2], the finest's truncation
+    ``tau = |D(h/8) - D(h/16)| / (2^p - 1)``, its rounding ``rho = r / (h/16)``, the line ``3 tau + 3 rho`` (a kink's,
+    ``|D2(h/16)| / (h/8) + 3 rho``, where the second difference falls as ``h``) plus the difference's own ``16 eps``.
+
+    ``r`` is one evaluation's rounding: three times ``noise`` (ECnoise's estimate of the objective's), and never under
+    ``quantum``, the objective's own rounding bound (``eps`` times its terms' absolute sum, the run's coordinates
+    rounded in its dtype). ECnoise reads nothing where the objective is quantised and its steps are equal: a float32
+    objective of about 35 moved in steps of exactly 4 units in the last place has fourth differences of exactly 0, and
+    a line of 0."""
+    (d2, _, _), (d3, s3, _), (d4, s4, h4) = rows[2], rows[3], rows[4]
+    a, b = abs(d2 - d3), abs(d3 - d4)
+    order = min(2.0, max(0.5, math.log2(a / b))) if a > 0 and b > 0 else 2.0
+    rounding = max(3.0 * noise, quantum)
+    tau, rho = b / (2 ** order - 1), rounding / h4
+    kinked = abs(s4) > max(6.0 * noise, 4.0 * quantum) and s3 != 0 and abs(s4 / s3) > 0.375
+    line = (abs(s4) / (2 * h4) if kinked else 3.0 * tau) + 3.0 * rho + 16 * eps * abs(d4)
+    return {"cd": d4, "order": order, "tau": tau, "rho": rho, "kinked": kinked, "line": line}
+
+
+def ecnoise(table: Any) -> float:
+    """More and Wild's ECnoise: the objective's rounding noise from the fourth differences of seven values."""
+    return float(math.sqrt(np.mean(np.diff(np.asarray(table, dtype=np.float64), 4) ** 2) * math.factorial(4) ** 2
+                           / math.factorial(8)))
 
 
 def estimated() -> Any:

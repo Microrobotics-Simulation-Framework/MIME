@@ -21,11 +21,17 @@ committed before any probe ran):
 - **central differences**, float64, from ``h`` (a relative 1e-4 of the parameter) to ``h/16``: the order ``p`` measured
   from the last three levels and clamped to [1/2, 2] (the camera makes the objective only C^(1,1/2)), the truncation of
   the finest ``tau = |D(h/8) - D(h/16)| / (2^p - 1)``, its rounding ``rho = 3 sigma_J / (h/16)`` with ``sigma_J`` the
-  objective's own noise (ECnoise: fourth differences of seven values), the line ``3 tau + 3 rho``; where the second
-  difference falls as ``h`` rather than ``h^2`` (a kink inside ``h``) the line is the kink's, ``|D2(h/16)| / (h/8) +
-  3 rho``. A parameter whose line is above a tenth of its derivative does not discriminate, and the test says so.
+  objective's own noise (ECnoise: fourth differences of seven values), never under the objective's rounding bound (its
+  terms' absolute sum times eps, the positions rounded as the run holds them), the line ``3 tau + 3 rho``; where the
+  second difference falls as ``h`` rather than ``h^2`` (a kink inside ``h``) the line is the kink's, ``|D2(h/16)| /
+  (h/8) + 3 rho`` (``camera_loop_cases.difference_verdict``). A parameter whose line is above a tenth of its derivative
+  does not discriminate, and the test says so.
 - **BVLS**: camera spike R2's line, sixteen times the least-squares perturbation bound of the free currents
-  (``tests/control/allocation_draws.py``).
+  (``tests/control/allocation_draws.py``), on the rows the law solved (the controller keeps them, ``state_rows``). They
+  are the coils' model in the run's arithmetic: in float32 they differ from float64's by 1.6e-5 to 3.7e-5 relative (the
+  multipole's sum, rounded), a perturbation some 300 times what the line allows for, and two float32 evaluations of them
+  differ by up to 5e-6 (op by op against compiled), so the reference is made from the rows the law had, never made
+  again in float64 or by another program.
 - **the two modes**: the writes within ``16 eps N_t`` of the limit, ``N_t`` the steps run: the host's arithmetic and the
   compiled step's differ by rounding, which the loop carries forward.
 
@@ -95,7 +101,7 @@ def measured(dtype: str, seed: int = cases.SEED, arm: str = "camera") -> Measure
     """The draw ``seed``'s run in ``dtype``, the camera arm or the true-state arm (``arm``), with its derivatives."""
     gains, step = cases.drawn(seed)
     with cases.in_dtype(dtype), cases.looser_bounds(cases.planted("limits")), \
-            cases.stopped_branch(cases.planted("stop_branch") or (cases.planted("stop_branch_f32") and dtype == "float32")):
+            cases.stopped_branch(cases.planted("stop_branch")):
         built = cases.leafy(EX.experiment(arm=arm, step_x=step[0], step_y=step[1], **gains), gains)
         theta = cases.theta_of(built, gains)
         forward = cases.objective(built, step, checkpoint=False)
@@ -156,6 +162,17 @@ def test_float32_is_judged_against_float64_at_the_same_draw():
 
 # -- central differences, their order measured --------------------------------------------------------------------
 
+def quantum(run: Measured) -> float:
+    """The objective's rounding bound: ``eps`` times its terms' absolute sum, each term's miss ``p - r`` carrying the
+    rounding of the absolute positions it is the difference of (about 0.03 m, against a miss of millimetres)."""
+    with cases.in_dtype("float64"):
+        track = np.asarray(cases.reference_track(EX, run.step, cases.STEPS, jnp.float64))
+    poses = run.out["sphere"]["pose"][:, :3]
+    miss = np.linalg.norm(poses - track, axis=1)
+    held = np.linalg.norm(poses, axis=1) + np.linalg.norm(track, axis=1)
+    return eps(run.dtype) * float(np.sum(miss * miss + 2.0 * miss * held)) / 1e-6 / cases.STEPS
+
+
 def ladder(run: Measured, name: str) -> dict[str, Any]:
     """The central differences of ``name`` at ``h .. h/16``, the measured order, the line and its verdict."""
     base = run.theta[name]
@@ -167,17 +184,11 @@ def ladder(run: Measured, name: str) -> dict[str, Any]:
         up, down = run.evaluate(name, base + step), run.evaluate(name, base - step)
         rows.append(((up - down) / (2 * step), up - 2 * value + down, step))
     spacing = NOISE_SPACING * abs(base)
-    table = np.asarray([run.evaluate(name, base + k * spacing) for k in range(-3, 4)])
-    noise = float(math.sqrt(np.mean(np.diff(table, 4) ** 2) * math.factorial(4) ** 2 / math.factorial(8)))
-    (d2, s2, _), (d3, s3, h3), (d4, s4, h4) = rows[2], rows[3], rows[4]
-    a, b = abs(d2 - d3), abs(d3 - d4)
-    order = min(2.0, max(0.5, math.log2(a / b))) if a > 0 and b > 0 else 2.0
-    tau, rho = b / (2 ** order - 1), 3.0 * noise / h4
-    kinked = abs(s4) > 6 * noise and s3 != 0 and abs(s4 / s3) > 0.375
-    line = (abs(s4) / (2 * h4) if kinked else 3.0 * tau) + 3.0 * rho + 16 * eps(run.dtype) * abs(d4)
-    return {"cd": [r[0] for r in rows], "order": order, "tau": tau, "rho": rho, "kinked": kinked, "line": line,
-            "reverse": run.reverse[name], "miss": abs(run.reverse[name] - d4),
-            "discriminates": line <= DISCRIMINATES * abs(d4), "noise": noise}
+    noise = cases.ecnoise([run.evaluate(name, base + k * spacing) for k in range(-3, 4)])
+    found = cases.difference_verdict(rows, noise, quantum(run), eps(run.dtype))
+    return {**found, "cd": [r[0] for r in rows], "reverse": run.reverse[name], "noise": noise,
+            "miss": abs(run.reverse[name] - found["cd"]),
+            "discriminates": found["line"] <= DISCRIMINATES * abs(found["cd"])}
 
 
 @pytest.mark.fixture_first
@@ -203,8 +214,7 @@ def test_every_ticks_allocation_is_scipys_bvls_at_r2s_line(dtype):
         lost = controller["state_lost"][t] > (controller["state_lost"][t - 1] if t else 0.0)
         if lost:
             continue
-        point, wanted = controller["state_point"][t], controller["state_wanted"][t]
-        rows = cases.force_rows(EX, point)
+        rows, wanted = controller["state_rows"][t], controller["state_wanted"][t]
         problem = Problem("navion_2", "force", rows, wanted, np.full(3, 1e-3), EX.LIMIT)
         found += [f"tick at step {t}: {problem_}" for problem_ in verdict(problem, controller["write_currents"][t], dtype)]
         judged += 1
@@ -280,14 +290,15 @@ def trajectory(arm: str, gains: dict[str, float], step: tuple[float, float], **t
     return built, np.asarray(history["sphere"]["pose"])[:, :3], history
 
 
-def linear_loop(gains: dict[str, float], steps: int) -> tuple[np.ndarray, np.ndarray, Any]:
-    """The true-state loop's impulse responses from the measurement and from the force to the position (one axis),
-    and the loop itself as a function of the reference, for the check that it is the run: a double integrator (the
-    rigid body's step, velocity then position) closed every base step by the PID, its tick reading the state at the
-    start of the step it acts on."""
+def linear_loop(gains: dict[str, float], steps: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, Any]:
+    """The true-state loop's impulse responses to the position (one axis) from the measurement, from the force and
+    from a push of the position itself, and the loop as a function of the reference, for the check that it is the run:
+    a double integrator (the rigid body's step, velocity then position) closed every base step by the PID, its tick
+    reading the state at the start of the step it acts on."""
     kp, ki, kd, dt, m = gains["kp"], gains["ki"], gains["kd"], 1e-3, EX.MASS
+    zero = np.zeros(steps)
 
-    def loop(reference: np.ndarray, offset: np.ndarray, force: np.ndarray) -> np.ndarray:
+    def loop(reference: np.ndarray, offset: np.ndarray, force: np.ndarray, push: np.ndarray = zero) -> np.ndarray:
         x = v = integral = 0.0
         previous = 0.0
         found = np.zeros(steps)
@@ -298,14 +309,14 @@ def linear_loop(gains: dict[str, float], steps: int) -> tuple[np.ndarray, np.nda
             wanted = m * (kp * error + ki * integral - kd * (y - previous) / dt)
             previous = y
             v += (wanted + force[n]) / m * dt
-            x += v * dt
+            x += v * dt + push[n]
             found[n] = x
         return found
 
-    zero = np.zeros(steps)
     impulse = np.zeros(steps)
     impulse[0] = 1.0
-    return np.abs(loop(zero, impulse, zero)), np.abs(loop(zero, zero, impulse)), loop
+    return (np.abs(loop(zero, impulse, zero)), np.abs(loop(zero, zero, impulse)),
+            np.abs(loop(zero, zero, zero, impulse)), loop)
 
 
 def test_the_loop_meets_the_true_state_run_as_latency_goes_to_nothing_and_frames_to_every_step():
@@ -333,13 +344,24 @@ def test_the_loop_meets_the_true_state_run_as_latency_goes_to_nothing_and_frames
     currents = np.asarray(history["controller"]["write_currents"])
     miss = max(float(np.linalg.norm((cases.force_rows(EX, camera[n - 1]) - cases.force_rows(EX, points[n])) @ currents[n]))
                for n in range(1, cases.STEPS))
-    h_y, h_f, loop = linear_loop(gains, cases.STEPS)
+    h_y, h_f, h_x, loop = linear_loop(gains, cases.STEPS)
     floor = float(np.sum(h_y)) * delta + float(np.sum(h_f)) * miss
-    # The premise: unsaturated, the true-state run is the linear loop, axis by axis, to rounding.
-    times = (np.arange(cases.STEPS)) * 1e-3
-    reference = np.asarray(EX.reference(jnp.asarray(times), step, 1e-3)).T - np.asarray(EX.START)
+    # The premise: unsaturated, the true-state run is the linear loop, axis by axis, to its rounding. In exact
+    # arithmetic they are one (the allocation makes the force asked, the body's step is the loop's, the moment holds its
+    # direction); the run rounds positions of about 0.03 m, sixteen operations a step at eps64 of the largest, which
+    # reach the position through the loop as a push of the state and as an offset of the measurement, and the force it
+    # makes, sixteen operations of the largest sum it is made of (each coil's force at its current), through the force's
+    # response. The reference is the run's own float64 (outside the float64 block it is float32, whose rounding of
+    # 0.03 m is 1e-9 m).
+    with cases.in_dtype("float64"):
+        times = (np.arange(cases.STEPS)) * 1e-3
+        reference = np.asarray(EX.reference(jnp.asarray(times), step, 1e-3)).T - np.asarray(EX.START)
+    largest = float(np.max(np.abs(truth)))
+    held = truth_history["controller"]
+    force = float(np.max(np.einsum("nij,nj->ni", np.abs(np.asarray(held["state_rows"])),
+                                   np.abs(np.asarray(held["write_currents"])))))
+    premise = 16 * eps("float64") * (largest * float(np.sum(h_x) + np.sum(h_y)) + force * float(np.sum(h_f)))
     for axis in range(3):
         modelled = loop(reference[:, axis], np.zeros(cases.STEPS), np.zeros(cases.STEPS))
-        assert np.max(np.abs(modelled - (truth[:, axis] - EX.START[axis]))) <= 1e-9, axis
-    del truth_history
+        assert np.max(np.abs(modelled - (truth[:, axis] - EX.START[axis]))) <= premise, (axis, premise)
     assert gaps[-1] <= floor, (gaps, floor, delta, miss)

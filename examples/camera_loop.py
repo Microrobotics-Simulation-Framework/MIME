@@ -23,7 +23,10 @@ holds this sphere on the plane, and on a tick where a coil sits at its bound the
 sphere then drifts in z, which the camera does not measure. The tracker flags it (``off_plane``) where the shadow's area
 says the depth has moved by more than ``plane_tolerance``. A target that leaves the frame, or whose shadow reaches the
 frame's border, is lost: the tracker holds its last point, the law writes no current while it is lost, and ``lost``
-counts the ticks. Both flags are the controller's state, read from the run (``result.final["controller"]``).
+counts the ticks. Both flags are the controller's state, read from the run (``result.final["controller"]``). The state
+also keeps what each tick asked of the allocation, the measured point, the force wanted and the rows there (``point``,
+``wanted``, ``rows``: the force per unit current, N/A, as the law's model evaluated it in the run's arithmetic), so that
+the problem the allocation solved can be solved again by another solver.
 
 **The derivative's status** is ``piecewise_jump``: the allocation's active set changes where a coil reaches its bound
 (a jump in the derivative, never in the currents), the lost guard switches the law off, and the camera's own coverage
@@ -231,12 +234,15 @@ def _law(ctx: Any, measure: Callable[[Mapping[str, Any], Any, Any], Tracked]) ->
         t = state["tick"] * period
         found = measure(reads, state["point"], dtype)
         held, wanted = pid(state, found.point, reference(t, step, settle), gains, period, frozen=found.lost)
-        currents, _ = solve({"force": wanted}, {"point": found.point, "moment": moment})
+        at = {"point": found.point, "moment": moment}
+        currents, _ = solve({"force": wanted}, at)
+        rows, _ = solve.model.affine(at, commands=("currents",), dtype=dtype)
         written = switch.where(found.lost, jnp.zeros_like(currents["currents"]), currents["currents"], owner=LOST,
                                resolution=lambda: switch.rounding(found.mass), indicator=lambda: -found.margin)
         off = jnp.abs(found.depth_miss) > ctx.scalar("plane_tolerance")
         first = jnp.where((state["first_lost"] < 0) & found.lost, state["tick"], state["first_lost"])
         after = {**held, "tick": state["tick"] + 1, "point": found.point, "wanted": wanted,
+                 "rows": rows["force"]["currents"],
                  "age": jnp.asarray(reads.get("age", zero), dtype=dtype),
                  "lost": state["lost"] + count(found.lost), "first_lost": first,
                  "off_plane": state["off_plane"] + count(off),
@@ -245,7 +251,8 @@ def _law(ctx: Any, measure: Callable[[Mapping[str, Any], Any, Any], Tracked]) ->
 
     origin = jnp.asarray(START, dtype=dtype)
     start = {"tick": zero, "age": zero, "integral": jnp.zeros((3,), dtype=dtype), "previous": origin, "point": origin,
-             "wanted": jnp.zeros((3,), dtype=dtype), "lost": zero, "first_lost": zero - 1.0, "off_plane": zero,
+             "wanted": jnp.zeros((3,), dtype=dtype), "rows": jnp.zeros((3, 3), dtype=dtype), "lost": zero,
+             "first_lost": zero - 1.0, "off_plane": zero,
              "depth_miss": zero}
     return ControlLaw(state=start, held={"currents": jnp.zeros((3,), dtype=dtype)}, step=step_)
 

@@ -51,7 +51,10 @@ A run's result reads them there, and the example prints them:
 - **`state_lost`** counts the ticks the target was lost, and **`state_first_lost`** gives the first such tick. A target
   is lost where its shadow holds less than half a ball's area on the plane, or where the shadow reaches the frame's
   border, which pulls its centroid inwards. A lost tick holds the last point and freezes the integral, and the law
-  writes no current. The first tick is always lost: it reads the camera before the camera's first frame.
+  writes no current. The first tick is always lost: it reads the camera before the camera's first frame. Spike R2's
+  tracker read that frame, which is dark everywhere, as the image's centre, which is the start here only because the
+  camera is centred over it. The example waits for a frame instead, so its camera arm starts the step one frame period
+  after the true-state arm does, and its miss is larger by that delay.
 - **`state_off_plane`** counts the ticks where the shadow's area put the depth more than `plane_tolerance` (a setting of
   the controller) off the plane. **`state_depth_miss`** is the largest such depth change.
 
@@ -91,7 +94,9 @@ limit.
 `tests/examples/test_camera_loop.py` holds the loop to R2's checks on R2's draws:
 - **the derivative**: reverse mode against forward mode, float32 against float64, and both against central differences
   whose order is measured;
-- **the allocation**: SciPy's BVLS at every tick;
+- **the allocation**: SciPy's BVLS at every tick, on the rows the law solved, which the controller's state keeps
+  (`state_rows`). In float32 the coils' model gives rows that differ from float64's by far more than a rounding, so the
+  check solves the problem the law had, never the problem made again;
 - **the two modes**: CALLBACK and GRAPH run one law. Since the allocation became one law in both, this shows only that
   the modes agree, and BVLS is the allocation's independent reference;
 - **the lightly damped loop**: its lost target is held and flagged, never a NaN;

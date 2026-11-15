@@ -26,8 +26,10 @@ times it.
 **The derivative** in the sphere's start (x and y, moved in the start state), the camera's own focal length and
 principal point (its node's leaves) and the believed focal length (the controller's): forward mode against central
 differences from ``h`` to ``h/16``, the order measured (the exact disc coverage makes the centroid C^(1,1/2) in a
-position), as ``test_camera_loop.py`` judges it, from the build's state and from a state 7 steps on; float32 against
-float64 with the camera's gate T3 line where central differences cannot judge.
+position), as ``test_camera_loop.py`` judges it (``camera_loop_cases.difference_verdict``: the rounding never under the
+objective's own, eps times its terms' absolute sum, the tracked points being absolute positions of about 0.03 m), from
+the build's state and from a state 7 steps on; float32 against float64 with the camera's gate T3 line where central
+differences cannot judge.
 
 **The controls** (``CAMERA_LOOP_PLANT``): ``unnormalised`` (the centroid not divided by its darkness), ``belief_ignored``
 (the tracker reading the true camera where a belief differs) and ``unguarded`` (no lost guard)."""
@@ -193,11 +195,11 @@ PARAMETERS = {"x0": 1e-3, "y0": 1e-3, "camera_fx": EX.FOCAL, "camera_cy": 10.0, 
 RELATIVE_H, NOISE_SPACING = {"float64": 1e-4, "float32": 1e-2}, {"float64": 1e-9, "float32": 3e-5}
 
 
-def objective(dtype: str, continued: bool) -> tuple[Any, dict[str, Any], Any]:
+def objective(dtype: str, continued: bool) -> tuple[Any, dict[str, Any], Any, Any]:
     """``J(theta)`` = the tracked points' sum over the run, weighted by a fixed direction, the sphere at the draw's offset
     and moving at its velocity (about 20 mm/s, a tenth of a pixel a step), from the build's state or from the state 7
     steps on (``continued``: frames made, the camera's ring and the tracker's held point the run's); ``theta`` by
-    :data:`PARAMETERS`' names."""
+    :data:`PARAMETERS`' names. Also ``J``'s terms' absolute sum at ``theta``, which its rounding bound is taken from."""
     from mime.nodes.control._controller import leaf_param
 
     outputs, _, _, params = open_loop(dtype, True)
@@ -219,17 +221,20 @@ def objective(dtype: str, continued: bool) -> tuple[Any, dict[str, Any], Any]:
         w = jnp.asarray(weights, dtype=dtype_)
         moving = None if continued else jnp.asarray(velocity, dtype=dtype_)
 
-        def at(theta: dict[str, Any]) -> Any:
+        def terms(theta: dict[str, Any]) -> Any:
             moved = jnp.asarray(offset, dtype=dtype_) + jnp.stack([theta["x0"], theta["y0"], jnp.zeros((), dtype_)])
             leaves = {("camera:", "fx"): theta["camera_fx"], ("camera:", "cy"): theta["camera_cy"],
                       ("controller", believed): theta["believed_fx"]}
             _, out = outputs(moved, leaves, state, moving)
-            return jnp.sum(out["controller"]["state_point"][1:] @ w) / 1e-3
+            return out["controller"]["state_point"][1:] * w / 1e-3
 
-    return jax.jit(at), theta0, jax.jit(lambda th: jax.jacfwd(at)(th))
+        def at(theta: dict[str, Any]) -> Any:
+            return jnp.sum(terms(theta))
+
+    return jax.jit(at), theta0, jax.jit(lambda th: jax.jacfwd(at)(th)), jax.jit(lambda th: jnp.sum(jnp.abs(terms(th))))
 
 
-def central(dtype: str, at: Any, theta0: dict[str, Any], name: str) -> dict[str, Any]:
+def central(dtype: str, at: Any, theta0: dict[str, Any], name: str, scale_of_terms: float) -> dict[str, Any]:
     with cases.in_dtype(dtype):
         base = float(theta0[name])
         scale = PARAMETERS[name]
@@ -241,15 +246,10 @@ def central(dtype: str, at: Any, theta0: dict[str, Any], name: str) -> dict[str,
         centre = value(0.0)
         rows = [((value(h / 2 ** k) - value(-h / 2 ** k)) / (2 * h / 2 ** k),
                  value(h / 2 ** k) - 2 * centre + value(-h / 2 ** k), h / 2 ** k) for k in range(5)]
-        table = np.asarray([value(k * NOISE_SPACING[dtype] * scale) for k in range(-3, 4)])
-    noise = float(math.sqrt(np.mean(np.diff(table, 4) ** 2) * math.factorial(4) ** 2 / math.factorial(8)))
-    (d2, _, _), (d3, s3, _), (d4, s4, h4) = rows[2], rows[3], rows[4]
-    a, b = abs(d2 - d3), abs(d3 - d4)
-    order = min(2.0, max(0.5, math.log2(a / b))) if a > 0 and b > 0 else 2.0
-    rho = 3.0 * noise / h4
-    kinked = abs(s4) > 6 * noise and s3 != 0 and abs(s4 / s3) > 0.375
-    line = (abs(s4) / (2 * h4) if kinked else 3.0 * b / (2 ** order - 1)) + 3.0 * rho
-    return {"cd": d4, "line": line, "order": order, "discriminates": line <= 0.1 * abs(d4)}
+        noise = cases.ecnoise([value(k * NOISE_SPACING[dtype] * scale) for k in range(-3, 4)])
+    eps = float(np.finfo(dtype).eps)
+    found = cases.difference_verdict(rows, noise, eps * scale_of_terms, eps)
+    return {**found, "noise": noise, "discriminates": found["line"] <= 0.1 * abs(found["cd"])}
 
 
 @pytest.mark.parametrize("continued", [False, True], ids=["from_reset", "continued"])
@@ -257,11 +257,13 @@ def test_the_trackers_derivative_meets_central_differences_and_float32_meets_flo
     rows: dict[str, Any] = {}
     derivatives: dict[str, dict[str, float]] = {}
     for dtype in ("float64", "float32"):
-        at, theta0, forward = objective(dtype, continued)
+        at, theta0, forward, terms = objective(dtype, continued)
         with cases.in_dtype(dtype):
             derivatives[dtype] = {k: float(v) for k, v in forward(theta0).items()}
+            scale_of_terms = float(terms(theta0))
         for name in PARAMETERS:
-            rows[f"{dtype} {name}"] = {**central(dtype, at, theta0, name), "forward": derivatives[dtype][name]}
+            rows[f"{dtype} {name}"] = {**central(dtype, at, theta0, name, scale_of_terms),
+                                       "forward": derivatives[dtype][name]}
     judged = {k: r for k, r in rows.items() if r["discriminates"]}
     assert any(k.startswith("float64") for k in judged), ("float64's central differences discriminate nowhere", rows)
     missed = {k: r for k, r in judged.items() if not abs(r["forward"] - r["cd"]) <= r["line"]}
