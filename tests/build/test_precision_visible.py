@@ -4,7 +4,7 @@ matmul precision is not ``highest`` warns (the 0.2 line's drag was 15 % off unde
 
 **What this covers and what it does not.** The CPU path is tested for real: the report, the result, the run folder's
 ``outputs.json`` and a folder written before the precision was recorded. The GPU warning's *logic* is tested with the device and
-the matmul precision read through a seam (``mime.env._host.device_and_matmul``), so that no GPU is needed: **the real GPU path
+the matmul precision read through a seam (``mime.env._host.gpu_environment``), so that no GPU is needed: **the real GPU path
 (``jax.default_backend()`` answering ``gpu``, and ``jax_default_matmul_precision`` as a GPU environment sets it) is not tested in
 CI**, which has no GPU. The controls are the same builds with the highest precision and on a CPU, which warn of nothing."""
 
@@ -62,26 +62,27 @@ def test_the_gpu_warning_is_made_for_a_gpu_whose_matmul_precision_is_not_the_hig
     assert (text is not None) is warned
     if warned:
         assert "'highest'" in text and "JAX_DEFAULT_MATMUL_PRECISION=highest" in text and "15 %" in text
-    assert (precision_note(lambda: (backend, precision))[1] is not None) is warned
+    assert (precision_note(lambda: (backend, precision, ""))[1] is not None) is warned
 
 
 def test_a_build_on_a_gpu_warns_and_the_report_says_so_read_through_the_seam(monkeypatch):
     from mime.env import _host
     from mime.env._host import MatmulPrecisionReduced
 
-    monkeypatch.setattr(_host, "device_and_matmul", lambda: ("gpu", None))
+    monkeypatch.setattr(_host, "gpu_environment", lambda: ("gpu", None, _host.TRITON_GEMM_FLAG))
     with pytest.warns(MatmulPrecisionReduced, match="not 'highest'"):
         built = full_toy().build()
     assert any(line.startswith("WARNING: this run is on a GPU") for line in built.report.summary())
     assert built.report.matmul_warning is not None
 
 
-@pytest.mark.parametrize("read", [lambda: ("gpu", "highest"), lambda: ("cpu", None)], ids=["gpu at the highest", "cpu"])
+@pytest.mark.parametrize("read", [lambda: ("gpu", "highest", "--xla_gpu_enable_triton_gemm=false"), lambda: ("cpu", None, "")],
+                         ids=["gpu at the highest", "cpu"])
 def test_control_the_highest_precision_and_a_cpu_build_without_a_warning(monkeypatch, read):
     from mime.env import _host
     from mime.env._host import MatmulPrecisionReduced
 
-    monkeypatch.setattr(_host, "device_and_matmul", read)
+    monkeypatch.setattr(_host, "gpu_environment", read)
     with warnings.catch_warnings():
         warnings.simplefilter("error", MatmulPrecisionReduced)
         built = full_toy().build()

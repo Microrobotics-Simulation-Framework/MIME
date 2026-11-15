@@ -723,13 +723,17 @@ class Experiment:
             record = record_of(self._settings, self._declarations, plans, derived, stage)
             from mime.env._host import precision_note
 
-            precision, matmul_warning = precision_note()
+            precision, matmul_warning, triton_warning = precision_note()
             report = replace(report, stage_hash=record.stage_hash, assets=pins.lines(), ranges=range_lines(plans),
-                             precision=precision, matmul_warning=matmul_warning)
+                             precision=precision, matmul_warning=matmul_warning, triton_warning=triton_warning)
         if matmul_warning is not None:
             from mime.env._host import MatmulPrecisionReduced
 
             warn_at_script(matmul_warning, MatmulPrecisionReduced)
+        if triton_warning is not None:
+            from mime.env._host import TritonGemmUnguarded
+
+            warn_at_script(triton_warning, TritonGemmUnguarded)
         for text in report.range_warnings():
             warn_at_script(text, UserWarning)
         for text in description_warnings(plans):

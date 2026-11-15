@@ -1489,6 +1489,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A GPU build warns when XLA's Triton GEMM fusion is left on, and the `mime modal` script turns it off** (`TritonGemmUnguarded`,
+  `BuildReport.triton_warning`, `EnvReport.triton_warning`; `mime.env._host.triton_gemm_warning`; MIME-ANO-157). On an A100 under
+  JAX 0.12.0.1 one float64 operator assembled wrong at the highest matmul precision, with no error, until
+  `--xla_gpu_enable_triton_gemm=false`; which einsum and why are not isolated, and no MIME node is shown affected. On a GPU
+  whose `XLA_FLAGS` lack the flag the build warns beside the matmul-precision warning, the report carries the line and `mime env
+  check` prints it (it passes; it never refuses). MIME does not set the flag in a process it did not start; the script `mime
+  modal` writes sets it for every container of a GPU run (none on a CPU), citing the anomaly. The warning reads the environment
+  and starts no backend. The precision seam `mime.env._host.device_and_matmul` is now `gpu_environment` and returns the flags
+  too, `precision_note` a third value. The docs say a GPU acceptance run keeps a CPU-equality check on one einsum-heavy node.
+  The guard's logic is tested through the seam; **the real GPU path is not tested in CI** (no GPU there).
 - **The run's precision is stated, and a GPU build warns when the matmul precision is not `highest`** (the build report, `RunResult`, `outputs.json`;
   `mime.env._host.run_precision`, `precision_note`; usability bundle 3, F14). The README quickstart runs in float32 (JAX's default) and
   neither the build report nor the result said so. The report's summary has a `precision: float32` (or `float64`) line, a result's
@@ -2083,6 +2093,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its vector. A0's own field, about 1 mT in its first samples, draws an 8 mm arrow, within the cap and unchanged. The cap is in the view alone (the
   glTF and the page), the page's notes name each capped arrow by its prim path, and the stage and the recording are
   unchanged.
+
+### Known Anomalies
+
+- `MIME-ANO-157`: on an A100 (JAX 0.12.0.1) XLA's Triton GEMM fusion assembled one float64 operator wrong at the highest matmul
+  precision with no error; `--xla_gpu_enable_triton_gemm=false` removed it; which einsum and why are not isolated.
+- `MIME-ANO-158`: the FVM's IMEX Euler grew a noise-seeded transverse disturbance at half its declared CFL line at Re_D 450
+  without tripping the CFL stop (the declared line itself is unstable from Re_D 230; RK3 is not affected); mechanism unknown.
 
 ## [0.3.0.dev1] - 2026-11-05
 

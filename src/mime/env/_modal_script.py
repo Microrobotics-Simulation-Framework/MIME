@@ -40,7 +40,7 @@ from mime.env._check import (
     lock_x64,
 )
 from mime.env._gpus import gpu_type
-from mime.env._host import with_deterministic
+from mime.env._host import TRITON_GEMM_ANOMALY, TRITON_GEMM_FLAG, with_deterministic
 from mime.env._pins import bases, requirements_bytes, requirements_name, series_of, uv_digest, uv_image
 
 #: The uv that installs the pins: CI's, and the one whose ``uv export`` wrote them, copied from its image by digest.
@@ -204,6 +204,14 @@ def _accepted_licences(folder: Path) -> list[str]:
     return sorted(found)
 
 
+def _xla_flags(gpu: str | None, deterministic: bool) -> str:
+    """The flags a container starts with: on a GPU, the Triton GEMM fusion off (:data:`TRITON_GEMM_ANOMALY`), and XLA's
+    deterministic mode on where asked for; on a CPU none (both are GPU flags)."""
+    if gpu is None:
+        return ""
+    return with_deterministic(TRITON_GEMM_FLAG, True) if deterministic else TRITON_GEMM_FLAG
+
+
 def _constants(values: dict[str, object]) -> str:
     notes = {
         "EXPERIMENT": "the experiment's folder, from this script's",
@@ -214,7 +222,9 @@ def _constants(values: dict[str, object]) -> str:
         "MIME_WHEEL_SHA256": "MIME's wheel on PyPI; None: the script builds the checkout below",
         "LAB": "the lab's distributions the lock names, beside this script",
         "GPU": "an exact type; None for a CPU",
-        "XLA_FLAGS": "XLA's deterministic GPU mode is on only when --deterministic asked for it",
+        "XLA_FLAGS": f"a GPU container's XLA flags: the Triton GEMM fusion off ({TRITON_GEMM_ANOMALY}: with it on, an A100 "
+                     "assembled a float64 operator wrong, silently), and the deterministic mode only when "
+                     "--deterministic asked for it; none on a CPU",
         "X64": "the precision the experiment's lock records",
         "MAX_CONTAINERS": "containers a function may run in at once; --max-containers",
         "STUDY": "the study's spec file beside this script (--study); None: the script runs no study",
@@ -308,7 +318,7 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
         "LAB": lab_file,
         "LAB_HASHED": lab_hashed,
         "GPU": requested,
-        "XLA_FLAGS": with_deterministic("", True) if deterministic else "",
+        "XLA_FLAGS": _xla_flags(requested, deterministic),
         "X64": x64,
         "ASSETS": has_assets,
         "ACCEPT_LICENCES": _accepted_licences(where),
