@@ -1,0 +1,65 @@
+"""The law's properties, as Hypothesis states them, and the control that shows a property can fail.
+
+Four rules, each from a flake that cost real time (MIME's CLAUDE.md, "Property tests"):
+
+- **Draw what a body can have.** Hypothesis shrinks towards extremes. The strategies stay at physical scales (a force of
+  at most 10 N, a gain between 0.125 and 8: bounds a float32 holds exactly, which Hypothesis checks); numerical extremes are tested on purpose, separately.
+- **Judge a result on the scale it came from.** Where terms cancel, compare against the inputs' scale: a tolerance has no
+  absolute part. Its floor is the law's own rounding.
+- **Draw in the dtype the code computes in**: ``jnp.zeros(()).dtype`` is float32, or float64 under JAX_ENABLE_X64. The
+  suite is run in both.
+- **Never derandomise a property, and never shrink its example count to make a test faster.** When one flakes, capture
+  the failing example (``print_blob=True`` prints the blob that reproduces it), find which of these rules it broke, then
+  fix the strategy or the tolerance, never the count.
+
+The control: the planted error (tests/plants.py) breaks linearity and nothing else, so exactly this plugin's linearity
+property must fail with it in, every time, and the other properties must still pass.
+"""
+
+import jax.numpy as jnp
+import numpy as np
+import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from hypothesis.extra.numpy import arrays
+
+import plants
+from ${package}.engine import load
+
+DTYPE = np.dtype(jnp.zeros(()).dtype)
+EPS = float(np.finfo(DTYPE).eps)
+#: How many times the control runs the planted property: every one must fail.
+REPS = 5
+PROPERTY = settings(max_examples=100, deadline=None, print_blob=True)
+
+forces = arrays(DTYPE, 3, elements=st.floats(-10.0, 10.0, allow_nan=False, allow_infinity=False,
+                                             allow_subnormal=False, width=DTYPE.itemsize * 8))
+gains = st.floats(0.125, 8.0, allow_nan=False, allow_infinity=False, width=DTYPE.itemsize * 8)
+
+
+@PROPERTY
+@given(a=forces, b=forces, gain=gains)
+def test_the_load_is_linear_in_the_force(a, b, gain):
+    together = load.load_on(jnp.asarray(a + b), jnp.asarray(gain, dtype=DTYPE))
+    apart = (load.load_on(jnp.asarray(a), jnp.asarray(gain, dtype=DTYPE))
+             + load.load_on(jnp.asarray(b), jnp.asarray(gain, dtype=DTYPE)))
+    scale = gain * float(np.max(np.abs(a) + np.abs(b)))  # the inputs' scale, not the result's: the sum may cancel
+    np.testing.assert_allclose(np.asarray(together), np.asarray(apart), rtol=0.0, atol=8 * EPS * scale)
+
+
+@PROPERTY
+@given(gain=gains)
+def test_no_force_gives_no_load(gain):
+    assert not np.any(np.asarray(load.load_on(jnp.zeros(3, dtype=DTYPE), jnp.asarray(gain, dtype=DTYPE))))
+
+
+def test_the_planted_error_is_caught_every_time():
+    """The control. A Hypothesis run is random, so one catch proves little: it is run ``REPS`` times, and every one must fail.
+    Never fewer examples a run; measure the rate with detection_rate.py before trusting a plant (see tests/plants.py)."""
+    with plants.saturated_load():
+        caught = 0
+        for _ in range(REPS):
+            with pytest.raises(AssertionError):
+                test_the_load_is_linear_in_the_force()
+            caught += 1
+    assert caught == REPS
