@@ -224,7 +224,8 @@ def objective(built: Any, step: tuple[float, float], steps: int = STEPS, *, chec
     params = graph_params(graph)
     dtype = jnp.zeros(()).dtype
     track = reference_track(module, step, steps, dtype)
-    kept = (("sphere", "pose"), *(("controller", f) for f in ("write_currents", "state_lost", "state_point", "state_wanted")))
+    kept = (("sphere", "pose"), *(("controller", f) for f in ("write_currents", "state_lost", "state_point", "state_wanted",
+                                                              "state_rows")))
     run = differentiated_run(graph, steps, (), kept, checkpoint=checkpoint)
 
     def at(theta: Mapping[str, Any]) -> tuple[Any, Any]:

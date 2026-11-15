@@ -19,8 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controller's state and are printed from the run. The derivative's status is `piecewise_jump`. The coils' limit is a
   port's bound, a constant of the build, and is not differentiated. `tests/examples/test_camera_loop.py` holds camera
   spike R2's checks on R2's draws: reverse mode against forward mode, float32 against float64, central differences with
-  their order measured, SciPy's BVLS at every tick, the CALLBACK and GRAPH modes as a mode test, the lightly damped
-  loop's lost target, and the limit as latency goes to nothing and the frame rate to the step rate.
+  their order measured, SciPy's BVLS at every tick on the rows the law solved (the controller's state keeps them), the
+  CALLBACK and GRAPH modes as a mode test, the lightly damped loop's lost target, and the limit as latency goes to
+  nothing and the frame rate to the step rate.
   `test_camera_loop_tracker.py` holds the tracker's gates (camera PR 3b's, which retired as a core PR). The user guide's
   page is [A closed loop through a camera](docs/guide/camera_loop.md).
 
