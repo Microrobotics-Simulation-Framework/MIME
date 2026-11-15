@@ -30,12 +30,16 @@ from mime.registry import (
 from mime.testing.toys import LOAD
 from mime.units import Force, N, Quantity
 
-from ${package}.engine import load as law
-from ${package}.entries import _vocabulary as _vocabulary  # registers the namespace before an entry names it
+# Relative, so the package moves as a directory (tests/test_relative_imports.py refuses an absolute self-import).
+from ..engine import load as law
+from . import _vocabulary as _vocabulary  # registers the namespace before an entry names it
 
 
 #: jaxlib ships no stubs, and MADDENING leaves some containers bare, so a strict checker reads the array constructors and
-#: a node's `params` as partly unknown. They are called through `Any`, once, here: nothing about what runs changes.
+#: a node's `params` as partly unknown. They are called through `Any`, once, here: nothing about what runs changes. This
+#: adapter is checked strictly (pyrightconfig.json), so any other untyped call of it goes the same way (`lax: Any =
+#: jax.lax`, `grad: Any = jax.grad`); MIME's own source does the same through a helper of its own. The engine and `fit`,
+#: which import no `mime`, are checked with the unknown-type rules off instead.
 jnp: Any = jax.numpy
 
 

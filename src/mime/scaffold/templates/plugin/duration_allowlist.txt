@@ -1,0 +1,7 @@
+# Tests that may run longer than the limit of scripts/check_durations.py (30 s), which CI's default lane checks.
+#
+# One pytest node id per line, then " # " and the reason the test must run on every push. A line with no reason fails.
+# Before you list a test: can it be made faster, or does it belong behind @pytest.mark.slow (CI's slow lane)? Never
+# shrink a Hypothesis test's examples to get under the limit; list it with its measured time instead.
+#
+#   tests/engine/test_properties.py::test_the_load_is_linear_in_the_force  # kept: a 100-example property, 42 s on a runner

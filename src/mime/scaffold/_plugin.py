@@ -1,11 +1,13 @@
 """The files of ``mime scaffold plugin``: the layout of a typical MIME plugin, every file short and commented as optional.
 
 The layout is the clot plugin's (the reference plugin), kept to what a plugin needs: the entry points (``mime.entries``
-and ``mime.assets``), an adapter package (``entries/``) over an engine (``engine/``) that imports no ``mime``, a records
-folder with its data, tests (the registry's round trip, node verification and parameter reach on the stub entry, validity
-lines, the engine's import rule with its control, a Hypothesis property with one planted error, a benchmark in a slow lane,
-and an ``assert_type`` file), a benchmark folder with ``mime.toml``, an example, the README's "Use" section, the citation
-and licence, a typing configuration and CI. The namespace is one value, filled in the six places it appears; no file holds
+and ``mime.assets``), an adapter package (``entries/``) over an engine (``engine/``) and a second package (``fit/``) that
+import no ``mime``, a records folder with its data, tests (the registry's round trip, node verification and parameter reach
+on the stub entry, validity lines, the two import rules (no ``mime`` in the engine and ``fit``; the package imports itself
+relatively) each with its control, a Hypothesis property with one planted error, a benchmark in a slow lane, an
+``assert_type`` file and the duration guard's own test), a benchmark folder with ``mime.toml``, an example, the README's
+"Use" section, the citation and licence, a typing configuration (strict, with the unknown-type rules off for the packages
+that import no ``mime``) and CI, with a duration guard in its default lane. The namespace is one value, filled in the six places it appears; no file holds
 a machine path.
 """
 
@@ -58,11 +60,13 @@ LAYOUT: tuple[PluginFile, ...] = (
     PluginFile("README.md", "README.md.txt", "Use (CI runs its `bash ci` blocks), the naming rule, the layout, the tests"),
     PluginFile(".gitignore", "gitignore.txt", "optional"),
     PluginFile("CITATION.cff", "CITATION.cff.txt", "how to cite it; creators from your defaults"),
-    PluginFile("pyrightconfig.json", "pyrightconfig.json.txt", "pyright strict over the package, and the environment it reads"),
+    PluginFile("pyrightconfig.json", "pyrightconfig.json.txt",
+               "pyright strict, the unknown-type rules off for the engine and fit alone, and the environment it reads"),
     PluginFile(".github/workflows/ci.yml", "ci.yml.txt", "default, slow (label-gated), weekly against MIME's release branch, typing"),
     PluginFile("src/${package}/__init__.py", "init.py.txt", ""),
     PluginFile("src/${package}/engine/__init__.py", "engine_init.py.txt", "your law as pure JAX: imports no `mime`"),
     PluginFile("src/${package}/engine/load.py", "engine_load.py.txt", "the example law: replace it"),
+    PluginFile("src/${package}/fit/__init__.py", "fit_init.py.txt", "a second package that imports no `mime`, empty: a fitting harness"),
     PluginFile("src/${package}/entries/__init__.py", "entries_init.py.txt", "the `mime.entries` entry point's module"),
     PluginFile("src/${package}/entries/_vocabulary.py", "entries_vocabulary.py.txt", "the namespace, and the naming rule"),
     PluginFile("src/${package}/entries/example_load.py", "entries_example_load.py.txt", "one example entry: replace it"),
@@ -72,7 +76,14 @@ LAYOUT: tuple[PluginFile, ...] = (
     PluginFile("tests/test_registry.py", "test_registry.py.txt", "the registry walk, the saved round trip, the record's hash"),
     PluginFile("tests/test_nodes.py", "test_nodes.py.txt", "node verification and parameter reach on the entry's node"),
     PluginFile("tests/test_validity.py", "test_validity.py.txt", "every entry has validity lines, none empty"),
-    PluginFile("tests/test_engine_imports.py", "test_engine_imports.py.txt", "the engine imports no `mime`, with a planted import"),
+    PluginFile("tests/import_rules.py", "import_rules.py.txt", "what the two import tests read from a source file"),
+    PluginFile("tests/test_engine_imports.py", "test_engine_imports.py.txt",
+               "the engine and fit import no `mime`, with a planted import"),
+    PluginFile("tests/test_relative_imports.py", "test_relative_imports.py.txt",
+               "the package imports itself relatively, with a planted absolute import"),
+    PluginFile("tests/test_durations.py", "test_durations.py.txt", "the duration guard fails a slow test, and passes a listed one"),
+    PluginFile("tests/duration_allowlist.txt", "duration_allowlist.txt", "the tests that may be slow, each with its reason"),
+    PluginFile("scripts/check_durations.py", "check_durations.py.txt", "CI's duration guard: a test over 30 s must be listed"),
     PluginFile("tests/plants.py", "plants.py.txt", "planted errors, for controls"),
     PluginFile("tests/engine/test_properties.py", "engine_test_properties.py.txt", "Hypothesis properties, and the control"),
     PluginFile("tests/verification/test_example.py", "verification_test_example.py.txt", "a `@verification_benchmark`, slow lane"),

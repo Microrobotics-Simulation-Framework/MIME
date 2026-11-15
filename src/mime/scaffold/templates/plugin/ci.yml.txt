@@ -1,11 +1,12 @@
 # CI of ${distribution}, written by `mime scaffold plugin`: delete what you do not need.
-#   default   every push and pull request: the tests (-m "not slow"), the registry listing, the README's Use section
+#   default   every push and pull request: the tests (-m "not slow"), the duration guard, the registry listing, the README's Use section
 #             (its `bash ci` blocks, including `mime check` and `mime verify` of the benchmark), and `mime assets audit`
 #             of the built wheel and sdist (it fails if a file that may not be redistributed is in either)
 #   slow      a pull request labelled `slow`, and every week: `pytest -m slow` (a physics assertion behind the marker is
 #             documentation unless a lane runs it)
 #   release   every week, against the tip of MIME's release branch: the early warning when MIME moves under this plugin
-#   typing    pyright, strict, over the package and tests/assert_types.py
+#   typing    pyright, strict, over the package and tests/assert_types.py (the engine and `fit`, which import no `mime`, with the
+#             unknown-type rules off: pyrightconfig.json says why)
 # Pin to one core, CPU only, for any run you time (README, "Tests").
 name: ci
 on:
@@ -38,7 +39,9 @@ jobs:
       - run: uv venv --python $${{ matrix.python }}
       - run: uv pip install -e ".[test]"
       - name: tests (the default lane)
-        run: uv run --no-sync pytest
+        run: uv run --no-sync pytest --junitxml=junit.xml
+      - name: the duration guard (a test over 30 s fails unless tests/duration_allowlist.txt lists it, with a reason)
+        run: uv run --no-sync python scripts/check_durations.py junit.xml
       - name: the plugin is listed by `mime registry`
         run: |
           uv run --no-sync mime registry --json > registry.json

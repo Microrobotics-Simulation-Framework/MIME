@@ -61,15 +61,20 @@ The namespace `${namespace}` is filled in six places from one value: the `mime.e
 ```
 src/${package}/
   engine/        your law, pure JAX, no `mime` import (a test holds it)
+  fit/           a second package that imports no `mime` (a fitting harness, say): empty, under the engine's rule
   entries/       the adapter: one module per entry, found through the `mime.entries` entry point
   records/       records.json, and the data it names in data/ (the `mime.assets` entry point)
 tests/
-  conftest.py test_registry.py test_nodes.py test_validity.py test_engine_imports.py
+  conftest.py test_registry.py test_nodes.py test_validity.py
+  test_engine_imports.py   the engine and `fit` import no `mime`
+  test_relative_imports.py the package imports itself relatively, so it can move as a directory
+  test_durations.py        the duration guard's own test; duration_allowlist.txt lists the tests that may be slow
   engine/        properties (Hypothesis) and the planted error that shows one can fail
   verification/  a benchmark in the slow lane
   assert_types.py  types an editor completes from, held by pyright
 benchmarks/      build_case.py and mime.toml
 examples/        what a user runs
+scripts/         check_durations.py (CI's duration guard); put your own scripts here: the sdist carries them, and so docs/
 ```
 
 ## Tests
@@ -83,14 +88,38 @@ JAX_PLATFORMS=cpu taskset -c 0 pytest -m slow  # the slow lane: the benchmark in
 oversubscribes the cores: one measurement took 51 s unpinned for what takes 11 s pinned.
 
 CI (`.github/workflows/ci.yml`) has a `default` job, a `slow` job that runs on a pull request labelled `slow` and every
-week, a weekly job against MIME's release branch (it tells you the week MIME moves under you), and a `typing` job. Run
-the suite in float32 and in float64 (`JAX_ENABLE_X64=1`) before you trust a number. A property test that flakes is
-read, not loosened: see the comments of `tests/engine/test_properties.py`.
+week, a weekly job against MIME's release branch (it tells you the week MIME moves under you), and a `typing` job. A
+property test that flakes is read, not loosened: see the comments of `tests/engine/test_properties.py`.
+
+**Both dtypes.** Run the suite in float32 and in float64 (`JAX_ENABLE_X64=1`) before you trust a number: the law itself
+runs in whatever dtype the process computes in, and a test that passes in one only has not shown the other. The law's own path
+is tested in both dtypes, always. The exception is a reference the engine is computed *against* (a closed form, a table of
+numbers from another code, a reference run kept as float64 bits): that may be float64 alone, and the test that reads it says so
+where it runs, under `with jax.experimental.enable_x64():` in that test (or under a guard your plugin declares for it), never
+as a suite-wide switch such as an x64 line in `tests/conftest.py`: that would turn float64 on under every test and hide a law
+that only works in one dtype. Never let the law's own path be float64-only because its reference is.
+
+**The duration guard.** Keep the default lane short: `scripts/check_durations.py` (CI runs it on the `pytest
+--junitxml=junit.xml` report) fails a test over 30 s unless `tests/duration_allowlist.txt` lists it with the reason it must
+run on every push. A test that is slow because it is a benchmark goes behind `@pytest.mark.slow`; a physics assertion there
+is documentation unless a lane runs it (the `slow` job does). Never shrink a Hypothesis test's examples to get under the
+limit: list it with its measured time. The script is a small version of MIME's own gate (no cold-cache re-run, no ceiling on
+a listed test); its docstring says what it leaves out.
 
 ## Editor support
 
 `pyrightconfig.json` is strict over `src/${package}` and `tests/assert_types.py`, and names this folder's `.venv`, so that an
-editor's language server finds MIME, MADDENING and JAX there (autocomplete is only as good as the types it reads):
+editor's language server finds MIME, MADDENING and JAX there (autocomplete is only as good as the types it reads).
+
+**Strict, and what is relaxed.** jaxlib ships no type stubs, so JAX code written without annotations reads as unknown to a
+strict checker (a real 3.5k-line engine gave 1,093 errors, 95 % of them unknown types). The packages that import no `mime`
+(`engine/`, `fit/`) therefore have the unknown-type rules off (`reportUnknown...` and `reportMissingParameterType`, in
+`executionEnvironments`) and every other strict rule on (unused variables, optional access, `None` defaults into typed
+parameters); the adapter (`entries/`, `records/`) and `tests/assert_types.py` are strict whole. The route to strict for the
+engine: annotate each function's parameters and results (`Array`, `Float[Array, "n"]`), starting with those the adapter calls
+(an untyped return makes the adapter's call unknown), and delete its entry in `executionEnvironments` when it is clean. In
+the adapter, call an untyped JAX function through `Any` once at the top of the module (`jnp: Any = jax.numpy`, as the example
+entry does). What the `assert_type` file holds is what the checker reads from your entries: it fails if a type changes.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -e ".[test,typing]"

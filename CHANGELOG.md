@@ -71,6 +71,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     model is the hardware. The pilot (`tests/control/predictions_ap4_pilot.json`) found the first solve's float32 floor
     and its unreachable-target stall, which the decrease's resolution and the stall rule above answer.
 
+- **The closed loop through a camera, as an example** (`examples/camera_loop.py`, camera 3c, dev2): a magnetic sphere in
+  Navion_2's field steered by what a camera sees, in GRAPH mode. A camera port (`imaging.frames`, of `camera:.expected`)
+  feeds a tracker, then a PID, then the exact allocation (`ctx.allocator`), then the coils' command port (25 A). The
+  tracker and the PID are plain functions of the example, composed in one controller's law; the controller reads its
+  believed camera through `ctx.believed("camera")`. The tracker takes the frame's soft centroid and back-projects it onto a
+  declared plane by inverting the belief's `project`. It has a lost-target guard: the point is held, the law writes no
+  current, and the target is never a 0/0. It also has an out-of-plane flag from the shadow's area. Both flags live in the
+  controller's state and are printed from the run. The derivative's status is `piecewise_jump`. The coils' limit is a
+  port's bound, a constant of the build, and is not differentiated. `tests/examples/test_camera_loop.py` holds camera
+  spike R2's checks on R2's draws: reverse mode against forward mode, float32 against float64, central differences with
+  their order measured, SciPy's BVLS at every tick on the rows the law solved (the controller's state keeps them), the
+  CALLBACK and GRAPH modes as a mode test, the lightly damped loop's lost target, and the limit as latency goes to
+  nothing and the frame rate to the step rate.
+  `test_camera_loop_tracker.py` holds the tracker's gates (camera PR 3b's, which retired as a core PR). The user guide's
+  page is [A closed loop through a camera](docs/guide/camera_loop.md).
+
 - **The forward-model contract, calibration types and instances, and a controller's believed models and allocator**
   (apparatus lane, AP3a, dev2).
   - **`forward_model(ctx)`**, an optional capability of a field provider and a chain segment
@@ -171,6 +187,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the template's `default` job does not re-run when a label is added (`if: github.event.action != 'labeled'`; the `slow` job
   still runs on the label); the control's clean plugin is built and run once for its module, and each plant re-writes one file of
   a copy and runs only the stage that catches it; the pyright tests skip, with a reason, on a machine without `node`.
+
+- **`mime scaffold plugin`: the typing route for a real engine, a duration guard, and four slots, from the clot port** (dev2, lane P's
+  P7c; template files only: no new verb, code, seam or saved form). The template's typing job was red from its first commit for a
+  real engine (1,093 pyright-strict errors on a 3.5k-line one, 95 % of them unknown types from jaxlib's missing stubs and
+  unannotated parameters). `pyrightconfig.json` is still strict, with the six unknown-type rules (`reportUnknownArgumentType`,
+  `...MemberType`, `...VariableType`, `...ParameterType`, `...LambdaType`, `reportMissingParameterType`) off for `engine/` and
+  `fit/` alone, by `executionEnvironments`; the adapter, the records and the `assert_type` file stay strict, and the other strict
+  rules (unused variables, `None` defaults into typed parameters, possibly unbound) still check the engine. Measured on the
+  ported plugin: 1,093 errors before; a typed `jnp` alias in every module 865 (unannotated parameters stay unknown); standard
+  mode with the adapter listed under `strict` 111; this route 131 (engine 36, `fit` 6, the adapter 89: the fork's entries call `jnp` directly, and with the
+  template's `Any` alias on a copy they fall to 39). A planted unannotated function is reported
+  in `entries/` and not in `engine/` or `fit/`, and a planted unused variable is reported in all three, every run; the
+  `assert_type` file still fails on a planted type change. **A duration guard**: `scripts/check_durations.py` reads the default
+  lane's JUnit report and fails a test over 30 s unless `tests/duration_allowlist.txt` lists it with a reason (a small version of
+  MIME's own gate: no cold-cache re-run, no ceiling); the plugin's CI runs it after `pytest --junitxml`; its test runs it on a
+  report pytest wrote. **Slots**: `fit/` beside `engine/` (the AST no-`mime` test reads both, from one `MIME_FREE` tuple),
+  `scripts` and `docs` in the sdist include (and `scripts` on the tests' path), the float32 and float64 advice saying when a
+  float64-only reference is fine (a reference the engine is computed against, never the law's own path), and `.gitignore` naming
+  no benchmark script (it ignores the files a saved experiment is made of, below `benchmarks/*/`, never the folders). **Relative imports**: the template's package imports itself relatively, and
+  `tests/test_relative_imports.py` (the port's test, proven on the real plugin, over a shared `tests/import_rules.py`) refuses an
+  absolute self-import, a constant-string `import_module` or `__import__` of it included, with a planted form of each. The control
+  now plants five more slips (an import of `mime` in `fit/`, two absolute self-imports, a limit a hundred times too loose, an
+  allowlist line that needs no reason) and each fails the stage that is there to catch it. Review fixes: the no-`mime` test also refuses an import of the adapter from `engine/` or `fit/`
+  (`from ..entries import X`, `from .. import entries`, `from ..entries.example_load import X`, absolute or relative, and a root
+  module or `__init__` that imports `mime`), each spelling planted; `tests/import_rules.py` also reads an aliased `import_module`,
+  `name=`, a relative name with `package=`, and a placeholder-free f-string, and both tests' docstrings say plainly what a static
+  check cannot see (`find_spec`, `sys.modules`, `runpy`, `exec`, a computed name); the README no longer suggests a suite-wide
+  x64 switch (a float64-only reference runs under `jax.experimental.enable_x64` in its own test); the duration guard fails an
+  allowlist row whose test is not in the report, and splits a row on its last ` # ` so an id may hold one.
 
 - **Static meshes in the in-loop camera, traced once a run** (`mime.sensing._mesh`, `mime.sensing.mesh_chords`,
   `MeshChords`, `MESH_SAMPLES`; `mime.observations.Camera`; `mime.viz.write_mesh(..., decimation_distance=)`; dev2, camera
@@ -1447,6 +1492,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The run's precision is stated, and a GPU build warns when the matmul precision is not `highest`** (the build report, `RunResult`, `outputs.json`;
+  `mime.env._host.run_precision`, `precision_note`; usability bundle 3, F14). The README quickstart runs in float32 (JAX's default) and
+  neither the build report nor the result said so. The report's summary has a `precision: float32` (or `float64`) line, a result's
+  `text()` states it, and a run folder's `outputs.json` records it (`precision`; a folder written before it reads without the line).
+  On a GPU whose default matmul precision is not `highest` the build warns (`MatmulPrecisionReduced`, a `UserWarning`) and the report
+  carries the same text: the 0.2 line's drag was 15 % off under reduced-precision TF32 matmuls. The warning's logic is tested with the
+  device and precision read through a seam; **the real GPU path is not tested in CI** (no GPU there).
 - **A MIME refusal raised inside a controller's `law(ctx)` keeps its own code** (AP3a): `ctx.allocator`'s and
   `ctx.believed`'s refusals, and any other MIME refusal a law raises, are refused under their codes; until now every
   error a law raised was its entry's defect (`entry.defect`), as any other error still is. Likewise a MIME refusal an

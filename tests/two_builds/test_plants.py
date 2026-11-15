@@ -79,7 +79,9 @@ Pairs = dict[str, list[tuple[float, float, TwoBuilds]]]
 
 @pytest.fixture(scope="module")
 def pairs() -> Pairs:
-    """Every kind's pairs: the ladder at ``k`` 1.7, the draws, and a same-value rebuild (move 0)."""
+    """Every kind's pairs: the ladder at ``k`` 1.7, the draws, and a same-value rebuild (move 0). It costs about a minute and a
+    half cold, and every worker that runs a reader builds it again under ``--dist worksteal``: the six readers carry
+    ``fixture_first`` (``tests/_fixture_first.py``), which gives them to one worker."""
     points: list[tuple[float, float | str]] = [(1.7, move) for move in LADDER]
     points += draws(20, 1e-15) + draws(6, BAND)
     points.append((1.7, 0.0))
@@ -98,6 +100,7 @@ def pairs() -> Pairs:
     return found
 
 
+@pytest.mark.fixture_first
 def test_the_trace_form_catches_every_plant_at_every_move(pairs: Pairs):
     for kind in BAKED:
         moved = [(k, move, found) for k, move, found in pairs[kind] if move != 0.0]
@@ -109,6 +112,7 @@ def gated(move: float) -> bool:
     return abs(move) >= BAND * (1.0 - 1e-9)
 
 
+@pytest.mark.fixture_first
 def test_the_run_form_catches_every_plant_in_its_band_four_lines_up(pairs: Pairs):
     for kind in BAKED:
         band = [(k, move, found) for k, move, found in pairs[kind] if move != 0.0 and gated(move)]
@@ -139,6 +143,7 @@ def test_probe_numbers_count_a_field_whose_resolution_measured_zero_as_caught_an
     assert math.isnan(probe_numbers([zero])[3])
 
 
+@pytest.mark.fixture_first
 def test_probe_the_plants_just_above_the_old_line(pairs: Pairs, record_property: Any):
     """Reported, not a gate: of the plants under the band that the spike's 64-ulp line catches, how many the line of
     k resolutions catches too, how many of those stand on a field whose resolution measured zero (the line is then
@@ -157,6 +162,7 @@ def test_probe_the_plants_just_above_the_old_line(pairs: Pairs, record_property:
         record_property(f"probe_{kind}_least_ratio", least)
 
 
+@pytest.mark.fixture_first
 def test_no_twin_fires_either_form(pairs: Pairs):
     for kind in TWINS:
         assert not [(k, move, found.verdict) for k, move, found in pairs[kind]
@@ -164,6 +170,7 @@ def test_no_twin_fires_either_form(pairs: Pairs):
         assert all(found.run is not None and found.run.ratio == 0.0 for _, _, found in pairs[kind]), kind
 
 
+@pytest.mark.fixture_first
 def test_a_same_value_rebuild_fires_neither_form_and_says_it_moved_nothing(pairs: Pairs):
     for kind in NODES:
         same = [found for _, move, found in pairs[kind] if move == 0.0]
@@ -171,6 +178,7 @@ def test_a_same_value_rebuild_fires_neither_form_and_says_it_moved_nothing(pairs
         assert same[0].verdict == "not-discriminating", kind
 
 
+@pytest.mark.fixture_first
 def test_a_value_keyed_count_fires_as_a_shape_exactly_where_the_move_crosses(pairs: Pairs):
     for k, move, found in pairs["count"]:
         crosses = math.ceil(4.0 * k) != math.ceil(4.0 * k * (1.0 + move))
