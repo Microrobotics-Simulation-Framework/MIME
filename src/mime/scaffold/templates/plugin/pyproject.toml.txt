@@ -6,15 +6,39 @@ build-backend = "hatchling.build"
 name = ${distribution}
 version = "0.1.0"
 description = ${description}
+readme = "README.md"
 license = ${licence}
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = ["mime-engine[verify]${mime_range}"]
 ${authors}
+
+[project.optional-dependencies]
+# The tests (`pip install -e ".[test]"`); Hypothesis comes with `mime-engine[verify]`, and `typing` is what CI's typing job
+# installs (pyright strict over the package, and tests/assert_types.py).
+test = ["pytest>=8.0"]
+typing = ["pyright"]
 
 # How MIME finds your entries: it imports this module, which registers them. The namespace is the word before the dot in
 # every entry's name (entries use `.`, records `_`, an instance `:`, as in `${namespace}.example_load:probe`).
 [project.entry-points."mime.entries"]
 ${namespace} = "${package}.entries"
 
+# How MIME finds your records: the folder beside records.json. Its name here is the source a `package:` location names.
+[project.entry-points."mime.assets"]
+${namespace} = "${package}.records"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/${package}"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "examples", "benchmarks", "README.md", "LICENSE", "CITATION.cff"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests", "examples"]
+# The default lane skips `slow`: a test that takes minutes goes behind the marker and runs in its own CI lane (the `slow`
+# job of .github/workflows/ci.yml, on a pull request labelled `slow` and every week). A physics assertion behind `slow` is
+# documentation unless a lane runs it.
+addopts = ["-ra", "--strict-markers", "-m", "not slow"]
+markers = ["slow: minutes of CPU: run by the `slow` lane of CI, not the default one"]

@@ -1,0 +1,95 @@
+# CI of ${distribution}, written by `mime scaffold plugin`: delete what you do not need.
+#   default   every push and pull request: the tests (-m "not slow"), the registry listing, the README's Use section
+#             (its `bash ci` blocks, including `mime check` and `mime verify` of the benchmark), and `mime assets audit`
+#             of the built wheel and sdist (it fails if a file that may not be redistributed is in either)
+#   slow      a pull request labelled `slow`, and every week: `pytest -m slow` (a physics assertion behind the marker is
+#             documentation unless a lane runs it)
+#   release   every week, against the tip of MIME's release branch: the early warning when MIME moves under this plugin
+#   typing    pyright, strict, over the package and tests/assert_types.py
+# Pin to one core, CPU only, for any run you time (README, "Tests").
+name: ci
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"   # Mondays, 03:17 UTC
+  workflow_dispatch:
+
+env:
+  JAX_PLATFORMS: cpu
+
+jobs:
+  default:
+    name: default (Python $${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: $${{ matrix.python }}
+      - run: uv venv --python $${{ matrix.python }}
+      - run: uv pip install -e ".[test]"
+      - name: tests (the default lane)
+        run: uv run --no-sync pytest
+      - name: the plugin is listed by `mime registry`
+        run: |
+          uv run --no-sync mime registry --json > registry.json
+          uv run --no-sync python -c "import json; d = json.load(open('registry.json')); assert any(e['name'].startswith('${namespace}.') for e in d['entries']), 'the plugin is not listed'; assert not d['not_loaded'], d['not_loaded']"
+      - name: the README's Use section (every block tagged `bash ci`)
+        run: awk '/^```bash ci$$/{on=1;next} /^```$$/{on=0} on' README.md | uv run --no-sync bash -e -o pipefail
+      - name: mime assets audit, on the built wheel and sdist
+        run: |
+          uv build --out-dir dist
+          uv run --no-sync mime assets audit dist/*
+
+  slow:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'slow')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.12"
+      - run: uv venv --python 3.12
+      - run: uv pip install -e ".[test]"
+      - name: tests (the slow lane)
+        run: uv run --no-sync pytest -m slow
+
+  release:
+    name: against MIME's release branch
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.12"
+      - run: uv venv --python 3.12
+      - run: uv pip install "mime-engine[verify] @ git+https://github.com/Microrobotics-Simulation-Framework/MIME@${release_branch}"
+      - run: uv pip install -e ".[test]"
+      - name: tests, against MIME's release branch
+        run: uv run --no-sync pytest
+      - name: the README's Use section, against MIME's release branch
+        run: awk '/^```bash ci$$/{on=1;next} /^```$$/{on=0} on' README.md | uv run --no-sync bash -e -o pipefail
+
+  typing:
+    name: typing (pyright, strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.12"
+      - run: uv venv --python 3.12
+      - run: uv pip install -e ".[test,typing]"
+      # pyright reads the environment it is told to, whether or not pyrightconfig.json names a `.venv`.
+      - name: pyright, strict over the package, with the assert_type file
+        run: |
+          source .venv/bin/activate
+          pyright --pythonpath "$$(which python)"

@@ -1,0 +1,4 @@
+This plugin's code is licensed under ${licence_id} (an SPDX identifier or expression).
+
+Replace this file with the licence's full text before you publish: MIME ships the text of Apache-2.0 only. The texts are
+at https://spdx.org/licenses/.

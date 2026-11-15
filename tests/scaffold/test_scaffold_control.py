@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from scaffold_rig import KINDS, NAMESPACE, failures_of, planted, unpacked
+from scaffold_rig import KINDS, NAMESPACE, PLUGIN_PLANTS, failures_of, planted, unpacked
 
 from mime import scaffold
 from mime.registry import registered
@@ -36,6 +36,19 @@ def test_a_planted_defect_in_the_kinds_template_is_caught(kind: str, tmp_path: P
         planted(kind)(patch)
         found = failures_of(kind, tmp_path / kind)
     assert found, f"a misspelt key in the {kind} template passed its check"
+
+
+@pytest.mark.parametrize("which", PLUGIN_PLANTS)
+def test_a_planted_slip_in_another_file_of_the_plugin_is_caught(which: str, tmp_path: Path):
+    """The plugin's other files: a misspelt key of the records' entry point, a planted error that does nothing (the plugin's
+    own in-process control fails), the variable that plants it misspelt (the planted run finds no failure, and says only the one
+    property should fail), an import of mime in the engine and a misspelt command of the README each fail the plugin's check,
+    with the plugin's own message."""
+    with pytest.MonkeyPatch.context() as patch:
+        planted("plugin", which)(patch)
+        found = failures_of("plugin", tmp_path / "plugin")
+    assert found, f"{which} passed the plugin's check"
+    assert PLUGIN_PLANTS[which][3] in "\n".join(found), f"{which} failed the check, but not by the plugin's own message: {found}"
 
 
 def entry_points() -> list[str]:

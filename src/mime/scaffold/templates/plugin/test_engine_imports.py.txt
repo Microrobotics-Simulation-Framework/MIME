@@ -1,0 +1,38 @@
+"""The engine imports no `mime`, held by reading its source, and shown able to fail.
+
+The engine is the part you can test against closed forms and reference numbers with MIME out of the loop (see
+src/${package}/engine/__init__.py). That holds only while it stays true, so this reads every engine module's imports
+(with `ast`, never importing it) and fails on any `mime` name. The second test is the control: a planted `import mime`
+must be found, every time.
+"""
+
+import ast
+from pathlib import Path
+
+ENGINE = Path(__file__).resolve().parent.parent / "src" / "${package}" / "engine"
+
+
+def mime_imports(source: str) -> list[str]:
+    """Every module a source imports whose top-level name is `mime` (so `mime`, `mime.units`, `from mime import x`)."""
+    found: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            found += [alias.name for alias in node.names if alias.name.split(".")[0] == "mime"]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and (node.module or "").split(".")[0] == "mime":
+            found.append(node.module or "")
+    return found
+
+
+def test_the_engine_imports_no_mime():
+    modules = sorted(ENGINE.rglob("*.py"))
+    assert modules, f"no engine module found under {ENGINE}: the test would pass on nothing"
+    held = {str(path.relative_to(ENGINE)): mime_imports(path.read_text(encoding="utf-8")) for path in modules}
+    assert {path: found for path, found in held.items() if found} == {}
+
+
+def test_a_planted_import_is_found():
+    """The control: each way to import `mime` is found, so a green result above means something."""
+    for planted in ("import mime", "import mime.units", "import mime.units as units", "from mime import units",
+                    "from mime.units import N", "def f():\n    import mime"):
+        assert mime_imports(planted), f"{planted!r} was not found"
+    assert not mime_imports("import jax\nfrom jax import numpy\nimport mimesis")
