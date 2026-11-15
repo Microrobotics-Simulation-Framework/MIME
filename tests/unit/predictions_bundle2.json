@@ -82,5 +82,48 @@
       "differs": "the same program with a unit label changed in one saved form, and a setting one ulp up: the comparison reports a difference"
     }
   },
-  "outcomes": null
+  "outcomes": {
+    "recorded": "2026-11-16, in a commit after every gate ran; the predictions above are unchanged",
+    "gate_1_label_count": {
+      "measured": "48 distinct label strings (45 parse, 3 declared prose); 240 symbol-table rows, 1377 typed-state Units, 31 vocabulary entries, 372 source literals",
+      "prediction_band": [
+        50,
+        90
+      ],
+      "result": "MISSED: 48 is below the band (above the 41 seen before); the guess of 60 was wrong and the source scan added fewer new strings than guessed",
+      "failing_to_parse": 0
+    },
+    "gate_2_plant_rate": {
+      "first_measurement": {
+        "quotient-one-term": "30/30",
+        "quotient-multiplies": "30/30",
+        "power-first-term-only": "29/30 (seed 1005)",
+        "clean": "0/30"
+      },
+      "result_of_first": "the third plant was missed once: the property drew a parenthesised group raised to a power other than 1 rarely, because a random exponent vector is seldom a whole multiple of 2 or 3. The prediction's lower number (the property's) was in its band [27, 30] but the aim was every run, which it did not meet",
+      "fix": "the strategy builds groups (inside and power drawn, the dimension their product); no draw filtered, no example count changed",
+      "second_measurement": {
+        "quotient-one-term": "30/30",
+        "quotient-multiplies": "30/30",
+        "power-first-term-only": "30/30",
+        "clean": "0/30 flagged on each of the three clean arms",
+        "seeds": "Hypothesis seeds 2000 to 2029",
+        "lower_bound_95_for_30_of_30": 0.905
+      },
+      "node": "tests/unit/test_unit_grammar.py::test_every_spelling_of_a_dimension_reads_as_it",
+      "where": "local, this laptop, CPU"
+    },
+    "gate_3_import_time": {
+      "measured": "head minus base median +0.013 s (base 1.664 s, head 1.677 s; 15 alternating runs each)",
+      "spread": "interquartile range 0.19 to 0.23 s per arm; min to max 0.34 s",
+      "control": "a 50 ms sleep added at the import of the vocabulary: +0.080 s over head",
+      "result": "inside the band [-0.05, 0.05], but the spread is over 0.05 s, so by the cannot_discriminate clause this bounds the difference from above only (the machine is shared); it does not show 0.0"
+    },
+    "bits": {
+      "result": "equal: the derived hash and the saved-form file hashes of script A, A0 and the sphere, in float32 and float64, are identical between base (1bf528b0) and head; every saved fixture folder under tests/ (load, save, verify) identical in both dtypes except the 400-character truncation of the 11 load-refused fixtures' error text, which holds a tree path of a different length in the two trees (the text equal up to it)",
+      "repeat_control": "head twice: all 8 files identical, 0 differences",
+      "differs_control": "a copy of the head tree whose unit_symbol writes N as 'kg m s^-2': script A's and A0's mime.lock differ (hash changed) while their derived hash does not: the comparison sees a label's change in a saved file; the derived hash did not move under that plant, so no control shows its sensitivity to a label here. The one-ulp setting control was not run",
+      "where": "local, this laptop, CPU, one machine"
+    }
+  }
 }
