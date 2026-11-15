@@ -70,5 +70,11 @@
    "one_ulp": "differs in both dtypes"
   }
  },
- "outcomes": null
+ "outcomes": {
+  "recorded": "2026-11-15, from probe run 43699524847 on probe/ap3a-fix3 (44b753ae8), downloaded artifacts",
+  "gate_1_the_affine_control_fires_every_run": "as predicted: 200/200 caught in each dtype (eight arms of 50 on seed bases 0, 50, 100, 150), the clean arm 0/200 flagged and none inconclusive",
+  "gate_2_the_allocator_file_is_stable": "as predicted: 0 failing of 100 runs of the file (two arms of 25, nothing planted on either arm)",
+  "bits": "as predicted: A0, script A (both dtypes), the tutorials and the sphere equal on every array, base (release tip with P7a) against head; the one-ulp controls differ in both dtypes (14 and 13 arrays)",
+  "arm_memory_check": "every arm reported its memory check failed (an underestimate of the uncalibrated estimator: the family has no calibration row; the rows are in each artifact); the rates and the bits are unaffected"
+ }
 }
