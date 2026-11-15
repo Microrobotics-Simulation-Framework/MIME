@@ -1,0 +1,28 @@
+"""MIME's node verification and parameter reach, on the example entry's node.
+
+`node_failures` runs MADDENING's battery (finite, jit-consistent, differentiable, bounded) on every node the entry builds.
+`param_reach_failures` writes a new value into each parameter the build declares and requires that the run changes: a
+parameter the step does not read would be one a study silently cannot move.
+
+Two gaps in this MIME, so a real node may need a line here: `NodeCase` cannot say a node is differentiable in forward
+mode only (the battery differentiates in reverse mode, so a solver built on `lax.while_loop` fails three checks), and no
+hook marks a constructor argument as structure rather than a parameter (parameter reach then names it). If yours does
+either, hold the failing set to exactly what you expect and say why, as the clot plugin's tests do; do not loosen the
+check.
+"""
+
+from mime.experiment import Experiment
+from mime.testing import NodeCase, node_failures, param_reach_failures
+
+from ${package}.entries import ExampleLoad
+
+#: What makes a drawn example a valid state of the node: bounds on its state and inputs, where the law needs them.
+CASE = NodeCase()
+
+
+def test_the_node_passes_maddenings_battery(experiment: Experiment):
+    assert node_failures(experiment.build(), ExampleLoad, CASE) == []
+
+
+def test_every_parameter_reaches_the_step(experiment: Experiment):
+    assert param_reach_failures(experiment.build()) == []

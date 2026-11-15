@@ -1,0 +1,97 @@
+"""One example entry of the namespace `${namespace}`: a constant load on a body, to replace with your law.
+
+An entry is a frozen dataclass whose fields are its settings; its node does the arithmetic, by calling the engine
+(`${package}.engine`), which imports no `mime`. This one delivers to the toy body's load, so it runs beside MIME's `toy`
+entries (tests/); a real one delivers to MIME's own interfaces (`mime.vocabulary`).
+"""
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Annotated, Any, cast, override
+
+import jax.numpy
+from jax import Array
+from jaxtyping import Float
+from maddening.core.node import SimulationNode
+from typing_extensions import ReadOnly, TypedDict
+
+from mime.build import InteractionBuilder
+from mime.core import NodeFields, node_fields, typed_view
+from mime.gradients import GradientStatus
+from mime.registry import (
+    DESIGN,
+    BuildContext,
+    Delivery,
+    Interaction,
+    RoleKind,
+    convention,
+    register_interaction,
+)
+from mime.testing.toys import LOAD
+from mime.units import Force, N, Quantity
+
+from ${package}.engine import load as law
+from ${package}.entries import _vocabulary as _vocabulary  # registers the namespace before an entry names it
+
+
+#: jaxlib ships no stubs, and MADDENING leaves some containers bare, so a strict checker reads the array constructors and
+#: a node's `params` as partly unknown. They are called through `Any`, once, here: nothing about what runs changes.
+jnp: Any = jax.numpy
+
+
+class LoadState(TypedDict, closed=True):
+    load: ReadOnly[Float[Array, "3"]]
+
+
+class ExampleLoadNode(SimulationNode):
+    """A constant load: the engine's law, called with the node's parameters. Every constructor argument is kept in
+    `params`, so that a saved experiment is whole and a study can change it."""
+
+    def __init__(self, name: str, timestep: float, force: Sequence[float] = (0.0, 0.0, 0.0), gain: float = 1.0) -> None:
+        held: Any = super()
+        held.__init__(name, timestep, force=tuple(force), gain=gain)
+
+    def _own(self) -> dict[str, Any]:
+        return cast(dict[str, Any], cast(Any, self).params)
+
+    def _load(self, params: Mapping[str, Any], dtype: Any) -> Array:
+        return law.load_on(jnp.asarray(params["force"], dtype=dtype), jnp.asarray(params["gain"], dtype=dtype))
+
+    @override
+    def initial_state(self) -> NodeFields:
+        dtype = jnp.zeros(()).dtype  # the dtype this process computes in: float32, or float64 under JAX_ENABLE_X64
+        return node_fields(LoadState(load=self._load(self._own(), dtype)))
+
+    @override
+    def update(self, state: NodeFields, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeFields:
+        live = self._own() if params is None else params
+        return node_fields(LoadState(load=self._load(live, typed_view(LoadState, state)["load"].dtype)))
+
+
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class ExampleLoad(Interaction):
+    """A constant load on a body: `gain` times `force`."""
+
+    name = "${namespace}.example_load"
+    version = "0.1.0"
+    # Each setting says what it is: a physical one is a measured quantity, a design one a choice, a convention a default.
+    setting_roles = {"force": convention(DESIGN, "an example's constant load: replace it with your own")}
+    differentiability = GradientStatus.EXACT
+    builds = {"": (ExampleLoadNode,)}
+    roles = {"body": RoleKind.BODY}
+    delivers = {"load": Delivery("body", LOAD.name)}
+    # What the entry does not cover, one line each: they are listed in every build report, and say where it is invalid.
+    validity = ("an example: a constant load on a body, which models no device",)
+    # The records this entry reads, by name (src/${package}/records/): a saved experiment's lock lists them, and `mime assets`
+    # fetches what is not in the package. Delete the line when your entry reads none.
+    assets = ("${namespace}_example_record",)
+    force: Annotated[Quantity, Force] = N((0.0, 0.0, -0.05))
+    gain: float = 1.0
+
+    @override
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        node = b.add_response_node(ExampleLoadNode(ctx.node_name(), ctx.timestep, force=ctx.vector("force"),
+                                                   gain=self.gain))
+        b.connect(node["load"], into=b.target("load"))

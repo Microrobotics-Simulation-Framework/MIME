@@ -20,13 +20,24 @@ start from is `mime scaffold plugin`, below.
 
 ## Starting from a template
 
-`mime scaffold plugin` writes a plugin of your own to start from: a `pyproject.toml` with its `mime.entries` entry point, one
-example entry in `src/<package>/entries.py`, and a test that the entry round-trips, as MIME's own registry walk asks of each
-of its entries. Every value is the one you give with `--set`, else your `defaults.toml` (the namespace, the licence of your
-code, your name), else scaffold's own, and `--dry-run` draws the files and says where each value came from before anything
-is written. It never overwrites: a folder that exists is refused. A namespace that is taken (the first word of one of MIME's
-entries or refusal codes, or one an installed package declares) is refused with a free word to try, since one clash breaks
-`mime registry` for the whole environment: a folder named `helix-robot` therefore needs `--set plugin.namespace=`.
+`mime scaffold plugin` writes a plugin of your own to start from, in the layout of a typical plugin with no `--minimal`:
+each file is short and says whether it is optional. It holds a `pyproject.toml` with the `mime.entries` and `mime.assets` entry
+points; `src/<package>/` with the adapter (`entries/`, one example entry), the engine (`engine/`: your law as pure JAX, which
+imports no `mime`, and a test holds that) and the records (`records/`, one example record whose sha256 is filled in from its
+data file); tests (the registry walk and the saved round trip, `node_failures` and `param_reach_failures` on the example entry,
+validity lines with none empty, the engine's import rule shown able to fail, a Hypothesis property with **one planted error that
+its property catches every run**, a `@verification_benchmark` behind a `slow` marker, and an `assert_type` file); a `benchmarks/`
+folder with a `mime.toml`; an example; a README whose "Use" section is what CI runs; `CITATION.cff` and `LICENSE`; and a CI
+workflow with a default lane, a slow lane gated by a `slow` label, a weekly lane against MIME's release branch, the `mime
+registry` assertion, `mime check` of the benchmark, `mime assets audit` of the built wheel and sdist, and a typing job (pyright,
+strict, over the package and the `assert_type` file, so the types an editor completes from cannot rot). Every value is the one
+you give with `--set`, else your `defaults.toml` (the namespace, the licence of your code, your name), else scaffold's own, and
+`--dry-run` draws the files and says where each value came from before anything is written. It never overwrites: a folder that
+exists is refused. A namespace that is taken (the first word of one of MIME's entries or refusal codes, or one an installed
+package declares) is refused with a free word to try, since one clash breaks `mime registry` for the whole environment: a folder
+named `helix-robot` therefore needs `--set plugin.namespace=`. Its own control scaffolds the plugin with `--yes` into a temporary folder, unpacks its wheel there, and runs
+its tests in a subprocess that sees only that folder: the tests pass, and with the planted error in, only the planted property
+fails.
 
 <!-- mime-fragment: a shell session, not code a test runs; the command lines are parsed against the CLI by the docs check -->
 ```bash
@@ -36,9 +47,11 @@ pip install -e acme-probes
 mime registry | grep acme
 ```
 
-The namespace is the word before the dot in every entry's name (`acme.example_load`); records use `_` where entries use `.`, and
-an instance is named `name:thing`. The example entry delivers to the toy body's load, so it runs beside MIME's `toy` entries;
-replace it with your law.
+The namespace is the word before the dot in every entry's name (`acme.example_load`) and is filled in the six places it appears
+from one value; records use `_` where entries use `.` (`acme_example_record`), and an instance is named `entry:thing`
+(`acme.example_load:probe`): the template's comments say so, and nothing is renamed. The example entry delivers to the toy
+body's load, so it runs beside MIME's `toy` entries; replace it with your law. Pin a timed run to a single core and the CPU
+(`JAX_PLATFORMS=cpu taskset -c <core> pytest`): an unpinned JAX run on a shared machine was measured several times slower.
 
 ## What a lab registers
 

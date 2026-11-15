@@ -1,0 +1,11 @@
+"""This plugin's records, found through the `mime.assets` entry point in pyproject.toml.
+
+MIME reads every `.json` file in THIS folder as a file of records (`records.json`), so the data files they point at live
+in the subfolder `data/`, never beside this module. A record names a file by its sha256, its licence and where its bytes
+are; here the bytes ship in the package (`package:${namespace}/data/example.json`).
+
+The licence decides what may travel (`mime assets audit` holds it on the built sdist in CI): an open licence (CC-BY-4.0,
+CC0-1.0, ...) lets the bytes ship in the wheel, as here. A lab's own licence (`LicenseRef-...`) or a file you may not
+redistribute is `referenced`: the record names where to fetch it and never ships the bytes, and a user accepts its
+conditions by name (`mime assets fetch --accept-licence`). Never put such a file in this package.
+"""
