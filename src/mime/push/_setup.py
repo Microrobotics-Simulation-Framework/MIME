@@ -110,7 +110,7 @@ _EMPTY: Mapping[str, object] = {"description": "", "creators": [], "contributors
 _KEPT_UNLESS_GIVEN = ("title", "licence")
 
 
-def _filled(value: object) -> bool:
+def filled(value: object) -> bool:
     return value is not REMOVE and value not in (None, "", [], {})
 
 
@@ -119,7 +119,7 @@ def _words(value: object) -> str:
     return plain(value_text(value))
 
 
-class _Walk:
+class Walk:
     """The questions of one walk, through ``typed``: each is set apart by the display, the hint in its words."""
 
     def __init__(self, typed: Typed) -> None:
@@ -166,7 +166,7 @@ def _one_of(words: tuple[str, ...], what: str) -> Callable[[str], str | None]:
     return check
 
 
-def _people(walk: _Walk, head: str, key: str) -> list[dict[str, str]]:
+def _people(walk: Walk, head: str, key: str) -> list[dict[str, str]]:
     """Each person of ``creators`` or ``contributors``, asked part by part; Enter at a family name ends the list."""
     noun = "creator" if key == "creators" else "contributor"
     found: list[dict[str, str]] = []
@@ -193,7 +193,7 @@ def _people(walk: _Walk, head: str, key: str) -> list[dict[str, str]]:
         found.append(person)
 
 
-def _related(walk: _Walk, head: str) -> list[dict[str, str]]:
+def _related(walk: Walk, head: str) -> list[dict[str, str]]:
     found: list[dict[str, str]] = []
     while True:
         lead = _lead(head) if not found else ""
@@ -207,7 +207,7 @@ def _related(walk: _Walk, head: str) -> list[dict[str, str]]:
         found.append({"identifier": identifier, "relation": str(relation)})
 
 
-def _also_cite(walk: _Walk, head: str) -> list[dict[str, str]]:
+def _also_cite(walk: Walk, head: str) -> list[dict[str, str]]:
     found: list[dict[str, str]] = []
     while True:
         lead = _lead(head) if not found else ""
@@ -220,7 +220,7 @@ def _also_cite(walk: _Walk, head: str) -> list[dict[str, str]]:
         found.append({"identifier": identifier, **({"text": text} if text is not None else {})})
 
 
-def _funding(walk: _Walk, head: str) -> list[dict[str, str]]:
+def _funding(walk: Walk, head: str) -> list[dict[str, str]]:
     found: list[dict[str, str]] = []
     while True:
         lead = _lead(head) if not found else ""
@@ -241,7 +241,7 @@ def _funding(walk: _Walk, head: str) -> list[dict[str, str]]:
         found.append(entry)
 
 
-def _conference(walk: _Walk, head: str) -> dict[str, str] | None:
+def _conference(walk: Walk, head: str) -> dict[str, str] | None:
     title = walk.value(f"{_lead(head)}conference, its name (Enter: none): ")
     if title is None:
         return None
@@ -257,7 +257,7 @@ def _conference(walk: _Walk, head: str) -> dict[str, str] | None:
     return meeting
 
 
-def _access(walk: _Walk, head: str) -> dict[str, object] | None:
+def _access(walk: Walk, head: str) -> dict[str, object] | None:
     levels = _one_of(ACCESS_LEVELS, "public or restricted")
     record = walk.value(f"{_lead(head)}the record, public or restricted (Enter: public): ", levels)
     files = walk.value("its files, public or restricted (Enter: public): ", levels)
@@ -286,7 +286,7 @@ def _access(walk: _Walk, head: str) -> dict[str, object] | None:
     return found
 
 
-def _licence(walk: _Walk, head: str, label: str, declared: str | None) -> str | None:
+def _licence(walk: Walk, head: str, label: str, declared: str | None) -> str | None:
     def licensed(given: str) -> str | None:
         problem = licence_problem(given)
         if problem is not None:
@@ -298,7 +298,7 @@ def _licence(walk: _Walk, head: str, label: str, declared: str | None) -> str | 
     return walk.value(f"{_lead(head)}{label}: ", licensed)
 
 
-def _asked(walk: _Walk, key: str, head: str, declared: str | None) -> object:
+def asked(walk: Walk, key: str, head: str, declared: str | None) -> object:
     """A new value of ``key``, asked part by part; ``None`` where none was given."""
     if key in ("creators", "contributors"):
         return _people(walk, head, key) or None
@@ -437,7 +437,7 @@ def setup(folder: str | os.PathLike[str], *, typed: Typed | None, ask: Ask | Non
     migrating = before is None and old.is_file()
     current: dict[str, object] = held if before is not None else old_values(root) if migrating else {
         "title": name, "description": "", "licence": declared or fallback, **defaults.values}
-    walk = _Walk(typed)
+    walk = Walk(typed)
     say(f"Setting up {path} for {plain(name)!r}, one field at a time: Enter skips a field, or keeps the value shown.")
     if migrating:
         say(f"It is written from {old}, which MIME no longer reads: each value it holds is offered to keep.")
@@ -446,22 +446,22 @@ def setup(folder: str | os.PathLike[str], *, typed: Typed | None, ask: Ask | Non
         head = f"{key}: {why}"
         value = current.get(key)
         if key == "fields":
-            say(f"{head}: written by hand in mime.toml" + (f", which holds {_words(value)}" if _filled(value) else ""))
-            if migrating and _filled(value):
+            say(f"{head}: written by hand in mime.toml" + (f", which holds {_words(value)}" if filled(value) else ""))
+            if migrating and filled(value):
                 chosen[key] = value
             continue
-        if _filled(value) and walk.keep(head, value):
+        if filled(value) and walk.keep(head, value):
             chosen[key] = value
             continue
-        given = _asked(walk, key, "" if _filled(value) else head, declared)
+        given = asked(walk, key, "" if filled(value) else head, declared)
         if given is not None:
             chosen[key] = given
-        elif _filled(value) and key in _KEPT_UNLESS_GIVEN:
+        elif filled(value) and key in _KEPT_UNLESS_GIVEN:
             chosen[key] = value
-        elif _filled(value):
+        elif filled(value):
             chosen[key] = _EMPTY[key]
     if before is None:
-        text = manifest_text(kind, name, declared, {key: value for key, value in chosen.items() if _filled(value)},
+        text = manifest_text(kind, name, declared, {key: value for key, value in chosen.items() if filled(value)},
                              fallback=fallback)
         path.write_text(text, encoding="utf-8", newline="\n")
         say(Said(f"wrote {path}", DONE))
@@ -469,7 +469,7 @@ def setup(folder: str | os.PathLike[str], *, typed: Typed | None, ask: Ask | Non
             say(f"{old} is no longer read: delete it once you have checked {path} (MIME never deletes your file)")
     else:
         changed = {key: value for key, value in chosen.items() if value != held.get(key)
-                   and (_filled(value) or _filled(held.get(key)))}
+                   and (filled(value) or filled(held.get(key)))}
         if changed:
             edit_in_place(path, {kind: {key: changed[key] for key in ("licence",) if key in changed},
                                  "record": {key: value for key, value in changed.items() if key != "licence"}},
@@ -482,7 +482,7 @@ def setup(folder: str | os.PathLike[str], *, typed: Typed | None, ask: Ask | Non
     _, problems = manifest_problems(root, old_ignored=migrating)
     for each in problems:
         say(f"! push would refuse it as it stands: {each.refusal.message}")
-    _offer_defaults({key: chosen[key] for key in DEFAULT_KEYS if _filled(chosen.get(key))}, defaults.values, ask, say)
+    _offer_defaults({key: chosen[key] for key in DEFAULT_KEYS if filled(chosen.get(key))}, defaults.values, ask, say)
     if kind == BUNDLE:
         say(f"next: `mime push {quoted(str(folder))} --to {service or '<service>'}` shows the plan, then makes the draft"
             + ("" if service else " (zenodo-sandbox to try it, zenodo to share it)"))
@@ -512,16 +512,16 @@ def edit_defaults(*, typed: Typed | None, say: Say) -> Path:
     found = read_all(say)
     current: dict[str, object] = {**found.values, **found.licences,
                                   **({"namespace": found.namespace} if found.namespace else {})}
-    walk = _Walk(typed)
+    walk = Walk(typed)
     say("Your defaults, one field at a time: Enter skips a field, or keeps the value shown.")
     chosen: dict[str, object] = {}
     for key, why in DEFAULT_FIELDS.items():
         head = f"{key}: {why}"
         value = current.get(key)
-        if _filled(value) and walk.keep(head, value):
+        if filled(value) and walk.keep(head, value):
             chosen[key] = value
             continue
-        given = _asked(walk, key, "" if _filled(value) else head, None)
+        given = asked(walk, key, "" if filled(value) else head, None)
         if given is not None:
             chosen[key] = given
     path = write_defaults({key: chosen[key] for key in DEFAULT_KEYS if key in chosen},
@@ -531,5 +531,5 @@ def edit_defaults(*, typed: Typed | None, say: Say) -> Path:
     return path
 
 
-__all__ = ["DEFAULT_FIELDS", "FIELDS", "edit_defaults", "edit_in_place", "folder_facts", "replaced", "setup",
-           "unwritable"]
+__all__ = ["DEFAULT_FIELDS", "FIELDS", "Walk", "asked", "edit_defaults", "edit_in_place", "filled", "folder_facts",
+           "replaced", "setup", "unwritable"]

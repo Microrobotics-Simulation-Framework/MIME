@@ -1,0 +1,25 @@
+# ${title}: a block of MIME declarations, written by `mime scaffold block`. Edit it by hand; `mime check <folder>` checks
+# it. Its declarations are in block.mime.yaml, and its cases (what the block must do, run by `mime verify`) in cases/.
+format = "mime.toml/1"
+
+[block]
+id = ${id}
+version = ${version}
+licence = ${licence}
+
+# The distributions its declarations' entries come from, by version: add the lab's own package where the fragment uses one.
+[requires]
+mime-engine = ${mime_range}
+
+${sockets}
+
+# Lines stating where the block is valid, each with its reason, shown on its card. For example:
+# [[validity]]
+# line = "a probe in a still medium"
+# reason = "no flow past the probe is modelled"
+
+[cases]
+shows = "What the block's cases show, in a paragraph: write it when you add a case, in cases/."
+
+[record]
+${record}

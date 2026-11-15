@@ -17,6 +17,7 @@ from mime.cli._shell import quoted
 
 #: The commands, by what one is doing. Every command is in exactly one group (a test holds it).
 GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Start", ("scaffold",)),
     ("Run", ("run", "study", "serve", "verify", "pending", "show")),
     ("Share", ("pack", "card", "pull", "push", "check", "defaults", "credentials")),
     ("Environment", ("env", "modal", "cache", "assets", "visuals", "completion")),
@@ -38,6 +39,7 @@ EXAMPLES: Mapping[tuple[str, ...], str] = {
     ("pull",): "mime pull 10.5281/zenodo.1234567 --into my_experiment",
     ("push",): "mime push my_experiment --to zenodo-sandbox",
     ("check",): "mime check my_experiment --profile research",
+    ("scaffold",): "mime scaffold block labx_probe --yes --set block.id=labx.probe --dry-run",
     ("defaults",): "mime defaults",
     ("defaults", "show"): "mime defaults show",
     ("defaults", "edit"): "mime defaults edit",

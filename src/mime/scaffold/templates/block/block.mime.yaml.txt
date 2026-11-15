@@ -1,0 +1,5 @@
+# The block's declarations, in the saved experiment's own words. It may hold, each optional:
+#   things, interactions, observations, controller, declared, ranges, sources, materials, terms.
+# Where a user's thing goes, write {socket: <name>}, and declare the socket in mime.toml's [sockets].
+# `mime scaffold block <folder> --from <saved folder> --socket <name>=<thing>` writes one from a saved experiment.
+schema: mime.fragment/1

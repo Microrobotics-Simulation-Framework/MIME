@@ -10,7 +10,7 @@ concept DOI.**
 ```
 mime push <folder> --to zenodo|zenodo-sandbox            # the plan, then the draft and its files (no question)
 mime push <folder> --to <service> --publish [--confirm <DOI>[@<fingerprint>]]   # publish the draft: cannot be undone
-mime push <folder> --to <service> --init                 # write mime.toml, the record's manifest
+mime push <folder> --to <service> --init                 # write mime.toml, the record's manifest (= mime scaffold bundle|study <folder> --yes)
 mime push <folder> --setup                               # make or edit mime.toml a field at a time, in a terminal
 mime push --defaults                                     # your defaults, and where they live (= mime defaults)
 mime check <folder> [--profile research]                 # mime.toml checked offline, on the profile workflow
@@ -81,6 +81,8 @@ TOML that reads, or bytes that are no text, as `manifest.read`. An ORCID iD's di
 full-width or another script's digit, which a terminal shows as a digit, is refused wherever either is read
 (`mime.toml`, the defaults, `--setup`). `pack` neither carries nor refuses the file (the bundle's bytes are the same with
 it and without it), and `mime card` names its creators.
+
+**`--init` is the alias of `mime scaffold bundle|study <folder> --yes`** (the cli README): both write what `mime.push._draft.new_manifest` returns, the same bytes (a test holds them equal), and differ in one thing, an existing `mime.toml`, which `--init` keeps with a line and exit zero and scaffold refuses (`scaffold.exists`).
 
 **`sharing.yaml` is no longer read** (a development release keeps no reading period). A folder holding it alone is refused
 (`manifest.missing`) with the route: `mime push <folder> --setup` writes `mime.toml` from it, a field at a time, each

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = ${distribution}
+version = "0.1.0"
+description = ${description}
+license = ${licence}
+requires-python = ">=3.12"
+dependencies = ["mime-engine[verify]${mime_range}"]
+${authors}
+
+# How MIME finds your entries: it imports this module, which registers them. The namespace is the word before the dot in
+# every entry's name (entries use `.`, records `_`, an instance `:`, as in `${namespace}.example_load:probe`).
+[project.entry-points."mime.entries"]
+${namespace} = "${package}.entries"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/${package}"]
