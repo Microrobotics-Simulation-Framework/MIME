@@ -121,11 +121,13 @@ def _into(rotation: Any, vector: tuple[Any, Any, Any]) -> tuple[Any, Any, Any]:
 
 class Seen(NamedTuple):
     """One subject on a set of rays: its coverage of each pixel, the interval each ray spends inside it, and, for a
-    sampled body, the length of each ray inside it (its chord, which may be more than one interval's)."""
+    sampled body, the length of each ray inside it (its chord, which may be more than one interval's) and each corner
+    pixel's bound on its share where its reading is not verified (zero where it is)."""
 
     coverage: Any
     interval: tuple[Any, Any]
     length: Any = None
+    unverified: Any = None
 
 
 def _parameters(subject: Subject, dtype: Any) -> dict[str, Any]:
@@ -136,9 +138,10 @@ def _parameters(subject: Subject, dtype: Any) -> dict[str, Any]:
 
 
 def _lines(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: Any, dv: Any,
-           form: forms.Form | None = None) -> list[coverage.Line]:
+           form: forms.Form | None = None, unverified: list[Any] | None = None) -> list[coverage.Line]:
     """Each of the subject's pieces as its edge's line in the pixel, its gradient read along the ray table's
-    derivatives by one ``jvp`` each way."""
+    derivatives by one ``jvp`` each way; the form's ``unverified`` numbers, which are not pieces, put in
+    ``unverified``."""
     form = subject.placed.form if form is None else form
 
     def pieces(dx: Any, dy: Any, dz: Any) -> tuple[Any, ...]:
@@ -146,7 +149,11 @@ def _lines(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: Any, dv: 
 
     values, linear = _jax.linearize(pieces, *d)
     along_u, along_v = linear(*du), linear(*dv)
-    lines = [coverage.line(g, gu, gv) for g, gu, gv in zip(values, along_u, along_v, strict=True)]
+    count = len(values) - form.unverified
+    if unverified is not None:
+        unverified.extend(values[count:])
+    lines = [coverage.line(g, gu, gv) for g, gu, gv in zip(values[:count], along_u[:count], along_v[:count],
+                                                             strict=True)]
     for inner, bound in form.bounds:
         lines[inner] = coverage.greater(lines[inner], lines[bound])
     return lines
@@ -164,8 +171,10 @@ def _cell_share(form: forms.Form, lines: Sequence[coverage.Line], size: float = 
 
 
 def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: Any, dv: Any,
-                  corner_samples: int, form: forms.Form | None = None) -> Any:
-    """The box edge's share of each pixel: the subject's form's, or ``form``'s (a sampled body's, its march done)."""
+                  corner_samples: int, form: forms.Form | None = None, unverified: list[Any] | None = None) -> Any:
+    """The box edge's share of each pixel: the subject's form's, or ``form``'s (a sampled body's, its march done);
+    where its corner sub-samples' form reads ``unverified`` numbers (``Form.at_corners``), each pixel's sum of them over
+    its sub-cells, a share of the pixel, put in ``unverified``."""
     form = subject.placed.form if form is None else form
     lines = _lines(subject, p, o, d, du, dv, form)
     single = _cell_share(form, lines)
@@ -183,18 +192,23 @@ def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: An
     corner = switch.predicate((crossing >= 2.0) | (turning >= 1.0), owner="camera.corner",
                               resolution=lambda: switch.rounding(coverage.CORNER_REACH), indicator=margin)
 
-    def one(total: Any, offset: Any) -> tuple[Any, None]:
+    at_corners = form if form.at_corners is None else form.at_corners(corner, du, dv)
+
+    def one(held: tuple[Any, Any], offset: Any) -> tuple[tuple[Any, Any], None]:
+        total, bound = held
         su, sv = offset[0], offset[1]
         moved: tuple[Any, Any, Any] = (d[0] + su * du[0] + sv * dv[0], d[1] + su * du[1] + sv * dv[1],
                                        d[2] + su * du[2] + sv * dv[2])
         scale = 1.0 / jnp.sqrt(forms.dot(moved, moved))
-        sub = _lines(subject, p, o, tuple(c * scale for c in moved), du, dv, form)
-        return total + _cell_share(form, sub, 1.0 / corner_samples), None
+        read: list[Any] = []
+        sub = _lines(subject, p, o, tuple(c * scale for c in moved), du, dv, at_corners, read)
+        return (total + _cell_share(form, sub, 1.0 / corner_samples), sum(read, start=bound)), None
 
-    def sub_sampled() -> Any:
+    def sub_sampled() -> tuple[Any, Any]:
         offsets = jnp.asarray(coverage.sub_offsets(corner_samples), dtype=single.dtype)
-        total, _ = lax.scan(_jax.checkpoint(one, prevent_cse=False), jnp.zeros_like(single), offsets)
-        return total / corner_samples ** 2
+        (total, bound), _ = lax.scan(_jax.checkpoint(one, prevent_cse=False),
+                                     (jnp.zeros_like(single), jnp.zeros_like(single)), offsets)
+        return total / corner_samples ** 2, bound / corner_samples ** 2
 
     if switch.collector_open():
         # A switch collector keeps what a loop's or a cond's body traces beyond it, so while one is open the sub-samples
@@ -202,10 +216,12 @@ def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: An
         # each switch of the corner pixel's sub-samples recorded on the values it reads. No program a run compiles
         # takes this path.
         offsets = jnp.asarray(coverage.sub_offsets(corner_samples), dtype=single.dtype)
-        total = jnp.zeros_like(single)
+        held = (jnp.zeros_like(single), jnp.zeros_like(single))
         for k in range(offsets.shape[0]):
-            total, _ = one(total, offsets[k])
-        return switch.where(jnp.any(corner), total / corner_samples ** 2, single, owner="camera.corner",
+            held, _ = one(held, offsets[k])
+        if unverified is not None:
+            unverified.append(held[1] / corner_samples ** 2)
+        return switch.where(jnp.any(corner), held[0] / corner_samples ** 2, single, owner="camera.corner",
                             resolution=lambda: switch.rounding(coverage.CORNER_REACH),
                             indicator=lambda: jnp.max(margin()))
 
@@ -219,7 +235,10 @@ def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: An
     # (camera spike R1: 96 % of the in-loop camera's tape). A program that takes no reverse derivative is unchanged: a
     # checkpoint lowers to its body, and prevent_cse=False (inside a scan, which keeps the recomputation apart) adds no
     # barrier.
-    return lax.cond(jnp.any(corner), sub_sampled, lambda: single)
+    share, bound = lax.cond(jnp.any(corner), sub_sampled, lambda: (single, jnp.zeros_like(single)))
+    if unverified is not None:
+        unverified.append(bound)
+    return share
 
 
 def _corners(camera: Pinhole, start: tuple[Any, Any] | None, size: tuple[int, int]) -> tuple[Any, Any]:
@@ -245,8 +264,9 @@ def _seen(subject: Subject, rays: Rays, rotation: Any, origin: Any, dtype: Any, 
     marched = subject.placed.sampled
     if marched is not None:
         held = sampled_route.march(marched, p, o, d, du)
-        found = _box_coverage(subject, p, o, d, du, dv, corner_samples, sampled_route.form(marched, held))
-        return Seen(found, held.interval, sampled_route.chord(marched, p, o, d, held))
+        bound: list[Any] = []
+        found = _box_coverage(subject, p, o, d, du, dv, corner_samples, sampled_route.form(marched, held), bound)
+        return Seen(found, held.interval, sampled_route.chord(marched, p, o, d, held), bound[0] if bound else None)
     interval = forms.ahead(form.interval(p, o, d))
     if subject.coverage == "disc":
         camera_rotation = _rotation(pose.orientation, dtype)
@@ -407,6 +427,9 @@ def _factor(subject: Subject, parent: Subject | None, parent_pose: tuple[Any, An
         small = camera.fx * subject.feature() / depth < SMALL_SILHOUETTE_PX
         flags[f"small_silhouette:{name}"] = flags.get(f"small_silhouette:{name}", False) | small
     flags[f"behind:{name}"] = flags.get(f"behind:{name}", False) | _behind(depth, subject)
+    if seen.unverified is not None:
+        flags[f"corner_unverified:{name}"] = flags.get(f"corner_unverified:{name}", 0) + jnp.sum(seen.unverified > 0.0)
+        flags[f"corner_bound:{name}"] = jnp.maximum(flags.get(f"corner_bound:{name}", 0.0), jnp.max(seen.unverified))
     if subject.placed.form.turning:
         flags[f"thin_cap:{name}"] = flags.get(f"thin_cap:{name}", False) | _thin_cap(
             subject, rotation, origin, camera, pose, dtype, corner_samples)

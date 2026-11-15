@@ -52,7 +52,14 @@ FLAG_MEANINGS = {
     "behind": "subjects whose enclosing ball reaches behind the camera's pinhole",
     "ghosting": "subjects that moved more than a pixel between the exposure's sub-frames",
     "thin_cap": "capped cylinders showing a cap nearly edge-on, where its outline is least resolved",
+    "corner_unverified": "pixels where two branches of a sampled body's outline cross (route 2's corners) whose reading "
+                         "could not be verified (a least reaching a sub-pixel left unread), each within its line and "
+                         "corner_bound; their share of the frame is this over its pixels",
+    "corner_bound": "the most an unverified corner pixel's share may lie beyond its line (a share of a pixel, the "
+                    "largest in the frame, summed over subjects); zero where every corner is verified",
 }
+#: The flags warned of after a run that raised them: a pixel whose stated accuracy is not verified.
+FLAG_WARNS = frozenset({"corner_unverified"})
 
 
 #: The camera's own model of its noise and quantisation, which its image carries and its expected image is before.
@@ -216,7 +223,7 @@ class Camera(Observation):
         "hide": convention(DESIGN, "nothing is hidden: the camera sees the whole scene"),
         "absorbers": convention(PHYSICAL, "no subject attenuates: every subject is opaque, defaulted and noted"),
     }
-    raises = tuple(Flag(name, FLAG_MEANINGS[name]) for name in FLAG_FIELDS)
+    raises = tuple(Flag(name, FLAG_MEANINGS[name], warns=name in FLAG_WARNS) for name in FLAG_FIELDS)
     outputs = (
         Output("image", DIMENSIONLESS, "the held frame, in counts, rows by columns", shape_from_settings=True,
                recordable=False, noise_model=SENSOR_RESPONSE),

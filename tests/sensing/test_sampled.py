@@ -16,11 +16,16 @@
   the scheme's own error terms (``scripts/camera_route2/corner_line.py``), before its confirmation's draws ran
   (``predictions_camera_pr5a_fix.json``): each branch's curvature in a sub-cell, the truth's floor, float32's rounding.
   Two coils, three widths, both dtypes. **Control** (``CAMERA_PLANT=single-edge``, a pose drawn from
-  ``DETECTION_SEED``): the single edge fails it, every run. **The derivation's premise** (``unread_leasts``): on every
-  such pixel's sub-rays each least that reaches its sub-cell is read by a piece; its own control, on every draw: the
-  same count with the second branch's search lost is not zero. A second plant (``CAMERA_PLANT=misread``): the second
-  branch read a tenth of a pixel out, the tail round's defect at its least measured size. ``CORNER_RECORD`` names a
-  file each run appends its numbers to.
+  ``DETECTION_SEED``): the single edge fails it, every run. **The derivation's premise** (``unread_leasts``, at four
+  times the resolution of the scheme's own verification, across the whole march): on every such pixel's sub-rays each
+  least that reaches its sub-cell is read by a piece; its own control, on every draw: the same count with the second
+  branch's reading lost is not zero. **The run flag** (``corner_unverified``, ``corner_bound``): its count is recorded
+  on every clean draw (a flagged draw within the line is a false alarm), and its control, on every draw
+  (``unread_second``: the second branch lost before the verification, which then bounds what it finds without reading
+  it), flags pixels, each within the line and its bound. A second plant (``CAMERA_PLANT=misread``): the second branch
+  read a tenth of a pixel out (or ``CAMERA_PLANT_SIZE``), the tail round's defect class. ``CORNER_RECORD`` names a file
+  each run appends its numbers to; ``CORNER_TRUTH_CACHE`` a folder that keeps each draw's truth across a probe's
+  passes.
 - **The motion's derivative across a pixel**: a coil's darkness centroid's forward-mode derivative, at 16 positions over
   one pixel of motion, is within ``RIPPLE_LINE`` of the central difference over that pixel. **Control**
   (``CAMERA_PLANT=lesser``): the PR's first composition (one straight edge a cell, the least of the two branches'
@@ -43,7 +48,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 import sampled_truth
-from camera_cases import SEED, across, planted
+from camera_cases import PLANT, PLANT_SIZE, SEED, across, planted
 
 import mime.sensing._sampled as sampled_route
 from mime.core import quaternion
@@ -191,23 +196,17 @@ def two_branch_pixels(body: Subject, position, orientation, view=(LENS, POSE)) -
     return np.nonzero(np.asarray(near).reshape(-1))[0]
 
 
-#: A sub-cell's reach (pixels): a line farther than a corner sub-cell's half-diagonal from its centre leaves the cell
-#: wholly on one side, so a least beyond it outside the body changes nothing the cell's share reads.
-SUB_REACH = math.sqrt(2.0) / (2 * coverage.CORNER_SAMPLES)
-#: The dense profile's steps a march spacing, across each sub-ray's whole march.
-DENSE_STEPS = 16
+SUB_REACH = sampled_route.SUB_REACH
+#: The dense profile's steps a march spacing, across each sub-ray's whole march: four times the scheme's own
+#: verification's (``_sampled.VERIFY_STEPS``), so that the guard is not the scheme's own reading of the same samples.
+DENSE_STEPS = 4 * sampled_route.VERIFY_STEPS
 
 
-def unread_leasts(body: Subject, position, orientation, pixels: np.ndarray, view=(LENS, POSE)) -> int:
-    """How many leasts on the pixels' corner sub-rays the scheme does not read: local minima of the sign function's
-    first-order distance along the sub-ray (a dense profile across its whole march, ``DENSE_STEPS`` a spacing) whose
-    line reaches the sub-cell (within ``SUB_REACH`` of its centre, or the cell inside the body there), with no point
-    the scheme's search reads on that sub-ray (``_sampled._leasts``: either piece's, after the merge rule) within half
-    a march spacing. The derivation's premise is that each branch crossing a sub-cell is read at its sub-ray's own
-    least; a least beyond the sub-cell's reach (a farther turn's, or a second minimum that is a fold of the sign
-    function's turn) changes nothing the cell reads, nor does any least in a sub-cell wholly inside a read branch's
-    half-plane (the union is the whole cell). How far a read least's value lies from the truth (the quartic's, at an
-    arc's end its guard's) is the line's refinement term, not this count's."""
+def judged_sub_rays(body: Subject, position, orientation, pixels: np.ndarray, view=(LENS, POSE),
+                    verify: bool = True) -> tuple:
+    """The pixels' corner sub-rays, ``(sub-offset, pixel)``, in float64: the march's held result (told the pixels are
+    corners where ``verify``, so that the scheme verifies its reading there), the parameters, the rays and the ray
+    table's derivatives, and the scheme's two read points and its bound on each (``_sampled._leasts``)."""
     lens = view[0]
     rays = render_module.ray_table(lens, view[1], u=jnp.asarray(pixels % lens.width, jnp.float64),
                                    v=jnp.asarray(pixels // lens.width, jnp.float64))
@@ -225,9 +224,33 @@ def unread_leasts(body: Subject, position, orientation, pixels: np.ndarray, view
     scale = 1.0 / jnp.sqrt(sum(c * c for c in moved))
     ray = tuple(c * scale for c in moved)
     o = tuple(jnp.broadcast_to(c, ray[0].shape) for c in o)
-    first, second, first_merged, second_merged = sampled_route._leasts(marched, held, p, o, ray)
-    read = (jnp.where(held.has2 & first_merged & ~second_merged, second, first),
-            jnp.where(held.has2, jnp.where(second_merged, first, second), first))
+    du, dv = (tuple(jnp.broadcast_to(c, ray[0].shape) for c in along) for along in (du, dv))
+    if verify:
+        held = held._replace(corner=jnp.ones_like(held.has2), du=du, dv=dv)
+    first, second, bound = sampled_route._leasts(marched, held, p, o, ray)
+    return marched, held, p, o, ray, du, dv, (first, jnp.where(held.has2, second, first)), bound
+
+
+def lost_reads(body: Subject, position, orientation, pixels: np.ndarray, view=(LENS, POSE)) -> np.ndarray:
+    """Where the scheme's verification starts, ``(sub-offset, pixel)``: a sub-ray of a two-minimum ray whose two
+    branches the search reads at one point (within half a spacing), before the verification."""
+    *_, held, _, _, _, _, _, read, _ = judged_sub_rays(body, position, orientation, pixels, view, verify=False)
+    return np.asarray(held.has2[None, :] & (jnp.abs(read[0] - read[1]) < 0.5 * held.dt[None, :]))
+
+
+def unread_leasts(body: Subject, position, orientation, pixels: np.ndarray, view=(LENS, POSE),
+                  verify: bool = True) -> int:
+    """How many leasts on the pixels' corner sub-rays the scheme does not read: local minima of the sign function's
+    first-order distance along the sub-ray (a dense profile across its whole march, ``DENSE_STEPS`` a spacing) whose
+    line reaches the sub-cell (within ``SUB_REACH`` of its centre, or the cell inside the body there), with no point
+    the scheme's search reads on that sub-ray (``_sampled._leasts``: either piece's, after the merge rule and the
+    verification, or before it where not ``verify``) within half a march spacing. The derivation's premise is that each
+    branch crossing a sub-cell is read at its sub-ray's own least; a least beyond the sub-cell's reach (a farther
+    turn's, or a second minimum that is a fold of the sign function's turn) changes nothing the cell reads, nor does
+    any least in a sub-cell wholly inside a read branch's half-plane (the union is the whole cell). How far a read
+    least's value lies from the truth (the quartic's, at an arc's end its guard's) is the line's refinement term, not
+    this count's."""
+    marched, held, p, o, ray, du, dv, read, _ = judged_sub_rays(body, position, orientation, pixels, view, verify)
     steps = jnp.arange(DENSE_STEPS * (marched.samples - 1) + 1, dtype=jnp.float64) / DENSE_STEPS
     t = held.t[None, :, :1] + held.dt[None, :, None] * steps[None, None, :]
 
@@ -235,8 +258,8 @@ def unread_leasts(body: Subject, position, orientation, pixels: np.ndarray, view
         return sampled_route.evaluate(marched, p, *(o[i][..., None] + t * (dx, dy, dz)[i][..., None]
                                                     for i in range(3)))
 
-    values, along_u = jax.jvp(profile, ray, tuple(jnp.broadcast_to(c, ray[0].shape) for c in du))
-    _, along_v = jax.jvp(profile, ray, tuple(jnp.broadcast_to(c, ray[0].shape) for c in dv))
+    values, along_u = jax.jvp(profile, ray, du)
+    _, along_v = jax.jvp(profile, ray, dv)
     lines = coverage.line(values, along_u, along_v).distance
     minimum = jnp.concatenate([jnp.zeros_like(values[..., :1], dtype=bool),
                                (values[..., 1:-1] < values[..., :-2]) & (values[..., 1:-1] <= values[..., 2:]),
@@ -248,8 +271,8 @@ def unread_leasts(body: Subject, position, orientation, pixels: np.ndarray, view
         def value(dx, dy, dz):
             return sampled_route.evaluate(marched, p, *(o[i] + at * (dx, dy, dz)[i] for i in range(3)))
 
-        g, gu = jax.jvp(value, ray, tuple(jnp.broadcast_to(c, ray[0].shape) for c in du))
-        _, gv = jax.jvp(value, ray, tuple(jnp.broadcast_to(c, ray[0].shape) for c in dv))
+        g, gu = jax.jvp(value, ray, du)
+        _, gv = jax.jvp(value, ray, dv)
         return coverage.line(g, gu, gv).distance
 
     # A sub-cell wholly inside a read branch is the union's whatever else crosses it.
@@ -257,12 +280,17 @@ def unread_leasts(body: Subject, position, orientation, pixels: np.ndarray, view
     return int(np.sum(np.asarray(minimum & (lines < SUB_REACH) & unread & ~inside)))
 
 
+def _unverified_none(held, first) -> tuple:
+    """A planted form's pieces' unverified number where its corner sub-samples read one (``Form.at_corners``): none."""
+    return () if held.corner is None else (jnp.zeros_like(first),)
+
+
 def single_edge(monkeypatch) -> None:
     """The plant: the second branch dropped, so no pixel is a corner and each takes one straight edge."""
     def pieces(sampled, held):
         def made(p, o, d):
             first = sampled_route.evaluate(sampled, p, *(o[i] + held.ta * d[i] for i in range(3)))
-            return first, first + sampled.enclosing
+            return first, first + sampled.enclosing, *_unverified_none(held, first)
         return made
     monkeypatch.setattr(sampled_route, "pieces", pieces)
 
@@ -279,17 +307,49 @@ class enabled_x64:
 
 
 def lost_branch(found_leasts):
-    """The guard's control: the scheme's search with its second branch lost (the second piece read at the first's
-    point, as the two halves of ``_sampled._leasts``' list mis-sliced would read it)."""
+    """The guard's control: the scheme's reading with its second branch lost (the second piece read at the first's
+    point after the verification, as the two halves of ``_sampled._leasts``' list mis-sliced would read it)."""
     def leasts(sampled, held, p, o, d):
-        first, _, first_merged, second_merged = found_leasts(sampled, held, p, o, d)
-        return first, first, first_merged, second_merged
+        first, _, bound = found_leasts(sampled, held, p, o, d)
+        return first, first, bound
     return leasts
+
+
+def unread_second(found_gathered, found_verified):
+    """The flag's control: the search's second branch lost before the verification (its point the first's, as if
+    merged), and the verification left to find the leasts it reaches without reading them, so that each is in its
+    bound: what a reading the verification cannot mend looks like."""
+    def gathered(at, start, other, spacing, near, read):
+        point, merged = found_gathered(at, start, other, spacing, near, read)
+        half = point.shape[0] // 2
+        return point.at[half:].set(point[:half]), merged.at[half:].set(True)
+
+    def verified(*arguments, **written):
+        return found_verified(*arguments, **written, reads=False)
+    return gathered, verified
+
+
+def seen_bound(body: Subject, position, orientation, view, dtype) -> tuple[np.ndarray, np.ndarray]:
+    """The body's share of each pixel and each pixel's bound on its share where its reading is not verified (route 2's
+    ``Seen.unverified``), through ``_render._box_coverage`` as ``_render._seen`` takes it, in ``dtype``."""
+    rays = render_module.ray_table(view[0], view[1])
+    rotation, origin = render_module._local(body, jnp.asarray(position, dtype), jnp.asarray(orientation, dtype), dtype)
+    p = render_module._parameters(body, dtype)
+    o = render_module._into(rotation, tuple(rays.origin[i] - origin[i] for i in range(3)))
+    d = render_module._into(rotation, rays.direction)
+    du, dv = render_module._into(rotation, rays.along_u), render_module._into(rotation, rays.along_v)
+    marched = body.placed.sampled
+    held = sampled_route.march(marched, p, o, d, du)
+    bound: list = []
+    share = render_module._box_coverage(body, p, o, d, du, dv, coverage.CORNER_SAMPLES,
+                                        sampled_route.form(marched, held), bound)
+    return np.asarray(share, np.float64).reshape(-1), np.asarray(bound[0], np.float64).reshape(-1)
 
 
 #: The second plant's size (pixels): the tail round's defect, a branch's least on corner sub-rays misread so that the
 #: branch is read too far out, measured at 0.10 to 0.17 px (seeds 2052, 2129 and 2049); the least measured, every ray.
-MISREAD = 0.1
+#: ``CAMERA_PLANT_SIZE``, where set, takes its place: the ladder of sizes that finds the least caught on every draw.
+MISREAD = PLANT_SIZE or 0.1
 
 
 def misread(monkeypatch, width: int) -> None:
@@ -300,57 +360,104 @@ def misread(monkeypatch, width: int) -> None:
         made = found_pieces(sampled, held)
 
         def read_out(p, o, d):
-            first, second = made(p, o, d)
-            return first, second + MISREAD * 3e-3 / width
+            first, second, *unverified = made(p, o, d)
+            return first, second + MISREAD * 3e-3 / width, *unverified
         return read_out
     monkeypatch.setattr(sampled_route, "pieces", pieces)
 
 
+def held_truth(body: Subject, view, position, orientation, pixels, side: int, signs: int, key: str) -> np.ndarray:
+    """The sign-only truth on the pixels, kept in ``CORNER_TRUTH_CACHE`` (a folder) where it is set, so that a
+    probe's arms over one draw (clean, then each plant) make it once."""
+    folder = os.environ.get("CORNER_TRUTH_CACHE")
+    path = os.path.join(folder, f"{key}-{side}-{signs}.npz") if folder else None
+    if path and os.path.exists(path):
+        held = np.load(path)
+        if np.array_equal(held["pixels"], pixels):
+            return held["truth"]
+    found = sampled_truth.truth(body, view[0], view[1], position, orientation, pixels, side=side, signs=signs)
+    if path:
+        os.makedirs(folder, exist_ok=True)
+        np.savez(path, pixels=pixels, truth=found)
+    return found
+
+
 def corner_errors(seed: int, monkeypatch, width: int = 128, coil: str = "coil", side: int = TRUTH_SIDE,
-                  signs: int = 512, guard: dict | None = None) -> tuple[np.ndarray, int]:
+                  signs: int = 512, guard: dict | None = None, dtype: str = "float64") -> tuple[np.ndarray, int]:
     """Each two-branch pixel's error against the sign-only truth, at the pose drawn from ``seed``: the pixels and the
-    truth in float64, the frame in the run's dtype; ``guard``, where given, takes the count of the leasts on their
-    sub-rays the scheme does not read (``unread_leasts``) and the same count with the guard's control planted
-    (``lost_branch``)."""
+    truth in float64, the frame in the run's dtype (``dtype``). ``guard``, where given, takes the count of the leasts
+    on their sub-rays the scheme does not read (``unread_leasts``) and the same count with the guard's control planted
+    (``lost_branch``); the run flag (``corner_unverified``, its pixels, and ``corner_bound``, the largest bound); and
+    the flag's control (``unread_second``): the pixels it flags, its largest bound, and how far the most any pixel's
+    error lies past the line and its own bound (at most zero: the bound holds)."""
     view = across(width, field=3e-3)
     position, orientation = drawn_pose(seed)
     with enabled_x64():
         body = subject("helix", COILS[coil])
         pixels = two_branch_pixels(body, position, orientation, view)
-        truth = sampled_truth.truth(body, view[0], view[1], position, orientation, pixels, side=side, signs=signs)
+        truth = held_truth(body, view, position, orientation, pixels, side, signs, f"{coil}-{width}-{seed}")
         if guard is not None:
             guard["unread"] = unread_leasts(body, position, orientation, pixels, view)
             with pytest.MonkeyPatch.context() as control:
                 control.setattr(sampled_route, "_leasts", lost_branch(sampled_route._leasts))
                 guard["lost_branch"] = unread_leasts(body, position, orientation, pixels, view)
+    if guard is not None:
+        line = corner_line(coil, width, dtype)
+        with pytest.MonkeyPatch.context() as control:
+            gathered, verified = unread_second(sampled_route._gathered, sampled_route._verified)
+            control.setattr(sampled_route, "_gathered", gathered)
+            control.setattr(sampled_route, "_verified", verified)
+            share, bound = seen_bound(subject("helix", COILS[coil]), position, orientation, view,
+                                      jnp.float64 if dtype == "float64" else jnp.float32)
+        flagged = bound[pixels] > 0.0
+        guard["control_flagged"] = int(np.sum(flagged))
+        guard["control_bound"] = float(np.max(bound[pixels]))
+        guard["control_past"] = float(np.max(np.abs(share[pixels] - truth) - line - bound[pixels]))
+        # How tight the bound is: each flagged pixel's error as a share of its bound (one, the bound reached).
+        tight = np.abs(share[pixels] - truth)[flagged] / bound[pixels][flagged]
+        guard["control_tightness"] = [float(np.median(tight)), float(np.max(tight))] if flagged.any() else None
     if planted("single-edge"):
         single_edge(monkeypatch)
     if planted("misread"):
         misread(monkeypatch, width)
-    found = 1.0 - frame(subject("helix", COILS[coil]), position, orientation, view).reshape(-1)[pixels]
+    captured = render([subject("helix", COILS[coil])], view[0], view[1],
+                      {"body": (jnp.asarray(position), jnp.asarray(orientation))})
+    if guard is not None:
+        guard["flagged"] = int(captured.flags["corner_unverified:body"])
+        guard["flag_bound"] = float(captured.flags["corner_bound:body"])
+    found = 1.0 - np.asarray(captured.transmission, dtype=np.float64).reshape(-1)[pixels]
     return np.abs(found - truth), len(pixels)
 
 
 @pytest.mark.parametrize("coil", sorted(COILS))
 @pytest.mark.parametrize("width", [128, 256, 512])
 def test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth(width, coil, monkeypatch, dtype):
-    guard: dict = {}
-    errors, count = corner_errors(SEED, monkeypatch, width, coil, guard=guard)
+    # The guard and the flag judge the scheme as it is: a planted run is judged by the line alone.
+    guard: dict | None = None if PLANT else {}
+    errors, count = corner_errors(SEED, monkeypatch, width, coil, guard=guard, dtype=dtype)
     line = corner_line(coil, width, dtype)
     largest = float(errors.max()) if count else float("nan")
     print(f"\n{coil}, width {width}, {dtype}, seed {SEED}: {count} two-branch pixels, largest error {largest:.4f} "
-          f"(line {line:.4f}), mean {float(errors.mean()) if count else float('nan'):.4f}; {guard['unread']} leasts "
-          f"unread ({guard['lost_branch']} with the second branch lost)")
+          f"(line {line:.4f}), mean {float(errors.mean()) if count else float('nan'):.4f}")
+    if guard is not None:
+        print(f"{guard['unread']} leasts unread ({guard['lost_branch']} with the second branch lost); "
+              f"{guard['flagged']} pixels flagged corner_unverified (bound {guard['flag_bound']:.3g}); the flag's "
+              f"control {guard['control_flagged']} (bound {guard['control_bound']:.3g}, past it "
+              f"{guard['control_past']:.3g})")
     record = os.environ.get("CORNER_RECORD")
     if record:
         with open(record, "a") as handle:
-            handle.write(json.dumps({"seed": SEED, "coil": coil, "width": width, "dtype": dtype,
-                                     "plant": os.environ.get("CAMERA_PLANT", ""), "pixels": count,
-                                     "largest": largest, "line": line, **guard}) + "\n")
+            handle.write(json.dumps({"seed": SEED, "coil": coil, "width": width, "dtype": dtype, "plant": PLANT,
+                                     "size": MISREAD if planted("misread") else None, "pixels": count,
+                                     "largest": largest, "line": line, **(guard or {})}) + "\n")
     assert count > 0, "the drawn pose shows no crossing of the coil's turns: the gate is silent"
     assert largest <= line
+    if guard is None:
+        return
     assert guard["unread"] == 0, "a least that reaches a sub-cell is read by no piece: the line does not bound the pixel"
     assert guard["lost_branch"] > 0, "the guard does not see a lost branch at this draw: it cannot discriminate here"
+    assert guard["control_flagged"] > 0, "the flag does not see a reading the verification cannot mend at this draw"
+    assert guard["control_past"] <= 0.0, "a flagged pixel's error lies past the line and its bound: the bound fails"
 
 
 # -- the motion's derivative across a pixel -----------------------------------------------------------------------------
@@ -366,7 +473,7 @@ def held_and_least(monkeypatch) -> None:
             def at(t):
                 return sampled_route.evaluate(sampled, p, *(o[i] + t * d[i] for i in range(3)))
             first = at(held.ta)
-            return first, jnp.where(held.has2, at(held.tb), first + sampled.enclosing)
+            return first, jnp.where(held.has2, at(held.tb), first + sampled.enclosing), *_unverified_none(held, first)
         return made
 
     monkeypatch.setattr(sampled_route, "_covered_union", cover)
