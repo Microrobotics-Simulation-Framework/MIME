@@ -620,7 +620,7 @@ class RunResult:
         return {**stopped, **overridden, "format": MANIFEST_FORMAT, "version": MANIFEST_VERSION,
                 "experiment": self.layout.experiment,
                 "stamp": self.layout.stamp.record() if self.layout.stamp is not None else None,
-                "dt": self.dt, "clock": self.clock.name, "start_step": self.start_step, "steps": self.steps,
+                "precision": self.layout.precision, "dt": self.dt, "clock": self.clock.name, "start_step": self.start_step, "steps": self.steps,
                 "start": self.start_step * self.dt, "end": self.end_step * self.dt,
                 "every": self.every, "history": self.history is not None, "recorded": list(self.recorded),
                 "observations": observations, "flags": flags,
@@ -706,6 +706,7 @@ class RunResult:
                  *([f"STOPPED, {self.stopped.reason}: {self.steps} of the {self.stopped.steps_asked} steps asked "
                     f"for"] if self.stopped is not None else []),
                  *([self.overridden_text()] if self.overrides else []),
+                 *([f"precision: {self.layout.precision}"] if self.layout.precision else []),
                  *(ObservationOutputs(self, held).text() for held in self.layout.observations),
                  f"over the run, {flags_text(self.flags, meaning=True)}",
                  watches_text(self.watches),
@@ -900,8 +901,10 @@ def layout_of(manifest: Mapping[str, Any]) -> Layout:
                              if f.get("limits") else None)
                   for f in cast(list[dict[str, Any]], manifest["flags"]))
     stamp = manifest.get("stamp")
+    precision = manifest.get("precision")
     return Layout(str(manifest["experiment"]), float(manifest["dt"]), tuple(observations), flags,
-                  Stamp.from_record(cast(Mapping[str, Any], stamp)) if isinstance(stamp, Mapping) else None)
+                  Stamp.from_record(cast(Mapping[str, Any], stamp)) if isinstance(stamp, Mapping) else None,
+                  str(precision) if isinstance(precision, str) else None)
 
 
 __all__ = ["MANIFEST_FORMAT", "MANIFEST_VERSION", "NPZ_MANIFEST", "REPORT_FORMAT", "RUN_MANIFEST", "RUN_REPORT",

@@ -142,6 +142,20 @@ line names is ideal: nothing was built for it. Empty where no port is declared.
 Every mass mounted on a chain, with what carries it (a rigid body welded on a link, a spinner's rotor, nothing on a prescribed
 motion), and a rotor's worst case across its axis and its kick on the joints of the segment that carries it.
 
+## `precision`
+
+The floating-point precision the build was made in, `float32` or `float64`: JAX computes in float32 unless `jax_enable_x64` is on
+(the `JAX_ENABLE_X64` variable), and the README quickstart runs in float32. A result states it too, and a run folder's `outputs.json` records
+it (`precision`). If a number depends on the precision, run both and compare; a saved experiment's lock records the precision it
+was saved in, which `mime run` applies.
+
+## `matmul_warning`
+
+Set when the build ran on a GPU whose default matmul precision is not `highest`, and says so (the build also warns,
+`MatmulPrecisionReduced`). Reduced-precision (TF32) matmuls silently corrupt low-magnitude float32 physics (an earlier line's drag was off by
+some per cent). Set `JAX_DEFAULT_MATMUL_PRECISION=highest` before JAX starts. `None` on a CPU, and on a GPU at the highest
+precision. The real GPU path is not tested in CI.
+
 ## `profile`
 
 What the experiment's profile made of it: the stamp every output carries, the items pending and listed, the defaults taken,
