@@ -1021,7 +1021,27 @@ def run_layout(plans: PlanSet, graph: GraphManager | None = None) -> Layout:
     flags += port_flags(plans)
     if graph is not None:
         observations += port_traffic(plans, graph, observations)
+        flags += controller_flags(plans, graph)
     return Layout(plans.settings.experiment, plans.dt, tuple(observations), tuple(flags), plans.profile.stamp())
+
+
+def controller_flags(plans: PlanSet, graph: GraphManager) -> list[FlagLayout]:
+    """The controller's flags (``mime.nodes.control._flags``), each on the node that holds it: the controller's own
+    inside the compiled step, its flag holder (``<controller>.flags``) as a callback. None where it declares none."""
+    from mime.nodes.control import HOLDER, PREFIX, ControllerNode
+
+    controller = plans.controller
+    if controller is None:
+        return []
+    found: list[FlagLayout] = []
+    for name in (controller.owner, f"{controller.owner}.{HOLDER}"):
+        if name not in graph.node_names:
+            continue
+        node = graph.get_node(name)
+        if isinstance(node, ControllerNode):
+            found += [FlagLayout(controller.owner, controller.registered.cls.label(), name, f"{PREFIX}{flag.field}",
+                                 flag.meaning, name=flag.field, warns=flag.warns) for flag in node.declared_flags]
+    return found
 
 
 def port_traffic(plans: PlanSet, graph: GraphManager, observations: Sequence[ObservationLayout]) -> \

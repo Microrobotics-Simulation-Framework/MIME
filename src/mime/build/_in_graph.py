@@ -42,7 +42,7 @@ from mime.build._maddening import initial_fields, inputs, live_inputs, make_jaxp
 from mime.build._probes import host_callbacks
 from mime.build._refusals import MIME_DEFECT, Explained, Refusal, RefusalClass, entry_defect
 from mime.core import jnp
-from mime.nodes.control import ControllerNode, DelayNode, Step
+from mime.nodes.control import HOLDER, PREFIX, ControllerNode, DelayNode, Step, declared_flags, holder_step, raising
 from mime.nodes.control._controller import BELIEVED_NAME
 
 #: The prefix of a believed number among the names a law is made again from (``mime.control._models.BELIEVED``).
@@ -237,8 +237,10 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float, built: Mapping[s
     step = inlined(law.step)
     label = plan.registered.cls.label()
     given = {name: jnp.zeros_like(value) for name, value in reads.items()}
+    flags = declared_flags(plan.registered.cls, getattr(law, "flags", ()))
     try:
-        problems, traced = trace_problems(step, start, given, held)
+        with raising(flag.field for flag in flags):
+            problems, traced = trace_problems(step, start, given, held)
     except TracedBranch as traced:
         return [], [], [traced_branch_refusal(label, traced.error, law.step, plan.registered.cls)]
     if problems:
@@ -290,7 +292,7 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float, built: Mapping[s
         made = node_remake if names else None
     node = ControllerNode(owner, dt * plan.period, step=step, controller=plan.registered.cls.label(),
                           reads={read.label: (read.units, tuple(reads[read.label].shape)) for read in plan.reads},
-                          initial_state=start, initial_writes=held, settings=leaves, remake=made)
+                          initial_state=start, initial_writes=held, settings=leaves, remake=made, flags=flags)
     edges = [EdgeDecl(owner, (read.node, read.field), (owner, f"read_{read.label}"), False, read.units, seq, STATE)
              for seq, read in enumerate(plan.reads)]
     nodes: list[SimulationNode] = [node]
@@ -305,6 +307,22 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float, built: Mapping[s
     edges += [EdgeDecl(owner, sources[write.label], (write.node, write.field), False, write.units, len(edges) + seq,
                        COMMAND) for seq, write in enumerate(plan.writes)]
     return nodes, edges, []
+
+
+def flag_holder(plan: ControllerPlan, law: Any, dt: float) -> ControllerNode | None:
+    """A callback's flag holder, ``<controller>.flags``, where the controller declares flags: a node whose reads
+    ``flag_<name>`` the callback feeds at each tick, and whose step raises them again, so that the run counts them as
+    it counts a law's (``mime.nodes.control._flags``). ``None`` inside the compiled step, where the controller's own
+    node holds them, and where it declares none."""
+    if plan.mode is not Mode.CALLBACK:
+        return None
+    flags = declared_flags(plan.registered.cls, getattr(law, "flags", ()))
+    if not flags:
+        return None
+    names = [flag.field for flag in flags]
+    return ControllerNode(f"{plan.owner}.{HOLDER}", dt, step=holder_step(names), controller=plan.registered.cls.label(),
+                          reads={f"{PREFIX}{name}": ("1", ()) for name in names}, initial_state={},
+                          initial_writes={}, flags=flags)
 
 
 def in_graph_order(controller: Sequence[str], physics: Sequence[str], edges: Sequence[EdgeDecl],
@@ -370,5 +388,5 @@ def _reached(owner: str, lags: Sequence[EdgeLag]) -> set[str]:
     return reached
 
 
-__all__ = ["controller_nodes", "in_graph_order", "inlined", "nested_program", "order_refusals", "trace_problems"]
+__all__ = ["controller_nodes", "flag_holder", "in_graph_order", "inlined", "nested_program", "order_refusals", "trace_problems"]
 

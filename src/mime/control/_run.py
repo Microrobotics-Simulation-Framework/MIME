@@ -12,17 +12,19 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast, override
 
+import jax
 import numpy as np
 from maddening import GraphManager
 
 from mime.build import ControllerPlan, Mode, PlanSet
-from mime.build._in_graph import step_place
+from mime.build._in_graph import inlined, step_place
 from mime.build._refusals import ArgumentRefused, MimeError, Refusal, RefusalClass, RunFailed, entry_defect, \
     standing_for
 from mime.build._maddening import FlagTally, FlagTest, Fed, NodeFields, fed_inputs, inputs, node_state, ready, \
     scan_chunk, scan_chunk_tallied, scan_chunk_with_history, with_refreshed_held
 from mime.core import jnp
-from mime.registry import BuildContext, ControlLaw, Controller
+from mime.nodes.control import HOLDER, PREFIX, declared_flags, flag_values, raising
+from mime.registry import BuildContext, ControlLaw, Controller, Flag
 
 type History = dict[str, dict[str, np.ndarray]]
 type Arrays = Mapping[str, Any]
@@ -181,6 +183,10 @@ class _MadeLaw(ControlLaw):
 
     believed: tuple[str, ...] = ()
     slewed: tuple[str, ...] = ()
+    #: One line per allocation the law made (``ctx.allocator``), its path and why.
+    paths: tuple[str, ...] = ()
+    #: The flags its calls declared as it was made (the iterative allocation's), beside its class's own.
+    flags: tuple[Flag, ...] = ()
 
 
 def make_law(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusal]]:
@@ -211,7 +217,8 @@ def law_and_models(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusa
     problems: list[str | Refusal] = list(_write_problems(plan, law.held, "its held writes"))
     read = tuple(context.control.read)
     if read:
-        law = _MadeLaw(law.state, law.held, law.step, believed=read, slewed=tuple(context.control.slewed))
+        law = _MadeLaw(law.state, law.held, law.step, believed=read, slewed=tuple(context.control.slewed),
+                       paths=tuple(context.control.paths), flags=tuple(context.control.flags))
     return (law if not problems else None), problems, tuple(sorted(models.read))
 
 
@@ -247,6 +254,13 @@ class Callback:
         self.state: Arrays = law.state
         self.dtypes = {write.label: inputs(graph.get_node(write.node))[write.field].dtype for write in plan.writes}
         self.in_force = self.fed(law.held)
+        #: Its flags (``mime.nodes.control._flags``) by name, and their holder's inputs as they stand: each the value
+        #: its step raised at its last tick, from that tick (zero before the first).
+        self.flags = tuple(flag.field for flag in declared_flags(plan.registered.cls, getattr(law, "flags", ())))
+        holder = f"{plan.owner}.{HOLDER}"
+        self.raised: Fed = {holder: {f"read_{PREFIX}{name}": jnp.zeros((), dtype=inputs(graph.get_node(holder))[
+            f"read_{PREFIX}{name}"].dtype) for name in self.flags}} if self.flags else {}
+        self._carrier: Callable[..., Any] | None = None
         self.waiting: deque[tuple[int, Fed]] = deque()
         self.ticks = 0
         self.dt = dt
@@ -268,8 +282,13 @@ class Callback:
         writes start to act ``latency`` steps later."""
         reads = {read.label: node_state(graph, read.node)[read.field] for read in self.plan.reads}
         label = self.plan.registered.cls.label()
+        # A step that raises flags is called through the function it compiles, where it compiles one (a value raised
+        # inside a compiled function does not leave it).
         try:
-            self.state, writes = self.law.step(self.state, {**reads, **self.live} if self.live else reads)
+            if self.flags:
+                self.state, writes, raised = self._flagged()(self.state, {**reads, **self.live} if self.live else reads)
+            else:
+                self.state, writes = self.law.step(self.state, {**reads, **self.live} if self.live else reads)
         except Exception as error:
             from mime.errors import first_lines, script_place
 
@@ -296,13 +315,35 @@ class Callback:
                 why="each write is fed to its command as an input of fixed shape",
                 where=step_place(self.law.step))])
         self.waiting.append((step + self.plan.latency, self.fed(writes)))
+        if self.flags:
+            self.raised = {holder: {f"read_{field}": value for field, value in raised.items()}
+                           for holder in self.raised}
         self.ticks += 1
 
+    def _flagged(self) -> Callable[[Arrays, Arrays], tuple[Arrays, Arrays, dict[str, Any]]]:
+        """The law's step with the flags it raises carried out beside its state and writes, by node field: compiled
+        once where the law compiled its step (``jax.jit``), through the function it compiles, so that a flag raised
+        inside leaves it; called as it is otherwise, where the step may be any Python."""
+        if self._carrier is None:
+            holder = f"{self.plan.owner}.{HOLDER}"
+            dtype = next(iter(self.raised[holder].values())).dtype
+            compiled = hasattr(self.law.step, "lower")
+            step = inlined(self.law.step) if compiled else self.law.step
+
+            def carried(state: Arrays, reads: Arrays) -> tuple[Arrays, Arrays, dict[str, Any]]:
+                with raising(self.flags) as raised:
+                    after, writes = step(state, reads)
+                return after, writes, flag_values(raised, dtype)
+
+            self._carrier = cast(Any, jax).jit(carried) if compiled else carried
+        return cast(Callable[[Arrays, Arrays], tuple[Arrays, Arrays, dict[str, Any]]], self._carrier)
+
     def at(self, step: int) -> Fed:
-        """The writes in force at step ``step``: the last whose step has come, or those held before the first."""
+        """The writes in force at step ``step``, the last whose step has come or those held before the first, and the
+        flags its last tick raised (the controller's latency delays its writes, not its flags)."""
         while self.waiting and self.waiting[0][0] <= step:
             self.in_force = self.waiting.popleft()[1]
-        return self.in_force
+        return {**self.in_force, **self.raised} if self.raised else self.in_force
 
     def next_change(self, step: int) -> int | None:
         """The first step after ``step`` at which other writes start to act, if any wait."""

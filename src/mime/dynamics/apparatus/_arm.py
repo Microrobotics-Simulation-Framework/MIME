@@ -12,10 +12,10 @@ from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast, override
 import jax
 import numpy as np
 
-from mime.core import as_run_array, jnp, switch
+from mime.core import as_run_array, jnp, quaternion, switch
 from mime.core.multibody import ROOT, ClosedChainRefused, DescriptionReading, DescriptionRefused, \
     DescriptionWarning, InvalidDescription, JointKind, MultibodyTree, Payload, Transmission, articulate, compose, \
-    forward_kinematics, frame_motions, graft, mass_matrix, read_urdf, read_urdf_bytes, with_armatures
+    forward_kinematics, frame_motions, graft, mass_matrix, read_urdf, read_urdf_bytes, rotation_vector, with_armatures
 from mime.dynamics.apparatus._actuators import actuator
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import SWEEPS, DynamicArmNode, KinematicArmNode, kinematic_articulation
@@ -423,10 +423,13 @@ class Arm(ChainSegment):
         commands = {**({"joint_positions": Signal("1", (len(revolute),))} if revolute else {}),
                     **({"joint_displacements": Signal("m", (len(prismatic),))} if prismatic else {})}
         mounted = ctx.mount is not None
-        frames = len(structure["frame_names"])
+        names = tuple(structure["frame_names"])
+        each = {**{f"{name}.position": Signal("m", (3,)) for name in names},
+                **{f"{name}.orientation": Signal("1", (4,)) for name in names}}
         return ForwardModel(ctx.id, commands, {"mount_pose": Signal("m; 1", (7,))} if mounted else {},
-                            {"frame_poses": Signal("m; 1", (frames, 7))}, theta, _THETA_UNITS,
-                            partial(_arm_model, structure=structure, kinds=(revolute, prismatic), mounted=mounted))
+                            {"frame_poses": Signal("m; 1", (len(names), 7)), **each}, theta, _THETA_UNITS,
+                            partial(_arm_model, structure=structure, kinds=(revolute, prismatic), mounted=mounted),
+                            misses={f"{name}.orientation": orientation_miss for name in names})
 
     @override
     def calibration_instance(self) -> CalibrationInstance | None:
@@ -537,7 +540,16 @@ def _arm_model(u: Any, x: Any, theta: Any, *, structure: Mapping[str, Any], kind
     placement = jnp.asarray(theta["placement"], dtype=dtype)
     base = compose(jnp.asarray(x["mount_pose"], dtype=dtype), placement) if mounted else placement
     local = forward_kinematics(kinematic_articulation(structure, theta, dtype), q)
-    return {"frame_poses": jax.vmap(compose, in_axes=(None, 0))(base, local)}
+    poses = jax.vmap(compose, in_axes=(None, 0))(base, local)
+    return {"frame_poses": poses, **{f"{name}.position": poses[i, :3] for i, name in enumerate(structure["frame_names"])},
+            **{f"{name}.orientation": poses[i, 3:] for i, name in enumerate(structure["frame_names"])}}
+
+
+def orientation_miss(made: Any, wanted: Any, owner: str) -> Any:
+    """How far a frame's orientation ``made`` is from ``wanted`` (unit quaternions): the rotation vector, in radians,
+    of the turn that carries the wanted orientation onto the one made, the shorter way round (its two switches the
+    caller's ``owner``). Zero where they are one orientation, whichever sign either quaternion has."""
+    return rotation_vector(quaternion.multiply(made, quaternion.conjugate(wanted)), owner=owner)
 
 
 def _servo_moved(rung: str) -> NoReturn:

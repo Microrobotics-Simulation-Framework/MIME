@@ -1,0 +1,97 @@
+{
+  "written": "2026-11-15, committed before the pilot's probe ran (the commit that adds this file is the timestamp): the iterative allocation and its implicit derivative on the AR4's pose and on six coils, the apparatus lane's AP4 pilot",
+  "phase": "apparatus lane AP4, the pilot (design v1 section 11: the implicit derivative on the arm's pose and a six-coil draw, predictions first)",
+  "labels": "the builder (Opus) from the design and from short local runs on the laptop (correctness only, never timing; the probe's numbers are the runner's)",
+  "seen_before": [
+    "a first local run of the arm part, 3 draws, float64, with Gauss-Newton steps alone and Armijo's test on the objective's difference: every unreachable target (1.5 m beyond the arm's reach, effort 20 rad) ended unconverged after 37 to 50 iterations, stationarity 2e-9 to 3e-8 (the square root of eps that the objective's own rounding sets), and its derivative 2e-3 to 4e-2 off central differences; the solve was changed before this file: Newton's step on the exact Hessian where it is positive definite on the free commands, the Gauss-Newton one where it is not, and the decrease measured as a difference of squares",
+    "after the change, 2 draws, float64: reachable targets converged in 6 iterations, stationarity 2e-16, the frame within 9e-16 m of its target, the derivative within 3e-10 of central differences (h 1e-3 and 5e-4 of 1 mm and 10 mrad, Richardson), jvp against vjp 2e-16, the planted Gauss-Newton derivative within 4e-14 of the exact one (the residual is zero there); unreachable targets converged in 10 to 19 iterations, stationarity at most 1.6e-11, the planted Gauss-Newton derivative 2.8 to 3.4 of the derivative's scale off, the derivative 4e-6 to 5e-4 off central differences at those steps (the reference solves stall near 1e-11, so steps that small are noise-limited: the probe takes 0.2 and 0.1, a 0.2 mm and 2 mrad move)",
+    "the coils part, 4 draws, float64: converged, commands within 1.2e-15 of the limit of the exact path's, the objective equal, the implicit derivative within 6.4e-16 of the exact path's own derivative and 3.2e-11 of central differences of the exact path, jvp against vjp 2.7e-17"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU; a GitHub runner, 4 vCPU, one process an arm",
+    "sizes_and_parameters": "the arm: the AR4 of A0 (6 revolute joints, bounds its URDF limits), the objective link_6's position over 1 mm and its orientation's rotation vector over 10 mrad, 6 rows; reachable targets the frame's pose at joints drawn in the central 80 % of each range, unregularised, from a start 0.15 rad (normal) away; unreachable ones the same target moved 1.5 m in a drawn direction, regularised towards the start at 20 rad. The coils: CardioMag's and OctoMag's first six coils (alternating), at a point drawn in the central half of the declared region, field and gradient (8 rows) over 10 mT and 1 T/m, limits 5 to 50 A, wanted of a drawn direction and a size log-uniform from 0.1 to 4 of what the limit reaches, from zero currents; the tolerance 1e-10 (float64) and 1e-5 (float32), at most 50 iterations",
+    "seeds_and_draws": "numpy's default generator by arm: arm_f64_a seed 0 and arm_f64_b seed 1, 60 draws each; arm_f32 seed 2, 200 draws; coils_f64 seed 3, 200 draws; coils_f32 seed 4, 400 draws"
+  },
+  "gate_1_arm_reachable": {
+    "claim": "on reachable poses the iterative solve converges and puts the frame on its target, and its implicit derivative is central differences of converged reference solves",
+    "kind": "bounds",
+    "case": "probe/pilot.py --part arm (arms arm_f64_a, arm_f64_b)",
+    "prediction": {
+      "value": "every draw converged, at most 15 iterations, the frame within 1e-9 m; the derivative within 1e-6 of central differences (relative to the largest entry), jvp against vjp within 1e-12",
+      "band": [0, 1e-6],
+      "unit": "share of the derivative's largest entry",
+      "basis": "measured-before (2 local draws, 3e-10) and derived: Richardson's truncation at a 0.2 mm move is about (2e-4 / 0.3 m)^4, the reference solves' noise about 1e-11 over the move",
+      "why": "Newton's step on a definite Hessian converges quadratically from a start 0.15 rad away"
+    },
+    "metric": "max |IFT - CD| / max |CD| over the 6 x 6 derivative in the target's position (1 mm units) and its turn (10 mrad units)",
+    "control": {
+      "plant": "the root's gradient with its Jacobian held (the Gauss-Newton Hessian): with a residual of zero it is the exact one, so this gate cannot see it (gate 2 can)",
+      "expected_rate": "n/a here"
+    },
+    "if_wrong": "a derivative off central differences at a converged reachable point is a defect of the root's tangent system (its active rows, its equilibration) and blocks AP4a",
+    "cannot_discriminate_if": "the active set moves between the reference solves (counted as skipped, never dropped silently)"
+  },
+  "gate_2_arm_unreachable": {
+    "claim": "on unreachable targets (residual far from zero) the solve converges, and the planted Gauss-Newton Hessian's derivative is far from the exact one on every draw, so the derivative test catches it",
+    "kind": "bounds",
+    "case": "probe/pilot.py --part arm (arms arm_f64_a, arm_f64_b)",
+    "prediction": {
+      "value": "every draw converged (stationarity at most 1e-10), at most 40 iterations; the derivative within 1e-5 of central differences; the Gauss-Newton derivative at least 0.1 of the derivative's scale off on every draw",
+      "band": [0.1, null],
+      "unit": "share of the derivative's largest entry, for the plant's distance",
+      "basis": "measured-before (2 local draws: 2.8 to 3.4) and derived: the residual's curvature term, sum r_i grad^2 r_i, is of the order of J^T J where the miss (1.5 m) is of the order of the arm (0.5 m)",
+      "why": "the exact Hessian's second-order term is what the Gauss-Newton one drops"
+    },
+    "metric": "min over draws of max |GN - IFT| / max |IFT|",
+    "control": {
+      "plant": "the Gauss-Newton Hessian, measured here as a distance; its detection rate is the derivative test's, measured in AP4a",
+      "expected_rate": "every draw above 0.1"
+    },
+    "if_wrong": "a draw below 0.1 means the unreachable draws do not test the second-order term on every draw: the derivative test's draws then need a larger miss"
+  },
+  "gate_3_float32_floor": {
+    "claim": "float32's reachable floor of the stationarity, the solve run with its tolerance at zero until it stagnates, is below the declared 1e-5 on reachable and unreachable targets alike",
+    "kind": "bounds",
+    "case": "probe/pilot.py --part arm --dtype float32 (arm_f32), --part coils --dtype float32 (coils_f32)",
+    "prediction": {
+      "value": "the floor at most 1e-6 on 95 % of draws and at most 5e-6 on every one; the solve at its declared tolerance converged on every draw",
+      "band": [0, 5e-6],
+      "unit": "stationarity over the problem's size",
+      "basis": "guess, from eps32 = 1.2e-7 times the square root of the rows (2.8) and a margin of ten",
+      "why": "the projected gradient's rounding is eps times the rows' miss and what the commands make, which the size holds"
+    },
+    "metric": "floor_stationarity and converged per draw",
+    "control": {
+      "plant": "none: a measurement of the floor",
+      "expected_rate": "n/a"
+    },
+    "if_wrong": "a floor above 1e-5 on some draws means the float32 tolerance is below what float32 reaches there: it is raised to above the measured floor and the change recorded, never left to flag converged solves"
+  },
+  "gate_4_coils_against_the_exact_path": {
+    "claim": "on six coils, where both paths apply, the iterative path's commands are the exact path's, and its implicit derivative is the exact path's derivative (the selected set's solve)",
+    "kind": "equality to rounding",
+    "case": "probe/pilot.py --part coils (coils_f64, coils_f32)",
+    "prediction": {
+      "value": "float64: commands within 1e-9 of the limit, the derivative within 1e-9 of its scale of the exact path's, every draw converged in at most 12 iterations; float32: commands within 1e-3 of the limit, every draw converged",
+      "band": [0, 1e-9],
+      "unit": "share of the limit (commands), of the derivative's largest entry (derivative)",
+      "basis": "measured-before (4 local draws: 1.2e-15, 6.4e-16) and derived: one Newton step on the active set is the exact path's least squares",
+      "why": "on an affine model the problem is a convex quadratic, whose minimiser is the exact path's selected set's"
+    },
+    "metric": "commands_vs_exact_of_limit, ift_vs_exact_derivative",
+    "control": {
+      "plant": "none in the pilot: the agreement test's plants (an early stop, a loosened tolerance) are AP4a's",
+      "expected_rate": "n/a"
+    },
+    "if_wrong": "a difference past the line on a converged draw is a defect of the active set's identification"
+  },
+  "costs": {
+    "prediction": "informative only (a runner, not a timing claim): a converged solve of the arm in 2 to 20 ms and of six coils in 1 to 10 ms, compiled",
+    "measured_at": "nowhere yet; the per-step cost is AP4a's, through the real node"
+  },
+  "outcomes": null
+}

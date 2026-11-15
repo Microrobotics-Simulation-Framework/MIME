@@ -65,6 +65,7 @@ from mime.fields._solved import ExchangeFrame
 from mime.core.multibody import Inertial, MultibodyTree, Payload, RigidTransform
 from mime.core.multibody._tree import as_vector3, rotation_matrix
 from mime.core.multibody._urdf import ISSUES
+from mime.nodes.control import HOLDER
 from mime.registry import (
     CapabilityRecord,
     ChainSegment,
@@ -602,6 +603,8 @@ class PlanSet:
                 return plan.owner
         if any(node in stage.node_names() for stage in self.stages):
             return node
+        if self.controller is not None and node == f"{self.controller.owner}.{HOLDER}":
+            return self.controller.owner  # a callback's flag holder, which the build adds where it declares flags
         return None
 
     def stage_names(self) -> list[str]:
