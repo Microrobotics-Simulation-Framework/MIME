@@ -25,7 +25,23 @@ union of the two branches' half-planes (``coverage.union_covered``), each branch
   (``gamma`` from the geometry, the sub-ray at most 0.53 px from its pixel's centre): its largest value error,
   ``refined_residual``, times ``2 sqrt(2)`` (two branches, each at most a diagonal long in the pixel); under 1e-4, taken
   as 1e-4. (Written first for the parabola's step alone; the quartic was added for the derivative before any draw of
-  the confirmation, its residual smaller, and the term, 1e-4, unchanged.)
+  the confirmation, its residual smaller, and the term, 1e-4, unchanged.) **Amended after the confirmation failed
+  (run 43642088699), the line unchanged:** the scheme broke this term's premise. At a notch a sub-ray's least lies up
+  to several spacings from its pixel's held point (the branch's foot runs ``(rho + r) / rho`` as fast along the
+  filament as the sub-ray across the image, and the held point is the march's parabola, up to 0.66 spacing off the
+  centre ray's least), and between the two branches' basins the five values are not convex, so the parabola and the
+  quartic did not move: seeds 2052, 2129 (128 px) and 2049 (256 px) read a branch 0.10 to 0.17 px too far out. The
+  scheme now descends at the march's spacing to a sample lower than both its neighbours (``_sampled.LEAST_REACH``
+  moves; a branch whose descent runs its reach towards the other has merged into the other's basin and takes its
+  piece), then takes the quartic about it, or the least of the inner three where lower than the quartic's own value.
+  On the straight filament the profile is symmetric about its least, so the descent's lowest sample is within half
+  a spacing of it: ``refined_residual`` scans the held point there; under 1.1e-5 px, the term stays 1e-4. The gate
+  counts the judged pixels' sub-ray branches whose descent ran its reach away from the other branch (its premise:
+  none). **Not covered:** a branch whose least lies at a kink of its profile, where the arc's nearest point passes
+  its end onto the cap (seed 2152, coil2 at 512 px: the quartic stepped the wrong way, 0.04 px off): the scan of
+  notches below is of an endless helix's apexes, and this term's straight filament is smooth. The guard reads the
+  inner three's least there, within half a spacing of the least, so a value error up to ``f'' h^2 / 8``
+  (``f'' ~ 1 / r`` on the cap), which this script does not bound.
 - *the truth's floor*: the sign-only truth at ``side^2`` jittered samples a pixel is a sum of independent terms, one a
   cell its outline crosses, each of range ``1 / side^2``; at most ``2 (sqrt(2) side pi/2 + 1)`` cells (two branches,
   each at most a quarter circle long); Hoeffding's bound at a probability of ``4e-8`` a pixel (a union bound over about
@@ -61,8 +77,6 @@ FIELD, DISTANCE, WIDTHS = 3e-3, 0.1, (128, 256, 512)
 CORNER_SAMPLES = 4
 TRUTH_SIDE, TRUTH_SIGNS, PER_PIXEL_PROBABILITY = 64, 512, 4e-8
 BETA_DEGREES = np.round(np.arange(-10.6, 10.61, 0.2), 2)
-#: A sub-ray's largest offset from its pixel's centre, in pixels (a corner sub-sample's centre, (3/8, 3/8)).
-SUB_RAY_OFFSET = 0.375 * math.sqrt(2.0)
 
 
 def notches(radius: float, pitch: float, filament: float, betas=BETA_DEGREES) -> list[dict]:
@@ -107,18 +121,18 @@ def notches(radius: float, pitch: float, filament: float, betas=BETA_DEGREES) ->
 
 
 def refined_residual(gamma_degrees: float, filament: float, pixel: float, spacing: float) -> float:
-    """The largest value error (m) at a sub-ray's refined point, on a straight filament at ``gamma`` to the ray: the
-    sub-ray's least at most ``SUB_RAY_OFFSET`` px from the pixel's centre's along the image, the edge within a
-    sub-cell's reach; the refinement as ``_sampled.pieces`` takes it (the parabola's least through the outer three of
-    five values half a spacing apart, then two Newton steps on their quartic, each at most half a spacing)."""
+    """The largest value error (m) at a sub-ray's refined point, on a straight filament at ``gamma`` to the ray, the
+    edge within a sub-cell's reach; the refinement as ``_sampled.pieces`` takes it: the descent's lowest sample, within
+    half a spacing of the least on this symmetric profile, then the parabola's least through the outer three of five
+    values half a spacing apart about it and two Newton steps on their quartic, each at most half a spacing, or the
+    inner three's least where it is lower than the quartic's own value. ``gamma`` is kept for the profile's shape."""
     gamma = math.radians(gamma_degrees)
     sine = math.sin(gamma)
-    reach = SUB_RAY_OFFSET * pixel * math.cos(gamma) / max(sine, 1e-12)
     worst = 0.0
     for b in filament + np.linspace(-0.18, 0.18, 7) * pixel:
         def f(t: float) -> float:
             return math.sqrt(b * b + (sine * t) ** 2) - filament
-        for held in np.linspace(-reach, reach, 401):
+        for held in np.linspace(-0.5 * spacing, 0.5 * spacing, 401):
             fl2, fl1, f0, fh1, fh2 = (f(held + 0.5 * k * spacing) for k in (-2, -1, 0, 1, 2))
             curvature = fl2 - 2.0 * f0 + fh2
             y = min(max((fl2 - fh2) / curvature, -2.0), 2.0) if curvature > 0.0 else 0.0
@@ -131,6 +145,8 @@ def refined_residual(gamma_degrees: float, filament: float, pixel: float, spacin
                 turn = 2 * c2 + y * (6 * c3 + y * 12 * c4)
                 if turn > 0.0:
                     y = min(max(y + min(max(-slope / turn, -1.0), 1.0), -2.0), 2.0)
+            if f0 + y * (c1 + y * (c2 + y * (c3 + y * c4))) > min(f0, fl1, fh1):
+                y = 0.0 if f0 <= min(fl1, fh1) else (-1.0 if fl1 < fh1 else 1.0)
             worst = max(worst, f(held + 0.5 * y * spacing) - f(0.0))
     return worst
 

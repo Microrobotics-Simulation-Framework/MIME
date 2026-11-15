@@ -91,7 +91,7 @@ DISTORTION_BOX = 0.3
 #: The flags a frame raises, each a state field of the node holding, on a frame step, the number of subjects (or pixels,
 #: or the share of saturated ones) it raised for in that frame, and zero at every other step.
 FLAG_FIELDS = ("beyond_distortion", "saturated", "outside_parent", "small_silhouette", "window_overflow", "behind",
-               "ghosting", "thin_cap")
+               "ghosting", "thin_cap", "corner_unverified", "corner_bound")
 #: The static structure of a camera fixed in the world, a leaf (:meth:`CameraNode.run_constants`): the ray table's origin,
 #: its ten planes (the direction, its derivatives along u and v, whether a pixel lies beyond the distortion), the standing
 #: subjects' transmission and the static flags in their names' order, packed flat (:func:`packed`).
@@ -157,6 +157,8 @@ class CameraState(TypedDict, closed=True):
     behind: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     ghosting: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     thin_cap: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    corner_unverified: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    corner_bound: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
 class CameraInputs(TypedDict, extra_items=ReadOnly[Float[Array, "7"]]):
