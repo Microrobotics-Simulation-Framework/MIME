@@ -17,8 +17,9 @@ straight edge misses a quarter of the pixel), and route 1's corner sub-samples t
 union of the two branches' half-planes, each branch read at its sub-ray's own least: the descent from its pixel's
 held point at the march's spacing to a sample lower than both its neighbours (at a notch the least moves along the
 sub-ray several spacings, and between the basins the held values are not convex), then the quartic's least about it.
-Where there is no second minimum, the second piece is the first moved out by the enclosing radius, which never
-reaches the pixel.
+The descent runs only on the pieces it moves, gathered (a few per cent of a frame's): every other piece's result is
+the quartic about its held point, which is the descent's there. Where there is no second minimum, the second piece is
+the first moved out by the enclosing radius, which never reaches the pixel.
 
 **The chord** (for an attenuating body) is the samples' sign changes, each refined by linear interpolation: a body
 thinner than the samples' spacing along a ray can be missed in its chord, never in its coverage. The interval is held
@@ -66,9 +67,15 @@ LEAST_STEPS = 2
 #: runs along the filament ``(rho + r) / rho`` times as fast as the sub-ray moves across the image (``r`` the
 #: filament's radius, ``rho`` its outline's), and between the two branches' basins the held values are not convex.
 LEAST_REACH = 6
-#: Evaluations a ray costs besides its samples: each of the two pieces' held values (the descent's three and its
-#: ``LEAST_REACH`` moves, and the quartic's two between) and its value and its line's two derivatives.
-PIECE_EVALUATIONS = 2 * (LEAST_REACH + 5) + 2 * 3
+#: The share of a frame's pieces (two a ray) whose descents run together, as many at a time: a piece's descent moves
+#: only where its held point is not the lowest of its three samples a spacing apart (under 3.4 % of the pieces of the
+#: coils' frames camera PR 5a measured), and every other piece holds the quartic about its own point, which is what
+#: the descent gives it. A buffer's size, not a bound: a frame with more takes more turns of it.
+DESCENT_SHARE = 0.125
+#: Evaluations a ray costs besides its samples: each of the two pieces' held values (the three a spacing apart and the
+#: quartic's two between), its share of the descents' (``LEAST_REACH`` moves and the quartic's two about where it
+#: stops), and its value and its line's two derivatives.
+PIECE_EVALUATIONS = 2 * (5 + 3) + 2 * DESCENT_SHARE * (LEAST_REACH + 2)
 #: Evaluations a ray costs on a frame whose corner sub-samples run: every pixel's sub-pixels (``CORNER_SAMPLES``
 #: squared, 16), each the two pieces' value and line.
 CORNER_EVALUATIONS = 16 * PIECE_EVALUATIONS
@@ -215,13 +222,14 @@ def chord(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, held: March) -
     return jnp.sum(within, axis=-1) * held.dt
 
 
-def _descended(at: Any, t: Any, spacing: Any) -> tuple[Any, ...]:
+def _descended(at: Any, t: Any, spacing: Any, near: tuple[Any, Any, Any] | None = None) -> tuple[Any, ...]:
     """The descent along a ray from ``t`` at the march's spacing towards its lower neighbour, at most
     ``LEAST_REACH`` moves: the sample it stops at, lower than both its neighbours (or the last it reached), its value,
     its neighbours' a spacing below and above it along the ray, the direction it went (-1 or 1), and whether it ran its
     whole reach still descending. Where the five values about a held point are not convex (between two branches'
-    basins) a step of the quartic alone does not move; the descent does."""
-    before, middle, after = at(t - spacing), at(t), at(t + spacing)
+    basins) a step of the quartic alone does not move; the descent does. ``near``: the values a spacing below, at and
+    a spacing above ``t``, where already made."""
+    before, middle, after = (at(t - spacing), at(t), at(t + spacing)) if near is None else near
     toward = jnp.where(before < after, -1.0, 1.0)
     path = [jnp.where(toward < 0.0, after, before), middle, jnp.where(toward < 0.0, before, after)]
     path += [at(t + toward * k * spacing) for k in range(2, LEAST_REACH + 2)]
@@ -263,32 +271,106 @@ def _quartic_least(far_low: Any, low: Any, middle: Any, high: Any, far_high: Any
                      jnp.where(middle <= jnp.minimum(low, high), 0.0, inner))
 
 
+def _gathered(at: Any, start: Any, other: Any, spacing: Any, near: tuple[Any, Any, Any],
+              read: Any) -> tuple[Any, Any]:
+    """The pieces' least points and merges (``_leasts``) with the descent gathered: each piece the quartic about its
+    held point, and those whose lower neighbour a spacing away is below it (``read``: whose least is read at all)
+    descend together, ``DESCENT_SHARE`` of the list a turn, until none is left. ``at(t, index)`` evaluates the pieces
+    ``index`` (all where it is ``None``)."""
+    before, middle, after = near
+    point = start + 0.5 * _quartic_least(before, at(start - 0.5 * spacing), middle, at(start + 0.5 * spacing),
+                                         after) * spacing
+    merged = jnp.zeros(point.shape, dtype=bool)
+    moves = (jnp.minimum(before, after) < middle) & read
+    count = point.shape[0]
+    width = max(1, math.ceil(DESCENT_SHARE * count))
+    turns = -(-count // width)
+    order = jnp.nonzero(moves, size=turns * width, fill_value=count)[0]
+    moving = jnp.sum(moves)
+
+    def turn(state: tuple[Any, Any, Any]) -> tuple[Any, Any, Any]:
+        k, point, merged = state
+        index = lax.dynamic_slice(order, (k * width,), (width,))
+
+        def taken(values: Any) -> Any:
+            return jnp.take(values, index, mode="clip")
+
+        t, h = taken(start), taken(spacing)
+
+        def along(s: Any) -> Any:
+            return at(s, index)
+
+        centre, value, below, above, toward, ran = _descended(along, t, h, (taken(before), taken(middle),
+                                                                          taken(after)))
+        moved = centre + 0.5 * _quartic_least(below, along(centre - 0.5 * h), value, along(centre + 0.5 * h),
+                                              above) * h
+        return (k + 1, point.at[index].set(moved, mode="drop"),
+                merged.at[index].set(ran & (toward * (taken(other) - t) > 0.0), mode="drop"))
+
+    def left(state: tuple[Any, Any, Any]) -> Any:
+        return state[0] * width < moving
+
+    _, point, merged = lax.while_loop(left, turn, (0, point, merged))
+    return point, merged
+
+
+def _leasts(sampled: Sampled, held: March, p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
+    """Each branch's held point moved to its ray's least nearby (a corner sub-sample's, whose least is not its
+    pixel's), on rays ``o + t d``: the descent at the march's spacing to the sample lower than both its neighbours
+    (``_descended``), then the least of the quartic through the distance at five points half a spacing apart about it
+    (``_quartic_least``); and whether the branch has merged into the other's basin (its descent ran its whole reach
+    towards the other branch's held point: past the fold where its own least vanishes, whose edge lies the outline's
+    radius of curvature away, beyond any of its sub-cells). Held, as the march is: no derivative passes through it,
+    and at the least the distance does not move with it.
+
+    The two branches' pieces are one list. Every piece takes its five values about its held point; where the lower of
+    its neighbours a spacing away is lower than it, the descent moves (otherwise it stops where it starts, and the
+    quartic about the held point is its result), and those pieces descend together (``_gathered``): the descent's
+    moves cost what the pieces that move need."""
+    p = {name: value if isinstance(value, int) else lax.stop_gradient(value) for name, value in p.items()}
+    o, d = lax.stop_gradient((o, d))
+    shape = jnp.broadcast_shapes(jnp.shape(held.ta), jnp.shape(d[0]))
+    rays = math.prod(shape)
+
+    def listed(first: Any, second: Any) -> Any:
+        return jnp.concatenate([jnp.broadcast_to(first, shape).reshape(-1),
+                                jnp.broadcast_to(second, shape).reshape(-1)])
+
+    start, other, spacing = listed(held.ta, held.tb), listed(held.tb, held.ta), listed(held.dt, held.dt)
+    origin, direction = tuple(listed(c, c) for c in o), tuple(listed(c, c) for c in d)
+
+    def at(t: Any, index: Any = None) -> Any:
+        if index is None:
+            return evaluate(sampled, p, *(origin[i] + t * direction[i] for i in range(3)))
+        return evaluate(sampled, p, *(jnp.take(origin[i], index, mode="clip") + t * jnp.take(direction[i], index,
+                                                                                          mode="clip")
+                                      for i in range(3)))
+
+    before, middle, after = at(start - spacing), at(start), at(start + spacing)
+    if switch.collector_open():
+        # A switch collector keeps what a loop's body traces beyond it, so while one is open every piece descends, as
+        # the descent is written without the gathering: the same values (a piece that does not move holds the quartic
+        # about its point), each switch the descent's evaluations hold recorded on the values it reads.
+        centre, value, below, above, toward, ran = _descended(at, start, spacing, (before, middle, after))
+        point = centre + 0.5 * _quartic_least(below, at(centre - 0.5 * spacing), value, at(centre + 0.5 * spacing),
+                                              above) * spacing
+        merged = ran & (toward * (other - start) > 0.0)
+    else:
+        point, merged = _gathered(at, start, other, spacing, (before, middle, after), listed(True, held.has2))
+    point = lax.stop_gradient(point)
+    return (point[:rays].reshape(shape), point[rays:].reshape(shape), merged[:rays].reshape(shape),
+            merged[rays:].reshape(shape))
+
+
 def pieces(sampled: Sampled, held: March) -> Any:
     """The two branches' pieces on rays: each the first-order distance at its ray's own least near its held point
-    (``least``); the second, where there is no second minimum, the first moved out by the enclosing radius."""
+    (``_leasts``); the second, where there is no second minimum, the first moved out by the enclosing radius."""
 
     def made(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
         def at(t: Any) -> Any:
             return evaluate(sampled, p, *(o[i] + t * d[i] for i in range(3)))
 
-        def held_at(t: Any) -> Any:
-            return lax.stop_gradient(at(t))
-
-        def least(t: Any, other: Any) -> tuple[Any, Any]:
-            """The held point moved to its ray's least nearby (a corner sub-sample's, whose least is not its pixel's):
-            the descent at the march's spacing to the sample lower than both its neighbours (``_descended``), then
-            the least of the quartic through the distance at five points half a spacing apart about it
-            (``_quartic_least``); and whether the branch has merged into the other's basin (its descent ran its whole
-            reach towards the other branch's held point ``other``: past the fold where its own least vanishes, whose
-            edge lies the outline's radius of curvature away, beyond any of its sub-cells). Held, as the march is: no
-            derivative passes through it, and at the least the distance does not move with it."""
-            centre, value, below, above, toward, ran = _descended(held_at, t, held.dt)
-            low, high = held_at(centre - 0.5 * held.dt), held_at(centre + 0.5 * held.dt)
-            point = lax.stop_gradient(centre + 0.5 * _quartic_least(below, low, value, high, above) * held.dt)
-            return point, ran & (toward * (other - t) > 0.0)
-
-        at_first, first_merged = least(held.ta, held.tb)
-        at_second, second_merged = least(held.tb, held.ta)
+        at_first, at_second, first_merged, second_merged = _leasts(sampled, held, p, o, d)
         first, second = at(at_first), at(at_second)
         # A branch merged into the other's basin is the other's piece (the union of a line with itself is the line);
         # with no second minimum, the second is the first moved out by the enclosing radius.

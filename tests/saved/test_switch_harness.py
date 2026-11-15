@@ -956,6 +956,8 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "camera.span.low", "camera.span.high", "camera.span.axial", "camera.interval.enter",
                  "camera.interval.leave", "camera.interval.start", "camera.interval.stop", "camera.interval.chord",
                  "camera.sampled.least", "camera.sampled.basin", "camera.sampled.second", "camera.sampled.branch",
+                 "camera.union.share.low", "camera.union.share.high", "camera.union.nested", "camera.union.apart",
+                 "camera.union.ends", "camera.union.chord_start", "camera.union.chord_end", "camera.union.chord_empty",
                  "helix.end.low", "helix.end.high"])
 
 

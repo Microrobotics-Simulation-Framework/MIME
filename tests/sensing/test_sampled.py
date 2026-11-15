@@ -16,8 +16,11 @@
   the scheme's own error terms (``scripts/camera_route2/corner_line.py``), before its confirmation's draws ran
   (``predictions_camera_pr5a_fix.json``): each branch's curvature in a sub-cell, the truth's floor, float32's rounding.
   Two coils, three widths, both dtypes. **Control** (``CAMERA_PLANT=single-edge``, a pose drawn from
-  ``DETECTION_SEED``): the single edge fails it, every run. ``CORNER_RECORD`` names a file each run appends its numbers
-  to.
+  ``DETECTION_SEED``): the single edge fails it, every run. **The derivation's premise** (``unread_leasts``): on every
+  such pixel's sub-rays each least that reaches its sub-cell is read by a piece; its own control, on every draw: the
+  same count with the second branch's search lost is not zero. A second plant (``CAMERA_PLANT=misread``): the second
+  branch read a tenth of a pixel out, the tail round's defect at its least measured size. ``CORNER_RECORD`` names a
+  file each run appends its numbers to.
 - **The motion's derivative across a pixel**: a coil's darkness centroid's forward-mode derivative, at 16 positions over
   one pixel of motion, is within ``RIPPLE_LINE`` of the central difference over that pixel. **Control**
   (``CAMERA_PLANT=lesser``): the PR's first composition (one straight edge a cell, the least of the two branches'
@@ -188,10 +191,23 @@ def two_branch_pixels(body: Subject, position, orientation, view=(LENS, POSE)) -
     return np.nonzero(np.asarray(near).reshape(-1))[0]
 
 
-def unbounded_descents(body: Subject, position, orientation, pixels: np.ndarray, view=(LENS, POSE)) -> int:
-    """How many of the pixels' corner sub-rays hold a branch whose least the scheme does not bound: its descent from
-    the pixel's held point ran its whole reach (``_sampled.LEAST_REACH``) still descending, away from the other
-    branch (towards it, the branch has merged into the other's basin, and its piece is the other's)."""
+#: A sub-cell's reach (pixels): a line farther than a corner sub-cell's half-diagonal from its centre leaves the cell
+#: wholly on one side, so a least beyond it outside the body changes nothing the cell's share reads.
+SUB_REACH = math.sqrt(2.0) / (2 * coverage.CORNER_SAMPLES)
+#: The dense profile's steps a march spacing, across each sub-ray's whole march.
+DENSE_STEPS = 16
+
+
+def unread_leasts(body: Subject, position, orientation, pixels: np.ndarray, view=(LENS, POSE)) -> int:
+    """How many leasts on the pixels' corner sub-rays the scheme does not read: local minima of the sign function's
+    first-order distance along the sub-ray (a dense profile across its whole march, ``DENSE_STEPS`` a spacing) whose
+    line reaches the sub-cell (within ``SUB_REACH`` of its centre, or the cell inside the body there), with no point
+    the scheme's search reads on that sub-ray (``_sampled._leasts``: either piece's, after the merge rule) within half
+    a march spacing. The derivation's premise is that each branch crossing a sub-cell is read at its sub-ray's own
+    least; a least beyond the sub-cell's reach (a farther turn's, or a second minimum that is a fold of the sign
+    function's turn) changes nothing the cell reads, nor does any least in a sub-cell wholly inside a read branch's
+    half-plane (the union is the whole cell). How far a read least's value lies from the truth (the quartic's, at an
+    arc's end its guard's) is the line's refinement term, not this count's."""
     lens = view[0]
     rays = render_module.ray_table(lens, view[1], u=jnp.asarray(pixels % lens.width, jnp.float64),
                                    v=jnp.asarray(pixels // lens.width, jnp.float64))
@@ -202,19 +218,43 @@ def unbounded_descents(body: Subject, position, orientation, pixels: np.ndarray,
     du, dv = render_module._into(rotation, rays.along_u), render_module._into(rotation, rays.along_v)
     marched = body.placed.sampled
     held = sampled_route.march(marched, p, o, d, du)
-    found = 0
-    for su, sv in coverage.sub_offsets(coverage.CORNER_SAMPLES):
-        moved = tuple(d[i] + su * du[i] + sv * dv[i] for i in range(3))
-        scale = 1.0 / jnp.sqrt(sum(c * c for c in moved))
-        ray = tuple(c * scale for c in moved)
+    # Every sub-ray of every pixel at once: (sub-offset, pixel).
+    offsets = np.asarray(coverage.sub_offsets(coverage.CORNER_SAMPLES))
+    su, sv = jnp.asarray(offsets[:, 0])[:, None], jnp.asarray(offsets[:, 1])[:, None]
+    moved = tuple(d[i][None, :] + su * du[i][None, :] + sv * dv[i][None, :] for i in range(3))
+    scale = 1.0 / jnp.sqrt(sum(c * c for c in moved))
+    ray = tuple(c * scale for c in moved)
+    o = tuple(jnp.broadcast_to(c, ray[0].shape) for c in o)
+    first, second, first_merged, second_merged = sampled_route._leasts(marched, held, p, o, ray)
+    read = (jnp.where(held.has2 & first_merged & ~second_merged, second, first),
+            jnp.where(held.has2, jnp.where(second_merged, first, second), first))
+    steps = jnp.arange(DENSE_STEPS * (marched.samples - 1) + 1, dtype=jnp.float64) / DENSE_STEPS
+    t = held.t[None, :, :1] + held.dt[None, :, None] * steps[None, None, :]
 
-        def at(t, ray=ray):
-            return sampled_route.evaluate(marched, p, *(o[i] + t * ray[i] for i in range(3)))
+    def profile(dx, dy, dz):
+        return sampled_route.evaluate(marched, p, *(o[i][..., None] + t * (dx, dy, dz)[i][..., None]
+                                                    for i in range(3)))
 
-        for t, other in ((held.ta, held.tb), (held.tb, held.ta)):
-            *_, toward, ran = sampled_route._descended(at, t, held.dt)
-            found += int(np.sum(np.asarray(ran & ~(toward * (other - t) > 0.0) & held.has2)))
-    return found
+    values, along_u = jax.jvp(profile, ray, tuple(jnp.broadcast_to(c, ray[0].shape) for c in du))
+    _, along_v = jax.jvp(profile, ray, tuple(jnp.broadcast_to(c, ray[0].shape) for c in dv))
+    lines = coverage.line(values, along_u, along_v).distance
+    minimum = jnp.concatenate([jnp.zeros_like(values[..., :1], dtype=bool),
+                               (values[..., 1:-1] < values[..., :-2]) & (values[..., 1:-1] <= values[..., 2:]),
+                               jnp.zeros_like(values[..., :1], dtype=bool)], axis=-1)
+    half = 0.5 * held.dt[None, :, None]
+    unread = (jnp.abs(read[0][..., None] - t) > half) & (jnp.abs(read[1][..., None] - t) > half)
+
+    def read_line(at):
+        def value(dx, dy, dz):
+            return sampled_route.evaluate(marched, p, *(o[i] + at * (dx, dy, dz)[i] for i in range(3)))
+
+        g, gu = jax.jvp(value, ray, tuple(jnp.broadcast_to(c, ray[0].shape) for c in du))
+        _, gv = jax.jvp(value, ray, tuple(jnp.broadcast_to(c, ray[0].shape) for c in dv))
+        return coverage.line(g, gu, gv).distance
+
+    # A sub-cell wholly inside a read branch is the union's whatever else crosses it.
+    inside = (jnp.minimum(read_line(read[0]), read_line(read[1])) < -SUB_REACH)[..., None]
+    return int(np.sum(np.asarray(minimum & (lines < SUB_REACH) & unread & ~inside)))
 
 
 def single_edge(monkeypatch) -> None:
@@ -238,21 +278,55 @@ class enabled_x64:
         jax.config.update("jax_enable_x64", self.held)
 
 
+def lost_branch(found_leasts):
+    """The guard's control: the scheme's search with its second branch lost (the second piece read at the first's
+    point, as the two halves of ``_sampled._leasts``' list mis-sliced would read it)."""
+    def leasts(sampled, held, p, o, d):
+        first, _, first_merged, second_merged = found_leasts(sampled, held, p, o, d)
+        return first, first, first_merged, second_merged
+    return leasts
+
+
+#: The second plant's size (pixels): the tail round's defect, a branch's least on corner sub-rays misread so that the
+#: branch is read too far out, measured at 0.10 to 0.17 px (seeds 2052, 2129 and 2049); the least measured, every ray.
+MISREAD = 0.1
+
+
+def misread(monkeypatch, width: int) -> None:
+    """The plant: the second branch read ``MISREAD`` of a pixel's footprint at the coil farther out, on every ray."""
+    found_pieces = sampled_route.pieces
+
+    def pieces(sampled, held):
+        made = found_pieces(sampled, held)
+
+        def read_out(p, o, d):
+            first, second = made(p, o, d)
+            return first, second + MISREAD * 3e-3 / width
+        return read_out
+    monkeypatch.setattr(sampled_route, "pieces", pieces)
+
+
 def corner_errors(seed: int, monkeypatch, width: int = 128, coil: str = "coil", side: int = TRUTH_SIDE,
-                  signs: int = 512, unbounded: list[int] | None = None) -> tuple[np.ndarray, int]:
+                  signs: int = 512, guard: dict | None = None) -> tuple[np.ndarray, int]:
     """Each two-branch pixel's error against the sign-only truth, at the pose drawn from ``seed``: the pixels and the
-    truth in float64, the frame in the run's dtype; ``unbounded``, where given, takes the count of their sub-rays'
-    branches whose least the scheme does not bound (``unbounded_descents``)."""
+    truth in float64, the frame in the run's dtype; ``guard``, where given, takes the count of the leasts on their
+    sub-rays the scheme does not read (``unread_leasts``) and the same count with the guard's control planted
+    (``lost_branch``)."""
     view = across(width, field=3e-3)
     position, orientation = drawn_pose(seed)
     with enabled_x64():
         body = subject("helix", COILS[coil])
         pixels = two_branch_pixels(body, position, orientation, view)
         truth = sampled_truth.truth(body, view[0], view[1], position, orientation, pixels, side=side, signs=signs)
-        if unbounded is not None:
-            unbounded.append(unbounded_descents(body, position, orientation, pixels, view))
+        if guard is not None:
+            guard["unread"] = unread_leasts(body, position, orientation, pixels, view)
+            with pytest.MonkeyPatch.context() as control:
+                control.setattr(sampled_route, "_leasts", lost_branch(sampled_route._leasts))
+                guard["lost_branch"] = unread_leasts(body, position, orientation, pixels, view)
     if planted("single-edge"):
         single_edge(monkeypatch)
+    if planted("misread"):
+        misread(monkeypatch, width)
     found = 1.0 - frame(subject("helix", COILS[coil]), position, orientation, view).reshape(-1)[pixels]
     return np.abs(found - truth), len(pixels)
 
@@ -260,22 +334,23 @@ def corner_errors(seed: int, monkeypatch, width: int = 128, coil: str = "coil", 
 @pytest.mark.parametrize("coil", sorted(COILS))
 @pytest.mark.parametrize("width", [128, 256, 512])
 def test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth(width, coil, monkeypatch, dtype):
-    unbounded: list[int] = []
-    errors, count = corner_errors(SEED, monkeypatch, width, coil, unbounded=unbounded)
+    guard: dict = {}
+    errors, count = corner_errors(SEED, monkeypatch, width, coil, guard=guard)
     line = corner_line(coil, width, dtype)
     largest = float(errors.max()) if count else float("nan")
     print(f"\n{coil}, width {width}, {dtype}, seed {SEED}: {count} two-branch pixels, largest error {largest:.4f} "
-          f"(line {line:.4f}), mean {float(errors.mean()) if count else float('nan'):.4f}; "
-          f"{unbounded[0]} sub-ray branches unbounded")
+          f"(line {line:.4f}), mean {float(errors.mean()) if count else float('nan'):.4f}; {guard['unread']} leasts "
+          f"unread ({guard['lost_branch']} with the second branch lost)")
     record = os.environ.get("CORNER_RECORD")
     if record:
         with open(record, "a") as handle:
             handle.write(json.dumps({"seed": SEED, "coil": coil, "width": width, "dtype": dtype,
                                      "plant": os.environ.get("CAMERA_PLANT", ""), "pixels": count,
-                                     "largest": largest, "line": line, "unbounded": unbounded[0]}) + "\n")
+                                     "largest": largest, "line": line, **guard}) + "\n")
     assert count > 0, "the drawn pose shows no crossing of the coil's turns: the gate is silent"
     assert largest <= line
-    assert unbounded[0] == 0, "a branch's least lies beyond the descent's reach: the line does not bound the pixel"
+    assert guard["unread"] == 0, "a least that reaches a sub-cell is read by no piece: the line does not bound the pixel"
+    assert guard["lost_branch"] > 0, "the guard does not see a lost branch at this draw: it cannot discriminate here"
 
 
 # -- the motion's derivative across a pixel -----------------------------------------------------------------------------
