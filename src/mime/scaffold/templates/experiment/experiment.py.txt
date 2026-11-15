@@ -1,0 +1,27 @@
+"""${title}: a minimal MIME experiment, to edit.
+
+It is built over MIME's `toy` entries, which model no device: replace the body and the load with your own, or declare
+more (see the user guide). Running it writes the saved experiment beside it, in `saved/`, which `mime verify`, `mime run`
+and `mime pack` read:
+
+    python experiment.py
+"""
+
+from mime.experiment import Experiment
+from mime.scene import Scene, Z
+from mime.testing.toys import PROBE_START, ToyBody, ToyDrag
+from mime.things import Body
+from mime.units import s, standard_gravity
+
+
+def build() -> Experiment:
+    experiment = Experiment(${name}, scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=s(0.02))
+    experiment.add_body(Body("probe", dynamics=ToyBody(), initial=PROBE_START))
+    experiment.attach(ToyDrag.Quadratic(), body="probe")
+    # The licence the saved files are shared under: it is bound to them when the experiment is saved.
+    experiment.licence(${licence})
+    return experiment
+
+
+if __name__ == "__main__":
+    build().save("saved")

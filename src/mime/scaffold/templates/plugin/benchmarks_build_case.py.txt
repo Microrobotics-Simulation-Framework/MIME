@@ -1,0 +1,26 @@
+"""Write the example as a saved MIME experiment, `benchmarks/case/`, with its `mime.toml`.
+
+    python benchmarks/build_case.py        # writes benchmarks/case/, which is not committed: CI writes it again
+    mime check benchmarks/case             # what is still to write in mime.toml (the creator's ORCID, ...)
+    mime verify benchmarks/case            # loads it, rebuilds it, and reruns its first steps bit for bit
+
+`benchmarks/mime.toml` is the record's manifest (what is shared and its metadata, see `mime push`); it is copied beside the
+saved form, which is the folder `mime check`, `mime pack` and `mime push` read. Replace the example with your benchmark.
+"""
+
+import shutil
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "examples"))
+from example import build  # noqa: E402 - examples/example.py
+
+FOLDER = HERE / "case"
+
+if __name__ == "__main__":
+    if FOLDER.exists():
+        shutil.rmtree(FOLDER)
+    build().save(FOLDER)
+    shutil.copy(HERE / "mime.toml", FOLDER / "mime.toml")
+    print("saved", sorted(path.name for path in FOLDER.iterdir()))

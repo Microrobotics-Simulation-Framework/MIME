@@ -1,0 +1,43 @@
+"""The registry walk and the saved round trip: what MIME asks of every entry, asked of this plugin's.
+
+MIME lists what is installed by importing every package that declares a `mime.entries` entry point, in a fresh process
+(`installed_entries`), and a saved experiment is loaded the same way. So these fail if the entry point is wrong, if an
+entry does not register on import, or if an entry's settings do not survive a save: the three things a user hits first.
+"""
+
+import json
+from pathlib import Path
+
+from mime.assets import reference
+from mime.experiment import Experiment
+from mime.testing import installed_entries, round_trip_failures
+
+from ${package}.entries import ExampleLoad
+
+RECORDS = Path(__file__).resolve().parent.parent / "src" / "${package}" / "records"
+
+
+def test_the_registry_lists_the_entry():
+    assert ("interaction", ExampleLoad.name, ExampleLoad.version) in installed_entries()
+
+
+def test_the_saved_round_trip(experiment: Experiment, tmp_path: Path):
+    assert round_trip_failures(experiment, tmp_path / "saved") == []
+
+
+def test_the_record_is_listed_and_names_its_bytes():
+    """The record is found through the `mime.assets` entry point, and its sha256 is the hash of the file it names."""
+    import hashlib
+
+    record = reference("${namespace}_example_record")
+    data = (RECORDS / "data" / "example.json").read_bytes()
+    assert record.sha256 == hashlib.sha256(data).hexdigest()
+    assert record.size == len(data)
+    assert json.loads((RECORDS / "records.json").read_text())["assets"][0]["name"] == record.name
+
+
+def test_the_entry_declares_the_record_it_reads(experiment: Experiment, tmp_path: Path):
+    """The build lists the record in a saved experiment's lock, with no observation naming it."""
+    experiment.build().save(tmp_path / "saved")
+    lock = json.loads((tmp_path / "saved" / "mime.lock").read_text())
+    assert [asset["name"] for asset in lock["assets"]] == ["${namespace}_example_record"]

@@ -1,0 +1,38 @@
+"""A verification benchmark, in the slow lane: the skeleton to copy for your own.
+
+`@verification_benchmark` (MADDENING's, registered under this plugin's own id prefix, so it lands in the same evidence
+tables as MIME's) states WHAT a test proves, against WHAT. This one is an example on the example law: a closed form, which
+is the only honest kind of benchmark you can write before you have measurements.
+
+Claim hygiene: say what a benchmark BOUNDS and what it ESTIMATES. A comparison against a closed form bounds the code's
+error against that form; a comparison against measurements bounds the model's error from above by the measurement's own
+noise and apparatus, and is an acceptance test, not an accuracy claim. Write it in those terms where it appears.
+
+It is behind the `slow` marker, which CI's default lane skips: a physics assertion behind it is documentation unless a lane
+runs it, and the `slow` job of .github/workflows/ci.yml does (on a pull request labelled `slow`, and every week).
+"""
+
+import jax.numpy as jnp
+import pytest
+from maddening.core.compliance.validation import BenchmarkType, verification_benchmark
+
+from ${package}.engine import load
+
+
+# The signature: (benchmark_id, description, node_type, benchmark_type, acceptance_criteria, references=())
+@pytest.mark.slow
+@verification_benchmark(
+    benchmark_id="${prefix}-VER-001",
+    description="The example law equals its closed form, the gain times the force, on a fixed force",
+    node_type="ExampleLoadNode",
+    benchmark_type=BenchmarkType.ANALYTICAL,
+    acceptance_criteria="the load equals gain times force to 1e-6 relative",
+    references=(),
+)
+def test_the_example_law_matches_its_closed_form():
+    """Acceptance criterion: relative difference from gain times force below 1e-6, on a force of (1, -2, 3) N and a gain
+    of 2.5. A bound on the code against its closed form, not a statement about any device."""
+    force = jnp.asarray((1.0, -2.0, 3.0))
+    expected = 2.5 * force
+    found = load.load_on(force, jnp.asarray(2.5))
+    assert float(jnp.max(jnp.abs(found - expected) / jnp.abs(expected))) < 1e-6

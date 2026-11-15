@@ -1,0 +1,43 @@
+{
+  "written": "2026-11-15, committed before the detection rate of the scaffolded plugin's planted property was measured on a runner: the plant was seen to fail its property once in a local run (below) and nothing more",
+  "phase": "P7b: mime scaffold plugin's full layout, the planted Hypothesis property of its tests",
+  "labels": "predictions by the P7b builder (Sonnet), derived from the property's and the plant's source (derived), with one local observation (measured-before, below)",
+  "seen_before": [
+    "a local scaffold of the plugin, one pytest run with MIME_PLANT_ERROR=1: tests/engine/test_properties.py failed test_the_load_is_linear_in_the_force alone and passed the other two (CPU, float32, one run, no seed pinned); the plant's own in-process control (5 runs of the property under the plant, each required to fail) passed once in a clean run of the plugin's suite"
+  ],
+  "operating_point": {
+    "dtype": ["float32"],
+    "platform": "CPU, a GitHub runner; JAX_PLATFORMS=cpu; no JAX_ENABLE_X64 (the plugin's draws are in the dtype its node computes in, jnp.zeros(()).dtype)",
+    "sizes_and_parameters": "forces: 3-vectors with components in [-10, 10] N, no NaN, infinity or subnormal; gain in [0.125, 8]; the planted error clips the load at 1 N; the property's tolerance is 8 eps times gain times the largest of |a| + |b| (the inputs' scale); max_examples 100, never derandomised, never shrunk",
+    "seeds_and_draws": "40 runs, each a fresh process with its own Hypothesis seed (--hypothesis-seed), the planted arm and the clean arm at the same seeds"
+  },
+  "gate_1_planted_property_detection": {
+    "claim": "the planted saturation (the load clipped at 1 N) fails the plugin's linearity property on every run, and with nothing planted the property never fails",
+    "kind": "equality: a control's detection rate, measured; it bounds the control's own rate from below and says nothing about any physics",
+    "case": "the scaffolded plugin's tests/engine/test_properties.py::test_the_load_is_linear_in_the_force, run through detection_rate.py in the plugin's folder, the plugin unpacked from its wheel into a target on PYTHONPATH",
+    "operating_point": "as above",
+    "prediction": {
+      "value": 40,
+      "band": [40, 40],
+      "unit": "planted runs caught of 40; clean runs flagged 0 of 40",
+      "basis": "derived",
+      "why": "a draw exposes the plant when any component of gain times a, gain times b or gain times (a + b) exceeds 1 N in magnitude by more than the tolerance (8 eps times the inputs' scale, about 1e-6 times the scale in float32). With components uniform in [-10, 10] and gain of 0.125 or more, most draws do: at gain 1 about nine components in ten exceed 1 N, and Hypothesis draws boundary values (the extremes of the range) first. The chance that none of 100 examples exposes the error is far below 1e-12, so I predict every run is caught; the bound it can show is 0.93 (0.05^(1/40)), which is what 40 of 40 supports, not 1"
+    },
+    "metric": "the number of runs, of 40, in which the node exits 1 with a failed test (detection_rate.py's caught), and the clean arm's flagged count",
+    "control": {
+      "plant": "the load clipped at 1 N (tests/plants.py saturated_load), applied through MIME_PLANT_ERROR in the plugin's conftest",
+      "environment_variable": "MIME_PLANT_ERROR",
+      "expected_rate": "40/40",
+      "runs": 40,
+      "clean_expected": "0/40",
+      "resolution": "not measured with discriminating_range.py: the plant is far above the property's tolerance (an error of order 1 N against a tolerance of order 1e-6 N), so its resolution is not what this measures; a plant near the tolerance would need it"
+    },
+    "if_wrong": "a miss names its seed (missed_seeds), which reproduces it: the strategies or the clip are then wrong for the property (cause 1 of CLAUDE.md's property-test list, a draw a body cannot have, or cause 4, a control below the oracle's resolution), and the plant or the strategy is changed, never the example count; a clean-arm flag means the property flakes with nothing planted, which is a defect of the template before the control's",
+    "cannot_discriminate_if": "the plant is applied after the node under test has compiled (it is not: the property calls the engine function directly, through its module attribute, so the patch is seen), or the clean arm and the planted arm fail alike (both would be caught by the clean arm's count)"
+  },
+  "outcomes": {
+    "measured": "2026-11-15, detection_rate.py on a GitHub runner (a probe, branch probe/p7b-plant-rate at 06841f2b, one core, CPU, float32, Python 3.12): 40 of 40 planted runs caught, 0 of 40 clean runs flagged, none inconclusive; the one-sided 95 % lower bound on the rate is 0.928",
+    "gate_1_planted_property_detection": "as predicted (40 of 40 and 0 of 40): the planted saturation fails test_the_load_is_linear_in_the_force on every run of 40 and the property is quiet with nothing planted. It bounds the rate from below at 0.928 and does not show 1. The plant's size against the property's resolution was not measured separately (an error of order 1 N against a tolerance of order 1e-6 N, far above it)",
+    "memory": "the probe's largest process peaked at 0.44 GiB against an estimate of 0.44 GiB (bound 0.49): not exceeded"
+  }
+}

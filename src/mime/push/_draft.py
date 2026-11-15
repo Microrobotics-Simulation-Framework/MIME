@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
@@ -210,30 +210,43 @@ def unconfirmed(what: str, action: str = "read it, then run the same command aga
         f"{what} was shown and not confirmed, and there is no terminal to ask in: nothing was sent", action)])
 
 
+def new_manifest(root: Path, facts: tuple[str, str, str | None], say: Say | None = None,
+                 given: Mapping[str, object] | None = None) -> str:
+    """The text of a new ``mime.toml`` for the saved or study folder ``root``, whose facts (its kind, the title it takes
+    and the licence its experiment declares: :func:`mime.push._setup.folder_facts`) the caller read: from ``given`` (the
+    values a caller sets, ahead of the rest), the person's defaults, or ``sharing.yaml``'s values where the folder holds
+    it. The one writer of a new manifest: ``--init`` and ``mime scaffold bundle|study --yes`` write what it returns."""
+    from mime.push._defaults import read_all
+
+    kind, name, licence = facts
+    defaults = read_all(say)
+    old = root / OLD_FILE
+    values = old_values(root) if old.is_file() else dict(defaults.values)
+    return manifest_text(kind, name, licence, {**values, **(given or {})},
+                         fallback=defaults.licences.get("content", DEFAULT_LICENCE))
+
+
 def init(folder: str | os.PathLike[str], *, say: Say | None = None) -> tuple[Path, bool, str | None]:
     """Write ``mime.toml`` beside the saved form (or in the study folder) from what the folder knows, and from the
     values of ``sharing.yaml`` where the folder holds it, or else the person's defaults (:mod:`mime.push._defaults`, each
     key filled where it stands; the licence from their ``[licences] content`` where the experiment declares none): its
-    path, whether it was written (an existing one is never overwritten), and the licence the experiment declares.
-    ``sharing.yaml`` is left in place, for the person to delete; ``say`` is told so, and of defaults moved."""
-    from mime.push._defaults import read_all
+    path, whether it was written (an existing one is never overwritten, and is said so softly: ``mime scaffold bundle``
+    refuses it, ``scaffold.exists``), and the licence the experiment declares. ``sharing.yaml`` is left in place, for the
+    person to delete; ``say`` is told so, and of defaults moved. The alias of ``mime scaffold bundle|study <folder>
+    --yes``, which writes the same bytes (:func:`new_manifest`)."""
     from mime.push._setup import folder_facts
 
     root = Path(os.path.abspath(folder))
-    kind, name, licence = folder_facts(root)
+    facts = folder_facts(root)
     path = present(root, new=True)
     if path.exists():
-        return path, False, licence
-    defaults = read_all(say)
+        return path, False, facts[2]
+    path.write_text(new_manifest(root, facts, say), encoding="utf-8", newline="\n")
     old = root / OLD_FILE
-    values = old_values(root) if old.is_file() else dict(defaults.values)
-    path.write_text(manifest_text(kind, name, licence, values, fallback=defaults.licences.get("content",
-                                                                                              DEFAULT_LICENCE)),
-                    encoding="utf-8", newline="\n")
     if old.is_file() and say is not None:
         say(f"wrote it from {old}, which is no longer read: delete it once you have checked {path} (MIME never "
             f"deletes your file)")
-    return path, True, licence
+    return path, True, facts[2]
 
 
 def entry_verified(entry: Json | None, file: RecordFile) -> bool:
