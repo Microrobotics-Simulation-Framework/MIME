@@ -91,5 +91,110 @@
   "case": "DUR: pytest --durations=0 over tests/scene/test_sign_functions.py, tests/sensing/test_sampled.py, tests/sensing/test_camera_refusals.py and tests/sensing/test_in_loop_refusals.py on a runner",
   "prediction": "over 30 s: the screw's G16 50 to 60 s in each dtype; the corner gate's 512 px cases now 30 to 120 s (the guard's dense profile, the flag's control and the truth on a clean run); the helix's G16 about 28 s; each row of the allowlist keyed by the current ids ([screw-float32], [screw-float64] and the corner gate's [<dtype>-<width>-<coil>]) with the runner's time"
  },
- "outcomes": null
+ "outcomes": {
+  "written": "2026-11-15, after run 43726334538 (probe/cam-pr5a-round5-gates @8391e7e6, 15 arms, deleted after download); the predictions above were committed before it ran and are unchanged",
+  "run": "G20, RSLOPE32, RSWAP and three G19 arms failed a step after their script (the memory check against the estimate, the estimator's known underestimate); every arm wrote its results",
+  "gate_deriv": {
+   "fix_ripple_largest": {
+    "straight_x": 0.0019,
+    "straight_z": 0.0058,
+    "tilted_x": 0.0043,
+    "tilted_z": 0.0034
+   },
+   "first_ripple_largest": {
+    "straight_x": 0.0366,
+    "straight_z": 0.0111,
+    "tilted_x": 0.0129,
+    "tilted_z": 0.0168
+   },
+   "fix_integral": {
+    "straight_x": 7.45e-05,
+    "straight_z": 0.000186,
+    "tilted_x": 6.96e-05,
+    "tilted_z": 0.000126
+   },
+   "first_integral": {
+    "straight_x": 0.00128,
+    "straight_z": 0.00636,
+    "tilted_x": 0.00329,
+    "tilted_z": 0.00581
+   },
+   "fix_worst_sweep_at_or_below_1_512_px_most": {
+    "straight_x": 1.63e-05,
+    "straight_z": 0.000136,
+    "tilted_x": 9.33e-05,
+    "tilted_z": 0.000221
+   },
+   "jvp_against_truth": {
+    "straight_x": 0.0011,
+    "straight_z": 0.0011,
+    "tilted_x": 0.0038,
+    "tilted_z": 0.0003
+   },
+   "jvp_against_truth_at_worst_position": {
+    "straight_x": 0.0009,
+    "straight_z": 0.0042,
+    "tilted_x": 0.004,
+    "tilted_z": 0.0029
+   },
+   "verdict": "the verdict rule holds at every entry: the fix's integral at most 1.9e-4 (band 5e-4) and its worst-position sweep within 2.2e-4 of the jvp at 1/512 px and below, while the first scheme's integral is 1.3e-3 to 6.4e-3 at four of four (the test sees a jump). So the forward-mode derivative is the rendered image's derivative, and the 0.2 to 0.6 % between it and the central difference over one pixel is that difference's own error (it averages the rendered image's ripple across the pixel), not the jvp's; against the sign-only truth the jvp is within 0.4 % at the pose and at the worst position. Nothing to fix; stated as measured"
+  },
+  "gate_g20": {
+   "n_to_2n_largest_pixel": {
+    "straight": 9.5e-07,
+    "tilted": 1.8e-06
+   },
+   "n_to_2n_motion_most": 4.2e-05,
+   "truth_motion": {
+    "straight_x": 0.00126,
+    "straight_z": 0.00119,
+    "tilted_x": 0.00381,
+    "tilted_z": 0.00035
+   },
+   "controls": "eight samples caught in the N to 2N line at both poses (image 0.20 and 0.11, motion 1.1 to 3.3 % and 0.6 to 1.6 %); the offset plant caught in the image (0.194 and 0.144 against the clean 0.0023 and 0.0042), not in the motion (its known blind spot)",
+   "verdict": "PASS at every entry; probe 2's open N to 2N image at the tilted pose (0.026) is now 1.8e-6 (the tail reads each corner sub-ray's own least)"
+  },
+  "gate_g19_cost": {
+   "160-float32": {
+    "estimate_M": 1595,
+    "frame_ms": 59.0,
+    "rate_G_per_s": 27.04,
+    "cpu": "AMD EPYC 9V74"
+   },
+   "160-float64": {
+    "estimate_M": 1595,
+    "frame_ms": 89.6,
+    "rate_G_per_s": 17.81,
+    "cpu": "AMD EPYC 9V45"
+   },
+   "320-float32": {
+    "estimate_M": 6127,
+    "frame_ms": 220.6,
+    "rate_G_per_s": 27.77,
+    "cpu": "Intel Xeon 6973P-C"
+   },
+   "320-float64": {
+    "estimate_M": 6127,
+    "frame_ms": 351.4,
+    "rate_G_per_s": 17.44,
+    "cpu": "Intel Xeon 6973P-C"
+   },
+   "640-float32": {
+    "estimate_M": 23620,
+    "frame_ms": 788.2,
+    "rate_G_per_s": 29.97,
+    "cpu": "AMD EPYC 9V74"
+   },
+   "640-float64": {
+    "estimate_M": 23620,
+    "frame_ms": 1568.7,
+    "rate_G_per_s": 15.06,
+    "cpu": "AMD EPYC 9V74"
+   },
+   "verdict": "rates 27.0 to 30.0 G a second in float32 (inside the predicted 18 to 42) and 15.1 to 17.8 in float64 (two of three just above the predicted 10 to 17); a frame at COST_LINE (1e9) is 33 to 37 ms in float32 and 56 to 66 ms in float64 on these runners"
+  },
+  "bits": "all ten programs' compiled text equal base c56bc04a against the head (step, run, jvp, render and the mesh scene's step, float32 and float64); repeat equal and the one-ulp mount move differing in all ten on the runner",
+  "control_rates": "RRIPPLE, RSWAP, RWINDOW, RSIGN32, RSLOPE32: planted 30/30 and clean 0/30 each",
+  "durations": "99 passed in 605 s on one runner; over 25.5 s: the screw's G16 39.9 s (float32) and 39.1 s (float64); the corner gate's [float32-512-coil] 38.0 s, [float32-256-coil] 29.3 s, [float64-512-coil2] 28.4 s, [float64-512-coil] 26.6 s; the helix's G16 20.3 s (float32)"
+ }
 }
