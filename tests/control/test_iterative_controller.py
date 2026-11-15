@@ -199,7 +199,7 @@ def test_the_derivative_of_the_follower_in_its_standoff_is_central_differences(m
 
     standoff, h = 0.15, 1e-4
     if PLANT == "unpolished":
-        monkeypatch.setattr(module, "POLISHING_STEPS", 0)
+        monkeypatch.setattr(module, "_POLISHING_STEPS", 0)
     with in_dtype("float64"):
         result = Study(follower_rpm("study_follower_gradient")).sweep(grid({"controller.standoff": [standoff]}),
                                                                       duration=ms(10)).gradient(

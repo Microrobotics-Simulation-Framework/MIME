@@ -16,7 +16,7 @@ phase, so that it stops at its start and claims to have converged (with the loca
 earlier start of Newton's full steps, which on an affine model end at the minimiser: no wrong claim to catch); ``gauss_newton``, the root's gradient taken with its Jacobian
 held, so that its linearisation is the Gauss-Newton Hessian, which is wrong wherever the rows are not met (an
 unreachable target); ``bounds``, the root's bounds held, so that a command at a bound has no derivative in it;
-``unpolished``, no polishing (``POLISHING_STEPS`` zero), so that a warm start near the minimiser returns the first
+``unpolished``, no polishing (``_POLISHING_STEPS`` zero), so that a warm start near the minimiser returns the first
 iterate the tolerance admits, where the derivative of a weakly regularised problem is not the minimiser's. Each must be
 caught on every run: ``early`` and ``loose`` by the agreement tests, the other three by the derivative's."""
 
@@ -70,13 +70,13 @@ def planted(names: tuple[str, ...]) -> Iterator[None]:
                 patch.setattr(module, "ITERATIONS", 2)
             elif PLANT == "loose":
                 patch.setattr(module, "TOLERANCE", dict.fromkeys(module.TOLERANCE, 1.0))
-                patch.setattr(module, "POLISHING_STEPS", 0)
+                patch.setattr(module, "_POLISHING_STEPS", 0)
             elif PLANT == "gauss_newton":
                 patch.setattr(module, "_gradient", _gauss_newton)
             elif PLANT == "bounds":
                 patch.setattr(module, "_bounds", lambda low, high: (lax.stop_gradient(low), lax.stop_gradient(high)))
             elif PLANT == "unpolished":
-                patch.setattr(module, "POLISHING_STEPS", 0)
+                patch.setattr(module, "_POLISHING_STEPS", 0)
         yield
 
 
@@ -197,7 +197,7 @@ def test_the_plants_of_the_claim_are_each_caught_at_one_problem(monkeypatch):
         monkeypatch.setattr(module, "ITERATIONS", module.ITERATIONS)
         monkeypatch.undo()
         monkeypatch.setattr(module, "TOLERANCE", dict.fromkeys(module.TOLERANCE, 1.0))
-        monkeypatch.setattr(module, "POLISHING_STEPS", 0)
+        monkeypatch.setattr(module, "_POLISHING_STEPS", 0)
         loose = iterative(matrix, target, limit, "float64")
     problem = Problem("synthetic", "rows", matrix, target, np.ones(len(target)), limit)
     assert claim_problems(early, matrix, target, reference, line(problem, reference, "float64"), "float64") != []

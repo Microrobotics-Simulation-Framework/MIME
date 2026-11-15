@@ -14,9 +14,9 @@ rows' miss, and the Gauss-Newton step ``(Jf^T Jf + floor) d = -Jf^T r`` where it
 :data:`FLOOR` on the scaled normal matrix (a Levenberg term at the dtype's rank test, which keeps the step defined where
 the rows do not fix the free commands); a scaled gradient step on the held ones; the box as a projection, and Armijo's
 test on the projection arc (:data:`ARMIJO`, at most :data:`BACKTRACKS` halvings), nonmonotone for Newton's step on a
-positive definite Hessian that no bound cuts: against the largest objective of the last :data:`MEMORY` points, not the
+positive definite Hessian that no bound cuts: against the largest objective of the last :data:`_MEMORY` points, not the
 current one's alone, since in a curved valley that step first raises the objective (the Maratos effect). Where a step
-had to be cut, the next is damped (Levenberg's term, :data:`DAMPING`, raised by :data:`DAMPING_FACTOR` at each further
+had to be cut, the next is damped (Levenberg's term, :data:`_DAMPING`, raised by :data:`_DAMPING_FACTOR` at each further
 cut and lowered at each step taken whole), so that in a curved valley's floor the steps shorten and turn towards the
 gradient instead of crawling by halvings. The decrease is measured as a difference of squares, ``sum (r - r') (r + r') /
 2``, and a decrease within what the objective resolves passes. What it resolves is judged on the scale the rows came
@@ -27,7 +27,7 @@ affine model the two steps are one, Newton's, so the iteration is exact once its
 
 **Its local phase.** From the first point within the tolerance on, the solve is in Newton's local phase: full steps,
 with no line search, while a step is longer than the commands' rounding (four units in the last place of the
-problem's size, in the scaled commands), at most :data:`POLISHING_STEPS`; what is returned is the point within the
+problem's size, in the scaled commands), at most :data:`_POLISHING_STEPS`; what is returned is the point within the
 tolerance whose step was the shortest. The tolerance bounds the stationarity, not the distance to the minimiser, at
 which the derivative is taken; on an ill-conditioned problem (a weak effort, whose rows set the scaled Hessian's least
 eigenvalues near 1e-8 of its largest) the two part far, and there the objective cannot judge the step: along a soft
@@ -80,7 +80,7 @@ lax: Any = jax.lax
 #: JAX's transforms, whose hints a strict checker reads as partly unknown.
 _jax: Any = jax
 
-#: The most iterations the solve takes before its local phase, which ends by its own count (:data:`POLISHING_STEPS`).
+#: The most iterations the solve takes before its local phase, which ends by its own count (:data:`_POLISHING_STEPS`).
 ITERATIONS = 50
 #: The most halvings of a step Armijo's test takes before the solve counts the iteration as stagnated.
 BACKTRACKS = 30
@@ -104,18 +104,18 @@ STALLS = 2
 #: the AR4's wrist singularity left the inverse kinematics' start for a joint limit three times as often. Over 2220
 #: of the follower's warm starts, the most iterations went from 47 to 35 (to 15 with the damping below, which without
 #: the allowance left 3 of them at the cap).
-MEMORY = 4
+_MEMORY = 4
 #: Levenberg's damping on the scaled matrix (whose diagonal is about one) after a step that had to be cut, and the
 #: factor it is raised by at each further cut and lowered by at each step taken whole (to none below the first value).
 #: A warm start crawling by halvings in the indefinite region of a curved valley met the cap 0.027 rad from the
 #: minimiser (the warm-start test's seed 1210936); damped, it converged in 20.
-DAMPING, DAMPING_FACTOR = 1e-3, 10.0
+_DAMPING, _DAMPING_FACTOR = 1e-3, 10.0
 #: The most full steps of the local phase (see the module), from the first point within the tolerance on. A reference
 #: solve of the follower's derivative test met its tolerance 2e-3 rad from the minimiser (its objective 37 % above the
 #: minimum; the scaled Hessian's least eigenvalue 1.3e-7 of its largest), and its full steps went 0.24, 7e-4, 1e-3,
 #: 4e-8 and 2e-12 (scaled), the first raising the objective, the sixth within the commands' rounding: five steps.
 #: Over 2220 of the test's solves (60 draws), every one ended within the rounding with eight.
-POLISHING_STEPS = 8
+_POLISHING_STEPS = 8
 
 type Rows = Callable[[Any], Any]
 
@@ -195,10 +195,10 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         at = _at(rows, u, lower, upper)
         measure = jnp.max(jnp.abs(at.projected)) / at.size
         stationary = measure <= tolerance
-        # The objectives of the last MEMORY points, this one's last: a step is judged against the largest.
+        # The objectives of the last _MEMORY points, this one's last: a step is judged against the largest.
         recent = jnp.concatenate([recent[1:], (0.5 * jnp.sum(at.rows * at.rows))[None]])
         allowance = jnp.max(recent) - recent[-1]
-        # Newton's local phase, from the first point within the tolerance on (see POLISHING_STEPS).
+        # Newton's local phase, from the first point within the tolerance on (see _POLISHING_STEPS).
         polishing = stationary | (polished > 0)
         # A stall: the last step's decrease within what the objective resolves, and the stationarity not halved by it.
         stalls = jnp.where(quiet & (measure >= 0.5 * before), stalls + 1, 0)
@@ -241,7 +241,7 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
             # A decrease within its noise passes too: near the floor a Newton step lowers the stationarity by more
             # than the objective can show, and the stall count above stops a step that does not. Newton's step on a
             # positive definite Hessian that no bound cuts may raise the objective above this point's, within the
-            # largest of the last MEMORY points' (a projected or Gauss-Newton step is judged against this point's
+            # largest of the last _MEMORY points' (a projected or Gauss-Newton step is judged against this point's
             # alone: one the projection cuts can cycle between two corners of the box on an allowance).
             allowed = jnp.where(definite & jnp.all(moved == free_move), allowance, 0.0)
             return moved, jnp.abs(decrease) <= noise, decrease + allowed + noise >= ARMIJO * predicted
@@ -257,24 +257,24 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         _, _, moved, small, passed = lax.while_loop(searching, halve,
                                                     (jnp.ones((), dtype=dtype), jnp.zeros((), dtype=np.int32), *first))
         # The local phase: full steps, no line search, while a step is longer than the commands' rounding at the
-        # problem's size, at most POLISHING_STEPS; what is returned is the point within the tolerance whose step was
+        # problem's size, at most _POLISHING_STEPS; what is returned is the point within the tolerance whose step was
         # the shortest, the nearest the minimiser that the solve saw.
         length = jnp.max(at.columns * jnp.abs(first[0] - u))
         nearer = stationary & (length < shortest)
         best, shortest = jnp.where(nearer, u, best), jnp.where(nearer, length, shortest)
-        polish = polishing & (length > 4.0 * eps * at.size) & (polished < POLISHING_STEPS)
+        polish = polishing & (length > 4.0 * eps * at.size) & (polished < _POLISHING_STEPS)
         # The cap is read here, at a point already weighed: one within the tolerance goes on to its local phase,
         # which ends by its own count.
         stop = jnp.where(polishing, ~polish, ~passed | (stalls >= STALLS) | (taken >= ITERATIONS))
         after = jnp.where(polish, first[0], jnp.where(stop, jnp.where(polishing, best, u), moved))
-        damping = jnp.where(first[2], jnp.where(damping > DAMPING, damping / DAMPING_FACTOR, 0.0),
-                            jnp.maximum(damping * DAMPING_FACTOR, DAMPING))
+        damping = jnp.where(first[2], jnp.where(damping > _DAMPING, damping / _DAMPING_FACTOR, 0.0),
+                            jnp.maximum(damping * _DAMPING_FACTOR, _DAMPING))
         return (after, taken + jnp.where(stop, 0, 1).astype(np.int32), stalls, stop, measure, small & ~polishing,
                 polished + polish.astype(np.int32), best, shortest, recent, damping)
 
     first = (start, jnp.zeros((), dtype=np.int32), jnp.zeros((), dtype=np.int32), jnp.zeros((), dtype=bool),
              jnp.asarray(np.inf, dtype=dtype), jnp.zeros((), dtype=bool), jnp.zeros((), dtype=np.int32), start,
-             jnp.asarray(np.inf, dtype=dtype), jnp.full((MEMORY,), -np.inf, dtype=dtype), jnp.zeros((), dtype=dtype))
+             jnp.asarray(np.inf, dtype=dtype), jnp.full((_MEMORY,), -np.inf, dtype=dtype), jnp.zeros((), dtype=dtype))
 
     def going(carry: tuple[Any, ...]) -> Any:
         return ~carry[3]
@@ -351,5 +351,5 @@ def iterative_allocation(rows: Rows, start: Any, *, lower: Any, upper: Any, owne
     return IterativeAllocation(commands, active, jnp.sum(made * made), converged, stationarity, taken)
 
 
-__all__ = ["ACTIVE_BAND", "ARMIJO", "BACKTRACKS", "DAMPING", "DAMPING_FACTOR", "FLOOR", "ITERATIONS", "MEMORY",
-           "POLISHING_STEPS", "STALLS", "TOLERANCE", "IterativeAllocation", "iterative_allocation"]
+__all__ = ["ACTIVE_BAND", "ARMIJO", "BACKTRACKS", "FLOOR", "ITERATIONS", "STALLS", "TOLERANCE", "IterativeAllocation",
+           "iterative_allocation"]

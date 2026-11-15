@@ -195,12 +195,12 @@ the local one reached from there (the last command, in `ctx.allocator`).
 on the free commands where the exact Hessian is positive definite there, Gauss-Newton's where it is not (far from a
 minimiser); a scaled gradient step on the held ones; the bounds as a projection and Armijo's test on the projection arc,
 nonmonotone (Grippo, Lampariello and Lucidi) for Newton's step on a positive definite Hessian that no bound cuts: it is
-judged against the largest objective of the last `MEMORY` points, since in the curved valley of an arm's redundant
+judged against the largest objective of the last four points, since in the curved valley of an arm's redundant
 joints that step first raises the objective and then lowers it past where it began (the Maratos effect); judged against
 the current point alone, those steps were halved at every other iteration, and a warm start near the minimiser took the
 whole cap. A step the box cuts, and a Gauss-Newton step, are judged against the current point: with the allowance, a
 box's corners can trade places for the whole cap. Where a step had to be cut, the next is damped (Levenberg's term,
-`DAMPING`, raised at each further cut and lowered at each step taken whole), so that on a curved valley's floor the
+small, raised at each further cut and lowered at each step taken whole), so that on a curved valley's floor the
 steps shorten and turn towards the gradient instead of crawling by halvings to the cap. Its decrease is measured as a
 difference of squares, and a decrease within what the objective resolves passes, judged on the scale the rows came from:
 a row is a difference of terms (a frame's position and its goal) whose rounding is the terms', not the row's, so each
@@ -209,7 +209,7 @@ an affine model Newton's and Gauss-Newton's steps are one, and the iteration is 
 solution's.
 
 **Its local phase.** From the first point within the tolerance on, the solve takes full Newton steps with no line
-search, while a step is longer than the commands' rounding, at most `POLISHING_STEPS`, and returns the point within the
+search, while a step is longer than the commands' rounding, at most eight, and returns the point within the
 tolerance whose step was the shortest. The tolerance bounds the stationarity, not the distance to the minimiser, and
 the derivative is taken at the point returned. On a weakly regularised problem (an arm's position rows over more joints
 than they fix, a weak effort holding the rest, whose scaled Hessian's least eigenvalues are far below its largest) the
