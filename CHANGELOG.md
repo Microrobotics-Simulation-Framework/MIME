@@ -1306,6 +1306,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The run's precision is stated, and a GPU build warns when the matmul precision is not `highest`** (the build report, `RunResult`, `outputs.json`;
+  `mime.env._host.run_precision`, `precision_note`; usability bundle 3, F14). The README quickstart runs in float32 (JAX's default) and
+  neither the build report nor the result said so. The report's summary has a `precision: float32` (or `float64`) line, a result's
+  `text()` states it, and a run folder's `outputs.json` records it (`precision`; a folder written before it reads without the line).
+  On a GPU whose default matmul precision is not `highest` the build warns (`MatmulPrecisionReduced`, a `UserWarning`) and the report
+  carries the same text: the 0.2 line's drag was 15 % off under reduced-precision TF32 matmuls. The warning's logic is tested with the
+  device and precision read through a seam; **the real GPU path is not tested in CI** (no GPU there).
 - **`mime.toml` replaces `sharing.yaml`** (lane P, P6), one manifest for every kind of shared folder: `format`
   (`mime.toml/1`), one kind table (`[bundle] licence` at a saved folder, `[study] licence` at a study folder, a block's
   tables reserved and refused by name until a later release reads blocks) and `[record]`, the record's metadata with

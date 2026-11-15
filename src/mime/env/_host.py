@@ -13,7 +13,7 @@ import json
 import os
 import platform
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from functools import cache
 from pathlib import Path
 from typing import Any, cast
@@ -227,6 +227,39 @@ def deterministic_mode() -> bool:
 
 def matmul_precision() -> str | None:
     return cast(Any, jax.config).jax_default_matmul_precision
+
+
+class MatmulPrecisionReduced(UserWarning):
+    """A build on a GPU whose matmul precision is not ``highest`` (:func:`matmul_precision_warning`)."""
+
+
+def run_precision() -> str:
+    """The floating-point precision a run computes in: ``float64`` under ``jax_enable_x64``, else JAX's default,
+    ``float32``."""
+    return "float64" if cast(Any, jax.config).jax_enable_x64 else "float32"
+
+
+def device_and_matmul() -> tuple[str, str | None]:
+    """The backend JAX runs on and its default matmul precision: what :func:`precision_note` reads, and the seam a
+    test replaces to test the GPU warning without a GPU."""
+    return jax.default_backend(), matmul_precision()
+
+
+def matmul_precision_warning(backend: str, precision: str | None) -> str | None:
+    """The warning for a run on a GPU whose default matmul precision is not ``highest`` (``None``: nothing to say).
+    Reduced-precision (TF32) matmuls corrupted low-magnitude float32 physics by 15 % in the 0.2 line's drag; MIME
+    sets no precision of its own, so the environment's is what a run gets."""
+    if backend != "gpu" or precision == "highest":
+        return None
+    return (f"this run is on a GPU with the matmul precision {precision!r}, not 'highest': reduced-precision (TF32) "
+            "matmuls silently corrupt low-magnitude float32 physics (15 % in a drag of the 0.2 line); set "
+            "JAX_DEFAULT_MATMUL_PRECISION=highest before JAX starts")
+
+
+def precision_note(read: Callable[[], tuple[str, str | None]] | None = None) -> tuple[str, str | None]:
+    """``(the run's precision, the GPU matmul warning or None)`` for the process as it is, the device and the matmul
+    precision read through ``read`` (:func:`device_and_matmul` where not given, looked up when called)."""
+    return run_precision(), matmul_precision_warning(*(read or device_and_matmul)())
 
 
 def runner_record(environ: Mapping[str, str] | None = None, *, variable: str = RUNNER_VARIABLE) -> dict[str, str]:

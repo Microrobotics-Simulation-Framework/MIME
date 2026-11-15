@@ -116,6 +116,10 @@ class BuildReport:
     limits: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
     controller: tuple[str, ...] = ()
     masses: tuple[str, ...] = ()
+    #: The floating-point precision the build was made in (``float32`` or ``float64``; ``""`` for a report not made by
+    #: a build) and, for a GPU whose matmul precision is not ``highest``, the warning that says so.
+    precision: str = ""
+    matmul_warning: str | None = None
     #: What the experiment's profile made of it: the stamp every output carries, what is pending and listed, the
     #: defaults taken and the declared changes of role.
     profile: ProfileOutcome | None = None
@@ -258,6 +262,8 @@ class BuildReport:
         MADDENING's warnings with their text, the refusals, and the hash."""
         lines = [f"build report: experiment {self.experiment!r}, "
                  + (f"base step {self.dt!r} s" if self.dt else "no base step") + f", run as {self.run.text()}",
+                 *([f"precision: {self.precision}"] if self.precision else []),
+                 *([f"WARNING: {self.matmul_warning}"] if self.matmul_warning else []),
                  *self.stale_lines()]
         if self.profile is not None:
             lines += self.profile.report_lines()
