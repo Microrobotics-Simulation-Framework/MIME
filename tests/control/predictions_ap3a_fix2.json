@@ -1,0 +1,43 @@
+{
+ "written": "2026-11-15, committed before the second probe of PR 312's fix round ran (the commit that adds this file is the timestamp): the affine control's plant replaced after CI's stress run caught the first replacement missing a draw",
+ "phase": "apparatus lane AP3a, fix round 2: the affine control's plant",
+ "labels": "the fix agent (Sonnet) from CI's stress run 8 and local runs (margins only, never rates); the probe's numbers are the runner's",
+ "seen_before": [
+  "stress run 8 of 20 on 9290573e: the planted gain u (1 + |u| / 10 A) was not detected at u = (-1, -1, -1), moment (-6.4e-4, -1e-5, -1e-5) A m^2, point (0, 0, -0.09375), float32: ratio 0.94 of the line (a uniform gain is 0.1 of a force that nearly cancels there); the first probe of the fix round (probe/ap3a-fix, predictions_ap3a_fix.json) rated that plant at 200 runs and is not edited: its outcome stands beside its predictions",
+  "locally, on 1200 draws (the corners, unit currents and the stress point among them), the new plant's smallest planted ratio over the line: 355 in float32, 2e11 in float64; the clean model's largest 1.3e-4; and by construction at least 7.8 in float32 (the added term sum_k |J_k| u_k^2 is at least 0.25 max |J_k|, against a line of 1.6e-3 of the largest term)"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "CPU; the probe on a GitHub runner, 4 vCPU",
+  "sizes_and_parameters": "as the first fix round: Navion_2, the affine test at 40 Hypothesis examples a run, currents 0.5 to 20 A either sign, moments 1e-5 to 1e-3 A m^2, points in the declared region",
+  "seeds_and_draws": "200 runs a dtype, one job a dtype, each run its own Hypothesis seed, the clean arm beside it"
+ },
+ "gate_1_the_affine_control_fires_every_run": {
+  "claim": "the affine test's planted term (the force plus sum_k |J_k| u_k^2 / 1 A) is caught on every run in each dtype, and nothing is flagged with nothing planted",
+  "kind": "equality to rounding, with a control",
+  "case": "tests/oracles/test_forward_models.py::test_the_coil_model_is_affine_in_its_currents_force_and_torque_included[float32] and [float64], AP3_PLANT=affine",
+  "prediction": {
+   "value": "200/200 caught per dtype; the clean arm 0/200",
+   "band": [
+    199,
+    200
+   ],
+   "unit": "runs caught of 200",
+   "basis": "derived (a lower bound of 0.25 max |J_k| on the departure, no signed sum to cancel: at least 7.8 times the line in float32) and measured-before (355 times over 1200 draws)",
+   "why": "every term of the planted sum has the same sign, so no draw cancels it"
+  },
+  "control": {
+   "plant": "AP3_PLANT=affine",
+   "environment_variable": "AP3_PLANT=affine",
+   "expected_rate": "200/200",
+   "runs": 200,
+   "clean_expected": "0/200"
+  },
+  "if_wrong": "a miss is a draw where max |J_k| is below the line's share (a moment along the force's null for every coil): read the missed seed",
+  "cannot_discriminate_if": "both arms fail or both pass"
+ },
+ "outcomes": null
+}

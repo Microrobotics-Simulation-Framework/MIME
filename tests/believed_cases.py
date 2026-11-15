@@ -9,6 +9,7 @@ the bounds their port declares (25 A), where ``allocation_cases.AllocatingPD`` w
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -186,5 +187,54 @@ class AllocatingArmProbe(AllocatingProbe):
         raise AssertionError("the allocator refuses an arm's joint positions")
 
 
-__all__ = ["FORCE_SCALE", "LIMIT", "OWNER", "REASON", "AllocatingArmProbe", "AllocatingProbe", "BelievedPD", "GlitchedPD", "believed_sphere", "coils",
+#: The camera the camera-belief rig sees the sphere with: 1 cm from the origin on -y, looking across (+y).
+CAMERA_DETECTOR = dict(width=160, height=120, fx=750.0, fy=750.0, cx=79.5, cy=59.5)
+CAMERA_LOOK_ACROSS = (math.sqrt(0.5), -math.sqrt(0.5), 0.0, 0.0)
+#: The world point the camera probe projects, and its writes' scale (A per pixel, A per metre of depth).
+PROJECTED = (1e-3, -5e-4, 7e-4)
+PIXEL_SCALE, DEPTH_SCALE = 0.1, 100.0
+
+
+@register_controller
+@dataclass(frozen=True, kw_only=True)
+class CameraProbe(Controller):
+    """A controller whose law projects a fixed world point through ``ctx.believed("camera")`` and writes the pixel
+    ``(u, v)`` and the depth as currents (scaled): the believed camera's projection in the compiled step (graph) or on
+    the host (callback), which a build must run for the leaf names of its numbers (a belief's key is an observation id,
+    ``camera:``, with its colon)."""
+
+    name = "oracle.camera_probe"
+    version = "0.1.0"
+    differentiability = GradientStatus.EXACT
+    gradient = GradientRecord()
+    builds = {"": ()}
+    reads = {"pose": Signal("m; 1", (7,))}
+    writes = {"currents": Signal("A", (3,))}
+
+    def law(self, ctx: Any) -> ControlLaw:
+        camera = ctx.believed("camera")
+        dtype = jnp.zeros(()).dtype
+        point = jnp.asarray(PROJECTED, dtype=dtype)
+
+        def step(state: Mapping[str, Any], reads: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+            pixel, depth = camera.project(point)
+            return {}, {"currents": jnp.stack([PIXEL_SCALE * pixel[0], PIXEL_SCALE * pixel[1],
+                                               DEPTH_SCALE * depth]).astype(dtype)}
+
+        zero = jnp.zeros((3,), dtype=dtype)
+        return ControlLaw(state={}, held={"currents": zero}, step=step)
+
+
+def camera_sphere(*, believed: Mapping[str, Any] | None = None, mode: str = "graph") -> Experiment:
+    """:func:`believed_sphere` with a camera in the world observing it, its currents written by :class:`CameraProbe`."""
+    from mime.observations import Camera, Detector, World
+
+    exp = believed_sphere("camera_sphere", controller=CameraProbe(), mode=mode, believed=believed)
+    exp.observe(Camera(detector=Detector(**CAMERA_DETECTOR), mount=World(position=m((0.0, -1e-2, 0.0)),
+                                                                          orientation=CAMERA_LOOK_ACROSS),
+                       frame_period=ms(5)))
+    return exp
+
+
+__all__ = ["FORCE_SCALE", "LIMIT", "OWNER", "REASON", "AllocatingArmProbe", "AllocatingProbe", "BelievedPD", "CameraProbe", "camera_sphere", "GlitchedPD", "believed_sphere", "coils",
            "model_of"]

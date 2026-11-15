@@ -109,8 +109,6 @@ from mime.registry._entries import (
 from mime.registry._calibration import (
     CalibrationInstance,
     CalibrationType,
-    calibration_type,
-    calibration_types,
     register_calibration_type,
 )
 from mime.registry._forward import ForwardModel
@@ -147,8 +145,6 @@ __all__ = [
     "CalibrationInstance",
     "CalibrationType",
     "ForwardModel",
-    "calibration_type",
-    "calibration_types",
     "register_calibration_type",
     "Centreline",
     "CentrelineFrame",
