@@ -15,8 +15,8 @@ import yaml
 from mime.assets import AssetRef
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.build import CONVENTIONAL_GRAVITY, Attachment, ControllerDeclaration, Declaration, LicenceDeclaration, \
-    PermissionDeclaration, RangeDeclaration, RunSettings, SourceDeclaration, TermsDeclaration, ThingDeclaration, \
-    ValueDeclaration, binding_name, mode_of
+    ObservationDeclaration, PermissionDeclaration, RangeDeclaration, RunSettings, SourceDeclaration, TermsDeclaration, \
+    ThingDeclaration, ValueDeclaration, binding_name, mode_of
 from mime.build._derived import sha256_of
 from mime.data import Asset
 from mime.materials import RECORDS, Acceptance, Extrapolation, Nominal, Record, load_record, record_file
@@ -642,7 +642,7 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
         elif isinstance(declaration, ControllerDeclaration):
             if controller is not None:
                 raise UnsavableError("set_controller is called more than once, and an experiment has one controller")
-            controller = _controller_doc(declaration)
+            controller = _controller_doc(declaration, declarations)
         elif isinstance(declaration, ValueDeclaration):
             path, doc = _declared_doc(declaration)
             declared[path] = doc
@@ -802,9 +802,32 @@ def declared_of_terms(settings: RunSettings, declarations: Sequence[Declaration]
     return Declared(licences, tuple(attached), tuple(pinned), files, licence_read=read)
 
 
-def _controller_doc(declaration: ControllerDeclaration) -> ControllerDoc:
+def _believed_doc(believed: object, declarations: Sequence[Declaration]) -> dict[str, EntryDoc]:
+    """The controller's beliefs as the document holds them: each declaration by its key in full
+    (``<apparatus>.<part>``, or an observation's id), so that a saved file spells each one way."""
+    from mime.build import entry_id
+    from mime.build._control import believed_key
+
+    if not isinstance(believed, Mapping):
+        raise UnsavableError(f"the controller's believed={believed!r} is not a mapping of keys to declarations")
+    parts = {d.thing.name: (*d.thing.fields, *d.thing.chain) for d in declarations
+             if isinstance(d, ThingDeclaration) and isinstance(d.thing, Apparatus)}
+    observations = {entry_id(type(d.observation), d.observation.bindings()) for d in declarations
+                    if isinstance(d, ObservationDeclaration)}
+    held: dict[str, EntryDoc] = {}
+    for written, entry in sorted(cast(Mapping[object, object], believed).items(), key=lambda item: str(item[0])):
+        key, problem = believed_key(str(written), parts, observations)
+        if key is None or key in held:
+            raise UnsavableError(f"the controller's belief {written!r} {problem or 'is declared twice'}")
+        if not isinstance(entry, Entry):
+            raise UnsavableError(f"the controller's belief {key!r} is {entry!r}, not a registered entry")
+        held[key] = _entry_doc(entry, f"the controller's belief {key!r}")
+    return dict(sorted(held.items()))
+
+
+def _controller_doc(declaration: ControllerDeclaration, declarations: Sequence[Declaration] = ()) -> ControllerDoc:
     """The controller as the document holds it: the entry and its settings, the mode by word, the paths bound to its
-    labels, and its rate and latency when declared."""
+    labels, its rate and latency when declared, and its beliefs, each under its key in full."""
     plain = _entry_doc(declaration.controller, "the controller")
     mode = mode_of(declaration.mode)
     if mode is None:
@@ -824,6 +847,8 @@ def _controller_doc(declaration: ControllerDeclaration) -> ControllerDoc:
         doc["rate"] = _quantity_doc(declaration.rate, "the controller's rate")
     if declaration.latency is not None:
         doc["latency"] = _quantity_doc(declaration.latency, "the controller's latency")
+    if declaration.believed:
+        doc["believed"] = _believed_doc(declaration.believed, declarations)
     return doc
 
 

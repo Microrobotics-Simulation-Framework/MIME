@@ -2,12 +2,19 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, override
+from functools import partial
+from typing import TYPE_CHECKING, Any, override
 
+import jax
+import numpy as np
+
+from mime.core import as_run_array, quaternion
+from mime.core.multibody import compose
+from mime.fields._magnetic_model import INPUTS, MOMENT, QUANTITIES, ROWS, magnetic_outputs
 from mime.gradients import GradientStatus
-from mime.nodes.actuation import PointDipoleNode
+from mime.nodes.actuation import PointDipoleNode, point_dipole
 from mime.registry import PHYSICAL
-from mime.registry import BuildContext, FieldProvider, register_field_provider
+from mime.registry import BuildContext, FieldProvider, ForwardModel, Signal, register_field_provider
 from mime.things import PermanentMagnet
 from mime.vocabulary import FLUX_DENSITY, GRADIENT, Capability
 
@@ -66,6 +73,32 @@ class PointDipole(FieldProvider):
             offsets=tuple(c for slot in at_body_points for c in slot.offset or ())))
         if mount is not None:
             b.part("part", into=node["mount_poses"])
+
+    @override
+    def forward_model(self, ctx: BuildContext) -> ForwardModel:
+        """The field, its gradient, and the force and torque on a moment stated at the point, at a world point
+        (``x.point``, and ``x.moment``), with the frame the magnet's part is mounted on at ``x.mount_pose`` where it is
+        mounted: the node's closed form, its parameters the node's leaves, ``moment`` (the magnet's own, in its part's
+        frame) and ``placement`` (its part's pose in that frame). It takes no command, so it is affine in none: the
+        magnet moves with what carries it."""
+        part = ctx.parts["part"]
+        mounted = part.mount is not None
+        inputs = {**INPUTS, **({"mount_pose": Signal("m; 1", (7,))} if mounted else {})}
+        theta = {"moment": np.asarray(ctx.vector_value("moment"), dtype=np.float64),
+                 "placement": np.asarray(part.offset, dtype=np.float64)}
+        return ForwardModel(ctx.id, {}, inputs, QUANTITIES, theta, {"moment": "A m^2", "placement": "m; 1"},
+                            partial(_dipole_model, mounted=mounted), optional=frozenset({MOMENT}), rows=ROWS)
+
+
+def _dipole_model(u: Any, x: Any, theta: Any, *, mounted: bool) -> dict[str, Any]:
+    """The point dipole's forward model: the node's arithmetic, in the run's dtype."""
+    jnp: Any = jax.numpy
+    dtype = as_run_array(0.0).dtype
+    placement = jnp.asarray(theta["placement"], dtype=dtype)
+    part = compose(jnp.asarray(x["mount_pose"], dtype=dtype), placement) if mounted else placement
+    moment = quaternion.rotate(part[3:], jnp.asarray(theta["moment"], dtype=dtype))
+    field, gradient = point_dipole(moment, part[:3], jnp.asarray(x["point"], dtype=dtype))
+    return magnetic_outputs(field, gradient, x, dtype)
 
 
 __all__ = ["PointDipole"]

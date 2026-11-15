@@ -43,6 +43,10 @@ from mime.build._probes import host_callbacks
 from mime.build._refusals import MIME_DEFECT, Explained, Refusal, RefusalClass, entry_defect
 from mime.core import jnp
 from mime.nodes.control import ControllerNode, DelayNode, Step
+from mime.nodes.control._controller import BELIEVED_NAME
+
+#: The prefix of a believed number among the names a law is made again from (``mime.control._models.BELIEVED``).
+BELIEVED = BELIEVED_NAME
 
 
 def inlined(step: Any) -> Step:
@@ -261,7 +265,10 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float, built: Mapping[s
     made: Any = None
     if remake is not None and leaf_values:
         in_step, in_start = leaf_reads(remake, leaf_values, start, given)
-        unread = sorted(set(leaf_values) - in_step - in_start)
+        # A believed number its step does not read is no leaf, and nothing to refuse: the law reads the model as a
+        # whole (``ctx.believed``), and an axis never names one.
+        unread = sorted(set(leaf_values) - in_step - in_start - {name for name in leaf_values
+                                                                 if name.startswith(BELIEVED)})
         if unread:
             return [], [], [Refusal(
                 "controller.setting-unread", RefusalClass.USER,

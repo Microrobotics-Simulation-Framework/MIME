@@ -102,6 +102,17 @@ built tree a controller reads, `ctx.models`) and `reads_mount_rates(settings, pu
 angular velocities of the frame it mounts on; `ctx.rates_read` says whether anything reads its own). A `Segment` gives its frames' angular
 velocities at the start (`initial_rates`) and whether its own description has mass its joints move (`massive`).
 
+**An apparatus entry's capabilities** (a field provider's, a chain segment's), each optional, nothing required of an
+entry that implements none: `forward_model(ctx)`, its model as a pure JAX function (`ForwardModel`: `fn(u, x, theta) ->
+{quantity: value}`, the commands `u` it takes, its inputs `x`, its parameters `theta` by its node's leaf names, the
+commands it is affine in, `affine_in`), made from its own build context, which gives structure alone: every number the
+model reads is in `u`, `x` or `theta`, so that a controller's belief replaces each by replacing `theta`
+(`ctx.believed`, `mime.control`); and `calibration_instance()`, the calibration asset it reads as its type reads it
+(`CalibrationInstance`). A **calibration type** (`CalibrationType`, `register_calibration_type`) is a registered reader,
+no entry kind (it holds no settings and builds no node): its format by name and version (`mpem/1`, `urdf/1`), its
+model family, its reader and checks, its fitted and declared fields. A controller's context holds its models
+(`ctx.control`): `ctx.believed(key)` and `ctx.allocator(apparatus, commands=..., objective=..., owner=...)`.
+
 **a geometry kind's stage-side capabilities**: `native`, a class variable (a `Native`: one of USD's
 own primitives and which setting each of its length attributes holds; the choice is by kind, and a reader needs it
 before it has the settings); `placement`, the settings that place the kind rather than shape it; `drawing(settings,

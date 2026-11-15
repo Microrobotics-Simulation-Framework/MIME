@@ -1,0 +1,68 @@
+# The lab fixture's own calibration under a non-commercial licence: synthetic, for the licence gate's test.
+System_Name: labx_emns_nc
+Coil_List:
+  - Coil_0
+  - Coil_1
+  - Coil_2
+Coil_0:
+  Source_List:
+    - Src_0
+    - Src_1
+  Src_0:
+    A_Coeff: ~
+    B_Coeff:
+      - 2e-06
+    Source_Direction:
+      - 1.0
+      - 0.0
+      - 0.0
+    Source_Position:
+      - 0.12
+      - 0.0
+      - 0.0
+  Src_1:
+    A_Coeff: ~
+    B_Coeff:
+      - -4e-07
+    Source_Direction:
+      - 1.0
+      - 0.0
+      - 0.0
+    Source_Position:
+      - 0.14
+      - 0.01
+      - 0.0
+Coil_1:
+  Source_List:
+    - Src_0
+  Src_0:
+    A_Coeff: ~
+    B_Coeff:
+      - 2e-06
+    Source_Direction:
+      - 0.0
+      - 1.0
+      - 0.0
+    Source_Position:
+      - 0.0
+      - 0.12
+      - 0.0
+Coil_2:
+  Source_List:
+    - Src_0
+  Src_0:
+    A_Coeff: ~
+    B_Coeff:
+      - 2e-06
+    Source_Direction:
+      - 0.0
+      - 0.0
+      - 1.0
+    Source_Position:
+      - 0.0
+      - 0.0
+      - 0.12
+Workspace_Dimensions:
+  - [-0.02, 0.02]
+  - [-0.02, 0.02]
+  - [-0.02, 0.02]

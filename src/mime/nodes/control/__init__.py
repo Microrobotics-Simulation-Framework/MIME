@@ -2,6 +2,7 @@
 an apparatus's declared ports (the command stage and the measure stage)."""
 
 from mime.nodes.control._controller import (
+    BELIEVED_NAME,
     SETTING,
     ControllerInputs,
     ControllerNode,
@@ -11,6 +12,9 @@ from mime.nodes.control._controller import (
     DelayState,
     ReadSpec,
     Step,
+    believed_name,
+    leaf_param,
+    split_believed_name,
 )
 from mime.nodes.control._ports import (
     CLIPPED,
@@ -28,6 +32,7 @@ from mime.nodes.control._ports import (
     held_sample,
 )
 
-__all__ = ["CLIPPED", "COMMAND_STAGE", "MEASURE_STAGE", "SETTING", "STAGE_SWITCHES", "TRIPPED", "UNBOUNDED", "CommandStageNode",
+__all__ = ["BELIEVED_NAME", "CLIPPED", "COMMAND_STAGE", "MEASURE_STAGE", "SETTING", "STAGE_SWITCHES", "TRIPPED", "UNBOUNDED", "CommandStageNode",
            "ControllerInputs", "ControllerNode", "ControllerState", "DelayInputs", "DelayNode", "DelayState",
-           "MeasureStageNode", "ReadSpec", "StageInputs", "StageState", "Step", "clashes", "depth", "held_sample"]
+           "MeasureStageNode", "ReadSpec", "StageInputs", "StageState", "Step", "believed_name", "clashes", "depth", "held_sample", "leaf_param",
+           "split_believed_name"]

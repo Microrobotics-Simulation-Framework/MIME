@@ -49,6 +49,19 @@ _ASPECTS: dict[ThingKind, frozenset[str]] = {
 }
 
 
+def _believed_kind(key: str, things: Mapping[str, ThingDoc]) -> str:
+    """The kind of entry a belief saved under ``key`` is, from what the key names in the document: a field of an
+    apparatus a field provider's, a chain segment a dynamics', anything else an observation's."""
+    apparatus, _, part = key.partition(".")
+    thing = things.get(apparatus)
+    if thing is not None and thing["kind"] == "apparatus":
+        if part in thing.get("fields", {}):
+            return "field provider"
+        if any(segment["segment"] == part for segment in thing.get("chain", [])):
+            return "dynamics"
+    return "observation"
+
+
 class _Reader:
     def __init__(self, locked: Sequence[EntryRecord], referenced: Sequence[str] = (),
                  materials: Mapping[str, Record] | None = None, folder: Path | None = None) -> None:
@@ -205,16 +218,16 @@ class _Reader:
             self.refuse("load.units", f"{where}: {error}", "write units as experiment.save() writes them")
             return None
 
-    def controller(self, doc: ControllerDoc) -> Declaration | None:
-        if "believed" in doc:
-            self.refuse("load.document-shape", "the controller's believed models (controller.believed) are held by the "
-                                               "saved form and read by no MIME yet: a controller's model of what it "
-                                               "drives is not read from a document before it is built",
-                        "remove controller.believed from the document and load it again: `Experiment.load(folder)`")
-            return None
+    def controller(self, doc: ControllerDoc, things: Mapping[str, ThingDoc] | None = None) -> Declaration | None:
         built = self.entry("controller", doc, "the controller")
         if built is None:
             return None
+        believed: dict[str, Entry] = {}
+        for key, held in doc.get("believed", {}).items():
+            belief = self.entry(_believed_kind(key, things or {}), held, f"the controller's belief {key!r}")
+            if belief is None:
+                return None
+            believed[key] = belief
         try:
             rate = decode_setting(doc["rate"]) if "rate" in doc else None
             latency = decode_setting(doc["latency"]) if "latency" in doc else None
@@ -222,7 +235,7 @@ class _Reader:
             self.refuse("load.units", f"the controller: {error}", "write units as experiment.save() writes them")
             return None
         return ControllerDeclaration(cast(Controller, built), dict(doc["reads"]), dict(doc["writes"]), doc["mode"],
-                                     rate, latency)
+                                     rate, latency, believed=believed)
 
     def bound(self, kind: str, doc: BoundEntryDoc) -> Declaration | None:
         where = f"{kind} {doc['id']}"
@@ -299,7 +312,7 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
     for doc in document["observations"]:
         declarations.append(cast(Declaration, reader.bound("observation", doc)))
     held_controller = document["controller"]
-    controller = reader.controller(held_controller) if held_controller is not None else None
+    controller = reader.controller(held_controller, document["things"]) if held_controller is not None else None
     if controller is not None:
         declarations.append(controller)
     for path, declared in document["declared"].items():

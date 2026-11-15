@@ -128,6 +128,28 @@ class SegmentNode(MountedNode):
         return mount + quaternion.rotate(base[3:], local.T).T
 
 
+def kinematic_articulation(structure: Mapping[str, Any], p: Mapping[str, Any], dtype: Any) -> Articulation:
+    """The massless articulation of a kinematic arm: its structure (``dof_names``, ``parents``, ``revolute``,
+    ``frame_names``, ``frame_bodies``) and its arrays as ``p`` holds them, flattened, in ``dtype``: what its node and its
+    forward model compute its frames from."""
+    n, k = len(cast(tuple[str, ...], structure["dof_names"])), len(cast(tuple[str, ...], structure["frame_names"]))
+
+    def shaped(name: str, *shape: int) -> Array:
+        return jnp.reshape(jnp.asarray(p[name], dtype=dtype), shape)
+
+    return Articulation(
+        dof_names=cast(tuple[str, ...], structure["dof_names"]), parents=cast(tuple[int, ...], structure["parents"]),
+        revolute=cast(tuple[bool, ...], structure["revolute"]),
+        frame_names=cast(tuple[str, ...], structure["frame_names"]),
+        frame_bodies=cast(tuple[int, ...], structure["frame_bodies"]), closures=(),
+        axes=shaped("axes", n, 3), origin_rotations=shaped("origin_rotations", n, 4),
+        origin_translations=shaped("origin_translations", n, 3), masses=jnp.zeros((n,), dtype=dtype),
+        centres_of_mass=jnp.zeros((n, 3), dtype=dtype), inertias=jnp.zeros((n, 3, 3), dtype=dtype),
+        armatures=jnp.zeros((n,), dtype=dtype), frame_rotations=shaped("frame_rotations", k, 4),
+        frame_translations=shaped("frame_translations", k, 3), lower=jnp.zeros((n,), dtype=dtype),
+        upper=jnp.zeros((n,), dtype=dtype))
+
+
 def flattened(values: Any) -> tuple[float, ...]:
     return tuple(float(v) for v in np.asarray(values, dtype=np.float64).ravel())
 
@@ -250,22 +272,7 @@ class KinematicArmNode(SegmentNode):
 
     def articulation(self, p: Mapping[str, Any], dtype: Any) -> Articulation:
         """The articulation the arrays ``p`` hold, massless."""
-        held = self.constants()
-        n, k = self._dofs(), len(cast(tuple[str, ...], held["frame_names"]))
-
-        def shaped(name: str, *shape: int) -> Array:
-            return jnp.reshape(jnp.asarray(p[name], dtype=dtype), shape)
-
-        return Articulation(
-            dof_names=cast(tuple[str, ...], held["dof_names"]), parents=cast(tuple[int, ...], held["parents"]),
-            revolute=cast(tuple[bool, ...], held["revolute"]), frame_names=cast(tuple[str, ...], held["frame_names"]),
-            frame_bodies=cast(tuple[int, ...], held["frame_bodies"]), closures=(),
-            axes=shaped("axes", n, 3), origin_rotations=shaped("origin_rotations", n, 4),
-            origin_translations=shaped("origin_translations", n, 3), masses=jnp.zeros((n,), dtype=dtype),
-            centres_of_mass=jnp.zeros((n, 3), dtype=dtype), inertias=jnp.zeros((n, 3, 3), dtype=dtype),
-            armatures=jnp.zeros((n,), dtype=dtype), frame_rotations=shaped("frame_rotations", k, 4),
-            frame_translations=shaped("frame_translations", k, 3), lower=jnp.zeros((n,), dtype=dtype),
-            upper=jnp.zeros((n,), dtype=dtype))
+        return kinematic_articulation(self.constants(), p, dtype)
 
     def commanded(self, given: ArmInputs, previous: Array) -> Array:
         """The positions commanded: each kind's command at its joints, the joints a command does not reach held."""
@@ -440,4 +447,5 @@ class KinematicMotorNode(SegmentNode):
 
 
 __all__ = ["ARM_EQUATIONS", "MOTOR_EQUATIONS", "POSE_UNITS", "RATE_UNITS", "ArmInputs", "ArmState", "KinematicArmNode",
-           "KinematicMotorNode", "MotorInputs", "MotorState", "MountInputs", "MountedNode", "SegmentNode", "flattened"]
+           "KinematicMotorNode", "MotorInputs", "MotorState", "MountInputs", "MountedNode", "SegmentNode", "flattened",
+           "kinematic_articulation"]

@@ -3,11 +3,11 @@ and each write with the command it replaces the drive of. What the run does with
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 
-from mime.registry import Controller, Registered
+from mime.registry import Controller, Entry, Registered
 from mime.units import Magnitude
 
 
@@ -119,6 +119,42 @@ LATENCY_RULE = ("a tick at time t reads the state as it stands at t, before the 
 
 
 @dataclass(frozen=True)
+class BeliefPlan:
+    """A belief the controller declares (``set_controller(believed=...)``) as phase 1 resolved it: its key in full
+    (``<apparatus>.<field>``, ``<apparatus>.<segment>`` or an observation's id), as the experiment wrote it, the
+    declaration, its registration and its settings in SI."""
+
+    key: str
+    written: str
+    entry: Entry
+    registered: Registered
+    settings: Mapping[str, Magnitude]
+
+
+def believed_key(written: str, parts: Mapping[str, Sequence[str]],
+                 observations: Collection[str]) -> tuple[str | None, str | None]:
+    """The full key a belief written as ``written`` names, ``(key, None)``, or ``(None, why)``: ``<apparatus>.<part>``
+    for a part of an apparatus (``parts``: each apparatus's fields and chain segments by name), the apparatus's name
+    alone where it holds exactly one part, or an observation's id (one bound to nothing, ``camera:``, also by its name
+    alone). One spelling is saved and reported: the full one."""
+    if written in observations:
+        return written, None
+    if f"{written}:" in observations:
+        return f"{written}:", None  # an observation bound to nothing: its id is its name and a colon (``camera:``)
+    apparatus, _, part = written.partition(".")
+    held = parts.get(apparatus)
+    if held is None:
+        return None, f"names no apparatus and no observation ({written!r})"
+    if part:
+        return (written, None) if part in held else (None, f"names no field or chain segment of {apparatus!r}: it "
+                                                           f"has {', '.join(sorted(held)) or 'none'}")
+    if len(held) == 1:
+        return f"{apparatus}.{held[0]}", None
+    return None, (f"names the apparatus {apparatus!r}, which has {len(held)} parts "
+                  f"({', '.join(f'{apparatus}.{p}' for p in sorted(held)) or 'none'}): name one in full")
+
+
+@dataclass(frozen=True)
 class ControllerPlan:
     """The controller as phase 1 resolved it: ``owner`` its id, its entry and registration, its settings in SI, its
     mode, its period (every ``period`` base steps) and ``latency`` in base steps, and its reads and writes in label
@@ -136,6 +172,8 @@ class ControllerPlan:
     #: The settings a study's axis names, held as leaves of its node inside the compiled step where its step reads
     #: them (``ControllerDeclaration.leaves``).
     leaves: tuple[str, ...] = ()
+    #: Its declared beliefs (``set_controller(believed=...)``), by key in full.
+    beliefs: tuple[BeliefPlan, ...] = ()
 
     def inputs(self) -> tuple[str, ...]:
         """The external inputs its writes derive, as ``node.field``."""
@@ -173,5 +211,5 @@ def refused_reads(profile: str | None, reads: Sequence[ClassedRead]) -> list[tup
     return []
 
 
-__all__ = ["DELAY", "LATENCY_RULE", "UNBUILT", "ClassedRead", "ControllerPlan", "Mode", "ReadClass", "ResolvedWrite",
-           "controller_nodes", "mode_of", "refused_reads"]
+__all__ = ["DELAY", "LATENCY_RULE", "UNBUILT", "BeliefPlan", "ClassedRead", "ControllerPlan", "Mode", "ReadClass",
+           "ResolvedWrite", "believed_key", "controller_nodes", "mode_of", "refused_reads"]

@@ -1,0 +1,218 @@
+{
+  "written": "2026-11-14, committed before the probe of AP3a ran (the commit that adds this file is the timestamp), as amended by the coordinator's three changes of the same day: the forward-model contract, calibration types and instances, ctx.believed and ctx.allocator on the exact path; the slew rule's assumption tested and stated; bits after the arm's articulation moved into mime.nodes.actuation.kinematic_articulation",
+  "phase": "apparatus lane AP3a: forward models, calibration, believed models, the exact-path allocator",
+  "labels": "the builder (Opus) from the design and from local runs of the touched tests on the laptop (correctness only, never timing); the probe's numbers are the runner's",
+  "seen_before": [
+    "tests/oracles/test_forward_models.py, tests/control/test_believed.py, tests/control/test_allocator.py and tests/fields/test_lab_calibration.py passed on the laptop (float64 and float32): the oracles within their tolerances, the controls caught in their planted arms",
+    "the scratch smoke run on the laptop: ctx.allocator's writes on the R2 sphere equal the hand-written law's bit for bit in float64 over 60 steps; in float32 they differ by 1.4e-4 A of 25 A over the closed loop; a belief equal to the truth gave every history array equal in both dtypes; a belief 1 um off moved the writes by 2.7e-4 A (float64) and 4.0e-4 A (float32)",
+    "the graph and callback modes' writes on the R2 sphere over 60 steps: 2.8e-13 A (float64), 2.5e-4 A (float32) apart on the laptop"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU; the probe on a GitHub runner, 4 vCPU; bits on one CPU, one BLAS and XLA thread",
+    "sizes_and_parameters": "camera spike R2's sphere: Navion_2 (3 coils) at the world's origin, a 1 mm sphere of 4e-6 kg with 2.8e-4 A m^2 at the region's centre, dt 1 ms, the controller every 5 steps, one step late, the force scale 1 mN, the port's bounds 25 A; A0 and script A as dev1 ships them",
+    "seeds_and_draws": "Hypothesis at 40 examples per oracle property (physical scales: currents 0.01 to 20 A or zero, moments 1e-6 to 1e-2 A m^2 or zero, points in each declared region); detection rates at 20 runs a control (30 for the Hypothesis one, with its seed)"
+  },
+  "gate_1_coil_model_against_mag_manip": {
+    "claim": "the calibrated multipole's forward model gives mag_manip's field and gradient per unit current and its field, gradient, force and torque at drawn currents and moments, per system, within 10 eps / c of each quantity's peak (float64)",
+    "kind": "bounds (a software oracle's agreement: it grounds neither sign nor frame against hardware)",
+    "case": "tests/oracles/test_forward_models.py::test_the_coil_models_coefficients_and_values_match_mag_manip",
+    "prediction": {
+      "value": "every miss below the tolerance",
+      "band": [
+        0,
+        "10 eps / c (below 1e-9 on every system)"
+      ],
+      "unit": "share of the peak",
+      "basis": "derived: the node's function, which test_calibrated_multipole holds to the same bound",
+      "why": "the model is placed_unit_fields read from the node's leaves; the force and torque are products of its outputs"
+    },
+    "control": {
+      "plant": "none in this gate: the node test's planted errors (a sign, a frame) are test_calibrated_multipole's",
+      "expected_rate": "n/a"
+    },
+    "if_wrong": "the model reads the leaves otherwise than the node (a reshape, an order of sources)"
+  },
+  "gate_2_coil_model_against_actuation_in_both_dtypes": {
+    "claim": "at a drawn placement, point, currents and moment, the model in each dtype against the host's actuation (float64) within 10 eps_dtype / c times the scale of the terms each quantity sums; OctoMag in float32 refused by its declared guard",
+    "kind": "bounds",
+    "case": "tests/oracles/test_forward_models.py::test_the_coil_model_at_a_placement_matches_the_hosts_actuation",
+    "prediction": {
+      "value": "every draw within",
+      "basis": "derived",
+      "why": "two summations of the same near-cancelling sources agree to eps / c"
+    },
+    "control": {
+      "plant": "none: the placement's own control (the turn applied the other way) is test_calibrated_multipole's",
+      "expected_rate": "n/a"
+    }
+  },
+  "gate_3_dipole_and_arm": {
+    "claim": "the point dipole's model against its closed form (64 eps of the field) and central differences of it (its gradient and its force within max(1e-8, 256 eps) of their scale), fixed and on the AR4's rotor; the kinematic arm's frames against frame_pose of its description, within 256 eps",
+    "kind": "bounds",
+    "case": "tests/oracles/test_forward_models.py::test_the_dipole_model_matches_its_closed_form_and_its_derivatives, ::test_the_arm_model_is_forward_kinematics_of_its_description",
+    "prediction": {
+      "value": "every draw within",
+      "basis": "derived"
+    }
+  },
+  "gate_4_derivatives": {
+    "claim": "forward mode in u and in theta at once against central differences (h = 1e-6), float64, within 1e-5 of the derivative's scale, for the coils, the dipole and the arm",
+    "kind": "bounds",
+    "case": "tests/oracles/test_forward_models.py::test_each_models_derivative_in_its_commands_and_parameters_is_central_differences",
+    "prediction": {
+      "value": "every draw within",
+      "basis": "derived: the differences' truncation (h / scale)^2 and rounding eps / h"
+    }
+  },
+  "gate_5_affine": {
+    "claim": "f(u) = f(0) + J u for every quantity of the coil model, the force and torque on a fixed moment included, within 64 eps of the terms' scale over the cancellation, in both dtypes",
+    "kind": "equality to rounding",
+    "case": "tests/oracles/test_forward_models.py::test_the_coil_model_is_affine_in_its_currents_force_and_torque_included",
+    "control": {
+      "plant": "the force read at the currents squared (u |u|)",
+      "environment_variable": "AP3_PLANT=affine",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30"
+    }
+  },
+  "gate_6_belief_equal_to_the_truth": {
+    "claim": "a belief equal to the truth gives the run of no belief bit for bit, every history array, in both dtypes; one number of it moved changes the writes",
+    "kind": "equality",
+    "case": "tests/control/test_believed.py::test_a_belief_equal_to_the_truth_is_the_run_of_none_and_one_number_moved_changes_it",
+    "prediction": {
+      "value": "equal in both dtypes; the moved belief's writes differ",
+      "basis": "measured-before (the laptop's smoke run)",
+      "why": "both build one program, its belief's numbers leaves of the controller's node of equal values"
+    },
+    "control": {
+      "plant": "the equal belief's array placed 1 nm off",
+      "environment_variable": "AP3_PLANT=leaf",
+      "expected_rate": "20/20 in each dtype",
+      "runs": 20,
+      "clean_expected": "0/20"
+    },
+    "cannot_discriminate_if": "the step read no belief's number (then nothing would move): the moved arm of the same test fails that way"
+  },
+  "gate_7_the_allocation_follows_the_belief": {
+    "claim": "the true array 2 mm off, the belief where it was: the first tick's delivered currents equal the unmoved run's, and the field at the sphere is the belief's at the sphere's point less the move, to 1e-12",
+    "kind": "equality",
+    "case": "tests/control/test_believed.py::test_the_allocation_follows_the_belief_when_the_truth_moves",
+    "control": {
+      "plant": "the controller's models reading the truth whatever belief is declared",
+      "environment_variable": "AP3_PLANT=truth",
+      "expected_rate": "20/20",
+      "runs": 20,
+      "clean_expected": "0/20"
+    }
+  },
+  "gate_8_the_allocator_is_the_hand_written_law": {
+    "claim": "on the R2 sphere ctx.allocator writes the hand-written allocation's currents bit for bit in float64 over 60 steps; in float32 its first tick within 1e3 eps32 x 25 A",
+    "kind": "equality (float64), bounds (float32)",
+    "case": "tests/control/test_allocator.py::test_the_allocator_writes_the_hand_written_allocation",
+    "prediction": {
+      "value": "equal; float32 first tick about 1e-5 A apart or less",
+      "basis": "measured-before (float64 equal on the laptop)"
+    }
+  },
+  "gate_9_the_slew_box": {
+    "claim": "through a port slewing at 2 kA/s, for (controller, port) periods (3,1), (3,2), (2,3), (4,2), (5,3), (2,4) with latencies, the stage's slewed value reaches each target before the next arrives, within 64 eps64 x 25 A",
+    "kind": "bounds",
+    "case": "tests/control/test_allocator.py::test_the_slew_box_never_asks_for_more_than_the_stage_delivers",
+    "prediction": {
+      "value": "every configuration within",
+      "basis": "derived: _slew_steps is the least time between two changes of the stage's target per write"
+    },
+    "control": {
+      "plant": "the box as the controller's period alone",
+      "environment_variable": "AP3_PLANT=slew",
+      "expected_rate": "20/20 on (3,2); caught on (3,2), (2,3), (5,3) in the test's planted arm, quiet where one period divides the other",
+      "runs": 20,
+      "clean_expected": "0/20"
+    },
+    "cannot_discriminate_if": "one period divides the other (the two rules agree): those configurations are not counted as the control's"
+  },
+  "gate_9b_the_slew_boxs_assumption": {
+    "claim": "the box last +/- slew * dt * g takes the stage to have stood at last. Where it did not, the allocation asks for more than the stage delivers and that shows: (a) from rest, the law's first last 0 A and the port resting at 10 A, the recorded traffic shows a shortfall above 1 A (written against delivered), and the control, the port resting at 0 A, none above 64 eps x 25 A; (b) after a glitch trips a port that trips at its bounds, the stage delivers its rest (0 A) while the law goes on asking for amperes (shortfall above 1 A) and the run raises tripped_currents (a UserWarning); the control, no glitch, is delivered to 1e-9 A and raises nothing. The build report says, beside each boxed command, that the stage is taken to stand at the last command. No flag is raised for a delivery the slew limited (disclosed, not added: a new public seam awaits the coordinator)",
+    "kind": "acceptance of a stated limit: it bounds nothing about the stage, it shows the box's assumption failing where it must",
+    "case": "tests/control/test_allocator.py::test_from_rest_the_box_asks_for_more_than_the_stage_delivers_where_the_stage_is_not_at_the_laws_last, ::test_after_a_trip_the_allocation_asks_for_more_than_the_stage_delivers_and_the_run_flags_the_trip",
+    "prediction": {
+      "value": "shortfall above 1 A where the assumption fails, at rounding where it holds; the trip flagged in the (b) arm alone",
+      "basis": "measured-before (the laptop, float64): the trip arm asked [0.77, -24.7, 9.4] A and the stage delivered 0 A; the no-glitch arm asked and delivered alike",
+      "why": "the stage ramps from its rest at the slew, 2 A a step, and the box's 6 A a write does not reach what is asked from 10 A in the writes between"
+    },
+    "control": {
+      "plant": "the box not there (the slew's steps infinite)",
+      "environment_variable": "AP3_PLANT=nobox",
+      "expected_rate": "20/20 on the from-rest control arm (the port resting at 0 A, which must hold the assumption)",
+      "runs": 20,
+      "clean_expected": "0/20"
+    },
+    "cannot_discriminate_if": "the port rests where the law's last starts (the control arm: both agree); the test's rest-elsewhere arm is the one that discriminates"
+  },
+  "gate_10_refusals_keep_their_codes": {
+    "claim": "allocation.bounds, allocation.model, allocation.objective, allocation.exact-size (citing EXACT_COMMANDS) and controller.believed refuse what they name, each raised inside law(ctx) or in phase 1 with its own code; each control (the declaration made right) builds or plans; a law raising a plain error is still entry.defect",
+    "kind": "acceptance",
+    "case": "tests/control/test_allocator.py, tests/control/test_believed.py",
+    "control": {
+      "plant": "MimeError not caught in law_and_models (as before AP3a): the bounds refusal becomes the entry's defect",
+      "environment_variable": "AP3_PLANT=defect",
+      "expected_rate": "20/20",
+      "runs": 20,
+      "clean_expected": "0/20"
+    }
+  },
+  "gate_11_the_licence_gate": {
+    "claim": "a lab's conditional MPEM record nothing accepted is refused as asset.licence-not-accepted, its control (accepted) plans",
+    "kind": "acceptance",
+    "case": "tests/fields/test_lab_calibration.py::test_a_conditional_calibration_nothing_accepted_is_refused_by_the_gate",
+    "control": {
+      "plant": "the calibration read around the gate (the cached file taken with no acceptance asked)",
+      "environment_variable": "AP3_PLANT=gate",
+      "expected_rate": "20/20",
+      "runs": 20,
+      "clean_expected": "0/20"
+    }
+  },
+  "bits": {
+    "cases": "a0 and script_a in float32 and float64, tutorial_a and tutorial_a0 (float32), the hand-written allocation's sphere (float32, float64): the release (origin/release/v0.3.0, 61396864 at the merge) against this head, one job, one CPU, one thread (bit_compare.py); each program's derived hash and canonical text among its arrays. The arm's articulation moved into mime.nodes.actuation.kinematic_articulation (the dynamics' arm and the forward model share it), which A0 and script A both build",
+    "prediction": "every array np.array_equal in both dtypes, the derived hashes and canonical texts included: no program declares a belief or calls ctx.allocator, the articulation is the same arithmetic moved into one function, the multipole's reader the same bytes. A bit that moves is then a finding about the moved function's compiled program (a no-feed output can move last bits), and is looked into before anything else",
+    "controls": {
+      "one_ulp": "ulp_f32 and ulp_f64: A0 with its rotor magnet's moment one ulp of the dtype up on the head (float32: np.nextafter(np.float32(x), np.float32(inf)), which survives float32's rounding; float64: np.nextafter(np.float64(x), inf)); the base unchanged. The arrays must differ in both dtypes on the runner. The control's own premise is checked in the arm: the moment's float32 value differs from the unnudged one, printed"
+    },
+    "expected": "all_equal true for the eight programs; ulp_f32 and ulp_f64 all_equal false"
+  },
+  "costs": {
+    "unused": "the derived hash and canonical text of A0, script A and the R2 sphere unchanged (the bits arm)",
+    "used": "the sphere's allocation through ctx.allocator against the same allocation by hand through the same port: node count equal (6 and 6: no node is built for a belief or the allocator); the compiled step's operation count within 10 % (the same law; the belief's numbers leaves in place of constants); the median chunk time within 0.9 to 1.25 of the hand-written one, float32 on the runner",
+    "measured_at": "nothing measured before; a guess from the law being the same"
+  },
+  "outcomes": {
+    "written": "2026-11-15, from the probe run https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43647940444 (probe/ap3a at b7043a4, a GitHub runner, AMD EPYC 9V74); the probe branch is deleted after this commit",
+    "controls": {
+      "rate_truth": "20/20, clean 0/20",
+      "rate_leaf64": "20/20, clean 0/20",
+      "rate_leaf32": "20/20, clean 0/20",
+      "rate_slew": "20/20, clean 0/20 (on P3_R2_L1_0)",
+      "rate_defect": "20/20, clean 0/20",
+      "rate_affine": "30/30, clean 0/30",
+      "rate_gate": "20/20, clean 0/20",
+      "rate_nobox": "20/20, clean 0/20"
+    },
+    "bits": {
+      "base": "release/v0.3.0 at 61396864, head b7043a4 (the apparatus branch's d1fc3455/b2bc3a78 and the probe's files), one job, one CPU set, one thread",
+      "result": "a0_f32, a0_f64, script_a_f32, script_a_f64, tutorial_a_f32, tutorial_a0_f32, sphere_f32, sphere_f64: every array equal (31, 31, 23, 23, 46, 31, 14, 14 arrays, the derived hashes and canonical texts included)",
+      "controls": "ulp_f32 and ulp_f64 differ (14 and 13 of 31 arrays moved, the derived hash among them): the one-ulp nudge, taken in the dtype, survives float32's rounding on the runner"
+    },
+    "costs": {
+      "unused": "the derived hash and canonical text of A0, script A and the R2 sphere unchanged (bits arm)",
+      "used": "nodes 6 and 6 (float32 and float64); compiled step HLO instructions 1809 against 1663 by hand in float32 (+8.8 %, float64 1823 against 1677), outside fusions 382 against 369; median chunk 0.02311 s against 0.02158 s, allocator over hand 1.071 (3 builds x 20 chunks, float32, trace checks passed)"
+    },
+    "memory": "rate_affine failed the probe's memory check: peak 1.185 GiB against a bound of 1.069 GiB (estimate 0.428 GiB for a 2-step sphere, uncalibrated; the arm's target is a Hypothesis test over 30 runs, a larger case than its estimate line). An estimator underestimate, not a control miss: its rate (30/30, clean 0/30) is complete. Calibration row in the artifact probe-ap3a-rate_affine/mem_check.json",
+    "gates_not_rated_by_the_probe": "gates 1 to 8, 10 and 11 and 9b's two cases are in CI's default lanes; see the PR's checks"
+  }
+}
