@@ -147,6 +147,10 @@ declare in their annotations, `Annotated[Quantity, Length]`) and `drives.py` (co
 each a node whose numbers are `params` leaves with an exclusive edge into an apparatus's command: the constant drive
 first, the ramps in dev2) and `walls.py` (wall kinds: how a confining wall reaches a solver
 of the flow; free space and the tube, the plane reserved).
+`units.py`'s grammar, markers, units and errors are explained in [the units note](../../docs/units.md). `_refusals.py` holds
+the refusal and error classes (`Refusal`, `MimeError` and its kinds, the table of MIME's codes) at the bottom of the import
+order: `units.py` raises MIME errors, so they cannot sit in `mime.build`, whose package imports units;
+`mime.build._refusals` re-exports them.
 
 The toy entries the build is tested on are in `mime.testing.toys`, so a lab's tests can use them too, with the toy
 family, the family suites' control.

@@ -245,21 +245,30 @@ __all__ = ["Overridden", "base_point", "overridden", "replayed"]
 
 
 def _units() -> dict[str, Any]:
+    """The units a value's text may name: each by the Python name ``mime.units`` exports it as (``mPa_s``, ``mm_per_s``)
+    and by the symbol it prints with, spaces left out (``mPas``, ``mm/s``)."""
     import mime.units as units
 
-    return {held.symbol.replace(" ", ""): held for held in vars(units).values() if isinstance(held, units.Unit)}
+    by_symbol = {held.symbol.replace(" ", ""): held for held in units.units_by_name().values()}
+    return {**by_symbol, **units.units_by_name()}
 
 
 _NUMBER = r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?"
+#: The forms a value's unit is written in, one of each: a unit's name in ``mime.units``, its symbol, and SI base units. The
+#: refusal of a value shows them, and a test holds each to :func:`parse_value`.
+WRITTEN_FORMS = ("20Hz", "2mPa_s", "1.5mm_per_s", "2 mPa s", "1.5 mm/s", "3 N m", "1e-3 kg m^-1 s^-1")
+_WRITTEN = ("a value is numbers and a unit, written as the unit's name in mime.units, its symbol or SI base units: "
+            + ", ".join(WRITTEN_FORMS))
 
 
 def parse_value(text: str) -> Quantity | None:
-    """A value as ``--override`` and a spec file write it: a number or numbers split by commas, with a unit of
-    ``mime.units`` (``20Hz``, ``1.2 mT``, ``0,0,-1 mm``) or a unit symbol of the saved form (``m^2 kg s^-1``), or a bare
-    number for a dimensionless value; ``None`` for text that is not one."""
+    """A value as ``--override`` and a spec file write it: a number or numbers split by commas, with a unit, or a bare
+    number for a dimensionless value; ``None`` for text that is not one. A unit is a name ``mime.units`` exports
+    (``20Hz``, ``2mPa_s``, ``1.5mm_per_s``), the symbol a unit prints with (``1.2 mT``, ``2 mPa s``, ``1.5 mm/s``), or
+    a label of SI base units (``m^2 kg s^-1``)."""
     import re
 
-    found = re.fullmatch(rf"\s*\(?\s*((?:{_NUMBER})(?:\s*,\s*{_NUMBER})*)\s*\)?\s*([A-Za-z][A-Za-z0-9/^ -]*)?\s*", text)
+    found = re.fullmatch(rf"\s*\(?\s*((?:{_NUMBER})(?:\s*,\s*{_NUMBER})*)\s*\)?\s*([A-Za-z][A-Za-z0-9_/^ -]*)?\s*", text)
     if found is None:
         return None
     numbers = [float(n) for n in found[1].split(",")]
@@ -282,9 +291,9 @@ def parse_override(text: str) -> tuple[str, object]:
     if not equals or not path.strip() or quantity is None:
         raise BuildRefused([Refusal(
             "override.written", RefusalClass.USER,
-            f"--override {text!r} is not path=value with a value of numbers and a unit of mime.units",
+            f"--override {text!r} is not path=value, where {_WRITTEN}",
             "write it as --override field.commands.frequency=20Hz, --override umr.initial.position=0,0,-1mm or "
-            "--override umr.mass=8.5e-5kg")])
+            "--override water.viscosity=2mPa_s")])
     return path.strip(), quantity
 
 

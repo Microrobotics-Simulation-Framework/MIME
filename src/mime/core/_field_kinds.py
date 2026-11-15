@@ -24,6 +24,8 @@ from jaxtyping import Float
 from typing_extensions import Annotated, NoExtraItems, NotRequired, ReadOnly, Required, get_args, get_origin, \
     get_type_hints, is_typeddict
 
+from mime.units import Marker, UnitError, unit_label
+
 #: The point a constraint held, a row per group, in the world (m): a row stands for a contact only where its paired
 #: force acts, and elsewhere is wherever the search ended (MIME-ANO-144).
 type HeldPoints = Float[Array, "groups 3"]  # noqa: F722 - a jaxtyping shape
@@ -39,13 +41,22 @@ class FieldKind(Enum):
     HELD_FORCES = "held forces"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class Units:
     """A state field's units, declared beside its type in its node's typed state: ``Annotated[HeldPoints,
     Units("m")]``. A composite lists its parts in order, separated by semicolons, its leading parts vectors of three
-    (``"m; 1"`` for a pose), as the symbol table and the vocabulary spell them."""
+    (``"m; 1"`` for a pose), as the symbol table and the vocabulary spell them.
+
+    A part is a label or a dimension marker, the ones settings are declared with: ``Units(Length)`` is ``"m"`` and
+    ``Units(Length, DIMENSIONLESS)`` is ``"m; 1"``, stored as that string (``text``), so a saved form holds the same
+    text either way. Each part is read where the units are written (:func:`mime.units.unit_label`): a typo is the
+    ``units.label`` refusal. The annotation is evaluated where the typed state's hints are, which a module that
+    postpones its annotations does when the node's state is first read."""
 
     text: str
+
+    def __init__(self, *parts: Marker) -> None:
+        object.__setattr__(self, "text", unit_label(*parts))
 
 
 _KINDS: Mapping[object, FieldKind] = {HeldPoints: FieldKind.HELD_POINTS, HeldForces: FieldKind.HELD_FORCES}
@@ -108,6 +119,8 @@ def _typed(state: type) -> tuple[Mapping[str, object], frozenset[str]] | None:
     """A TypedDict's evaluated hints and its required fields; ``None`` where its annotations do not evaluate."""
     try:
         hints = get_type_hints(state, include_extras=True)
+    except UnitError:  # a ``Units(...)`` that is not a unit, in an annotation a module postponed: refused where it is read
+        raise
     except Exception:  # noqa: BLE001  (a TypedDict whose annotations do not evaluate types none of its fields)
         return None
     total = bool(getattr(state, "__total__", True))

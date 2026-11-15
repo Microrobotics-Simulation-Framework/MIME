@@ -26,7 +26,7 @@ from maddening.core.node import SimulationNode
 from mime.core import Symbol, SymbolKind
 from mime.docs._lists import RatchetList, floor_problems, list_problems
 from mime.registry import DimensionedSetting
-from mime.units import UnitError, parse_unit, unit_symbol
+from mime.units import UnitError, parse_label, unit_symbol
 
 #: Macros whose argument is words, not symbols.
 _WORDS = frozenset({"text", "mathrm", "operatorname", "textrm", "textit", "textbf", "mbox", "begin", "end", "label"})
@@ -318,10 +318,15 @@ def named_by(name: str, declared: Collection[str]) -> list[str]:
 
 
 def _same_units(stated: str, declared: str) -> bool:
+    """Whether two unit labels are one dimension, part for part: ``J`` and ``N m`` are, and so are ``Hz`` and ``s^-1``. Two
+    rates that say what they count and count different things (``Hz`` and ``rad/s``) are not. A label MIME cannot read
+    (a symbol row's prose) is the same only as itself."""
     try:
-        return parse_unit(stated) == parse_unit(declared)
+        one, other = parse_label(stated), parse_label(declared)
     except UnitError:
         return stated == declared
+    return len(one) == len(other) and all(a == b and (a.angle is None or b.angle is None or a.angle == b.angle)
+                                          for a, b in zip(one, other, strict=True))
 
 
 def instance_problems(node: SimulationNode, *, settings: Mapping[str, DimensionedSetting],

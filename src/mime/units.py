@@ -42,8 +42,8 @@ Two limits of a check by dimension alone:
 
 from __future__ import annotations
 
+import difflib
 import math
-import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from numbers import Real
@@ -52,12 +52,14 @@ from typing import Any, ClassVar, Literal, cast, overload, override
 import numpy as np
 from numpy.typing import NDArray
 
+from mime._refusals import ArgumentRefused, Refusal
 from mime.validity._bases import Basis
 
 _BASE_SYMBOLS = ("m", "kg", "s", "A", "K", "mol", "cd")
 #: What an angular rate counts: turns (Hz) or radians (rad/s).
 type Angle = Literal["turn", "radian"]
 _ANGLE_UNIT: dict[Angle, str] = {"turn": "Hz", "radian": "rad/s"}
+_ANGLE_UNIT_NAME: dict[Angle, str] = {"turn": "Hz", "radian": "rad_per_s"}
 
 
 @dataclass(frozen=True, eq=False)
@@ -220,18 +222,54 @@ type Magnitude = float | tuple[float, ...]
 type Values = float | tuple[float, ...] | NDArray[np.float64]
 
 
-class UnitError(ValueError):
-    """A quantity of the wrong dimension, or a bare number where a quantity is needed: ``dimension`` is the one needed
-    and ``given`` what was given, where :func:`si` knows them. ``alternatives`` are the quantities to write in its place
-    where the error knows them, each with when it is the one (an angular rate of the other kind: ``Hz(5.0)`` if turns
-    per second were meant), which :meth:`instead` puts in a site's own line."""
+class UnitError(ArgumentRefused):
+    """A quantity of the wrong dimension, a bare number where a quantity is needed, or a unit label MIME cannot read:
+    ``dimension`` is the one needed and ``given`` what was given, where :func:`si` knows them. ``alternatives`` are the
+    quantities to write in its place where the error knows them, each with when it is the one (an angular rate of the
+    other kind: ``Hz(5.0)`` if turns per second were meant), which :meth:`instead` puts in a site's own line.
+
+    It is a ``ValueError`` and a :class:`~mime.errors.MimeError` with one refusal, which carries a code and what to do:
+    ``call.units`` for a value (at the script's line where the error passed through one), and ``units.label`` for a label (``label`` true). An error given an ``action`` states what
+    to do itself; one without it is given the quantity to write from ``dimension`` and ``given`` where it knows them. Its
+    ``str`` is its message alone, so the sites that quote it in their own refusals read what they always did; the
+    refusal's whole shape is ``refusals`` and :meth:`~mime.errors.MimeError.text`."""
 
     def __init__(self, message: str, *, dimension: Dimension | None = None, given: object = None,
-                 alternatives: tuple[tuple[str, str], ...] = ()) -> None:
-        super().__init__(message)
+                 alternatives: tuple[tuple[str, str], ...] = (), action: str | None = None,
+                 label: bool = False) -> None:
+        # Not MimeError's own: the refusal is made when it is first read, since its line is the traceback's.
+        Exception.__init__(self, message)
+        self.original: BaseException | None = None
+        self.chain: str | None = None
+        self.traceback_file: str | None = None
         self.dimension = dimension
         self.given = given
         self.alternatives = alternatives
+        self.action = action
+        self.label = label
+
+    @property
+    @override
+    def refusals(self) -> tuple[Refusal, ...]:
+        held = cast("tuple[Refusal, ...] | None", self.__dict__.get("_refusals"))
+        if held is None:
+            from mime.errors._translate import unit_refusal
+
+            held = (unit_refusal(self),)
+            self.__dict__["_refusals"] = held
+        return held
+
+    @override
+    def __str__(self) -> str:
+        return str(self.args[0]) if self.args else ""
+
+    @property
+    @override
+    def __notes__(self) -> list[str]:  # pyright: ignore[reportIncompatibleVariableOverride]
+        try:
+            return [line for refusal in self.refusals for line in refusal.lines()]
+        except Exception:  # noqa: BLE001 - printing an error never fails for the sake of its note
+            return []
 
     def instead(self, line: Callable[[str], str]) -> str:
         """What to write instead, after a colon, each alternative quantity in the site's ``line`` (``lambda q:
@@ -239,6 +277,10 @@ class UnitError(ValueError):
         if not self.alternatives:
             return ""
         return ": " + ", or ".join(f"{line(quantity)} {when}" for quantity, when in self.alternatives)
+
+
+def _label_error(label: str, reason: str) -> UnitError:
+    return UnitError(f"{label!r} is not a unit label MIME reads: {reason}", label=True)
 
 
 def _real(value: object) -> bool:
@@ -309,19 +351,26 @@ class Quantity:
         if cast(object, unit) is degC:
             raise UnitError("cannot read a quantity in degC: it is an offset unit (0 degC is 273.15 K), so it converts "
                             "by an offset as well as a factor, which a unit here does not hold; read the temperature "
-                            "in K and subtract ZERO_CELSIUS (mime.units.ZERO_CELSIUS) yourself")
+                            "in K and subtract ZERO_CELSIUS (mime.units.ZERO_CELSIUS) yourself",
+                            action="read it in kelvin and subtract the offset yourself: "
+                                   "`quantity.to(K) - ZERO_CELSIUS`, with `from mime.units import K, ZERO_CELSIUS`")
         if not isinstance(cast(object, unit), Unit):
             raise TypeError(f"to() takes a unit of mime.units, such as mm or mm_per_s, not {unit!r}")
         if unit.dimension != self.dimension:
+            held = unit_name(self.dimension)
             raise UnitError(f"cannot read a quantity of {self.dimension} ({self}) in {unit.symbol}, a unit of "
-                            f"{unit.dimension}")
+                            f"{unit.dimension}", dimension=self.dimension,
+                            action=f"read it in a unit of {self.dimension}" + (f", such as `quantity.to({held})` with "
+                                                                              f"`from mime.units import {held}`" if held else ""))
         if self.angle is not None and unit.angle is not None and self.angle != unit.angle:
             kind = f"an angular rate in {_ANGLE_UNIT[self.angle]}" if self.dimension == FREQUENCY else \
                 f"which counts {_COUNTS[self.angle]}"
             raise UnitError(f"cannot read {self}, {kind}, in {unit.symbol}: {_ANGLE_UNIT[self.angle]} and "
                             f"{_ANGLE_UNIT[unit.angle]} have the same dimension and differ by 2 pi (1 Hz is 2 pi "
                             f"rad/s), which a conversion here would silently drop; multiply or divide by 2 pi where "
-                            f"you mean it")
+                            f"you mean it",
+                            action=f"read it in the unit it counts, `quantity.to({_ANGLE_UNIT_NAME[self.angle]})`, or "
+                                   f"multiply or divide by 2 pi where you mean it")
         if isinstance(self.value, tuple):
             return tuple(v / unit.factor for v in self.value)
         if isinstance(self.value, np.ndarray):
@@ -362,7 +411,8 @@ class Quantity:
             if isinstance(other.value, tuple):
                 return Quantity(_scaled(other.value, cast(float, self.value)), dimension, angle, scale=scale)
             return Quantity(_scaled(self.value, cast(float, other.value)), dimension, angle, scale=scale)
-        return Quantity(_scaled(self.value, float(other)), self.dimension, self.angle, scale=self.scale * float(other))
+        factor = _plain(other, "multiply")
+        return Quantity(_scaled(self.value, factor), self.dimension, self.angle, scale=self.scale * factor)
 
     __rmul__ = __mul__
 
@@ -375,8 +425,8 @@ class Quantity:
             if isinstance(other.value, tuple):
                 raise TypeError("division by a vector quantity is not defined")
             return Quantity(_scaled(self.value, 1.0 / other.value), dimension, angle, scale=scale)
-        return Quantity(_scaled(self.value, 1.0 / float(other)), self.dimension, self.angle,
-                        scale=self.scale / float(other))
+        factor = _plain(other, "divide")
+        return Quantity(_scaled(self.value, 1.0 / factor), self.dimension, self.angle, scale=self.scale / factor)
 
     def __rtruediv__(self, other: float) -> Quantity:
         scale = float(other) / self.scale
@@ -390,11 +440,61 @@ class Quantity:
     def __neg__(self) -> Quantity:
         return Quantity(_scaled(self.value, -1.0), self.dimension, self.angle, scale=self.scale)
 
+    def __abs__(self) -> Quantity:
+        """The magnitude's absolute value, in the quantity's own dimension; a series' elementwise. A vector quantity has
+        no one absolute value (its components', or its length), so it is refused."""
+        if isinstance(self.value, tuple):
+            raise UnitError("the absolute value of a vector quantity is not defined here: it has no one, its components' "
+                            "or its length", action="take the absolute value of each component, read with `.to(unit)`, "
+                                                    "and write the result in its own unit")
+        value = np.abs(self.value) if isinstance(self.value, np.ndarray) else abs(self.value)
+        return Quantity(_frozen(value) if isinstance(value, np.ndarray) else value, self.dimension, self.angle,
+                        scale=abs(self.scale))
+
+    def __pow__(self, power: int) -> Quantity:
+        """An integer power (``m(2) ** 2`` is 4 m^2, ``m(2) ** -1`` is 0.5 1/m), its dimension raised with it. A fractional
+        power is refused: a dimension's exponents are whole numbers here, so the square root of an area is the square
+        root of its magnitude read in a unit, written as the length it is: ``m(sqrt(area.to(m2)))``. A quantity that counts
+        an angle takes the powers 0, 1 and -1: a square of turns or radians is one a quantity here does not count."""
+        if isinstance(cast(object, power), bool) or not isinstance(cast(object, power), Real) \
+                or not float(power).is_integer():
+            raise UnitError(f"a quantity takes an integer power, not {power!r}: its dimension's exponents are whole "
+                            f"numbers",
+                            action="write the integer power, `quantity ** 2`; for a root, read the magnitude with "
+                                   "`.to(unit)`, take the root of the number and write it in its own unit")
+        held = int(power)
+        if self.angle is not None and abs(held) > 1:
+            raise UnitError(f"cannot raise {self} to the power {held}: it counts an angle ({_COUNTS[self.angle]}), and "
+                            f"a quantity here counts one at most", dimension=self.dimension, given=self,
+                            action="raise its magnitude, read with `.to(unit)`, to the power, where you mean it")
+        dimension = self.dimension**held
+        if held < 0:
+            return (1.0 / self) ** -held
+        scale = self.scale**held
+        if isinstance(self.value, np.ndarray):
+            return Quantity(_frozen(self.value**held), dimension, self.angle if held else None, scale=scale)
+        if isinstance(self.value, tuple):
+            return Quantity(tuple(v**held for v in self.value), dimension, self.angle if held else None, scale=scale)
+        return Quantity(self.value**held, dimension, self.angle if held else None, scale=scale)
+
+    def __radd__(self, other: object) -> Quantity:
+        """``0 + quantity`` is the quantity: what ``sum`` of quantities begins with. It is the int ``0`` alone (so ``sum``
+        and nothing that is not a sum's start): any other number, ``0.0`` and ``False`` included, is refused as a bare
+        number is on either side of a ``+``, and ``quantity + 0`` is refused."""
+        if type(other) is int and other == 0:
+            return self
+        return self._same_dimension(other, "add")
+
     def _same_dimension(self, other: object, operation: str) -> Quantity:
         if not isinstance(other, Quantity):
-            raise UnitError(f"cannot {operation} a {self.dimension} quantity and the bare number {other!r}")
+            held = unit_name(self.dimension)
+            raise UnitError(f"cannot {operation} a {self.dimension} quantity and the bare number {other!r}",
+                            action="write the number with its unit" + (f": {held}({other!r}), with `from mime.units "
+                                                                       f"import {held}`" if held and _real(other) else ""))
         if other.dimension != self.dimension:
-            raise UnitError(f"cannot {operation} {self.dimension} and {other.dimension}")
+            raise UnitError(f"cannot {operation} {self.dimension} and {other.dimension}",
+                            action=f"{operation} quantities of one dimension: read one in the other's unit, "
+                                   f"`quantity.to(unit)`, and write the result in its own")
         return other
 
     def __add__(self, other: Quantity) -> Quantity:
@@ -454,6 +554,17 @@ class Quantity:
 _COUNTS: dict[Angle, str] = {"turn": "turns", "radian": "radians"}
 
 
+def _plain(other: object, operation: str) -> float:
+    """A number a quantity is multiplied or divided by: one number, as a Python ``float``. An array of several is refused
+    by what it would be: an array quantity is a run's result, never a declaration."""
+    if isinstance(other, np.ndarray) and other.ndim:
+        raise UnitError(f"cannot {operation} a quantity by an array of {other.size}: an array quantity is a run's result "
+                        f"(a series read from a result), never a declaration",
+                        action="scale the numbers before the unit, mm(3.0 * numbers), or write a vector as "
+                               "mm((1.0, 2.0))")
+    return float(cast(float, other))
+
+
 def _differ(a: Quantity, b: Quantity) -> bool:
     """Whether ``a`` and ``b`` both know what they count, and count different things (a turn and a radian)."""
     return a.angle is not None and b.angle is not None and a.angle != b.angle
@@ -466,7 +577,8 @@ def _sum_angle(a: Quantity, b: Quantity, operation: str) -> Angle | None:
         raise UnitError(f"cannot {operation} {a} and {b}: one counts {_COUNTS[cast(Angle, a.angle)]} and the other "
                         f"{_COUNTS[cast(Angle, b.angle)]}, which share a dimension and differ by 2 pi (1 Hz is 2 pi "
                         f"rad/s), which MIME does not drop silently; write both in one unit, multiplying or dividing "
-                        f"one by 2 pi where you mean it", dimension=a.dimension, given=b)
+                        f"one by 2 pi where you mean it", dimension=a.dimension, given=b,
+                        action="write both in one unit, multiplying or dividing one by 2 pi where you mean it")
     return a.angle if a.angle is not None else b.angle
 
 
@@ -480,7 +592,8 @@ def _product_angle(a: Quantity, b: Quantity, operation: str) -> Angle | None:
         return None
     raise UnitError(f"cannot {operation} {a} by {b}: both count an angle ({_COUNTS[a.angle]} and {_COUNTS[b.angle]}), "
                     f"and a quantity here counts one at most; {operation} their magnitudes, each read with .to(...), "
-                    f"where you mean it", dimension=a.dimension, given=b)
+                    f"where you mean it", dimension=a.dimension, given=b,
+                    action=f"{operation} their magnitudes, each read with `.to(unit)`, where you mean it")
 
 
 def _factor(quantity: Quantity) -> float:
@@ -520,24 +633,183 @@ def unit_symbol(dimension: Dimension) -> str:
                     for symbol, power in zip(_BASE_SYMBOLS, dimension.exponents, strict=True) if power)
 
 
+#: An energy (J) and a power (W): dimensions of the label grammar's named units. Neither is in ``_NAMED`` or
+#: ``_SYMBOLS``: an energy is dimensionally a torque (see the module's limits), which keeps its symbol, ``N m``.
+ENERGY = FORCE * LENGTH
+POWER = ENERGY / TIME
+
+#: What a label's name stands for: the SI base symbols and the named derived units a label may write, each by its
+#: exponents of the base units, with what an angular rate counts where the name says (``Hz`` counts turns, ``rad``
+#: radians). A prefixed unit (``mm``, ``kPa``) is no name here: a label holds no scale factor, only a dimension.
+_LABEL_NAMES: dict[str, tuple[tuple[int, ...], Angle | None]] = {
+    **{symbol: (_base(i).exponents, None) for i, symbol in enumerate(_BASE_SYMBOLS)},
+    "N": (FORCE.exponents, None), "Pa": (PRESSURE.exponents, None), "J": (ENERGY.exponents, None),
+    "W": (POWER.exponents, None), "T": (MAGNETIC_FLUX_DENSITY.exponents, None),
+    "Hz": (FREQUENCY.exponents, "turn"), "rad": (DIMENSIONLESS.exponents, "radian"),
+}
+_NO_EXPONENTS = DIMENSIONLESS.exponents
+_POWER = "^"
+_DIGITS = "0123456789"
+
+
+@dataclass(frozen=True)
+class _Term:
+    """A label's term while it is read: exponents of the base units, and what its angular rate counts, if it names one."""
+
+    exponents: tuple[int, ...]
+    angle: Angle | None = None
+
+
+def _times(a: _Term, b: _Term, label: str) -> _Term:
+    if a.angle is not None and b.angle is not None and a.angle != b.angle:
+        raise _label_error(label, "it counts both turns (Hz) and radians (rad), which differ by 2 pi and are never mixed "
+                                  "in one unit")
+    return _Term(tuple(x + y for x, y in zip(a.exponents, b.exponents, strict=True)), a.angle or b.angle)
+
+
+def _over(a: _Term, b: _Term, label: str) -> _Term:
+    return _times(a, _Term(tuple(-x for x in b.exponents), b.angle), label)
+
+
+def _raised(term: _Term, power: int) -> _Term:
+    return _Term(tuple(x * power for x in term.exponents), term.angle)
+
+
+class _Label:
+    """A unit label's reader. The grammar:
+
+    - a *factor* is a name (``m``, ``N``, ``Hz``), the 1, or a parenthesised expression, with an optional integer
+      power written right after it (``s^-2``, ``(m s)^2``);
+    - a *product* is factors separated by spaces (``kg m^2``);
+    - an *expression* is a product, and then at most one ``/`` and a single factor, the denominator (``N s/m``,
+      ``m/(s Pa)``). More than one term after a ``/`` is written in parentheses, so a label is never read two ways:
+      ``J/mol K`` is refused, ``J/(mol K)`` is read.
+
+    A label with a ``;`` is a composite (a pose is ``m; 1``): its parts are read apart (:func:`parse_label`)."""
+
+    def __init__(self, label: str) -> None:
+        self.label = label
+        self.at = 0
+
+    def unread(self, reason: str) -> UnitError:
+        return _label_error(self.label, f"{reason} (at character {self.at + 1})" if self.at < len(self.label) else reason)
+
+    def spaces(self) -> None:
+        while self.at < len(self.label) and self.label[self.at] == " ":
+            self.at += 1
+
+    def expression(self) -> _Term:
+        found = _Term(_NO_EXPONENTS)
+        factors = 0
+        while True:
+            self.spaces()
+            here = self.label[self.at] if self.at < len(self.label) else ""
+            if here in ("", ")", "/"):
+                break
+            found = _times(found, self.factor(), self.label)
+            factors += 1
+        if not factors:
+            raise self.unread("an empty unit; write 1 for a dimensionless value" if not self.label.strip() else
+                              "a term is missing")
+        if here == "/":
+            self.at += 1
+            self.spaces()
+            found = _over(found, self.factor(), self.label)
+            self.spaces()
+            if self.at < len(self.label) and self.label[self.at] != ")":
+                raise self.unread("more than one term follows a '/': write the denominator in parentheses, "
+                                  "'m/(s Pa)', or the quotient as a negative power, 'm s^-1 Pa^-1'")
+        return found
+
+    def factor(self) -> _Term:
+        here = self.label[self.at] if self.at < len(self.label) else ""
+        if here == "(":
+            self.at += 1
+            term = self.expression()
+            if self.at >= len(self.label) or self.label[self.at] != ")":
+                raise self.unread("a parenthesis is not closed")
+            self.at += 1
+        elif here == "1" and not self.label[self.at + 1:self.at + 2].isalnum():  # the 1 alone, not 10 or 1m
+            self.at += 1
+            term = _Term(_NO_EXPONENTS)
+        elif here.isalpha():
+            start = self.at
+            while self.at < len(self.label) and self.label[self.at].isalpha():
+                self.at += 1
+            name = self.label[start:self.at]
+            named = _LABEL_NAMES.get(name)
+            if named is None:
+                close = difflib.get_close_matches(name, _LABEL_NAMES, n=1)
+                self.at = start
+                raise self.unread(f"there is no unit symbol {name!r} (the names are {', '.join(_LABEL_NAMES)})"
+                                  + (f"; did you mean {close[0]!r}?" if close else ""))
+            term = _Term(*named)
+        elif here and here in _DIGITS:
+            raise self.unread("the only number a label holds is 1, for a dimensionless value; a factor such as 1000 is "
+                              "a prefix or a scale, which belongs to a quantity, not a label")
+        else:
+            raise self.unread(f"{here!r} is not a unit symbol, the number 1 or a parenthesis" if here else
+                              "a term is missing")
+        return self.power(term)
+
+    def power(self, term: _Term) -> _Term:
+        if self.label[self.at:self.at + 1] != _POWER:
+            return term
+        end = self.at + 1
+        while end < len(self.label) and (self.label[end] in _DIGITS or (end == self.at + 1 and self.label[end] == "-")):
+            end += 1
+        written = self.label[self.at + 1:end]
+        digits = written.lstrip("-")
+        if not digits or digits.startswith("0"):
+            self.at += 1
+            raise self.unread("a power is an integer other than zero, written right after its term, as s^-2")
+        self.at = end
+        return _raised(term, int(written))
+
+
 def parse_unit(symbol: str) -> Dimension:
-    """The dimension :func:`unit_symbol` wrote as ``symbol``, or :class:`UnitError`."""
-    if symbol == "1":
-        return DIMENSIONLESS
-    for dimension, text in _SYMBOLS.items():
-        if text and text == symbol:
-            return dimension
-    exponents = [0] * len(_BASE_SYMBOLS)
-    terms = symbol.split()
-    for term in terms:
-        base, _, power = term.partition("^")
-        if base not in _BASE_SYMBOLS or (power and not re.fullmatch(r"-?[1-9][0-9]*", power)):
-            raise UnitError(f"{symbol!r} is not a unit MIME writes: an SI symbol such as m, s, N or m/s^2, 1, or "
-                            f"base units with integer powers such as 'm^2 kg s^-1'")
-        exponents[_BASE_SYMBOLS.index(base)] += int(power) if power else 1
-    if not terms:
-        raise UnitError("an empty unit; write 1 for a dimensionless value")
-    return Dimension.of(exponents)
+    """The dimension :func:`unit_symbol` wrote as ``symbol``, or :class:`UnitError`: every label MIME writes. The SI base
+    symbols (``m kg s A K mol cd``) and the named units ``N Pa J W T Hz rad``, as products by spaces, one quotient by ``/``
+    (more than one term in the denominator in parentheses), integer powers by ``^``, parentheses, and ``1``: ``m/s^2``,
+    ``N s/m``, ``m/(s Pa)``, ``m^2 kg s^-1``.
+
+    A turn and a radian stay apart: ``Hz`` is :data:`FREQUENCY` and ``rad/s`` :data:`ANGULAR_VELOCITY`, which are equal
+    as dimensions and differ in what they count (:attr:`Dimension.angle`); ``rad`` alone is dimensionless, as
+    ``Unit`` holds it. A prefixed unit (``mm``) has a scale, which a label does not hold: it is refused."""
+    reader = _Label(symbol)
+    term = reader.expression()
+    if reader.at < len(symbol):
+        raise reader.unread("a closing parenthesis with none open")
+    if term.exponents == FREQUENCY.exponents:
+        if term.angle == "turn":
+            return FREQUENCY
+        if term.angle == "radian":
+            return ANGULAR_VELOCITY
+    return Dimension.of(term.exponents)
+
+
+def parse_label(label: str) -> tuple[Dimension, ...]:
+    """The dimension of each part of a unit label, split at its semicolons (``"m; 1"`` is a length and a number, a pose's
+    parts); :class:`UnitError` for a part that is not a unit."""
+    return tuple(parse_unit(part) for part in label.split(";"))
+
+
+type Marker = Dimension | str
+
+
+def unit_label(*parts: Marker) -> str:
+    """A unit label written from dimension markers, the ones settings are declared with (``unit_label(Length,
+    DIMENSIONLESS)`` is ``"m; 1"``, a pose's), or from labels already written; a part that is a label is read here, so
+    that a typo fails where the label is written. A marker is written as :func:`rate_symbol` writes it, so an angular
+    velocity is ``rad/s`` and a frequency ``Hz``."""
+    if not parts:
+        raise _label_error("", "a label has at least one part")
+    return "; ".join(rate_symbol(part) if isinstance(part, Dimension) else _checked(part) for part in parts)
+
+
+def _checked(label: str) -> str:
+    parse_label(label)
+    return label
 
 
 def _number(value: float) -> str:
@@ -624,7 +896,8 @@ def si(quantity: object, dimension: Dimension, *, what: str) -> Magnitude:
                         dimension=dimension, given=quantity)
     if isinstance(quantity.value, np.ndarray):
         raise UnitError(f"{what} is given an array quantity ({quantity}): an array is a run's result, and a "
-                        f"declaration takes a number or a tuple of them")
+                        f"declaration takes a number or a tuple of them",
+                        action="declare a number or a tuple of them with its unit: mm(3.0), mm((1.0, 2.0))")
     if dimension.angle is not None and quantity.angle is not None and quantity.angle != dimension.angle:
         raise _other_angle(quantity, dimension, what)
     if dimension == DIMENSIONLESS and quantity.angle == "turn":
@@ -700,24 +973,54 @@ rad_per_s = Unit(
     "Radians per second: an angular velocity. Its dimension is a frequency's, and they differ by 2 pi: a quantity made "
     "from it is refused where a frequency goes (a field's turning frequency) and by ``.to(Hz)``, and one made from Hz "
     "where an angular velocity goes (a body's initial spin) and by ``.to(rad_per_s)``.", "radian")
+#: A turn counted per minute, and an angle's degree per second: rates that keep what they count (turns, radians).
+rpm = Unit("rpm", 1.0 / 60.0, FREQUENCY, "Revolutions per minute: turns per minute, 1/60 Hz. It counts turns, as Hz does, "
+           "and is refused where a site takes radians per second.", "turn")
+deg_per_s = Unit("deg/s", math.pi / 180.0, ANGULAR_VELOCITY,
+                 "Degrees per second: an angular velocity, held in rad/s (pi/180 of one each).", "radian")
 m2 = Unit("m^2", 1.0, AREA, "Square metres: an area, or a porous material's Darcy permeability.")
 um2 = Unit("um^2", 1e-12, AREA, "Square micrometres: an area, or a porous material's Darcy permeability.")
 m3 = Unit("m^3", 1.0, VOLUME, "Cubic metres.")
 mm3 = Unit("mm^3", 1e-9, VOLUME, "Cubic millimetres.")
+#: A millilitre is a cubic centimetre, 1e-6 m^3 exactly (the litre is 1e-3 m^3 by definition).
+mL = Unit("mL", 1e-6, VOLUME, "Millilitres: a volume, 1e-6 m^3.")
 kg_per_m3 = Unit("kg/m^3", 1.0, DENSITY, "Kilograms per cubic metre.")
 kg_m2 = Unit("kg m^2", 1.0, MOMENT_OF_INERTIA, "Kilogram square metres: a moment of inertia.")
 A_m2 = Unit("A m^2", 1.0, MAGNETIC_MOMENT, "Ampere square metres: a magnetic moment.")
 Pa_s = Unit("Pa s", 1.0, DYNAMIC_VISCOSITY, "Pascal seconds: a dynamic viscosity.")
+#: The centipoise, a hundredth of a poise (1 P = 0.1 Pa s): exactly one millipascal second.
+cP = Unit("cP", 1e-3, DYNAMIC_VISCOSITY, "Centipoise: a dynamic viscosity, exactly 1 mPa s (water near 20 degC is about 1).")
 mPa_s = Unit("mPa s", 1e-3, DYNAMIC_VISCOSITY, "Millipascal seconds (water near 20 degC is about 1).")
 N_m = Unit("N m", 1.0, TORQUE, "Newton metres: a torque.")
 N_m_s = Unit("N m s", 1.0, ROTATIONAL_DAMPING,
              "Newton metre seconds: a torque per angular velocity, a rotational damping.")
 Pa = Unit("Pa", 1.0, PRESSURE, "Pascals: a pressure.")
+kPa = Unit("kPa", 1e3, PRESSURE, "Kilopascals: a pressure.")
+MPa = Unit("MPa", 1e6, PRESSURE, "Megapascals: a pressure.")
+#: The conventional millimetre of mercury: a column of mercury of conventional density, 13 595.1 kg/m^3, at standard
+#: gravity, 9.80665 m/s^2, one millimetre high, 13 595.1 * 9.80665 * 1e-3 = 133.322387415 Pa (NIST Special Publication
+#: 811's value). The torr, 101 325/760 Pa = 133.3224 Pa, is a different unit that differs from it in the seventh figure.
+mmHg = Unit("mmHg", 133.322387415, PRESSURE, "Millimetres of mercury, the conventional unit of a blood pressure: "
+            "133.322387415 Pa.")
 m3_per_s = Unit("m^3/s", 1.0, VOLUME_FLUX, "Cubic metres per second: a volume flux.")
 mL_per_s = Unit("mL/s", 1e-6, VOLUME_FLUX, "Millilitres per second: a vessel's volume flux.")
 Pa_s_per_m3 = Unit("Pa s/m^3", 1.0, HYDRAULIC_RESISTANCE, "Pascal seconds per cubic metre: a hydraulic resistance.")
 m3_per_Pa = Unit("m^3/Pa", 1.0, COMPLIANCE, "Cubic metres per pascal: a vessel's or a Windkessel's compliance.")
 dimensionless = Unit("1", 1.0, DIMENSIONLESS, "A pure number, such as a ratio or a normalised wavenumber.")
+
+
+def units_by_name() -> dict[str, Unit]:
+    """Every unit this module exports, by its Python name (``mPa_s``, ``mm_per_s``): what ``--override`` and a study's
+    spec file read a unit as, beside the symbol each unit prints with (``mPa s``, ``mm/s``)."""
+    return {name: value for name, value in globals().items() if isinstance(value, Unit) and not name.startswith("_")}
+
+
+def unit_name(dimension: Dimension) -> str | None:
+    """The name in this module of the SI unit of ``dimension`` (``s`` for a time, ``Hz`` for a frequency, ``rad_per_s`` for
+    an angular velocity), where it has one."""
+    held = (name for name, value in globals().items() if isinstance(value, Unit) and value.factor == 1.0
+            and value.dimension == dimension and value.angle == dimension.angle and not name.startswith("_"))
+    return next(held, None)
 
 
 #: The kelvin temperature of 0 degC.
@@ -778,4 +1081,6 @@ __all__ = [
     "A_m2", "Hz", "K", "N", "N_m", "N_m_s", "Pa_s", "T", "T_per_m", "T_per_s", "cm", "deg", "degC", "dimensionless", "g", "kHz",
     "kg", "kg_m2", "kg_per_m3", "m", "m2", "m3", "m_per_s", "m_per_s2", "mPa_s", "mT", "mT_per_m", "mm", "mm3", "mm_per_s",
     "ms", "rad", "rad_per_s", "s", "standard_gravity", "uT", "um", "um2", "um_per_s", "us",
+    "ENERGY", "MPa", "Marker", "POWER", "cP", "deg_per_s", "kPa", "mL", "mmHg", "parse_label", "rpm", "unit_label",
+    "unit_name", "units_by_name",
 ]

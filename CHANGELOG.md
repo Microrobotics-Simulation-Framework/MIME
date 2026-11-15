@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The unit system, finished** (usability bundle 2). One page, `docs/units.md`, holds it.
+  - **The unit label grammar.** `parse_unit` reads every label MIME writes: the SI base symbols and the named units `N Pa J W T
+    Hz rad`, products by spaces, one quotient by `/` with a single factor after it (more than one term in a denominator in
+    parentheses: `m/(s Pa)` is read, `J/mol K` is refused, so a label is never read two ways), integer powers by `^`,
+    parentheses, and `1`. `Hz` stays `FREQUENCY` and `rad/s` `ANGULAR_VELOCITY`, equal as dimensions and different in what
+    they count; `rad` alone is dimensionless; a label that counts both is refused. `unit_symbol` writes what it always wrote.
+    `parse_label` reads a composite label's `;`-separated parts. The vocabulary's own reader (`_dimension`) is gone: one
+    grammar. A label MIME cannot read is the new refusal `units.label`, naming the character it stopped at and the nearest
+    name. A test collects every label MIME writes (the registry's node classes' symbol tables and typed states, the
+    vocabulary, every `units=`/`Units(...)` literal of the source) and parses each, printing the counts.
+  - **G1: a label is checked where it is defined.** `Interface(units=...)` and `Units(...)` read their label when it is
+    made; a typo is `units.label` and not a label nothing parses. A module that postpones its annotations makes `Units(...)`
+    when the typed state's hints are read, which the typed state now refuses on a bad one instead of reading the state as
+    untyped. A registration's interface (it carries no values) may still have empty units.
+  - **G2: labels from dimension markers.** `Units(Length)`, `Units(Length, DIMENSIONLESS)` (a pose's), and
+    `mime.units.unit_label(...)` for a place that holds a string (an interface's `units=`), stored as the canonical string,
+    so saved forms are unchanged.
+  - **F7a: a `UnitError` is a `MimeError` and a `ValueError`.** `speed.to(mm)` is refused with the code `call.units` and a
+    "do:" line, and a traceback prints the refusal beneath the message. Its `str` is its plain message, so the sites that
+    quote it read what they always did; `except ValueError`, `except UnitError` and `except MimeError` catch it. To make this
+    possible without an import cycle, the refusal classes moved to `mime/_refusals.py` (`mime.build._refusals` re-exports
+    them, so every import of them keeps working).
+  - **F7c: `**`, `abs` and `sum` on quantities.** An integer power raises the value and the dimension; a fractional power is
+    refused with what to write instead; `abs` keeps the dimension (a vector quantity has no one absolute value and is
+    refused); `sum` starts at the int `0`, which `0 + quantity` accepts, and any other bare number is still refused on both
+    sides of a `+`. A quantity times or over an array is refused by what an array quantity is. `==` with a bare number stays
+    `False` and is documented (F7b is dropped).
+  - **F17: seven units.** `kPa`, `MPa`, `mmHg` (the conventional 133.322387415 Pa), `mL`, `cP`, `rpm` (counts turns, apart from
+    `rad/s` as `Hz` is) and `deg_per_s` (counts radians), each with its conversion held by a test.
+  - **F13: `--override` reads the unit names `mime.units` exports** (`2mPa_s`, `1.5mm_per_s`, `3N_m`, `3rpm`) beside the symbols
+    it read (`2 mPa s`, `1.5mm/s`), on the same parser a study's spec file uses; its refusal shows each form, and a test holds
+    each to the parser. A bare number is still a dimensionless value, which a setting that needs a unit refuses.
+
 - **A coil array on a frame of its own chain, and the exposure envelope** (apparatus lane, AP3b, dev2).
   - **`CoilArray(mount="<segment>.<frame>", at=..., orientation=...)`** (the calibrated multipole 0.1.0's new setting):
     the array placed by `at` and `orientation` in a frame of its own apparatus's chain, which carries it (a mobile
