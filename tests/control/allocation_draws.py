@@ -19,13 +19,15 @@ unique they differ by rounding, which the least-squares perturbation bound puts 
 |x|))`` of the free commands (``kappa`` the free columns' condition after unit scaling), plus the limit's own rounding;
 the test allows ``SLACK`` times that. **Uniqueness** is the full column rank of the scaled rows, read from their
 singular values: the least over the largest above ``UNIQUE``. Where it is not unique the two may return different
-minimisers. The law ties a candidate's residual to the best's within its window, ``TIE_ULPS`` eps times the target's norm
-and what the candidate makes (``mime.control._allocation``), the best's window and the candidate's added, and takes the
-least effort among those: its residual norm may exceed BVLS's by both windows (at its commands and at BVLS's) and
-``SLACK`` times the residual's rounding, and no more. Where BVLS's residual is no worse than the law's past that
-rounding, the law's effort, ``|u|^2``, is no more than BVLS's past the line's share of it: each command within the line
-of BVLS's, ``|u|^2`` within ``line (2 |u_BVLS|_1 + K line)`` (the line on the free columns, whose solve the rounding
-is of)."""
+minimisers; and where it is, the law still cannot tell apart two faces whose residuals are within its tie window, which
+float32 resolves more finely than the window does (a gap of 85 units in the last place of the target's norm, against a
+computed residual good to a third of one), so the two can differ by whole commands. The law ties a candidate's residual
+to the best's within its window, ``TIE_ULPS`` eps times the target's norm and what the candidate makes
+(``mime.control._allocation``), the best's window and the candidate's added, and takes the least effort among those: its
+residual norm may exceed BVLS's by both windows (at its commands and at BVLS's) and ``SLACK`` times the residual's
+rounding, and no more. Where BVLS's residual is no worse than the law's past that rounding, the law's effort, ``|u|^2``,
+is no more than BVLS's past the line's share of it: each command within the line of BVLS's, ``|u|^2`` within
+``line (2 |u_BVLS|_1 + K line)`` (the line on the free columns, whose solve the rounding is of)."""
 
 from __future__ import annotations
 
@@ -179,8 +181,9 @@ def tie_window(problem: Problem, commands: np.ndarray, dtype: str) -> float:
 
 
 def verdict(problem: Problem, commands: np.ndarray, dtype: str) -> list[str]:
-    """What is wrong with ``commands`` against the oracle: outside the limits, past the line on a unique problem, or,
-    on one that is not, a residual above BVLS's past its rounding, or more effort than BVLS's among tied minimisers."""
+    """What is wrong with ``commands`` against the oracle: outside the limits, past the line on a unique problem (unless
+    the law's residual is within its tie windows of BVLS's: the law's own rule for faces it cannot tell apart), or, on one
+    that is not, a residual above BVLS's past its rounding, or more effort than BVLS's among tied minimisers."""
     found: list[str] = []
     limit = float(np.float32(problem.limit)) if dtype == "float32" else problem.limit
     if not np.all(np.isfinite(commands)):
@@ -189,15 +192,18 @@ def verdict(problem: Problem, commands: np.ndarray, dtype: str) -> list[str]:
         found.append(f"a command past its limit {limit}: {commands}")
     reference = bvls(problem, dtype)
     a, b = problem.scaled(dtype)
+    mine, theirs = float(np.linalg.norm(a @ commands - b)), float(np.linalg.norm(a @ reference - b))
+    held = residual_line(problem, dtype)
+    tied = held + tie_window(problem, commands, dtype) + tie_window(problem, reference, dtype)
     if unique(problem, dtype):
-        miss, held = float(np.max(np.abs(commands - reference))), line(problem, reference, dtype)
-        if miss > held:
-            found.append(f"unique: |law - BVLS| = {miss:.3g} A over the line {held:.3g} A ({problem.system} "
+        miss, near = float(np.max(np.abs(commands - reference))), line(problem, reference, dtype)
+        # A unique minimiser binds the law to BVLS's commands only where the law can tell its face from another: faces
+        # whose residuals are within the law's tie window are tied by its own rule.
+        if miss > near and mine - theirs > tied:
+            found.append(f"unique: |law - BVLS| = {miss:.3g} A over the line {near:.3g} A, and the law's residual "
+                         f"{mine:.6g} over BVLS's {theirs:.6g} past the tie window {tied:.3g} ({problem.system} "
                          f"{problem.kind}, BVLS {reference}, law {commands})")
     else:
-        mine, theirs = float(np.linalg.norm(a @ commands - b)), float(np.linalg.norm(a @ reference - b))
-        held = residual_line(problem, dtype)
-        tied = held + tie_window(problem, commands, dtype) + tie_window(problem, reference, dtype)
         if mine - theirs > tied:
             found.append(f"not unique: the law's residual {mine:.6g} over BVLS's {theirs:.6g} past {tied:.3g}")
         elif theirs - mine <= held and float(np.sum(commands ** 2)) - float(np.sum(reference ** 2)) > \
