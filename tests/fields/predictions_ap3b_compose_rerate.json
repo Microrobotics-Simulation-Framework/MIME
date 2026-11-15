@@ -1,0 +1,66 @@
+{
+  "written": "2026-11-16, committed before the probe ran (the commit that adds this file is the timestamp): the composition-order plant's detection rate re-rated under the mounted tests' new tolerance (SLACK 10 times eps times the sum of the magnitudes the field is summed from, mount_cases.term_sums), after the refuting review of #314; the earlier 20/20 (tests/fields/predictions_ap3b.json) was measured on the eps / c tolerance",
+  "phase": "apparatus lane AP3b, review round: re-rating a control after its tolerance moved",
+  "labels": "the builder (Sonnet) from the scan's numbers; the rates and the largest and smallest misses are the runner's",
+  "seen_before": [
+    "a laptop scan of 72 random chain poses (12 seeds of 6, seeds 0 to 11 of the draw below), no plant: the largest miss against the term floor was 2.33 (float64) and 1.93 (float32), and against eps / c 9.4 and 4.3",
+    "one plant on the laptop at the moving chain's and the worst pose's tests (AP3B_PLANT=compose): all four tests (float64 and float32 each) failed; the worst pose's planted miss was above 1e4 floors in float32",
+    "one draw (seed 100) of the script below on the laptop, clean and planted, both dtypes: clean 1.06 and 0.85 floors, planted 1.1e15 and 2.0e6 floors"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU; GitHub runner, 4 vCPU; one process a run, a fresh seed each",
+    "sizes_and_parameters": "mount_cases's rig: Navion_2 (3 coils, currents 5, -3, 2 A) on the rotor of A0's kinematic AR4, 10 ms at 1 ms, the sphere still near the array's centre; the plant is the node's placement composed the other way round (AP3B_PLANT=compose, read by tests/fields/test_mounted_array.py on import); the tolerance is SLACK = 10 times the term floor",
+    "seeds_and_draws": "node arms: the test itself, 20 fresh processes planted and 20 clean (its pose is fixed, so the runs repeat it: they rate the test across processes and the runner's bits, not across poses). Script arms: probe/rate_pose.py, 30 seeds (100 to 129) planted and 30 clean, a pose drawn from the seed as in the scan (the arm's joints within 0.25 rad of home, the rotor's angle in (-pi, pi) and speed within 3 rad/s, the array's placement within 5 cm and a random turn, the sphere within 2 cm of the array's centre)"
+  },
+  "gate_1_the_moving_chains_test": {
+    "claim": "test_the_mounted_field_is_the_array_placed_at_the_frames_pose_along_the_moving_chain fails on every planted run and passes on every clean one, in float64 and float32",
+    "kind": "equality (a control's detection rate)",
+    "case": "tests/fields/test_mounted_array.py::test_the_mounted_field_is_the_array_placed_at_the_frames_pose_along_the_moving_chain[float64] and [float32], through detection_rate.py --node",
+    "prediction": {"value": "20/20 each dtype, clean 0/20", "unit": "runs", "basis": "derived and measured before: the planted field misses the oracle by more than 1e4 floors in float32 and far more in float64 at the fixed pose, against a tolerance of 10 floors and a control threshold of 1e3 floors", "why": "the plant changes the pose the field is read at by centimetres, a relative change of the field of order one"},
+    "metric": "the miss in units of the term floor",
+    "control": {"plant": "AP3B_PLANT=compose", "environment_variable": "AP3B_PLANT", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/20", "resolution": "the planted miss is above 1e4 floors against 10: three orders over the tolerance"},
+    "if_wrong": "a planted run that passes means the term floor is looser than the plant at that pose: tighten the plant's reach or the floor, never the test's threshold to fit",
+    "cannot_discriminate_if": "the test is skipped or collects nothing (counted inconclusive by detection_rate.py)"
+  },
+  "gate_2_the_worst_pose_test": {
+    "claim": "test_the_mounted_field_at_the_worst_pose_of_a_scan_of_random_chain_poses fails on every planted run and passes on every clean one, in float64 and float32",
+    "kind": "equality (a control's detection rate)",
+    "case": "tests/fields/test_mounted_array.py::test_the_mounted_field_at_the_worst_pose_of_a_scan_of_random_chain_poses[float64] and [float32], through detection_rate.py --node",
+    "prediction": {"value": "20/20 each dtype, clean 0/20", "unit": "runs", "basis": "measured before (one planted laptop run, all four tests failed)", "why": "as gate 1"},
+    "metric": "the miss in units of the term floor",
+    "control": {"plant": "AP3B_PLANT=compose", "environment_variable": "AP3B_PLANT", "expected_rate": "20/20", "runs": 20, "clean_expected": "0/20", "resolution": "as gate 1"},
+    "if_wrong": "as gate 1",
+    "cannot_discriminate_if": "as gate 1"
+  },
+  "gate_3_random_poses": {
+    "claim": "across random chain poses the composition plant is caught on every draw (the mounted field misses actuation by more than SLACK floors) and a clean draw never fails either check, in float64 and float32; the control (the placement the other way round) misses by more than 100 SLACK floors on every clean draw",
+    "kind": "equality (a control's detection rate), across poses",
+    "case": "probe/rate_pose.py, one pose a seed, through detection_rate.py --script, the test's own miss_ratios on it",
+    "prediction": {"value": "30/30 each dtype, clean 0/30; the clean draws' largest miss at most 4 floors in float64 and 3 in float32 (the scan's 2.3 and 1.9 with the margin of a larger sample); the planted draws' smallest miss above 1e3 floors", "unit": "runs; floors", "basis": "measured before (the 72-pose scan, the seed-100 draw)", "why": "a wrong composition moves the array by up to its offset and turn, centimetres and tens of degrees, where the term floor is 1e-14 (float64) and 1e-5 (float32) of the field; it could miss a pose where the two compositions nearly coincide (a placement near the identity), which the draw (a placement of 8 to 17 cm and a random turn) makes improbable"},
+    "metric": "the largest and the smallest miss over a run's steps, in floors",
+    "control": {"plant": "AP3B_PLANT=compose", "environment_variable": "AP3B_PLANT", "expected_rate": "30/30", "runs": 30, "clean_expected": "0/30", "resolution": "the planted smallest miss, read from the logs"},
+    "if_wrong": "a planted draw that passes names a pose class the plant does not reach: report its pose; a clean draw above 10 floors means the term floor is not a bound there and the factor is not enough margin: report it, do not widen",
+    "cannot_discriminate_if": "a draw puts the sphere at a singular point of the sources (the test's own NaN): counted inconclusive"
+  },
+  "outcomes": {
+    "written": "2026-11-16, after probe run 43762171161 (probe/ap3b-rerate at bb06085e = head 6b9fc5c9 plus probe/; GitHub runner, 4 vCPU; all 8 jobs succeeded; every arm's peak 0.72 to 0.74 GiB against its 1.13 to 1.15 GiB bound; the probe branch is deleted). The predictions above are unchanged.",
+    "detection_rates": {
+      "gate_1_moving_chain_test": {
+        "float64": "planted 20/20 (95 % lower bound 0.861), clean flagged 0/20",
+        "float32": "planted 20/20 (0.861), clean 0/20"
+      },
+      "gate_2_worst_pose_test": {
+        "float64": "planted 20/20 (0.861), clean 0/20",
+        "float32": "planted 20/20 (0.861), clean 0/20"
+      },
+      "gate_3_random_poses": {
+        "float64": "planted 30/30 (0.905), clean flagged 0/30 (seeds 100 to 129)",
+        "float32": "planted 30/30 (0.905), clean 0/30"
+      }
+    },
+    "inconclusive": "none in any arm",
+    "what_was_not_recorded": "the per-seed largest clean miss and smallest planted miss that gate 3 predicted (at most 4 and 3 floors clean, above 1e3 planted) were printed by the script but the harness keeps no output of runs that behave as predicted, so they are not in the artifacts: gate 3's numeric prediction is unchecked. What the rates show is that no clean draw exceeded SLACK (10 floors) or fell under the control's threshold, and every planted draw failed one of the two checks (the script exits 1 on either); which of the two failed is not recorded. The node arms repeat one fixed pose in fresh processes, so they rate the test across processes and the runner's bits, not across poses; gate 3 is the across-pose rate, 30 poses a dtype.",
+    "reading": "the composition-order plant is caught every run under the term-floor tolerance, in the moving chain's test, the worst pose's test and on 30 random poses a dtype, with the clean arms quiet (0 false alarms in 20 and 30 runs). The 95 % lower bounds are 0.861 (20 runs) and 0.905 (30): the rate is 'every run observed', not a proven one."
+  }
+}

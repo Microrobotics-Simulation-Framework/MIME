@@ -228,3 +228,11 @@ CameraNode n_{f}  # pinned at landing
 CameraNode a  # pinned at landing
 CameraNode I  # pinned at landing
 CameraNode \mathbf{c}  # pinned at landing
+ExposureNode b  # pinned at landing
+ExposureNode g  # pinned at landing
+ExposureNode r  # pinned at landing
+ExposureNode \hat{x}  # pinned at landing
+ExposureNode a^{x}  # pinned at landing
+ExposureNode \mathbf{B}  # pinned at landing
+ExposureNode G  # pinned at landing
+ExposureNode x_{\max}  # pinned at landing
