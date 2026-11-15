@@ -142,23 +142,27 @@ def product(pairs: list[tuple[str, int]], space: str) -> str:
 @st.composite
 def spelled(draw: st.DrawFn) -> tuple[Dimension, str]:
     """A dimension and one spelling of it: a flat product, a quotient with its negative exponents in a denominator (in
-    parentheses where more than one), or a parenthesised group raised to a whole power, in a drawn order and spacing."""
+    parentheses where more than one), or a parenthesised group raised to a whole power, in a drawn order and spacing.
+    A group is built, not found: its inside and its power are drawn and the dimension is their product, so a draw
+    reaches a group raised to 2, 3 or a negative power (a random exponent vector is rarely a whole multiple) in every
+    third draw."""
+    style = draw(st.sampled_from(["flat", "quotient", "grouped"]))
+    space = draw(st.sampled_from([" ", "  "]))
+    if style == "grouped":
+        inside = draw(st.tuples(*[st.integers(-2, 2)] * 7))
+        k = draw(st.sampled_from([-3, -2, -1, 1, 2, 3, 2, 3, -2, -3]))
+        held = tuple(e * k for e in inside)
+        pairs = draw(st.permutations([(symbol, e) for symbol, e in zip(BASES, inside, strict=True) if e]))
+        return Dimension.of(held), f"({product(pairs, space)})" + (f"^{k}" if k != 1 else "")
     held = draw(exponents)
     pairs = draw(st.permutations([(symbol, e) for symbol, e in zip(BASES, held, strict=True) if e]))
-    space = draw(st.sampled_from([" ", "  "]))
-    style = draw(st.sampled_from(["flat", "quotient", "grouped"]))
     if style == "flat":
-        text = product(pairs, space)
-    elif style == "quotient":
-        top = product([(s, e) for s, e in pairs if e > 0], space)
-        under = [(s, -e) for s, e in pairs if e < 0]
-        slash = draw(st.sampled_from(["/", " / "]))
-        text = top + (slash + (term(*under[0]) if len(under) == 1 else f"({product(under, space)})") if under else "")
-    else:
-        powers = [k for k in (-3, -2, -1, 1, 2, 3) if all(e % k == 0 for e in held)]
-        k = draw(st.sampled_from(powers))
-        text = f"({product([(s, e // k) for s, e in pairs], space)})" + (f"^{k}" if k != 1 else "")
-    return Dimension.of(held), text
+        return Dimension.of(held), product(pairs, space)
+    top = product([(s, e) for s, e in pairs if e > 0], space)
+    under = [(s, -e) for s, e in pairs if e < 0]
+    slash = draw(st.sampled_from(["/", " / "]))
+    return Dimension.of(held), top + (slash + (term(*under[0]) if len(under) == 1 else f"({product(under, space)})")
+                                       if under else "")
 
 
 @given(held=exponents)
