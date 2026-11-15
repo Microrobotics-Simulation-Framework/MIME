@@ -1,6 +1,7 @@
 """Route 1's compiled programs, their text with source locations stripped, as uint8 arrays in an NPZ (bit_compare.py
 compares them base against head, the command run from each tree's root): python scripts/camera_route2/hlo.py PROGRAM OUT.npz, PROGRAM one of step32, step64, run32, run64,
-jvp32, jvp64, render32, render64. BUMP=1 moves the camera one ulp (of the program's dtype) along y (the control: every program's text differs)."""
+jvp32, jvp64, render32, render64, mesh32, mesh64 (the in-loop step of a camera tracing a drawn ellipsoid structure, a kind
+route 2 could take, beside a ball). BUMP=1 moves the camera one ulp (of the program's dtype) along y (the control: every program's text differs)."""
 
 from __future__ import annotations
 
@@ -61,6 +62,34 @@ if program.startswith("render"):
     at = jnp.asarray([0.3e-3, 0.0, 0.1e-3])
     compiled = jax.jit(lambda a: jax.jvp(frame, (a,), (jnp.ones_like(a),))).lower(at).compile()
     np.savez(out, text=text(compiled))
+    sys.exit(0)
+
+if program.startswith("mesh"):
+    from mime import Body, Experiment, State, Structure
+    from mime.build._maddening import _held, full_state, graph_params
+    from mime.dynamics import RigidInertial
+    from mime.observations import Camera, Detector, World
+    from mime.scene import Ellipsoid, Scene, Sphere, Z
+    from mime.things import Part
+    from mime.units import kg_per_m3, m, m_per_s, ms, rad_per_s, um
+
+    root = math.sqrt(0.5)
+    exp = Experiment("mesh_bits", scene=Scene.new(up=Z, units="m"), dt=ms(1))
+    exp.add_structure(Structure("egg", geometry=Ellipsoid(semi_axes=um((40.0, 30.0, 20.0)))))
+    exp.add_body(Body("ball", dynamics=RigidInertial(), initial=State(
+        position=um((0.0, 0.0, 100.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((1e-3, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(Sphere(radius=um(10.0)))}))
+    exp.declare("ball.parts.steel.density", kg_per_m3(7850.0), reason="steel")
+    exp.observe(Camera(detector=Detector(width=32, height=24, fx=150.0, fy=150.0, cx=15.5, cy=11.5),
+                       mount=World(position=m((0.0, Y, 0.0)), orientation=(root, -root, 0.0, 0.0)),
+                       frame_period=ms(1), absorbers=(("egg", 3000.0),)))
+    graph = exp.build().graph
+    graph.reset_state()
+    state, params = full_state(graph), graph_params(graph)
+    held = _held(graph)
+    fed = held._resolve_external_inputs({})
+    step = held._build_step_fn()
+    np.savez(out, text=text(jax.jit(lambda st, p: step(st, fed, p)).lower(state, params).compile()))
     sys.exit(0)
 
 from in_loop_cases import LOOK_ACROSS, scene_without_camera  # noqa: E402

@@ -10,9 +10,13 @@ motion per pixel of the body's motion in x and in z:
   point): where it holds, it is the reference;
 - ``ripple``: the jvp at 32 positions over one pixel of motion against the central difference over that pixel, by
   variant: ``first`` (the PR's first scheme), ``union`` (the exact union, each branch at its pixel's held point),
-  ``least`` (one straight edge a cell, each branch at its sub-ray's own least), ``fix`` (both);
+  ``least`` (one straight edge a cell, each branch at its sub-ray's own least), ``fix`` (both); with, per variant,
+  ``integral``: the 32 positions' mean jvp against that central difference (the derivative's integral over the pixel,
+  which a jvp missing a jump of the image's leaves off by the jump), and ``worst_sweep``: at the position farthest from
+  it, the central difference against its step (1/2 to 1/8192 px) beside the jvp there (whose limit it is, if the jvp is
+  the rendered image's derivative);
 - ``truth``: the sign-only truth's motion (64 x 64 samples a pixel, 512 signs, central differences at a quarter pixel)
-  against the fix's jvp at the pose."""
+  against the fix's jvp at the pose, and at the fix's worst ripple position (``truth_at_worst``)."""
 
 from __future__ import annotations
 
@@ -50,6 +54,7 @@ POSES = {"straight": (np.array([0.02e-3, 0.0, 0.01e-3]), np.array([1.0, 0.0, 0.0
          "tilted": (np.array([0.05e-3, 0.0, -0.03e-3]), product(about(1, 25.0), about(2, 15.0)))}
 PIXEL = 0.1 / T.LENS.fx
 STEPS = (1 / 256, 1 / 64, 1 / 16, 1 / 8, 1 / 4, 1 / 2, 1.0, 2.0)
+WORST_STEPS = (1 / 2, 1 / 8, 1 / 32, 1 / 128, 1 / 512, 1 / 2048, 1 / 8192)
 AXES = {"x": 0, "z": 2}
 FOUND_PIECES, FOUND_COVER = sampled_route.pieces, sampled_route._covered_union
 
@@ -134,12 +139,24 @@ def main() -> None:
                 e = np.zeros(3)
                 e[axis] = PIXEL
                 reference = np.asarray(found(jnp.asarray(position + e))) - np.asarray(found(jnp.asarray(position)))
-                centroid = []
+                centroid, jvps = [], []
                 for k in range(32):
                     jvp = np.asarray(tangent(jnp.asarray(position + (k / 32) * e), jnp.asarray(e)))
+                    jvps.append(jvp)
                     centroid.append(float(np.linalg.norm(jvp[1:] - reference[1:]) / np.linalg.norm(reference[1:])))
+                mean = np.mean(jvps, axis=0)
+                worst = int(np.argmax(centroid))
+                at = position + (worst / 32) * e
+                sweep = {str(h): float(np.linalg.norm(
+                    (np.asarray(found(jnp.asarray(at + h * e))) - np.asarray(found(jnp.asarray(at - h * e))))[1:] / (2 * h)
+                    - jvps[worst][1:]) / np.linalg.norm(jvps[worst][1:])) for h in WORST_STEPS}
                 ripple[name] = {"largest": max(centroid), "mean": float(np.mean(centroid)),
-                                "reference": reference.tolist()}
+                                "reference": reference.tolist(), "worst_position": worst / 32,
+                                "worst_jvp": jvps[worst].tolist(),
+                                "integral": float(np.linalg.norm(mean[1:] - reference[1:]) /
+                                                  np.linalg.norm(reference[1:])),
+                                "integral_total_px2": float(abs(mean[0] - reference[0])),
+                                "worst_sweep": sweep}
             entry["ripple"][scheme] = ripple
             print(pose, scheme, json.dumps(ripple), flush=True)
         variant("fix", monkeypatch)
@@ -149,9 +166,16 @@ def main() -> None:
             e[axis] = PIXEL
             jvp = np.asarray(tangent(jnp.asarray(position), jnp.asarray(e)))
             truth = truth_motion(body, position, orientation, axis)
+            worst = entry["ripple"]["fix"][name]["worst_position"]
+            at = position + worst * e
+            at_worst = truth_motion(body, at, orientation, axis)
+            worst_jvp = np.asarray(tangent(jnp.asarray(at), jnp.asarray(e)))
             entry["truth"][name] = {"truth": truth.tolist(), "jvp": jvp.tolist(),
                                     "centroid_relative": float(np.linalg.norm(jvp[1:] - truth[1:]) /
-                                                               np.linalg.norm(truth[1:]))}
+                                                               np.linalg.norm(truth[1:])),
+                                    "truth_at_worst": at_worst.tolist(), "worst_position": worst,
+                                    "centroid_relative_at_worst": float(np.linalg.norm(worst_jvp[1:] - at_worst[1:]) /
+                                                                        np.linalg.norm(at_worst[1:]))}
         print(pose, "truth", json.dumps(entry["truth"]), flush=True)
         out[pose] = entry
     monkeypatch.undo()

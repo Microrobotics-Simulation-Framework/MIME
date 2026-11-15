@@ -1,0 +1,95 @@
+{
+ "written": "2026-11-15, committed before round 5's second probe ran on the consolidated head (the commit that adds this file is the timestamp): probe 2's arms rerun after the tail (rounds 3 to 5) and the release tip (c56bc04a) were merged, and the sampled route's flags laid out only where a body takes it",
+ "phase": "camera PR 5a (route 2), round 5: probe 2 rerun (predictions_camera_pr5a_fix.json's second probe, run 43643369175, on the fix's head before the tail)",
+ "labels": "predictions by round 5's agent from probe 2's outcomes, round 4's cost arms (runs 43699692574) and local exploration on this head (named in seen_before; local numbers are exploration, never the claim)",
+ "seen_before": [
+  "probe 2 (run 43643369175, the fix's head): DERIV's fix ripple 0.19 / 0.58 / 0.66 / 0.98 % (straight x, straight z, tilted x, tilted z), the first scheme's 3.7 / 1.1 / 1.3 / 1.7 %; the jvp against the truth 0.11 / 0.11 / 0.58 / 0.04 %; G20 truth 0.13 / 0.12 / 0.58 / 0.06 %, N to 2N motion under 0.11 %, the N to 2N image 0.0005 (straight) and 0.026 (tilted); G19 rates 13.6 to 17.4 (float32) and 8.9 to 9.4 (float64) G a second on the fix's head; bits all equal; every control 30/30 with clean 0/30; DUR the screw's G16 54 to 56 s, the helix's 27 to 29 s",
+  "round 4's cost arms (run 43699692574, round 4's head, whose sampled route this head carries unchanged): head frames 73.5 / 140.1 ms (160 px float32 / float64), 270.1 / 514.1 (320), 600.3 / 1542.0 (640), at the runner's threads, on four CPU models",
+  "local on this head (ba8dec29 + a48997c7, float64, exploration): the structural estimate 1595, 6127 and 23620 M flops-equivalents a frame at 160, 320, 640 px (the coil of scripts/camera_route2/cases.py, 40 samples a ray); the N to 2N image at G20's poses 9.5e-7 (straight) and 1.8e-6 (tilted), the motion's N to 2N 2e-6 to 4e-5; DERIV's fix ripple at 32 midpoints 0.20 / 0.58 / 0.46 / 0.34 %; the 32 positions' mean jvp against the pixel's central difference 7e-5 / 1.9e-4 / 7e-5 / 1.3e-4 (the first scheme's 1.3e-3 / 6.4e-3 / 3.3e-3 / 5.8e-3); at the worst position the central difference against its step converging on the jvp there, 0.2 to 0.6 % at a half pixel to 1e-5 to 1.2e-4 at 1/512 px and below",
+  "local on this head, the compiled texts of step64, step32, render32 and a mesh scene's step64 (scripts/camera_route2/hlo.py) equal to the release tip's c56bc04a (one process each, not pinned: exploration)"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "GitHub runner, 4 vCPU, CPU (JAX_PLATFORMS=cpu); every arm through probe_launch.sh; bits in one job, one CPU, one thread (bit_compare.py); timings only from the G19 arms (node_measure.py, 20 steps, 3 repeats)",
+  "sizes_and_parameters": "DERIV and G20 on the coil of tests/sensing/test_sampled.py at 128 x 96, float64, G20's straight and tilted poses (scripts/camera_route2/derivative.py, g20.py); G19 the in-loop coil of scripts/camera_route2/cases.py at 160, 320, 640 px; BITS route 1's programs of scripts/camera_route2/hlo.py (the in-loop camera's step, run and forward-mode derivative of a ball in a tube, the offline render of a cylinder and a sphere, and the in-loop step of a camera tracing a drawn ellipsoid structure beside a ball), float32 and float64",
+  "seeds_and_draws": "the control rates at DETECTION_SEED (or the Hypothesis seed) 0 to 29, as probe 2's; DERIV, G20, G19 and BITS deterministic"
+ },
+ "gate_deriv": {
+  "claim": "route 2's forward-mode derivative is the derivative of the image it renders: at every pose and axis the central difference converges on the jvp as its step shrinks, and the jvp's mean over a pixel of motion is the image's change over it; the 0.6 to 1 % probe 2 read between the jvp and the central difference over one pixel is that difference's own error (it averages the rendered image's ripple over the pixel), not the jvp's",
+  "kind": "estimates",
+  "case": "probe arm DERIV (scripts/camera_route2/derivative.py)",
+  "prediction": {
+   "value": "the fix's ripple (32 positions, k/32) 0.15 to 0.7 % at each entry, under RIPPLE_LINE (1 %); the first scheme's over 1 % at three or four entries; the integral (the 32 positions' mean jvp against the pixel's central difference, centroid) at most 5e-4 for the fix at every entry and at least 1e-3 for the first scheme at three or four (its composition's jumps, which a jvp leaves out); at the fix's worst position the central difference within 3e-4 of the jvp for every step at or below 1/512 px; the jvp against the truth's motion within 1 % at the pose and at the worst position",
+   "band": [
+    0.0,
+    0.0005
+   ],
+   "unit": "the fix's integral: relative difference of the mean jvp's centroid motion from the pixel's central difference",
+   "basis": "measured-before (local, this head)",
+   "why": "the fix's image is continuous in the pose but for the march's declared selects (camera.sampled.*, order -1), whose jumps local exploration put near 1e-4 of the centroid's motion; the first scheme's least-of-two-lines composition jumps where its lines swap"
+  },
+  "control": {
+   "plant": "the first scheme (CAMERA_PLANT=lesser's composition): its integral off by its jumps",
+   "expected_rate": "deterministic poses: at least 1e-3 at three or four of the four entries"
+  },
+  "verdict_rule": "if the fix's integral is at most 5e-4 and its worst-position sweep converges (at most 3e-4 at 1/512 px and below) at every entry, the residual is the one-pixel central difference's own error, stated as measured in the docs; if not, the jvp misses a term, measured and reported, not fixed silently",
+  "if_wrong": "an integral above 5e-4 for the fix, or a sweep that settles away from the jvp, is a missing term of the jvp: its size and entry reported",
+  "cannot_discriminate_if": "the first scheme's integral also under 1e-3 at every entry (the test cannot see a jump), or the sweep not settling at any step (no reference)"
+ },
+ "gate_g20": {
+  "claim": "as predictions_camera_pr5a_fix.json's gate_g20 (the design's G20): from N to 2N samples the image moves under 0.02 of a pixel's share and the motion under 1 %; against the sign-only truth the motion is within 1 % at the straight and the tilted pose, in every component",
+  "kind": "bounds",
+  "case": "probe arm G20 (scripts/camera_route2/g20.py), 128 px, float64",
+  "prediction": {
+   "value": "the N to 2N image at most 1e-4 at both poses (probe 2's 0.026 at the tilted pose came from the corner sub-rays' misread leasts, which the tail's descent reads; local 1.8e-6); the N to 2N motion under 0.01 %; against the truth 0.04 to 0.6 % at every entry",
+   "band": [
+    0.0,
+    0.01
+   ],
+   "unit": "relative motion error against the truth",
+   "basis": "measured-before",
+   "why": "the tail reads each corner sub-ray's own least, whatever the samples' count; the truth's own floor in motion about 0.1 %"
+  },
+  "control": {
+   "plant": "eight samples (the N to 2N line) and the offset plant (the image against the truth), as probe 2's G20",
+   "expected_rate": "deterministic poses: eight samples caught in the N to 2N line at both poses; the offset plant caught in the image at both poses (probe 2: 0.16 to 0.19 against the clean 0.002 to 0.035), not in the motion (its own measured blind spot, reported again)"
+  },
+  "if_wrong": "an entry over its line is a finding about the march at the declared count, reported with its pose"
+ },
+ "gate_g19_cost": {
+  "claim": "COST_LINE's time: the in-loop coil's frame against the structural estimate the build report states, at 160, 320 and 640 px in both dtypes, through the real node: the effective rate in flops-equivalents a second, and so the frame time at COST_LINE (1e9)",
+  "kind": "estimates",
+  "case": "probe arms G19-<width>-<dtype> (scripts/camera_route2/g19.py, node_measure.py)",
+  "prediction": {
+   "value": "rates 18 to 42 G a second in float32 and 10 to 17 in float64 (round 4's head frames over this head's estimates: 21.7, 22.7, 39.3 and 11.4, 11.9, 15.3, on four CPU models); a frame at COST_LINE then 24 to 56 ms in float32 and 59 to 100 ms in float64",
+   "band": [
+    10.0,
+    42.0
+   ],
+   "unit": "G flops-equivalents a second",
+   "basis": "measured-before (round 4's cost arms on the same sampled route)",
+   "why": "this head's sampled route is round 4's; the merge changed the renderer's _render.py by the mesh path, which a scene without meshes does not take"
+  },
+  "if_wrong": "a rate outside the band, COST_LINE's note written from what was measured all the same, with the CPU models"
+ },
+ "bits": {
+  "cases": "route 1's programs and a mesh scene's, base origin/release/v0.3.0 (c56bc04a) against this head, one CPU and one thread (bit_compare.py): step32, step64, run32, run64, jvp32, jvp64, render32, render64, mesh32, mesh64 (scripts/camera_route2/hlo.py, source locations stripped)",
+  "prediction": "every compiled program's text equal: a camera with no subject on the sampled route lays out none of its flags (CameraNode.flag_fields), and a drawn structure stays the traced mesh",
+  "controls": {
+   "repeat": "the head compiled twice: equal, all ten programs",
+   "one_ulp": "the camera's mount one ulp of the program's own dtype along y (in float32 a float32 ulp, which float32's rounding keeps): every program's text differs, all ten, on the runner (scripts/camera_route2/bits_controls.py)"
+  }
+ },
+ "control_rates": {
+  "arms": "RRIPPLE (CAMERA_PLANT=lesser on the ripple test), RSWAP (G18's capsule, CAMERA_PLANT=sampled-offset), RWINDOW (G21, CAMERA_PLANT=small-window), RSIGN32 (G16's helix in float32, SIGN_PLANT=sign), RSLOPE32 (the screw in float32, SIGN_PLANT=slope), 30 runs each, seeds 0 to 29",
+  "prediction": "planted 30/30 and clean 0/30 in every arm, as probe 2"
+ },
+ "durations": {
+  "case": "DUR: pytest --durations=0 over tests/scene/test_sign_functions.py, tests/sensing/test_sampled.py, tests/sensing/test_camera_refusals.py and tests/sensing/test_in_loop_refusals.py on a runner",
+  "prediction": "over 30 s: the screw's G16 50 to 60 s in each dtype; the corner gate's 512 px cases now 30 to 120 s (the guard's dense profile, the flag's control and the truth on a clean run); the helix's G16 about 28 s; each row of the allowlist keyed by the current ids ([screw-float32], [screw-float64] and the corner gate's [<dtype>-<width>-<coil>]) with the runner's time"
+ },
+ "outcomes": null
+}
