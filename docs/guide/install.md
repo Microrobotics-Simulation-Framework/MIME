@@ -84,6 +84,15 @@ recorded, and it is withdrawn.
   run was measurably off on a GPU under reduced-precision (TF32) matmuls); iterative-solve and fixed-point tolerances at or
   above float32's reachable floor, with a stagnation stop; energy terms accumulated in float64; definiteness checked at a
   floor.
+- **On a GPU, `XLA_FLAGS=--xla_gpu_enable_triton_gemm=false`, and a CPU-equality check.** `float64` and the highest matmul
+  precision are not a guard against a wrong operator: on an A100 under JAX 0.12.0.1, with XLA's Triton GEMM fusion on (its
+  default), one float64 operator (a convective Jacobian assembled by einsum) came out wrong at the highest precision and no
+  error followed; the flag removed it (MIME-ANO-157; which einsum and why are not isolated). MIME never sets the flag in a
+  process it did not start: a GPU build without it warns (`TritonGemmUnguarded`, in the build report and in `mime env check`),
+  and the script `mime modal` writes sets it. Set it before JAX starts (XLA reads its flags once, when the backend starts).
+  **A GPU acceptance run keeps a CPU-equality check on at least one einsum-heavy node**: build that node's operator (or take
+  one step) on both backends in one process and compare; the flag is a workaround, and only that comparison can see the
+  failure.
 - **A rig that needs float64 says so by a declared guard**, not by float64 everywhere, which costs time for nothing where
   the guards hold.
 - If you are unsure for a rig, run both dtypes and compare.

@@ -30,6 +30,7 @@ from modal_stub import load
 from script_a import script_a
 from _platform_support import needs_posix_script_launch
 
+TRITON_OFF = "--xla_gpu_enable_triton_gemm=false"
 PINNED = "--require-hashes --no-deps --no-build"
 DIGEST = "ab" * 32
 SERIES = series_of(platform.python_version())
@@ -295,10 +296,25 @@ def test_the_image_id_and_the_clients_version_are_information_the_runs_environme
 def test_the_deterministic_mode_is_off_unless_asked_for_and_only_on_a_gpu(saved, tmp_path, released):
     off = load(write(saved / "full_toy", tmp_path / "off", gpu="A100-80GB").script, tmp_path)
     on = load(write(saved / "full_toy", tmp_path / "on", gpu="A100-80GB", deterministic=True).script, tmp_path)
-    assert off["functions"]["run_experiment"]["env"]["XLA_FLAGS"] == ""
-    assert on["functions"]["run_experiment"]["env"]["XLA_FLAGS"] == "--xla_gpu_deterministic_ops=true"
+    assert off["functions"]["run_experiment"]["env"]["XLA_FLAGS"] == TRITON_OFF
+    assert on["functions"]["run_experiment"]["env"]["XLA_FLAGS"] == f"{TRITON_OFF} --xla_gpu_deterministic_ops=true"
     with pytest.raises(BuildRefused):
         write(saved / "full_toy", tmp_path / "cpu", deterministic=True)
+
+
+def test_a_gpu_script_starts_every_container_with_the_triton_gemm_fusion_off_and_names_why_and_a_cpu_script_sets_no_flag(
+        saved, tmp_path, released):
+    """MIME-ANO-157: MIME's own GPU run environment sets the flag, in the script's text (nothing runs on Modal here),
+    with the comment that cites the anomaly. A CPU script sets none: it is a GPU flag."""
+    gpu = write(saved / "full_toy", tmp_path / "gpu", gpu="A100-40GB")
+    text = gpu.script.read_text(encoding="utf-8")
+    (line,) = [held for held in text.splitlines() if held.startswith("XLA_FLAGS = ")]
+    assert line.startswith(f"XLA_FLAGS = {TRITON_OFF!r}  # ") and "MIME-ANO-157" in line
+    assert "MIME-ANO-157" in text.split("ENV = {")[0].rsplit("image = _image()", 1)[1], "the comment beside ENV"
+    assert load(gpu.script, tmp_path)["functions"]["run_experiment"]["env"]["XLA_FLAGS"] == TRITON_OFF
+    cpu = write(saved / "full_toy", tmp_path / "cpu")
+    assert "XLA_FLAGS = ''" in cpu.script.read_text(encoding="utf-8")
+    assert load(cpu.script, tmp_path)["functions"]["run_experiment"]["env"]["XLA_FLAGS"] == ""
 
 
 def test_the_python_series_is_the_locks_unless_another_is_named(saved, tmp_path, released):
