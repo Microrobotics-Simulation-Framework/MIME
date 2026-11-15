@@ -22,7 +22,10 @@
     "case": "probe/pilot.py --part arm (arms arm_f64_a, arm_f64_b)",
     "prediction": {
       "value": "every draw converged, at most 15 iterations, the frame within 1e-9 m; the derivative within 1e-6 of central differences (relative to the largest entry), jvp against vjp within 1e-12",
-      "band": [0, 1e-6],
+      "band": [
+        0,
+        1e-06
+      ],
       "unit": "share of the derivative's largest entry",
       "basis": "measured-before (2 local draws, 3e-10) and derived: Richardson's truncation at a 0.2 mm move is about (2e-4 / 0.3 m)^4, the reference solves' noise about 1e-11 over the move",
       "why": "Newton's step on a definite Hessian converges quadratically from a start 0.15 rad away"
@@ -41,7 +44,10 @@
     "case": "probe/pilot.py --part arm (arms arm_f64_a, arm_f64_b)",
     "prediction": {
       "value": "every draw converged (stationarity at most 1e-10), at most 40 iterations; the derivative within 1e-5 of central differences; the Gauss-Newton derivative at least 0.1 of the derivative's scale off on every draw",
-      "band": [0.1, null],
+      "band": [
+        0.1,
+        null
+      ],
       "unit": "share of the derivative's largest entry, for the plant's distance",
       "basis": "measured-before (2 local draws: 2.8 to 3.4) and derived: the residual's curvature term, sum r_i grad^2 r_i, is of the order of J^T J where the miss (1.5 m) is of the order of the arm (0.5 m)",
       "why": "the exact Hessian's second-order term is what the Gauss-Newton one drops"
@@ -59,7 +65,10 @@
     "case": "probe/pilot.py --part arm --dtype float32 (arm_f32), --part coils --dtype float32 (coils_f32)",
     "prediction": {
       "value": "the floor at most 1e-6 on 95 % of draws and at most 5e-6 on every one; the solve at its declared tolerance converged on every draw",
-      "band": [0, 5e-6],
+      "band": [
+        0,
+        5e-06
+      ],
       "unit": "stationarity over the problem's size",
       "basis": "guess, from eps32 = 1.2e-7 times the square root of the rows (2.8) and a margin of ten",
       "why": "the projected gradient's rounding is eps times the rows' miss and what the commands make, which the size holds"
@@ -77,7 +86,10 @@
     "case": "probe/pilot.py --part coils (coils_f64, coils_f32)",
     "prediction": {
       "value": "float64: commands within 1e-9 of the limit, the derivative within 1e-9 of its scale of the exact path's, every draw converged in at most 12 iterations; float32: commands within 1e-3 of the limit, every draw converged",
-      "band": [0, 1e-9],
+      "band": [
+        0,
+        1e-09
+      ],
       "unit": "share of the limit (commands), of the derivative's largest entry (derivative)",
       "basis": "measured-before (4 local draws: 1.2e-15, 6.4e-16) and derived: one Newton step on the active set is the exact path's least squares",
       "why": "on an affine model the problem is a convex quadratic, whose minimiser is the exact path's selected set's"
@@ -93,5 +105,13 @@
     "prediction": "informative only (a runner, not a timing claim): a converged solve of the arm in 2 to 20 ms and of six coils in 1 to 10 ms, compiled",
     "measured_at": "nowhere yet; the per-step cost is AP4a's, through the real node"
   },
-  "outcomes": null
+  "outcomes": {
+    "run": "probe/ap4-pilot at a5eb4a8e (the solve of 4f5e31d9), GitHub run 43719814346, 5 arms on 4-vCPU runners; every arm's peak (4.6 GiB at most) passed its estimate (0.43 GiB, the raw program alone, without MIME's import and the variants' compiled programs): an underestimate of the estimator, each arm's calibration row in its mem_check.json; every arm well under 12 GiB, so the route held",
+    "gate_1_arm_reachable": "120 draws: every draw converged (stationarity at most 9.7e-11); iterations at most 21 (predicted 15: missed on one draw); the frame on its target to 3.2e-10 m on 119 draws and 4.8 mm off on one (predicted 1e-9 m on every draw: missed), a converged local minimiser with a joint at its limit, not the target: the nonlinear path's piecewise_jump status, not a defect; the derivative against central differences within 5.1e-6 on 115 draws (median 1.5e-9; predicted 1e-6: missed by 5x at the tail) and 0.999 on one (a reference solve on another branch, the active set unchanged); jvp against vjp at most 4.6e-15 (predicted 1e-12: held); 19 draws skipped where the active set moved within the step",
+    "gate_2_arm_unreachable": "120 draws: 109 converged (predicted every draw: missed): stationarity up to 3.6e-9 against the 1e-10 line, the stall stop ending the solve while the objective's own rounding hid each decrease; the Gauss-Newton derivative 0.54 to 12.9 of the derivative's scale off (predicted at least 0.1 on every draw: held, every draw); the derivative within 2.4e-4 of central differences at the 95th percentile and 1.0 on two draws (another branch); jvp against vjp at most 7.9e-15",
+    "gate_3_float32_floor": "arm (200 draws): the floor at most 1.5e-4 on unreachable targets, 4.9e-5 at the 95th percentile (predicted 5e-6 on every draw: missed by 30x), converged on 163 of 200 unreachable draws and every reachable one; coils (400 draws): the floor at most 8.5e-8, every draw converged (held)",
+    "gate_4_coils_against_the_exact_path": "float64 (200 draws): commands within 2.2e-14 of the limit, the objective within 2.4e-16, the implicit derivative within 2.1e-14 of the exact path's, at most 8 iterations (held); float32 (400 draws): every draw converged, commands within 1.8e-6 of the limit at the 95th percentile and 8.8e-3 on one draw (predicted 1e-3 on every draw: missed on one)",
+    "costs": "informative: a compiled arm solve 1.0 to 10 ms (median 2 ms), a six-coil solve 0.06 to 0.28 ms (held for the arm; the coils were faster than predicted)",
+    "what_changed_after": "the solve after the pilot (AP4a): a step whose measured decrease is within what the objective resolves (4 eps |r|^2, the rows' own rounding, beside the subtraction's) passes Armijo's test, and a stall is such a step that did not halve the stationarity, STALLS in a row; on 30 local float32 arm draws every unreachable target then converged, the floor at most 2.0e-7. The derivative test differences reference solves on the solution's branch (checked), over the widest of three step sizes that keeps it. AP4a's gates are predicted in their own file before they run"
+  }
 }
