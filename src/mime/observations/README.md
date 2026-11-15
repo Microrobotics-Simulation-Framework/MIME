@@ -4,7 +4,7 @@
 
 ## What goes here
 
-- `SwimSpeed`, `EnergyLedger`, `PhaseLag` and `Camera`.
+- `SwimSpeed`, `EnergyLedger`, `PhaseLag`, `Exposure` and `Camera`.
 - Later: signals, and harm observations such as contact force and wall shear.
 
 ## The contract
@@ -29,7 +29,17 @@ disagree is refused, `observation.lag-ambiguous`), and the body's spin about the
 after `after`. An observation reads a uniform field where a law already reads the same interface of it (the flux
 density where the torque reads it, never where the force reads the gradient), adding no slot to its provider (so the
 provider's node is what it is without the observation); the build report names the law, among the lines the build
-computed. A field no law reads so, or one that varies in space, waits for observations' own provider instances.
+computed. A field that varies in space is read where a law bound to the body reads it at the same point (on a coil
+array, where the torque reads it at the magnet's centre), adding no slot either. A field no law reads so waits for
+observations' own provider instances.
+
+**`Exposure(body, field=..., flux_density=, field_gradient=, rate_of_change=)`** (`exposure` 0.1.0): the field a body
+is exposed to, each step, where a law bound to it reads the field: `flux_density` (`|B|`), `field_gradient` (the
+gradient's Frobenius norm) and `rate_of_change` (`|B_n - B_(n-1)| / dt`, a one-step difference along the body's path,
+its motion included: an estimate with an error of order `dt`; step 0's is not measured and is held at 0), their maxima
+at the end, and a flag per quantity against a limit the experiment declares with its reason (`exposure.declaration`
+refuses one without). A flag says a modelled quantity passed a declared number, nothing more. The page:
+`docs/entries/observation/exposure.md`.
 
 **`EnergyLedger()`** (`energy_ledger` 0.1.0): the energy ledger in one line, `exp.observe(EnergyLedger())`. A switch
 the build reads (`Observation.meters_energy`): it binds no role, builds no node and declares no output; attached, the

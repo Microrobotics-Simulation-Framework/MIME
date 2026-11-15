@@ -31,7 +31,7 @@ def test_the_refusal_list_holds_every_code_no_test_names_and_prints_its_length()
     held = read_lists(ROOT)["refusal_codes"]
     report = refusal_check(ROOT)
     assert report.problems == []
-    assert f"refusal table: 684 codes; {len(held)} that no test names" in report.summary
+    assert f"refusal table: 686 codes; {len(held)} that no test names" in report.summary
     assert len(held) > 0 and all(line.reason == "no test names it" for line in held.lines)
 
 
@@ -147,5 +147,5 @@ def test_every_symbol_units_line_and_every_node_reference_line_names_a_route_to_
     added = {"GravityNode R", "GravityNode q", "MagneticTorqueNode R", "SwimSpeedNode h", "UniformRotatingNode h",
              "IntegratingRotatingNode h", "PhaseLagNode h", "RampNode h", "ImplicitFlowNode h", "ResolvedFlowNode h",
              "BodyForceNode h", "ExplicitFlowNode h", "ExplicitFlowNode k", "PrescribedFlowNode e",
-             "PrescribedFlowNode i", "PrescribedFlowNode r", "PrescribedFlowNode t"}
+             "PrescribedFlowNode i", "PrescribedFlowNode r", "PrescribedFlowNode t", "ExposureNode h"}
     assert {line.item for line in indices.lines if "route:" in line.reason} == added

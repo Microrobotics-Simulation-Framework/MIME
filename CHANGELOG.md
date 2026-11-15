@@ -68,6 +68,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `route="sampled"` is a route. New switches: `camera.sampled.least`, `.basin`, `.second`, `.branch`, and the helix's
     `helix.end.low`, `.high`. `mime.testing.sign_function_problems` holds a kind's sign function to its regions' sign at
     drawn points and its gradient's length. The saved form gains nothing.
+- **A coil array on a frame of its own chain, and the exposure envelope** (apparatus lane, AP3b, dev2).
+  - **`CoilArray(mount="<segment>.<frame>", at=..., orientation=...)`** (the calibrated multipole 0.1.0's new setting):
+    the array placed by `at` and `orientation` in a frame of its own apparatus's chain, which carries it (a mobile
+    electromagnet on an arm). Each step the node composes the placement onto the frame's pose as the chain publishes it,
+    through the existing mount edge (`ProviderBuilder.mount`, `ctx.mount`), so the field stays linear in the currents at
+    every pose: its forward model takes the frame's pose as `x.mount_pose`, and the exact allocation holds at each
+    tick. **What it bounds**: along A0's moving chain (the rotor turning), the mounted field and gradient agree with the
+    same array placed in the world at the frame's pose (the host's `actuation`, float64) within 10 times `eps` times the
+    sum of the magnitudes of the terms each entry is summed from, over its peak, in float64 and float32 (a first-order
+    running-error bound, the factor of 10 empirical; on 72 random chain poses the largest miss was 2.3 times that floor
+    in float64 and 1.9 in float32, where the sources' own cancellation `eps / c` is not the floor: 9.4 times):
+    agreement to rounding, not bit for bit (different programs). At each tick the currents a controller allocates make the wanted field at the
+    pose it read, and are the host's exact allocation there. The frame's motion enters only through the pose (no induced
+    currents). An array placed in the world keeps its record, its program and its input hash: `mount` is left out of the
+    record where it is not given.
+  - **`mount.provider`**, a new refusal code: a mount that names no frame of the apparatus's chain; a mount on a segment
+    that takes loads (a dynamic rung), since the array's mass on the segment and the reaction on it are not modelled
+    (mount it on a kinematic segment); and `actuation()` (and `placement()`) of a mounted array, whose placement in the
+    world is the chain's at each step. A belief mounted elsewhere than its truth is `controller.believed`.
+  - **A controller inside the compiled step (mode 1) cannot read a chain's frame poses** (`controller.unreached-read`,
+    as before): its node runs first in the step, each read edge must carry the state at the step's start, and nothing it
+    writes reaches the chain, so the schedule runs the chain before it and the read would carry the end of the step
+    (`mime.build._in_graph.order_refusals`). A callback (mode 2) reads them at the start of its period; a test holds that
+    mode 1 gives the refusal with its code, not a late value.
+  - **`Exposure(body, field=..., flux_density=, field_gradient=, rate_of_change=)`** (`exposure` 0.1.0, a registered
+    observation): the field a body is exposed to, each step, where a law bound to it reads the field: `flux_density`
+    (`|B|`), `field_gradient` (the Frobenius norm of the gradient, `sqrt(sum_ij G_ij^2)`) and `rate_of_change`
+    (`|B_n - B_(n-1)| / dt`, a one-step difference along the body's path, its motion included: an estimate of `|dB/dt|`
+    with an error of order `dt`). **Step 0's rate of change is not measured**: no earlier reading exists, so it is held
+    at 0, raising no flag and setting no maximum; a field switched on between step 0 and step 1 is seen at step 1. The
+    maxima are kept at the end (`max_<quantity>`). Each limit is optional, a quantity carrying its reason; a declared one
+    gives its quantity a flag (`above_<quantity>`), raised at each step it stands above the limit. A flag says a modelled
+    quantity passed a declared number, nothing more. **What it bounds**: `flux_density` and `field_gradient` against the
+    host's `actuation` within `10 eps / c`, in both dtypes; `rate_of_change` against the host's derivative along a moving
+    chain within `dt` times the second derivative there plus its rounding, and the chord in a uniformly turning field. In
+    float32 the rate carries rounding noise of order `eps |B| / dt` (more where the provider's sources cancel), so a flag
+    limit near the true rate flickers and `max_rate_of_change` reads high; computing the difference in float64 would not
+    remove it (the readings arrive rounded), and float64 does (documented on the page, held by a test).
+    Acoustic quantities arrive with the first acoustic provider.
+  - **`exposure.declaration`**, a new refusal code: a limit with no reason, a pending one, or one not above zero.
+  - **`mime.units.T_per_s`** (`FIELD_RATE`, `FieldRate`), a field's rate of change, so that a rate limit carries its
+    reason (a quantity derived by division carries none). The saved form writes it as `unit_symbol` gives it, which
+    `parse_unit` reads back.
 - **The closed loop through a camera, as an example** (`examples/camera_loop.py`, camera 3c, dev2): a magnetic sphere in
   Navion_2's field steered by what a camera sees, in GRAPH mode. A camera port (`imaging.frames`, of `camera:.expected`)
   feeds a tracker, then a PID, then the exact allocation (`ctx.allocator`), then the coils' command port (25 A). The
@@ -1488,6 +1531,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `pull`.
 
 ### Changed
+
+- **`observation.field-read` is lifted where a law reads the field at the same point** (apparatus lane, AP3b): an
+  observation's read of a field that varies in space now shares the slot a law bound to the body already reads at the
+  same point (the same pose read and the same point fixed in it), as a uniform field's read already shared a law's, so
+  it adds no slot and the provider's node and the physics' derived hash stay what they were without it. Before, every
+  such read was refused, waiting for observations' own provider instances; the refusal was there only because a slot of
+  the observation's own would change the provider's node, and a law's slot at the same point already holds the field
+  there (every slot publishes every interface its provider publishes). So `PhaseLag` on a coil array now builds where
+  the torque reads the field (`tests/oracles/test_shared_point_read.py`: the field it reads is the torque's slot,
+  against `actuation` in both dtypes), and the exposure envelope reads its field this way. A point no law reads is still
+  refused, its route the observation's own instance of the provider, later work.
 
 - **A GPU build warns when XLA's Triton GEMM fusion is left on, and the `mime modal` script turns it off** (`TritonGemmUnguarded`,
   `BuildReport.triton_warning`, `EnvReport.triton_warning`; `mime.env._host.triton_gemm_warning`; MIME-ANO-157). On an A100 under

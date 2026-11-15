@@ -31,8 +31,9 @@ of a study run from rest that way, and `mime.study.ramp_crossings` a ramp's, fro
   iterate and the observation removes no lag for it.
 - For a body that tilts out of the plane as it turns: the turn back is its spin about the axis alone.
 - Where the field is read anywhere but where a law reads it: an observation reads a uniform field where a law reads its
-  flux density (the build report names the law), and refuses one no law reads so (it would need its own instance of
-  the provider).
+  flux density, and a field that varies in space where a law bound to the body reads it at the same point (the
+  magnet's centre: on a coil array, where the torque reads it), adding no slot to the provider (the build report names
+  the law); it refuses one no law reads so (it would need its own instance of the provider, later work).
 - For a claim: it is a number the run produced; what it bounds or estimates is for the experiment to state.
 
 **Its derivative** is piecewise: the window's edge is a switch, as the swim speed's is, declared in its gradient record

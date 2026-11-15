@@ -64,6 +64,7 @@ TYPED = [
     (body.SwimSpeedNode("s", DT, along=(1, 0, 0)), body.SwimSpeedState, body.SwimSpeedInputs, set()),
     (body.PhaseLagNode("l", DT, moment=(0, 1e-3, 0), about=(1, 0, 0)), body.PhaseLagState, body.PhaseLagInputs,
      set()),
+    (body.ExposureNode("x", DT), body.ExposureState, body.ExposureInputs, set()),
     (magnetic.MagneticTorqueNode("t", DT, moment=(0, 1e-3, 0)), body.Wrench, magnetic.MagneticTorqueInputs, set()),
     (actuation.UniformRotatingNode("f", DT, slots=("r",), rotation_axis=(0, 0, 1), initial_direction=(1, 0, 0)),
      actuation.UniformRotatingState, actuation.UniformRotatingInputs, {"flux_density_r", "gradient_r"}),

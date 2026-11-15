@@ -696,6 +696,10 @@ class _Planner:
         #: Each observation's read of a uniform field, held until every law's reads are planned: (its plan, its
         #: label, the field's path, the port's prefix, the interface, its units, where it is declared).
         self.uniform_reads: list[tuple[EntryPlan, str, str, str, str, str, str]] = []
+        #: Each observation's read of a field that varies in space at a body's point, shared with a law's slot there
+        #: (:meth:`share_point_reads`): the plan, the label, the field's path, the prefix, the interface, its units,
+        #: where, and the read's own resolution (its points and its offset).
+        self.point_reads: list[tuple[EntryPlan, str, str, str, str, str, str, ResolvedRead]] = []
         self.declared: list[EntryPlan] = []
         self.drives: list[EntryPlan] = []
         self.geometries: dict[str, GeometryPlan] = {}
@@ -812,6 +816,7 @@ class _Planner:
         self.plan_confinements()
         self.plan_lubrication()
         self.share_uniform_reads()
+        self.share_point_reads()
         self.collect_registrations_and_slots()
         self.check_readers_outside_parts()
         self.declare_controller()
@@ -2546,10 +2551,43 @@ class _Planner:
                          thing_kind=ThingKind.APPARATUS, record=capabilities,
                          settings=self.settings_in_si(provider, record, where))
         self.setting_problems(provider, plan.settings, where)
-        if not self.provider_parts(plan, where):
+        if not self.provider_parts(plan, where) or not self.provider_mount(plan, where):
             return
         self.providers[path] = plan
         self.declared.append(plan)
+
+    def provider_mount(self, plan: EntryPlan, where: str) -> bool:
+        """A provider's own mount, where its record has a ``mount`` setting (with its role) and it names one: a frame of a segment of
+        its apparatus's chain that takes no load, resolved into ``plan.mount``; ``False`` once refused
+        (``mount.provider``)."""
+        if "mount" not in plan.registered.roles:
+            return True
+        named = cast(object, getattr(plan.entry, "mount", None))
+        if named is None:
+            return True
+        cls = plan.registered.cls
+        segments = {held.owner.partition(".")[2]: held for held in self.segments.get(plan.thing or "", [])}
+        frames = [f"{local}.{frame}" for local, held in segments.items() if held.segment is not None
+                  for frame in held.segment.frames]
+        local, _, frame = str(named).partition(".")
+        host = segments.get(local)
+        if not isinstance(named, str) or host is None or host.segment is None or host.record is None or \
+                frame not in host.segment.frames:
+            self.refuse("mount.provider", RefusalClass.USER,
+                        f"{where} ({cls.label()}) is mounted on {named!r}, which is no frame of a segment of its "
+                        f"apparatus's chain", "mount it on <segment>.<frame> of its own chain, or drop mount= to place "
+                                              f"it in the world. {did_you_mean(str(named), frames)}")
+            return False
+        if self.load_port(host) is not None:
+            self.refuse("mount.provider", RefusalClass.USER,
+                        f"{where} ({cls.label()}) is mounted on {named!r}, a frame of {host.owner}, which takes loads "
+                        f"(a dynamic rung): the array's mass on the segment and the reaction on it are not modelled, "
+                        f"so the segment would move as if it carried neither (later work, with mass across mounts)",
+                        f"mount it on a kinematic segment, its motion prescribed ({host.owner} as Arm.Kinematic(...) "
+                        f"for an arm), or drop mount= and place it in the world with at= and orientation=")
+            return False
+        plan.mount = self.mount_on(host, frame)
+        return True
 
     def provider_parts(self, plan: EntryPlan, where: str) -> bool:
         """Each part of its apparatus a provider's settings name, with the role it must have, resolved into
@@ -3038,8 +3076,8 @@ class _Planner:
         return all(item.name in type(entry).parts for item in dataclasses.fields(cast(Any, entry)))
 
     def belief_mismatch(self, entry: Entry, truth: EntryPlan, settings: Mapping[str, Magnitude]) -> str | None:
-        """Why ``entry`` cannot be a belief of the part ``truth`` plans, or ``None``: another set of commands, or other
-        parts named; a camera's belief is a camera."""
+        """Why ``entry`` cannot be a belief of the part ``truth`` plans, or ``None``: another set of commands, other
+        parts named, or another mount; a camera's belief is a camera."""
         if truth.section is Section.OBSERVATION:
             from mime.observations import Camera
 
@@ -3052,7 +3090,10 @@ class _Planner:
                 return f"takes the commands {sorted(mine)}, and the part takes {sorted(theirs)}"
             named = [setting for setting in type(truth.entry).parts if getattr(entry, setting, None) !=
                      getattr(truth.entry, setting, None)]
-            return f"names other parts ({', '.join(named)})" if named else None
+            if named:
+                return f"names other parts ({', '.join(named)})"
+            mounts = (getattr(entry, "mount", None), getattr(truth.entry, "mount", None))
+            return f"is mounted on {mounts[0]!r}, and the part on {mounts[1]!r}" if mounts[0] != mounts[1] else None
         if truth.segment is not None and isinstance(entry, ChainSegment):
             try:
                 made = entry.segment(settings)
@@ -3636,6 +3677,14 @@ class _Planner:
                     # A uniform field is the same at every point: read where a law reads it, adding no slot.
                     self.uniform_reads.append((plan, label, path, prefix.field, read.interface, entry.units, where))
                     continue
+                if not uniform and read.at is not None:
+                    # A field that varies in space: read where a law reads it at the same point, adding no slot.
+                    at = self.state_read(plan, where, read.at)
+                    if at is not None and self.reads_body_points(cls, label, read, provider):
+                        self.point_reads.append((plan, label, path, prefix.field, read.interface, entry.units, where,
+                                                 ResolvedRead(provider.owner, "", read.interface, entry.units, at,
+                                                              None, read.offset)))
+                    continue
                 self.refuse("observation.field-read", RefusalClass.USER,
                             f"{where} reads the field {path!r}; an observation reads a field through its own "
                             f"instance of the provider, which is not built yet",
@@ -3647,15 +3696,22 @@ class _Planner:
                 continue
             # A uniform field is the same at every point, so a point fixed in the body changes nothing it reads.
             offset = read.offset if points is not None else None
-            if offset is not None and (provider.record is None or Capability.BODY_POINTS not in provider.record.flags):
-                self.defect(cls, f"read {label!r} of field {read.interface!r} is at the point {offset!r} fixed in the "
-                                 f"body, and its provider {provider.describe()} evaluates at the pose's position only: "
-                                 f"its support rows must require Capability.BODY_POINTS")
+            if offset is not None and not self.reads_body_points(cls, label, read, provider):
                 continue
             key = (path, points, offset)
             slot = sources.setdefault(key, _sanitize(plan.owner) + (f"_{len(sources)}" if sources else ""))
             plan.reads[label] = ResolvedRead(provider.owner, f"{prefix.field}_{slot}", read.interface, entry.units,
                                              points, slot, offset)
+
+    def reads_body_points(self, cls: type, label: str, read: Read, provider: EntryPlan) -> bool:
+        """Whether ``read``, at a point fixed in the body where it names one (``Read.offset``), is of a provider that
+        evaluates there (``Capability.BODY_POINTS``); an entry's defect otherwise."""
+        if read.offset is None or (provider.record is not None and Capability.BODY_POINTS in provider.record.flags):
+            return True
+        self.defect(cls, f"read {label!r} of field {read.interface!r} is at the point {read.offset!r} fixed in the "
+                         f"body, and its provider {provider.describe()} evaluates at the pose's position only: "
+                         f"its support rows must require Capability.BODY_POINTS")
+        return False
 
     def target(self, plan: EntryPlan, where: str, delivery: Delivery) -> ResolvedTarget | None:
         cls = plan.reader_cls()
@@ -4383,6 +4439,42 @@ class _Planner:
             self.checked[plan.owner] = (*self.checked.get(plan.owner, ()),
                                         f"reads {interface} from the uniform field {path!r} where {owner} reads it, "
                                         f"{held.node}.{held.field}, adding no slot to the provider")
+
+    def share_point_reads(self) -> None:
+        """Each observation's read of a field that varies in space, at a body's point, resolved to the slot a law
+        already reads that field by at the same point: the same pose read, and the same point fixed in it (its offset's
+        value) or none. A slot publishes every interface its provider publishes (``FieldProvider.publishes``), so the
+        observation reads its interface from that slot (the first such law by id) and adds no slot to the provider,
+        whose node is then what it is without the observation. Refused (``observation.field-read``) where no law reads
+        the field at that point: a slot of the observation's own would change the provider's node, and its own
+        instance of the provider is later work. The build report names the law, among the lines the build computed."""
+        for plan, label, path, prefix, interface, units, where, wanted in self.point_reads:
+            node = self.providers[path].node_name()
+            point = self.slot_offset(plan, wanted)
+            if wanted.offset is not None and point is None:
+                continue  # its value is refused where it is resolved
+            shared = sorted(((reader.owner, read) for reader in self.readers if reader.section is Section.INTERACTION
+                             for read in reader.reads.values()
+                             if read.node == node and read.slot is not None and read.points == wanted.points
+                             and self.slot_offset(reader, read) == point),
+                            key=lambda pair: (pair[0], pair[1].field))
+            assert wanted.points is not None
+            body = wanted.points.node
+            if not shared:
+                at = "its position" if point is None else f"the point {wanted.offset} fixed in it"
+                self.refuse("observation.field-read", RefusalClass.USER,
+                            f"{where} reads {interface} from the field {path!r} at {body!r} ({at}), and no law reads "
+                            f"the field there: an observation reads a field that varies in space where a law bound to "
+                            f"the body reads it, and at any other point through its own instance of the provider, "
+                            f"which is not built yet",
+                            "attach the law the field acts through at that body (exp.attach(Magnetic.Force(), "
+                            "body=..., field=...)), or observe the state the field acts on instead")
+                continue
+            owner, held = shared[0]
+            plan.reads[label] = ResolvedRead(held.node, f"{prefix}_{held.slot}", interface, units)
+            self.checked[plan.owner] = (*self.checked.get(plan.owner, ()),
+                                        f"reads {interface} from the field {path!r} at {body!r} where {owner} reads it, "
+                                        f"{held.node}.{prefix}_{held.slot}, adding no slot to the provider")
 
     def refuse_added_mass_on_resolved(self) -> None:
         """A law delivering an added mass to a body a medium's field resolves on its grid is refused: the grid carries
