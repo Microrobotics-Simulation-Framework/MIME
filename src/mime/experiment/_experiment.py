@@ -721,7 +721,15 @@ class Experiment:
             graph, report, derived = construct(plans, law, models)
             stage = stage_text(stage_spec(plans))
             record = record_of(self._settings, self._declarations, plans, derived, stage)
-            report = replace(report, stage_hash=record.stage_hash, assets=pins.lines(), ranges=range_lines(plans))
+            from mime.env._host import precision_note
+
+            precision, matmul_warning = precision_note()
+            report = replace(report, stage_hash=record.stage_hash, assets=pins.lines(), ranges=range_lines(plans),
+                             precision=precision, matmul_warning=matmul_warning)
+        if matmul_warning is not None:
+            from mime.env._host import MatmulPrecisionReduced
+
+            warn_at_script(matmul_warning, MatmulPrecisionReduced)
         for text in report.range_warnings():
             warn_at_script(text, UserWarning)
         for text in description_warnings(plans):
@@ -1132,7 +1140,10 @@ def run_layout(plans: PlanSet, graph: GraphManager | None = None) -> Layout:
     flags += port_flags(plans)
     if graph is not None:
         observations += port_traffic(plans, graph, observations)
-    return Layout(plans.settings.experiment, plans.dt, tuple(observations), tuple(flags), plans.profile.stamp())
+    from mime.env._host import run_precision
+
+    return Layout(plans.settings.experiment, plans.dt, tuple(observations), tuple(flags), plans.profile.stamp(),
+                  run_precision())
 
 
 def port_traffic(plans: PlanSet, graph: GraphManager, observations: Sequence[ObservationLayout]) -> \
