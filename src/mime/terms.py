@@ -37,6 +37,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
+from mime._placeholders import PLACEHOLDER_LICENCE
+
 #: The longest line of a custom licence's conditions: they are shown as short lines, and the licence's text is behind
 #: its link.
 CONDITION_LINE_LIMIT = 160
@@ -173,6 +175,9 @@ def licence_problem(text: object, *, unlisted: bool = False) -> str | None:
         return "a licence is an SPDX licence expression, such as CC-BY-4.0 or MIT OR Apache-2.0"
     if text == NO_ASSERTION:
         return None
+    if text == PLACEHOLDER_LICENCE:
+        return (f"{text} is the placeholder `mime scaffold --yes` writes where it was given no licence: choose yours (an "
+                f"SPDX licence expression, such as CC-BY-4.0 or MIT OR Apache-2.0) and write it in its place")
     if text != "".join(each for each in text if each.isprintable()):
         return "the licence has a control or format character"
     held = canonical(text)

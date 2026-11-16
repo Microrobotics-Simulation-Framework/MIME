@@ -31,7 +31,7 @@ folder with a `mime.toml`; an example; a README whose "Use" section is what CI r
 workflow with a default lane, a slow lane gated by a `slow` label, a weekly lane against MIME's release branch, the `mime
 registry` assertion, `mime check` of the benchmark, `mime assets audit` of the built wheel and sdist, and a typing job (pyright,
 strict over the package and the `assert_type` file, so the types an editor completes from cannot rot; the packages that import no `mime` have only the unknown-type rules off, because jaxlib has no stubs). Every value is the one
-you give with `--set`, else your `defaults.toml` (the namespace, the licence of your code, your name), else scaffold's own, and
+you give with `--set`, else your `defaults.toml` (the namespace, the licence of your code, your name), else scaffold's own (never a licence, and a namespace only from the folder's name: where `--yes` is given none it writes a marked placeholder that `mime check` refuses), and
 `--dry-run` draws the files and says where each value came from before anything is written. It never overwrites: a folder that
 exists is refused. A namespace that is taken (the first word of one of MIME's entries or refusal codes, or one an installed
 package declares) is refused with a free word to try, since one clash breaks `mime registry` for the whole environment: a folder

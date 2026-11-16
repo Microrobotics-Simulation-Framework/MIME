@@ -201,6 +201,8 @@ def run_study_to(study: Study, experiment: Experiment, points: Points, out: Path
         _same_study(out, old, fresh)
         files = _group_files_checked(out, old)
     statuses = _statuses(out, old, fresh, files)
+    if old is not None and say is not None:
+        _resumed_line(old, statuses, len(plan.points), say)
     document = document_of(plan, input_hash, status=statuses, group_experiments=_experiments(plan), group_files=files)
     if old is not None:
         for number, group in enumerate(cast(list[dict[str, Any]], old["groups"])):
@@ -244,6 +246,18 @@ def run_study_to(study: Study, experiment: Experiment, points: Points, out: Path
         document["groups"][number]["seconds"] = took
         write_json(out / STUDY_FILE, document)
     return StudyResult.read(out)
+
+
+def _resumed_line(old: dict[str, Any], statuses: dict[int, str], total: int, say: Say) -> None:
+    """What a run into a folder that holds this study says of the members it finds there: how many are done under the same
+    key and skipped, and how many were done but are run again, and why (their key changed)."""
+    before = sum(1 for row in cast(list[dict[str, Any]], old["members"]) if row["status"] == DONE)
+    kept = len(statuses)
+    if kept:
+        say(f"{kept} of {total} members already done, skipped" + ("; nothing to run" if kept == total else ""))
+    if before > kept:
+        say(f"{before - kept} of {total} members were done before and are run again: their content key changed (a change "
+            f"to MIME's files or the environment, or to the study itself)")
 
 
 def _same_study(out: Path, old: dict[str, Any], fresh: dict[str, Any]) -> None:

@@ -16,6 +16,7 @@ from typing import cast
 
 from packaging.version import Version
 
+from mime._placeholders import PLACEHOLDER_NAMESPACE
 from mime._terminal import plain
 from mime.blocks._definition import id_problem, version_problem
 from mime.build import BuildRefused, Refusal, RefusalClass
@@ -280,7 +281,7 @@ def own_plugin_names(folder: str) -> dict[str, str]:
     if not _PACKAGE.fullmatch(package) or keyword.iskeyword(package):
         package = f"mime_{package}"
     stem = package.removeprefix("mime_").split("_")[0]
-    namespace = stem if namespace_problem(stem) is None else "mylab"
+    namespace = stem if namespace_problem(stem) is None else PLACEHOLDER_NAMESPACE
     return {"distribution": distribution or package.replace("_", "-"), "package": package, "namespace": namespace}
 
 

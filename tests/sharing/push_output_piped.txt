@@ -137,7 +137,7 @@ $ mime check <tmp>/mime_sandbox_toy
 <tmp>/mime_sandbox_toy/mime.toml, a bundle's manifest, checked under the exploratory profile (the experiment's): 0 findings.
 nothing to do: push would take the manifest as it stands (the folder's own files are `mime pack`'s to check).
 [exit 0]
-$ mime push --defaults
+$ mime defaults
 no defaults are saved; they would be in <config>/defaults.toml
 `mime defaults edit` asks for them, and `mime push <folder> --setup` asks at its end whether to save what it set; or write that file by hand: creators at the top, [sharing] contributors, keywords, uploader and funding, [licences] code and content, [scaffold] namespace
 [exit 0]
@@ -149,7 +149,7 @@ mime push is refused:
     see: https://microrobotica.org/mime/<release>/pages/errors/push.setup
 The full traceback is in <file>; --traceback shows it here.
 [exit 2]
-$ mime push --defaults
+$ mime defaults
 your defaults, in <config>/defaults.toml (`mime push <folder> --init` and `--setup` fill a new mime.toml from them; `mime defaults edit` changes them):
   creators = [{ family = "Carberry", given = "Josiah", orcid = "0000-0002-1825-0097" }]
   [sharing] keywords = ["helices"]

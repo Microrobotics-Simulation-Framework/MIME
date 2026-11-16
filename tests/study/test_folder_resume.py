@@ -165,3 +165,31 @@ def test_a_group_file_that_is_not_the_one_recorded_is_refused_by_a_resumed_run_a
     path.unlink()  # the route the refusal gives: the group file moved out, its members run again
     assert len(study.run_to(out)) == 2
     assert sum(n for n in ran["asked"] if n) == 2
+
+
+def test_a_run_into_a_folder_that_holds_the_study_says_how_many_members_it_skips(ran, tmp_path):
+    """A repeated ``mime study run`` printed what the first run printed, so that skipped members were not visible."""
+    said: list[str] = []
+    out = tmp_path / "out"
+    toy_study(batch=1).run_to(out, say=said.append)
+    assert not any("already done" in line for line in said), "a first run into a new folder skips nothing"
+    toy_study(batch=1).run_to(out, say=said.append)
+    assert "6 of 6 members already done, skipped; nothing to run" in said
+    ran["stop_after"], ran["batches"] = 4, 0
+    stopped = tmp_path / "stopped"
+    with pytest.raises(Stop):
+        toy_study(batch=1).run_to(stopped)
+    ran["stop_after"] = None
+    said.clear()
+    toy_study(batch=1).run_to(stopped, say=said.append)
+    assert "4 of 6 members already done, skipped" in said and not any("run again" in line for line in said)
+
+
+def test_members_done_under_another_key_are_said_to_run_again_with_why(ran, tmp_path, monkeypatch):
+    said: list[str] = []
+    out = tmp_path / "out"
+    toy_study(batch=1).run_to(out)
+    real = content.source_hashes
+    monkeypatch.setattr(content, "source_hashes", lambda builts=(): {**real(builts), "planted": "another code"})
+    toy_study(batch=1).run_to(out, say=said.append)
+    assert any("were done before and are run again: their content key changed" in line for line in said), said

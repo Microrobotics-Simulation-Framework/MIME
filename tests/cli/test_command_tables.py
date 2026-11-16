@@ -27,6 +27,7 @@ import mime.env
 import mime.experiment._experiment as experiment_module
 from _platform_support import needs_pty, needs_readable_cpu_flags
 from _terminal_support import run_on_terminal, stripped, terminal
+from mime.cli import _EXPERIMENT_ACCEPTANCE
 from mime.cli import main as mime_main
 from mime.cli._display import set_plain, show_registry
 from mime.docs._export import export_json
@@ -122,7 +123,8 @@ def registry_entries_of_a_child(tmp_path) -> dict[str, object]:
 def old_registry_text(found: dict[str, object] | None = None) -> str:
     """What ``mime registry`` printed before the table, from the registry's export (this process's, unless ``found``)."""
     held = found if found is not None else json.loads(export_json())
-    return "".join(f"{e['kind']}  {e['name']}  {e['version']}\n" for e in held["entries"]) + "".join(
+    return "kind  name  version  from\n" + "".join(
+        f"{e['kind']}  {e['name']}  {e['version']}  {e['namespace']}\n" for e in held["entries"]) + "".join(
         f"not loaded: {name} ({reason})\n" for name, reason in held["not_loaded"].items())
 
 
@@ -215,8 +217,9 @@ def test_verify_on_a_terminal_is_a_table_of_its_checks_with_every_word_of_the_pl
     assert code == 0, text
     assert holds_every_word_of(old, text)
     lines = [line for line in text.splitlines() if line.strip()]
-    assert lines[-1] == verdict, "the verdict is one line, under the table"
-    assert not any(line.startswith("verify:") for line in lines[:-1])
+    assert lines[-2] == verdict, "the verdict is one line, under the table"
+    assert lines[-1].startswith("An acceptance: "), "and MIME's words on what it is come last, as a study's do"
+    assert not any(line.startswith("verify:") for line in lines[:-2])
     cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
     for check in ("saved form", "input hash", "environment", "derived graph", "rerun", "held to", "probe.x", "probe.v"):
         assert check in cells, f"{check} has no row"
@@ -240,8 +243,9 @@ def test_verify_with_a_field_moved_names_the_numbers_that_moved_and_the_toleranc
     cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
     assert cells["probe.x"] == "moved: max |difference| 1.000e-06, first at step 0; held to bit for bit"
     assert cells["probe.v"] == "moved: max |difference| 2.472e-01, first at step 0; held to bit for bit"
-    assert [line for line in text.splitlines() if line.strip()][-1] == \
-        "verify: 2 reference output(s) moved over 8 steps on cpu, float64"
+    lines = [line for line in text.splitlines() if line.strip()]
+    assert lines[-2] == "verify: 2 reference output(s) moved over 8 steps on cpu, float64"
+    assert lines[-1].startswith("An acceptance: "), "MIME's words on what it is come after the verdict"
     assert "probe.x: max |difference|" not in text, "the old line is a row, not repeated"
 
 
@@ -259,7 +263,9 @@ def test_verify_in_another_environment_says_within_the_tolerance_and_never_equal
     assert cells["held to"] == f"{tolerance}: another environment"
     assert cells["probe.x"] == cells["probe.v"] == tolerance
     assert "equal" not in text.replace("the environment the lock", "") and "bit for bit" not in text
-    assert [line for line in text.splitlines() if line.strip()][-1].startswith(f"verify: reproduced 8 steps {tolerance} on ")
+    verdict_lines = [line for line in text.splitlines() if line.strip()]
+    assert verdict_lines[-2].startswith(f"verify: reproduced 8 steps {tolerance} on ")
+    assert verdict_lines[-1].startswith("An acceptance: "), "MIME's words come after the verdict"
     text, code = verify_in_process(saved, monkeypatch, planted=True, other_environment=True)
     cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
     assert code == 1
@@ -440,7 +446,7 @@ def test_registry_on_a_terminal_is_one_table_grouped_by_kind_with_every_entry_a_
     raw, code = in_child_on_a_terminal(tmp_path, "registry")
     text = stripped(raw)
     assert code == 0, text
-    kinds = list(dict.fromkeys(line.split("  ")[0] for line in old.splitlines() if not line.startswith("not loaded:")))
+    kinds = list(dict.fromkeys(line.split("  ")[0] for line in old.splitlines()[1:] if not line.startswith("not loaded:")))
     once = "".join(line.split("  ", 1)[1] + "\n" if not line.startswith("not loaded:") else line + "\n"
                    for line in old.splitlines()) + "\n".join(kinds)
     assert holds_every_word_of(once, text), "every word, the kind once for its group and not again for each entry"
@@ -448,7 +454,7 @@ def test_registry_on_a_terminal_is_one_table_grouped_by_kind_with_every_entry_a_
         if line.startswith("not loaded:"):
             assert line in text
     drawn: list[list[str]] = []
-    for kind, name, version, declares in parsed_table(text, "kind", "name", "version", "declares"):
+    for kind, name, version, _source, declares in parsed_table(text, "kind", "name", "version", "from", "declares"):
         if not name and drawn:  # a cell that wrapped: the rest of the row above
             drawn[-1][3] += declares
         else:
@@ -457,7 +463,7 @@ def test_registry_on_a_terminal_is_one_table_grouped_by_kind_with_every_entry_a_
                 for e in held["entries"]]
     assert [[*row[:3], "".join(row[3].split())] for row in drawn] == expected, \
         "every entry is a row of its kind, name, version and what it declares, in the order the plain output prints"
-    first_cells = [row[0] for row in parsed_table(text, "kind", "name", "version", "declares")]
+    first_cells = [row[0] for row in parsed_table(text, "kind", "name", "version", "from", "declares")]
     for kind in kinds:
         assert first_cells.count(kind) == 1, f"{kind} is named once, for its group"
     assert any(e["settings"] for e in held["entries"]), "the control: some entry declares settings, so that cell is read"
@@ -465,20 +471,20 @@ def test_registry_on_a_terminal_is_one_table_grouped_by_kind_with_every_entry_a_
 
 @needs_pty
 def test_the_registry_table_puts_each_cell_in_its_column():
-    entries = [("geometry", "screw", "0.3.0", "pitch, radius"), ("geometry", "tube", "0.4.1", ""),
-               ("dynamics", "rigid_body", "1.2.0", "mass")]
+    entries = [("geometry", "screw", "0.3.0", "mime", "pitch, radius"), ("geometry", "tube", "0.4.1", "labx", ""),
+               ("dynamics", "rigid_body", "1.2.0", "mime", "mass")]
     with terminal(columns=COLUMNS) as tty:
         show_registry(entries, {}, tty.stream)
-        rows = parsed_table(stripped(tty.transcript()), "kind", "name", "version", "declares")
-    assert rows == [["geometry", "screw", "0.3.0", "pitch, radius"], ["", "tube", "0.4.1", "-"],
-                    ["dynamics", "rigid_body", "1.2.0", "mass"]]
+        rows = parsed_table(stripped(tty.transcript()), "kind", "name", "version", "from", "declares")
+    assert rows == [["geometry", "screw", "0.3.0", "mime", "pitch, radius"], ["", "tube", "0.4.1", "labx", "-"],
+                    ["dynamics", "rigid_body", "1.2.0", "mime", "mass"]]
 
 
 @needs_pty
 def test_a_long_cell_wraps_and_is_never_cut():
     declares = f"{'a' * 30}, {'b' * 30}"
     with terminal(columns=40) as tty:
-        show_registry([("geometry", "screw", "0.3.0", declares)], {"labx": "needs the verify extra"}, tty.stream)
+        show_registry([("geometry", "screw", "0.3.0", "mime", declares)], {"labx": "needs the verify extra"}, tty.stream)
         text = stripped(tty.transcript())
     lines = text.splitlines()
     rule = next(i for i, line in enumerate(lines) if "──" in line)
@@ -507,6 +513,7 @@ def test_piped_output_is_exactly_the_old_commands_and_holds_no_escape(command, s
         expected = old_registry_text()
     else:
         expected, _ = old_verify_text(saved)
+        expected += _EXPERIMENT_ACCEPTANCE + "\n"  # MIME's words after the verification, as a study's and a block's end theirs
         capsys.readouterr()
         assert mime_main(["verify", str(saved)]) == 0
     captured = capsys.readouterr()

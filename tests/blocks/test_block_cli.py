@@ -50,9 +50,8 @@ def test_mime_show_draws_the_same_words_on_a_terminal(tmp_path: Path):
 
 
 def test_mime_show_refuses_the_graph_of_a_block(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
-    with pytest.raises(SystemExit) as stopped:
-        main(["show", str(block_copy(tmp_path)), "--graph"])
-    assert stopped.value.code == 2 and "--tree, --graph and --out are a saved experiment's" in capsys.readouterr().err
+    assert main(["show", str(block_copy(tmp_path)), "--graph"]) == 2
+    assert "--tree, --graph and --out are a saved experiment's" in capsys.readouterr().err
 
 
 def test_mime_check_lists_the_missing_case_as_a_to_do_and_research_makes_it_a_finding(tmp_path: Path,
