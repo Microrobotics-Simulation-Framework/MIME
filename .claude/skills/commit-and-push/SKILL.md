@@ -56,12 +56,15 @@ path it finds, and fails.
 | `deprecate:` | Deprecation notice |
 | `security:` | Security-relevant change |
 
-### 5. CHANGELOG.md Updated
+### 5. Changelog Fragment Written
 
-If changes affect user-visible functionality, update `CHANGELOG.md` under `## [Unreleased]`:
+If changes affect user-visible functionality, write a fragment `changes.d/<slug>.<kind>.md` holding the entry as the
+changelog should read it (a `- ` bullet and its continuation lines); do not edit `CHANGELOG.md` (the maintainer may). A
+small pull request after the merges folds the fragments into `## [Unreleased]` with `scripts/assemble_changelog.py`
+(CONTRIBUTING.md, "The changelog: write a fragment"). The kind picks the section:
 
-- **Added** / **Changed** / **Deprecated** / **Removed** / **Fixed**
-- **Known Anomalies** — changes to `known_anomalies.yaml`
+- `added` / `changed` / `fixed` — **Added** / **Changed** / **Fixed**
+- `anomaly` — **Known Anomalies** — changes to `known_anomalies.yaml`
 
 ### 6. New Node, Entry or Refusal Code Checks (if applicable)
 
@@ -84,7 +87,7 @@ If the commit adds or changes a node, an entry or a refusal code (the **new-node
 
 - [ ] Entry in `docs/validation/known_anomalies.yaml` with `MIME-ANO-XXX` ID
 - [ ] `safety_relevance_rationale` is filled in
-- [ ] CHANGELOG updated under `### Known Anomalies`
+- [ ] A fragment of kind `anomaly` in `changes.d/` (it folds into `### Known Anomalies`)
 - [ ] `python scripts/check_anomalies.py` passes
 
 ### 8. Bibliography Checks (if applicable)
@@ -105,10 +108,10 @@ git push -u origin <branch>    # a branch, then a pull request; never to main, n
 
 ## Quick Reference
 
-| Change Type | CHANGELOG | Anomaly YAML | Docs sources | Bibliography |
+| Change Type | Fragment kind | Anomaly YAML | Docs sources | Bibliography |
 |-------------|-----------|-------------|--------------|--------------|
-| New node | Added | If limitations | `NodeMeta`, symbol table, pinned rows | If citing papers |
-| New entry | Added | If limitations | entry fields, `docs/entries/<kind>/<name>.md` | `references` keys |
-| Bug fix | Fixed | If known anomaly | Update if equations change | No |
-| New limitation | Known Anomalies | Yes (new entry) | Name the anomaly's id | No |
-| New benchmark | Added | No | No | If citing reference |
+| New node | `added` | If limitations | `NodeMeta`, symbol table, pinned rows | If citing papers |
+| New entry | `added` | If limitations | entry fields, `docs/entries/<kind>/<name>.md` | `references` keys |
+| Bug fix | `fixed` | If known anomaly | Update if equations change | No |
+| New limitation | `anomaly` | Yes (new entry) | Name the anomaly's id | No |
+| New benchmark | `added` | No | No | If citing reference |

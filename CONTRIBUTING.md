@@ -431,6 +431,22 @@ shared line:
 A new list that grows with changes is kept sorted the same way, with a check like `test_sorted_lists.py`'s, and a new
 test that pins a total of something that changes is a conflict waiting: derive it, or check the set it counts.
 
+## The changelog: write a fragment
+
+Do not edit `CHANGELOG.md` in a pull request: the Unreleased block was the file most pull requests conflicted on. Write a
+fragment instead, `changes.d/<slug>.<kind>.md`, holding the entry exactly as it should read in the changelog (a `- ` bullet
+and its continuation lines). The kind is `added`, `changed`, `fixed` or `anomaly`, the sections Added, Changed, Fixed and
+Known Anomalies of the Unreleased block; the slug names the change (lower-case letters, digits, `-` and `_`). A change with
+several entries writes a fragment each, with a slug each. The text in a fragment is checked by the rules of the changelog's
+own (`tests/validity/test_user_text.py`, the licence scan) before it is folded.
+
+After a merge, or a burst of merges, the maintainer or the coordinator opens a small pull request that runs
+`python scripts/assemble_changelog.py` and commits the result: it folds the waiting fragments into the block, by kind and
+then slug, and deletes them. `--dry-run` prints the changelog as it would read, `--check` exits 1 while a fragment waits, and
+a fragment whose name or shape it cannot use is refused by name. The fold touches nothing else in the file, and the
+maintainer may still edit `CHANGELOG.md` directly. The release's own pull request folds what waits before the version's
+heading is made.
+
 ## Compliance Scripts
 
 ```bash

@@ -20,6 +20,8 @@ APACHE_2_SHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523
 #: licence a covered work may be combined with.
 HISTORY = {"NOTICE", "CHANGELOG.md", "docs/development/changes_0.3.0.dev1.md",
            "src/mime/experiment/_mermaid_lib/LICENSE.mermaid"}
+#: The changelog's fragments, entries on their way into the changelog, are history as it is.
+FRAGMENTS = "changes.d/"
 #: Spelt in pieces, so that this file, which the search reads too, holds no mention of its own.
 EARLIER_ID, EARLIER_NAME = "G" + "PL", "Lesser " + "General Public"
 EARLIER_LICENCE = re.compile(rf"\bL?{EARLIER_ID}|{EARLIER_NAME}", re.IGNORECASE)
@@ -37,7 +39,7 @@ def mentions_of_the_earlier_licence(root: Path, files: list[str]) -> list[str]:
     found: list[str] = []
     for name in files:
         path = root / name
-        if name in HISTORY or not path.is_file():
+        if name in HISTORY or name.startswith(FRAGMENTS) or not path.is_file():
             continue
         raw = path.read_bytes()
         if b"\0" in raw:  # a binary file (an array archive): its bytes are numbers, and a few of them spell a name
@@ -68,7 +70,9 @@ def test_a_planted_mention_outside_notice_and_the_changelog_is_found(tmp_path):
     (tmp_path / "README.md").write_text(f"A line.\nLicensed under the GNU {EARLIER_NAME} License.\n")
     (tmp_path / "pyproject.toml").write_text(f'license = "L{EARLIER_ID}-3.0-or-later"\n')
     (tmp_path / "COPYING").write_text(f"{EARLIER_ID.lower()}v3\n")
+    (tmp_path / "changes.d").mkdir()
+    (tmp_path / "changes.d" / "a.changed.md").write_text(f"- moved from L{EARLIER_ID}-3.0-or-later\n")
     found = mentions_of_the_earlier_licence(tmp_path, ["NOTICE", "CHANGELOG.md", "README.md", "pyproject.toml",
-                                                       "COPYING"])
+                                                       "COPYING", "changes.d/a.changed.md"])
     assert found == [f"README.md:2: Licensed under the GNU {EARLIER_NAME} License.",
                      f'pyproject.toml:1: license = "L{EARLIER_ID}-3.0-or-later"', f"COPYING:1: {EARLIER_ID.lower()}v3"]
