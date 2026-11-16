@@ -3,6 +3,6 @@ they act by (the classes of finding and the profile rules), a reason's basis (on
 source), and what is pending, with the formatter and the stamp."""
 
 from mime.validity._bases import Basis, Chosen, Pending, chosen, pending
-from mime.validity._profiles import Profile, decide, using_tables
+from mime.validity._profiles import Profile
 
-__all__ = ["Basis", "Chosen", "Pending", "Profile", "chosen", "decide", "pending", "using_tables"]
+__all__ = ["Basis", "Chosen", "Pending", "Profile", "chosen", "pending"]

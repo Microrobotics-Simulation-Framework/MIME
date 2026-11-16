@@ -29,3 +29,13 @@ def test_did_you_mean_lists_the_candidates():
     assert did_you_mean("prob", ["probe", "bath"]) == "Did you mean 'probe'? The candidates are: bath, probe."
     assert did_you_mean("zzz", ["probe"]) == "The candidates are: probe."
     assert did_you_mean("x", []) == "There are no candidates."
+
+
+def test_handle_names_is_exported_and_is_what_the_handles_return():
+    """A user annotates the namespace of typed paths (SURFACE-REDUCTION, F0 record item 108): ``HandleNames`` is in
+    ``mime.things.__all__``, and ``ApparatusHandle.commands`` and ``BodyHandle.initial`` return it."""
+    import mime.things
+
+    assert "HandleNames" in mime.things.__all__
+    assert isinstance(ApparatusHandle("source", ["push"], ["frequency"]).commands, mime.things.HandleNames)
+    assert isinstance(BodyHandle("probe", ["position"]).initial, mime.things.HandleNames)
