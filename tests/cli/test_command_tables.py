@@ -27,6 +27,7 @@ import mime.env
 import mime.experiment._experiment as experiment_module
 from _platform_support import needs_pty, needs_readable_cpu_flags
 from _terminal_support import run_on_terminal, stripped, terminal
+from mime.cli import _EXPERIMENT_ACCEPTANCE
 from mime.cli import main as mime_main
 from mime.cli._display import set_plain, show_registry
 from mime.docs._export import export_json
@@ -242,8 +243,9 @@ def test_verify_with_a_field_moved_names_the_numbers_that_moved_and_the_toleranc
     cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
     assert cells["probe.x"] == "moved: max |difference| 1.000e-06, first at step 0; held to bit for bit"
     assert cells["probe.v"] == "moved: max |difference| 2.472e-01, first at step 0; held to bit for bit"
-    assert [line for line in text.splitlines() if line.strip()][-1] == \
-        "verify: 2 reference output(s) moved over 8 steps on cpu, float64"
+    lines = [line for line in text.splitlines() if line.strip()]
+    assert lines[-2] == "verify: 2 reference output(s) moved over 8 steps on cpu, float64"
+    assert lines[-1].startswith("An acceptance: "), "MIME's words on what it is come after the verdict"
     assert "probe.x: max |difference|" not in text, "the old line is a row, not repeated"
 
 
@@ -261,7 +263,9 @@ def test_verify_in_another_environment_says_within_the_tolerance_and_never_equal
     assert cells["held to"] == f"{tolerance}: another environment"
     assert cells["probe.x"] == cells["probe.v"] == tolerance
     assert "equal" not in text.replace("the environment the lock", "") and "bit for bit" not in text
-    assert [line for line in text.splitlines() if line.strip()][-1].startswith(f"verify: reproduced 8 steps {tolerance} on ")
+    verdict_lines = [line for line in text.splitlines() if line.strip()]
+    assert verdict_lines[-2].startswith(f"verify: reproduced 8 steps {tolerance} on ")
+    assert verdict_lines[-1].startswith("An acceptance: "), "MIME's words come after the verdict"
     text, code = verify_in_process(saved, monkeypatch, planted=True, other_environment=True)
     cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
     assert code == 1
@@ -509,6 +513,7 @@ def test_piped_output_is_exactly_the_old_commands_and_holds_no_escape(command, s
         expected = old_registry_text()
     else:
         expected, _ = old_verify_text(saved)
+        expected += _EXPERIMENT_ACCEPTANCE + "\n"  # MIME's words after the verification, as a study's and a block's end theirs
         capsys.readouterr()
         assert mime_main(["verify", str(saved)]) == 0
     captured = capsys.readouterr()
