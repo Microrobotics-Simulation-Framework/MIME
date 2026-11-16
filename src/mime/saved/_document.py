@@ -78,11 +78,10 @@ from mime.things import (
     PermanentMagnet,
     PrimPath,
     Structure,
-    Thing,
     ThingKind,
     TypedPath,
-    prim_path_of,
 )
+from mime.things._things import Thing, prim_path_of
 from mime.units import Condition, Quantity, Unit, parse_unit, unit_symbol
 from mime.validity import Basis, Chosen, Pending
 from mime.validity._bases import PENDING, basis_problem

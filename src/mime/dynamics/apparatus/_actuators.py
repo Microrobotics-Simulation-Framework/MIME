@@ -11,7 +11,7 @@ import math
 from dataclasses import dataclass
 from typing import cast
 
-from mime.things import did_you_mean
+from mime.things._handles import did_you_mean
 from mime.units import MOMENT_OF_INERTIA, Quantity, kg_m2
 
 

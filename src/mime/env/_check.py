@@ -461,7 +461,7 @@ def missing_folder(folder: str | Path, *, holding: tuple[str, ...] = (LOCK_FILE,
     beside = sorted(str(parent / other.name) if str(held.parent) not in ("", ".") else other.name
                     for other in (parent.iterdir() if parent.is_dir() else ())
                     if any((other / name).is_file() for name in holding))
-    from mime.things import did_you_mean
+    from mime.things._handles import did_you_mean
 
     return BuildRefused([Refusal(
         "load.missing-folder", RefusalClass.USER, f"there is no folder {str(held)!r}",

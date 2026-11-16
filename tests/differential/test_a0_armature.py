@@ -28,7 +28,7 @@ import numpy as np
 from a0_loops import planted_stale_model
 from script_a0_dynamic import NO_ARMATURE, a0_dynamic
 
-from mime.dynamics import actuator
+from mime.dynamics.apparatus._actuators import actuator
 from mime.units import Hz, kg_m2, ms
 
 #: The AR4's wrist speed limit, from its description (rad/s).

@@ -37,7 +37,8 @@ from mime.saved._versions import SERVO_REASON
 from mime.saved._schema import BoundEntryDoc, ControllerDoc, EntryDoc, EntryRecord, ExperimentDocument, SegmentDoc, \
     SettingValue, ThingDoc
 from mime.scene import Scene, asset, up_axis_problem, within
-from mime.things import WORLD, ThingKind
+from mime.things import ThingKind
+from mime.things._prims import WORLD
 from mime.things._things import MEDIUM_FIELD_ROLES
 
 #: The dynamics aspects each kind of thing takes, and whether it takes an initial state or fields.

@@ -52,8 +52,8 @@ from mime.things import (
     State,
     Structure,
     TypedPath,
-    did_you_mean,
 )
+from mime.things._handles import did_you_mean
 from mime.drives import Constant
 from mime.units import DIMENSIONLESS, Quantity, unit_symbol
 

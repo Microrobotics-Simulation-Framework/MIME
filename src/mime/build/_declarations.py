@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from typing import Any, override
 
 from mime.registry import Controller, Interaction, Observation
-from mime.things import Thing, TypedPath
+from mime.things import TypedPath
+from mime.things._things import Thing
 from mime.units import standard_gravity
 from mime.validity._profiles import DEFAULT_PROFILE
 
