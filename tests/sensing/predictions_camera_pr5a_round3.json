@@ -1,0 +1,851 @@
+{
+ "written": "2026-11-15, committed before round 3's probe ran (the commit that adds this file is the timestamp): the guard's rule, the descent's cost, and the corner plant at 128 px, on fresh draws with the corner line unchanged",
+ "phase": "camera PR 5a (route 2), round 3 after the tail round's confirmation (run 43654309266, predictions_camera_pr5a_tail.json's outcomes: the rule failed in 6 of 12 groups)",
+ "labels": "predictions by round 3's agent from seen draws only (2200 to 2399 and the earlier rounds'); the line is predictions_camera_pr5a_fix.json's, derived before its run and not moved; the plants' sizes were set from their defect classes before any rate was measured",
+ "seen_before": [
+  "the unbounded count at seed 2311 (coil2, 128 and 512 px), local, float64: pixel (94, 38) at 128 px. The centre ray's second minimum b is a fold of the helix sign function's turn guess: it reads 23 px where the exact distance to the coil is 9.7 px, and tb sits at a local maximum of the exact distance (14.3 px); b's descent runs towards a and b takes a's piece (both lines +0.057 px). On sub-rays (-0.375, +0.125) and (-0.375, +0.375) the fold has moved off, tb lies on a ridge of the exact distance, and b's descent runs away from a down to another turn's basin, whose least is 7.3 to 7.4 px out, 14.6 spacings away: the count flagged a descent into a basin seven pixels outside the sub-cell, which no reading of it changes (the pixel's error 0.0007). The descent did not fail; the count's rule was wrong",
+  "the premise guard (unread_leasts) on seen draws, local, float64 (tmp diagnosis, 41 draws a case: seeds 2200 to 2235, 2213, 2230, 2272, 2311, 2355): clean 0/41 at coil 128 px, coil2 128 px and coil 256 px (and 0 at 2311 at coil2 512 px, and 2312); with the second branch's search lost (the guard's control) above zero on 41/41 in each case, least 21, 37 and 28 leasts a draw; with the descent's reach cut to 0 above zero on 24/41, 20/41 and 10/41 (not every draw: the quartic alone reaches a least within a spacing). The guard's first form (each local minimum, no union) flagged seed 2230 (coil, 128 px) at pixel (91, 55): b's narrow basin 1.8 spacings from tb, skipped by the descent (b merged into a), in a sub-cell wholly inside a's half-plane (a's line -0.62 px): the union is the whole cell there, so the rule leaves out a sub-cell wholly inside a read branch",
+  "the single edge on seen draws (the same diagnosis, planted change against clean): coil 128 px least 0.68 L (seed 2355), 3/41 under 1.25 L; coil2 128 px least 1.20 L (seed 2213); coil 256 px least 3.47 L",
+  "the compacted descent, local: bitwise equal to 1a5b5937's frame at seeds 2052, 2129 (coil, 128 px), 2311 (coil2, 128 px), float64, 2152 (coil2, 512 px, float32), and the in-loop coil's step at 160 px float64 (17 of 17 leaves); its control (LEAST_REACH 0 against 6 at 2052) differs by 0.037 on 34 pixels",
+  "the pieces whose descent moves (the lower neighbour a spacing away below the held point), local: at most 2.43 % of the pieces (the in-loop coil at 160 px), 1.39 % (640 px), 3.38 % (coil2 at 128 px, seed 2311), 1.65 % (coil at 512 px, seed 2052), at the worst sub-offset",
+  "local timings, exploration only (a shared 24-core laptop at load 8 to 19, never a claim): the in-loop coil at 320 px float32, base 478 ms, head 930, compact 140; at one core base 700, compact 925, head 1279. A local profile (jax.profiler, XLA:CPU thunks): in base and head the corner sub-samples' cond runs as one `call` thunk on one thread, about the whole step; in compact its work is spread over the threads",
+  "the stop_gradient's place (on the held search's inputs or outputs) does not change the time: base 478 against 477 ms, head 930 against 924 (local)",
+  "the misread plant on seen draws (planted frame against clean, no truth), local, float64: see gate_round3_corner's control_misread"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "GitHub runner, 4 vCPU, CPU (JAX_PLATFORMS=cpu); every arm through probe_launch.sh; timings only from the P arms, each of which measures base, head and compact in one job (one CPU model)",
+  "sizes_and_parameters": "the corner gate as predictions_camera_pr5a_tail.json's (the coil and coil2 from 0.1 m across a 3 mm field at 128, 256 and 512 px; 4 x 4 corner sub-samples; the truth at 64 x 64 jittered samples a pixel and 512 signs, float64), route 2's least by descent (LEAST_REACH = 6), the descent gathered to the pieces that move (DESCENT_SHARE 1/8 of the pieces a turn); the premise guard's dense profile 16 a spacing across the whole march; the cost on the in-loop coil (scripts/camera_route2/cases.py) at 160, 320 and 640 px",
+  "seeds_and_draws": "corner: DETECTION_SEED 2400 to 2599 (never run: the PR's draws were 0 to 59, the review's 1000 to 1059, the fix round's 2000 to 2199, the tail round's 2200 to 2399), 200 a coil, width and dtype, clean, single edge and misread, in arms of 100 (128, 256 px) or 50 (512 px); the cost at 20 steps, 3 repeats (node_measure.py), at the runner's threads and at one (taskset -c 0, XLA's Eigen threads off)"
+ },
+ "gate_round3_corner": {
+  "claim": "on every pixel where two branches of a coil's outline cross, route 2 (the compacted descent) is within the corner line of the sign-only truth, at 128, 256 and 512 px, float64 and float32, on two coils; on every such pixel's sub-rays each least that reaches its sub-cell is read by a piece (the derivation's premise), and the guard sees a lost second branch on every draw",
+  "kind": "bounds",
+  "case": "tests/sensing/test_sampled.py::test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth[<dtype>-<width>-<coil>] through detection_rate.py (CAMERA_PLANT=single-edge, clean and planted; CAMERA_PLANT=misread, planted only), CORNER_RECORD holding each draw's largest error, its unread count and its lost-branch count",
+  "prediction": {
+   "value": "the lines unchanged; the clean largest over 200 draws at most 0.35 of its line at every case (the scheme is the tail round's, whose fresh draws read at most 0.27), no clean draw with an unread least, the lost-branch count above zero on every draw",
+   "band": [
+    0.0,
+    0.8
+   ],
+   "unit": "the clean largest's share of its line",
+   "basis": "measured",
+   "why": "the compacted descent gives the tail round's scheme's values (bitwise on the frames compared); the guard tests the premise itself, and a reading the descent reached (or a basin outside the sub-cell) is not counted"
+  },
+  "required": "per case, as the tail round's: clean 0/200 and planted 200/200 (single edge), the clean largest at most 0.8 of the line and the planted least at least 1.25 of it; no clean draw with an unread least; the lost-branch count above zero on every draw",
+  "control": {
+   "plant": "CAMERA_PLANT=single-edge, unchanged (the second branch dropped): its class, the corner treatment lost (the march's second minimum not kept, or the union replaced by one edge); its size is the dropped branch's area in each pixel, set by where the notch falls on the pixel grid, not by any parameter",
+   "environment_variable": "CAMERA_PLANT",
+   "expected_rate": "200/200 with the planted least at least 1.25 of the line at 256 and 512 px (the tail round's least 2.8 to 4.2 L at 256, 1.55 to 2.97 L at 512; the fix round's seed 2022 at 256 px, 0.017, is the one draw in 600 at 256 px under it); at 128 px predicted to FAIL the rule: about 1 draw in 100 missed on the coil (the tail round's 2230, 2355) and the planted least near 1.0 to 1.2 L on coil2 (the tail round's 1.03, 1.18)",
+   "runs": 200,
+   "clean_expected": "0/200 a case",
+   "resolution": "the single edge at 128 px is under the gate's resolution (1.25 L) at some poses: its error is the dropped branch's area, which a vertex near a pixel's corner makes small, and the line at 128 px is the largest (its cell term grows with the pixel)"
+  },
+  "control_guard": {
+   "plant": "in every run, the guard's count with the scheme's search losing its second branch (the second piece read at the first's point, as the two halves of _sampled._leasts' list mis-sliced would): asserted above zero",
+   "expected_rate": "above zero on every draw, clean and planted (seen: 26 to 229 a draw)",
+   "runs": "every run of the gate"
+  },
+  "control_misread": {
+   "plant": "CAMERA_PLANT=misread: the second branch read MISREAD = 0.1 of a pixel's footprint farther out on every ray. Its class: the tail round's defect, a branch's least on corner sub-rays misread so that the branch is read too far out (by a search that does not reach the sub-ray's least); its size, the least of the misreads measured where it occurred, 0.10 to 0.17 px (seeds 2052, 2129, 2049), set before any rate was measured; on every ray, where the defect as it occurred misread one or two sub-rays of one pixel",
+   "environment_variable": "CAMERA_PLANT",
+   "runs": 200,
+   "expected_rate": "at 128 px predicted to FAIL the rule: on the coil about one draw in seven under 1.25 L (seen 6/41, the least 0.41 L at seed 2230, where the single edge is also small) and on coil2 the least near 1.2 L; at 256 and 512 px caught 200/200 with the least at or above 1.25 L, the coil at 256 px thinnest (seen least 1.43 L at seed 2230); the misread's change is about a tenth of a pixel times the branch's own length in the pixel (seen median 0.088 to 0.100 at every case measured), while the line shrinks with the pixel",
+   "seen": "local, float64, the planted frame against the clean (no truth) on the 41 seen draws a case: coil 128 px least 0.0194 (0.41 L) at seed 2230, median 0.088, 6/41 under 1.25 L less 0.004; coil2 128 px least 0.0308 (1.19 L) at 2213, median 0.100, 0/41 under 1.25 L less 0.004; coil 256 px least 0.0423 (1.43 L) at 2230, median 0.095, 0/41; coil2 at 256 px and both coils at 512 px not measured locally",
+   "if_under_the_line": "if the misread is under 1.25 L at 128 px on some draws, the gate at 128 px does not resolve the tail's defect class at its measured size: an option for the maintainer (the gate at 256 px and up only, or 128 px's power stated); the plant is not resized"
+  },
+  "if_wrong": "a clean draw over 0.8 of its line, or a clean draw with an unread least, is a finding against the scheme or the guard, reported with its pixel's cause; a draw on which the lost-branch count is zero says the guard cannot discriminate there; a planted draw under 1.25 of the line is the plant's resolution, reported as such; the line is not moved and the claim not loosened",
+  "cannot_discriminate_if": "a draw with no two-branch pixel (the test asserts some), the lost-branch count zero, or the truth's re-measurement at four times its samples moving the worst clean draw by more than the truth's floor"
+ },
+ "gate_round3_cost": {
+  "claim": "where the descent's time went, and the compacted descent's frame against 5d4b2724's (base) on one CPU model in one job, through the in-loop camera at 160, 320 and 640 px in both dtypes",
+  "kind": "estimates",
+  "case": "probe arms P-<width>-<dtype>: scripts/camera_route2/g19.py (node_measure.py) for base, head (1a5b5937's _sampled.py) and compact (this branch's), at the runner's threads and at one thread; probe/xprofile.py once for each",
+  "prediction": {
+   "value": "at one thread (the evaluations' count): head over base 1.7 to 2.0, compact over base 1.1 to 1.4; at the runner's threads: head over base 1.7 to 2.2 (the tail round's same-CPU pair 2.12), compact over base 0.25 to 0.9; the profile: in base and head one event (the corner pass's `call`) over half the step, in compact none over a tenth",
+   "band": [
+    0.25,
+    1.4
+   ],
+   "unit": "compact's frame over base's, at the runner's threads and at one thread",
+   "basis": "measured (local, exploration) and derived",
+   "why": "the descent costs head 22 held evaluations a sub-ray against base's 10 (the line's jvp tangents are cheap: the nearest angle is held), so head over base is near 1.9 at one thread; compact holds the base's 10 and gathers the moving pieces (under 3.4 %) into a turn of 1/8 of the list, so it is near the base at one thread; and in base and head XLA:CPU runs the corner pass whole on one thread (one `call` thunk), which compact's loop and gathers break up, so at the runner's four threads compact is faster than base"
+  },
+  "structural_estimate": "a ray's evaluations: base 48 + 16 + 16 x 16 = 320, head 48 + 28 + 16 x 28 = 524, compact 48 + 18 + 16 x 18 = 354 (1.11 x base): the estimate counts each piece's line as two evaluations and cannot see the threads",
+  "required": "the brief's target: compact's frame at most 2.0 times base's on the same CPU (1.2 to 2.0 or below), with the clean largest still at most 0.8 of the line (gate_round3_corner)",
+  "if_wrong": "a ratio over 2.0 is reported with the profile; COST_LINE's note is restated from the measured numbers only if the corner gate passes"
+ },
+ "outcomes": {
+  "written": "2026-11-15, after run 43678278617 (probe/cam-pr5a-round3 @176cf079, deleted after download); the predictions above were committed before it ran and are unchanged",
+  "run": "43678278617: 38 arms. The 32 corner arms failed only the step Memory against the estimate (peak 1.5 to 3.6 times the bound: eager pytest processes against a raw program's estimate, the estimator's known underestimate); each wrote its results, no traceback in any log; the 6 cost arms passed",
+  "corner_verdict": "FAIL the rule in 12 of 12 groups. The clean error is at most 0.25 of its line everywhere (none over the line, none over 0.8 L) and the truth at 4x moves it at most 0.0044 (floor 0.0123); the guard's control is above zero on every draw (least 19). The failures: the premise guard counts unread leasts on 1 to 7 clean draws a group (every one within 0.25 L); the single edge under 1.25 L at coil2 256 px float32 (1.08 L) and coil2 512 px (float32 missed seed 2503, 0.59 L; float64 1.16 L); at 128 px the single edge is 200/200 at 1.62 to 2.32 L on these draws. The line is not moved and the claim not relabelled.",
+  "corner_groups": [
+   {
+    "coil": "coil",
+    "width": 128,
+    "dtype": "float32",
+    "line": 0.050487988631789604,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.004169464111328125,
+    "clean_largest_over_line": 0.08258328811108223,
+    "unread_seeds": [
+     2450,
+     2453,
+     2547,
+     2581
+    ],
+    "lost_branch_least": 19,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0028076171875,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.10868817567825317,
+     "least_over_line": 2.152753132451349,
+     "least_seed": 2455,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 193,
+     "missed_seeds": [
+      2400,
+      2459,
+      2460,
+      2475,
+      2479,
+      2510,
+      2523
+     ],
+     "least": 0.023866355419158936,
+     "least_over_line": 0.4727135317910359,
+     "least_seed": 2475,
+     "under_1_25_line": [
+      2400,
+      2416,
+      2419,
+      2436,
+      2447,
+      2459,
+      2460,
+      2462,
+      2472,
+      2475,
+      2479,
+      2507,
+      2508,
+      2510,
+      2523,
+      2529,
+      2544,
+      2571,
+      2575,
+      2578
+     ]
+    }
+   },
+   {
+    "coil": "coil",
+    "width": 128,
+    "dtype": "float64",
+    "line": 0.04689145755885998,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.00347510358188563,
+    "clean_largest_over_line": 0.07410952362748685,
+    "unread_seeds": [
+     2450,
+     2453,
+     2547,
+     2581
+    ],
+    "lost_branch_least": 19,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.00299072265625,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.10857059472982145,
+     "least_over_line": 2.3153597772801033,
+     "least_seed": 2455,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 196,
+     "missed_seeds": [
+      2400,
+      2459,
+      2475,
+      2523
+     ],
+     "least": 0.02381125571718745,
+     "least_over_line": 0.5077951711630768,
+     "least_seed": 2475,
+     "under_1_25_line": [
+      2400,
+      2416,
+      2419,
+      2436,
+      2459,
+      2460,
+      2462,
+      2475,
+      2479,
+      2507,
+      2508,
+      2510,
+      2523,
+      2529,
+      2578
+     ]
+    }
+   },
+   {
+    "coil": "coil",
+    "width": 256,
+    "dtype": "float32",
+    "line": 0.03688879092528923,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.0076448917388916016,
+    "clean_largest_over_line": 0.2072415914735395,
+    "unread_seeds": [
+     2528
+    ],
+    "lost_branch_least": 19,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0028467178344726562,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.05590176582336426,
+     "least_over_line": 1.51541333888069,
+     "least_seed": 2453,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 199,
+     "missed_seeds": [
+      2438
+     ],
+     "least": 0.03497636318206787,
+     "least_over_line": 0.9481569415735367,
+     "least_seed": 2438,
+     "under_1_25_line": [
+      2421,
+      2438,
+      2453,
+      2477,
+      2487,
+      2585
+     ]
+    }
+   },
+   {
+    "coil": "coil",
+    "width": 256,
+    "dtype": "float64",
+    "line": 0.029695728779429983,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.0033526920909577873,
+    "clean_largest_over_line": 0.11290149219305144,
+    "unread_seeds": [
+     2528
+    ],
+    "lost_branch_least": 19,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0028076171875,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.056004908465366654,
+     "least_over_line": 1.8859583774270208,
+     "least_seed": 2453,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.034890060247814825,
+     "least_over_line": 1.1749184708335199,
+     "least_seed": 2438,
+     "under_1_25_line": [
+      2438,
+      2585
+     ]
+    }
+   },
+   {
+    "coil": "coil",
+    "width": 512,
+    "dtype": "float32",
+    "line": 0.03548398868143349,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.006612598896026611,
+    "clean_largest_over_line": 0.18635444158752545,
+    "unread_seeds": [
+     2528,
+     2557,
+     2581
+    ],
+    "lost_branch_least": 20,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0013427734375,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.1137310266494751,
+     "least_over_line": 3.2051364819926036,
+     "least_seed": 2536,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.039505600929260254,
+     "least_over_line": 1.1133359691868863,
+     "least_seed": 2580,
+     "under_1_25_line": [
+      2415,
+      2458,
+      2494,
+      2580
+     ]
+    }
+   },
+   {
+    "coil": "coil",
+    "width": 512,
+    "dtype": "float64",
+    "line": 0.02109786438971499,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.0035652170844138187,
+    "clean_largest_over_line": 0.16898473791270685,
+    "unread_seeds": [
+     2528,
+     2557,
+     2581
+    ],
+    "lost_branch_least": 20,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0032958984375,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "PASS",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.11428471626725156,
+     "least_over_line": 5.4168855271893905,
+     "least_seed": 2536,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.040090425951787134,
+     "least_over_line": 1.9002125149373337,
+     "least_seed": 2580,
+     "under_1_25_line": []
+    }
+   },
+   {
+    "coil": "coil2",
+    "width": 128,
+    "dtype": "float32",
+    "line": 0.02948911893685113,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.007335543632507324,
+    "clean_largest_over_line": 0.24875424892197945,
+    "unread_seeds": [
+     2423,
+     2526,
+     2547,
+     2578
+    ],
+    "lost_branch_least": 24,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.004426360130310059,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.04778623580932617,
+     "least_over_line": 1.6204701100652423,
+     "least_seed": 2583,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 198,
+     "missed_seeds": [
+      2437,
+      2583
+     ],
+     "least": 0.024202406406402588,
+     "least_over_line": 0.8207232796012094,
+     "least_seed": 2583,
+     "under_1_25_line": [
+      2437,
+      2583
+     ]
+    }
+   },
+   {
+    "coil": "coil2",
+    "width": 128,
+    "dtype": "float64",
+    "line": 0.025892587863921505,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.004280928950174179,
+    "clean_largest_over_line": 0.16533414785237385,
+    "unread_seeds": [
+     2423,
+     2526,
+     2578
+    ],
+    "lost_branch_least": 24,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0041062914940983575,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.047808146104104,
+     "least_over_line": 1.8464027757812278,
+     "least_seed": 2583,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 198,
+     "missed_seeds": [
+      2437,
+      2583
+     ],
+     "least": 0.024102128639821863,
+     "least_over_line": 0.9308505108292225,
+     "least_seed": 2583,
+     "under_1_25_line": [
+      2437,
+      2583
+     ]
+    }
+   },
+   {
+    "coil": "coil2",
+    "width": 256,
+    "dtype": "float32",
+    "line": 0.026389356077820003,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.0055162906646728516,
+    "clean_largest_over_line": 0.20903468233198916,
+    "unread_seeds": [
+     2423,
+     2460,
+     2492,
+     2537,
+     2556
+    ],
+    "lost_branch_least": 21,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.003266453742980957,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.02861785888671875,
+     "least_over_line": 1.0844470324447129,
+     "least_seed": 2467,
+     "under_1_25_line": [
+      2450,
+      2467
+     ]
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 199,
+     "missed_seeds": [
+      2467
+     ],
+     "least": 0.0185239315032959,
+     "least_over_line": 0.7019470823263128,
+     "least_seed": 2467,
+     "under_1_25_line": [
+      2450,
+      2467
+     ]
+    }
+   },
+   {
+    "coil": "coil2",
+    "width": 256,
+    "dtype": "float64",
+    "line": 0.019196293931960755,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.0035642611655738454,
+    "clean_largest_over_line": 0.18567444206715078,
+    "unread_seeds": [
+     2423,
+     2460,
+     2492,
+     2537,
+     2556
+    ],
+    "lost_branch_least": 21,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.003466412956147691,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.028666276477488428,
+     "least_over_line": 1.4933234810371747,
+     "least_seed": 2467,
+     "under_1_25_line": []
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 199,
+     "missed_seeds": [
+      2467
+     ],
+     "least": 0.018640137583293304,
+     "least_over_line": 0.9710279311913701,
+     "least_seed": 2467,
+     "under_1_25_line": [
+      2467
+     ]
+    }
+   },
+   {
+    "coil": "coil2",
+    "width": 512,
+    "dtype": "float32",
+    "line": 0.030234271257698873,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.006024301052093506,
+    "clean_largest_over_line": 0.19925405182569017,
+    "unread_seeds": [
+     2423,
+     2492,
+     2526,
+     2537,
+     2557,
+     2575,
+     2578
+    ],
+    "lost_branch_least": 21,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0017557144165039062,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 199,
+     "missed_seeds": [
+      2503
+     ],
+     "least": 0.017854809761047363,
+     "least_over_line": 0.5905487057671617,
+     "least_seed": 2503,
+     "under_1_25_line": [
+      2503
+     ]
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 199,
+     "missed_seeds": [
+      2503
+     ],
+     "least": 0.015624165534973145,
+     "least_over_line": 0.5167700389337017,
+     "least_seed": 2503,
+     "under_1_25_line": [
+      2503
+     ]
+    }
+   },
+   {
+    "coil": "coil2",
+    "width": 512,
+    "dtype": "float64",
+    "line": 0.015848146965980376,
+    "clean_draws": 200,
+    "clean_over_line": [],
+    "clean_largest": 0.003487065177198656,
+    "clean_largest_over_line": 0.2200298359602538,
+    "unread_seeds": [
+     2423,
+     2492,
+     2526,
+     2537,
+     2557,
+     2575,
+     2578
+    ],
+    "lost_branch_least": 21,
+    "lost_branch_zero_seeds": [],
+    "truth_at_4x_moved_by_at_most": 0.0032958984375,
+    "inconclusive_seeds": [],
+    "rule": "FAIL",
+    "misread_rule": "FAIL",
+    "single_edge": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.018438569256958415,
+     "least_over_line": 1.1634526923897561,
+     "least_seed": 2503,
+     "under_1_25_line": [
+      2503
+     ]
+    },
+    "misread": {
+     "draws": 200,
+     "caught": 200,
+     "missed_seeds": [],
+     "least": 0.01622487810346729,
+     "least_over_line": 1.0237713051434723,
+     "least_seed": 2503,
+     "under_1_25_line": [
+      2503
+     ]
+    }
+   }
+  ],
+  "guard_findings": [
+   "the guard's hits on fresh clean draws, diagnosed locally (these seeds are now seen): a branch's own least on a sub-ray lies 0.3 to 0.8 spacing from its held point in a narrow basin, its line -0.15 to +0.17 px from the sub-cell's centre (it reaches the cell), and the scheme reads it at the other branch's point: the lower full-spacing neighbour lies on the other branch's slope, so the descent leaves the narrow basin and merges (2450, 2453 coil 128; 2528 coil 256; 2423 coil2 128), or descends into the other's basin without running its reach (2526 coil2 128, 2547 coil 128). The merge rule's premise, that a branch past its fold has its edge beyond its sub-cells, is contradicted: near the fold its basin is narrow and still reaches the cell",
+   "a candidate, diagnosis only (not committed): a piece whose five values show a local minimum at a half spacing does not descend and is read at the parabola through it: 15 of the 25 hits on 25 seen draws cleared, errors unchanged (at most 0.19 L); the rest are basins narrower than half a spacing, near a fold, which no fixed sampling reads every time",
+   "the misread, every case: under 1.25 L on 0 to 20 draws a group (coil 128: 193 and 196/200 caught, least 0.47 and 0.51 L); only coil 512 float64 passes (least 1.90 L): the tail's defect class at its least measured size is under the gate's resolution on some poses at every width"
+  ],
+  "cost_verdict": "the target met: compact over base 0.63 to 0.69 at the runner's threads at every size and dtype (same CPU in each job), 1.16 to 1.48 at one thread; head over base 1.93 to 2.15 at the runner's threads (640 float64: 0.96, the head's corner pass there compiled into parallel thunks) and 1.88 to 1.98 at one thread",
+  "cost_findings": [
+   "where the time went: in base and head XLA:CPU runs the corner pass whole as one thunk on one thread (its longest event 70 to 93 % of the traced step); the descent adds its evaluations there (22 held a sub-ray against 10), so head is about 1.9 times base at one thread and about 2 at four threads; the structural estimate (1.65) counts each piece's line as two evaluations, which its held angle makes cheap",
+   "the compacted descent (the pieces whose lower neighbour lies below the held point, at most 3.4 % measured) is the head's scheme bitwise on the frames compared; its corner pass runs over the threads (longest event at most 8.3 %), so it is faster than base at four threads; at one thread its gathering costs 1.16 to 1.48 times base",
+   "timing_on_loaded_machine is set on the one-thread runs and on compact's at 320 and 640: the load average on a four-vCPU runner still holds the job's own preceding measurement; base, head and compact ran in that order in each job"
+  ],
+  "cost": {
+   "P-160-float32": {
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "base_default_ms": 83.7362,
+    "base_estimate_M": 1438.0,
+    "base_default_loaded": false,
+    "base_one_ms": 108.3843,
+    "base_one_loaded": true,
+    "head_default_ms": 174.2934,
+    "head_estimate_M": 2378.0,
+    "head_default_loaded": false,
+    "head_one_ms": 204.1854,
+    "head_one_loaded": true,
+    "compact_default_ms": 55.4356,
+    "compact_estimate_M": 1595.0,
+    "compact_default_loaded": false,
+    "compact_one_ms": 129.8999,
+    "compact_one_loaded": true,
+    "head_over_base_default": 2.0815,
+    "compact_over_base_default": 0.662,
+    "head_over_base_one": 1.8839,
+    "compact_over_base_one": 1.1985,
+    "base_longest_event_share": 0.697,
+    "base_longest_event": "call.22",
+    "head_longest_event_share": 0.774,
+    "head_longest_event": "cond.11.clone",
+    "compact_longest_event_share": 0.031,
+    "compact_longest_event": "add_sqrt_fusion.49"
+   },
+   "P-160-float64": {
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "base_default_ms": 173.1822,
+    "base_estimate_M": 1438.0,
+    "base_default_loaded": false,
+    "base_one_ms": 213.1679,
+    "base_one_loaded": true,
+    "head_default_ms": 371.5761,
+    "head_estimate_M": 2378.0,
+    "head_default_loaded": false,
+    "head_one_ms": 412.6562,
+    "head_one_loaded": true,
+    "compact_default_ms": 118.9454,
+    "compact_estimate_M": 1595.0,
+    "compact_default_loaded": false,
+    "compact_one_ms": 248.0071,
+    "compact_one_loaded": true,
+    "head_over_base_default": 2.1456,
+    "compact_over_base_default": 0.6868,
+    "head_over_base_one": 1.9358,
+    "compact_over_base_one": 1.1634,
+    "base_longest_event_share": 0.775,
+    "base_longest_event": "call.22",
+    "head_longest_event_share": 0.841,
+    "head_longest_event": "cond.11.clone",
+    "compact_longest_event_share": 0.047,
+    "compact_longest_event": "add_sqrt_fusion.49"
+   },
+   "P-320-float32": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "base_default_ms": 398.3676,
+    "base_estimate_M": 5525.0,
+    "base_default_loaded": false,
+    "base_one_ms": 440.4146,
+    "base_one_loaded": true,
+    "head_default_ms": 767.068,
+    "head_estimate_M": 9137.0,
+    "head_default_loaded": false,
+    "head_one_ms": 873.1101,
+    "head_one_loaded": true,
+    "compact_default_ms": 250.9075,
+    "compact_estimate_M": 6127.0,
+    "compact_default_loaded": true,
+    "compact_one_ms": 652.4145,
+    "compact_one_loaded": true,
+    "head_over_base_default": 1.9255,
+    "compact_over_base_default": 0.6298,
+    "head_over_base_one": 1.9825,
+    "compact_over_base_one": 1.4814,
+    "base_longest_event_share": 0.842,
+    "base_longest_event": "call.22",
+    "head_longest_event_share": 0.898,
+    "head_longest_event": "call.22",
+    "compact_longest_event_share": 0.057,
+    "compact_longest_event": "add_sqrt_fusion.49"
+   },
+   "P-320-float64": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "base_default_ms": 762.2752,
+    "base_estimate_M": 5525.0,
+    "base_default_loaded": false,
+    "base_one_ms": 939.8425,
+    "base_one_loaded": true,
+    "head_default_ms": 1604.0865,
+    "head_estimate_M": 9137.0,
+    "head_default_loaded": false,
+    "head_one_ms": 1832.9262,
+    "head_one_loaded": true,
+    "compact_default_ms": 485.4517,
+    "compact_estimate_M": 6127.0,
+    "compact_default_loaded": true,
+    "compact_one_ms": 1130.8984,
+    "compact_one_loaded": true,
+    "head_over_base_default": 2.1043,
+    "compact_over_base_default": 0.6368,
+    "head_over_base_one": 1.9502,
+    "compact_over_base_one": 1.2033,
+    "base_longest_event_share": 0.863,
+    "base_longest_event": "call.22",
+    "head_longest_event_share": 0.91,
+    "head_longest_event": "call.22",
+    "compact_longest_event_share": 0.068,
+    "compact_longest_event": "add_sqrt_fusion.49"
+   },
+   "P-640-float32": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "base_default_ms": 1421.1193,
+    "base_estimate_M": 21290.0,
+    "base_default_loaded": false,
+    "base_one_ms": 1739.2408,
+    "base_one_loaded": true,
+    "head_default_ms": 2933.5574,
+    "head_estimate_M": 35220.0,
+    "head_default_loaded": false,
+    "head_one_ms": 3300.856,
+    "head_one_loaded": true,
+    "compact_default_ms": 956.314,
+    "compact_estimate_M": 23620.0,
+    "compact_default_loaded": true,
+    "compact_one_ms": 2384.3239,
+    "compact_one_loaded": true,
+    "head_over_base_default": 2.0643,
+    "compact_over_base_default": 0.6729,
+    "head_over_base_one": 1.8979,
+    "compact_over_base_one": 1.3709,
+    "base_longest_event_share": 0.878,
+    "base_longest_event": "call.22",
+    "head_longest_event_share": 0.927,
+    "head_longest_event": "cond.11.clone",
+    "compact_longest_event_share": 0.071,
+    "compact_longest_event": "add_sqrt_fusion.49"
+   },
+   "P-640-float64": {
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "base_default_ms": 2382.8769,
+    "base_estimate_M": 21290.0,
+    "base_default_loaded": false,
+    "base_one_ms": 2961.6626,
+    "base_one_loaded": true,
+    "head_default_ms": 2298.2446,
+    "head_estimate_M": 35220.0,
+    "head_default_loaded": true,
+    "head_one_ms": 5743.5542,
+    "head_one_loaded": true,
+    "compact_default_ms": 1505.5244,
+    "compact_estimate_M": 23620.0,
+    "compact_default_loaded": true,
+    "compact_one_ms": 3546.3125,
+    "compact_one_loaded": true,
+    "head_over_base_default": 0.9645,
+    "compact_over_base_default": 0.6318,
+    "head_over_base_one": 1.9393,
+    "compact_over_base_one": 1.1974,
+    "base_longest_event_share": 0.882,
+    "base_longest_event": "call.22",
+    "head_longest_event_share": 0.054,
+    "head_longest_event": "add_sqrt_fusion.101",
+    "compact_longest_event_share": 0.083,
+    "compact_longest_event": "add_sqrt_fusion.49"
+   }
+  }
+ }
+}

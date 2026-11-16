@@ -83,6 +83,7 @@ from mime.registry import (
     Entry,
     EntryKind,
     FieldProvider,
+    Flag,
     Geometry,
     GroupRequest,
     Hull,
@@ -480,6 +481,14 @@ class EntryPlan:
 
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
+
+    def raised_flags(self) -> tuple[Flag, ...]:
+        """The flags its node raises: the entry's ``raises`` on the rung attached, for a group or not
+        (``Flag.raised_by``), narrowed to its plan's ``Plan.raises`` where the plan names them."""
+        named = self.plan.raises if self.plan is not None else None
+        return tuple(flag for flag in self.registered.cls.raises
+                     if flag.raised_by(getattr(self.entry, "rung", None), bool(self.members), self.entry)
+                     and (named is None or flag.field in named))
 
     def node_names(self) -> list[str]:
         return [self.node_name(local) for local in self.nodes]

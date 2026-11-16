@@ -55,6 +55,10 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
     found["controller/tracked_rpm_in_graph"] = partial(tracked_rpm, "tracked_rpm_in_graph", mode="graph",
                                                        controller=tracking(orientation_feedback=True, iterations=1))
     found["camera/capsule"] = capsule_camera
+    from mime.registry import Geometry
+
+    if hasattr(Geometry, "sign_function"):  # a merge base before the sampled route has none
+        found["camera/sampled"] = sampled_camera
     from mime.sensing import _scene as camera_scene
 
     if hasattr(camera_scene, "TracedMesh"):  # a merge base before camera 6a traces no static mesh
@@ -145,6 +149,32 @@ def capsule_camera() -> Experiment:
     experiment.observe(Camera(detector=Detector(width=160, height=120, fx=750.0, fy=750.0, cx=79.5, cy=59.5),
                               mount=World(position=m((0.0, -1e-3, 0.0)), orientation=(root, -root, 0.0, 0.0)),
                               frame_period=ms(3), absorbers=(("tube", 3000.0),)))
+    return experiment
+
+
+def sampled_camera() -> Experiment:
+    """The in-loop camera seeing a helix and an ellipsoid, the kinds route 2 images (their sign functions and the
+    march's raw sites scanned): a small detector, as the scan reads the step's structure, not its size."""
+    import math
+
+    from mime import Body, State
+    from mime.dynamics import RigidInertial
+    from mime.observations import Camera, Detector, World
+    from mime.scene import Ellipsoid, Helix, Scene, Z
+    from mime.things import Part
+    from mime.units import kg_per_m3, m, m_per_s, ms, rad_per_s, um
+
+    root = math.sqrt(0.5)
+    experiment = Experiment("sampled_camera", scene=Scene.new(up=Z, units="m"), dt=ms(1))
+    for name, at, solid in (("coil", -40.0, Helix(radius=um(12.0), pitch=um(15.0), turns=2.0, filament_radius=um(3.0))),
+                            ("bean", 40.0, Ellipsoid(semi_axes=um((20.0, 10.0, 8.0))))):
+        experiment.add_body(Body(name, dynamics=RigidInertial(), initial=State(
+            position=um((at, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+            angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(solid)}))
+        experiment.declare(f"{name}.parts.steel.density", kg_per_m3(7850.0), reason="steel")
+    experiment.observe(Camera(detector=Detector(width=64, height=48, fx=300.0, fy=300.0, cx=31.5, cy=23.5),
+                              mount=World(position=m((0.0, -1e-3, 0.0)), orientation=(root, -root, 0.0, 0.0)),
+                              frame_period=ms(3)))
     return experiment
 
 

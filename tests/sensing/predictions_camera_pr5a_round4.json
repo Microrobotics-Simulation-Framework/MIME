@@ -1,0 +1,1489 @@
+{
+ "written": "2026-11-15, committed before round 4's probe ran (the commit that adds this file is the timestamp): the corner reading verified at run time (a dense window on the lost branch of a corner sub-ray), the run flag corner_unverified with its bound, the refinement steps measured beside it, and a ladder of misread plant sizes per width",
+ "phase": "camera PR 5a (route 2), round 4 after round 3's outcomes (run 43678278617, predictions_camera_pr5a_round3.json: the premise guard counted unread leasts on 1 to 7 clean draws a group, all within 0.25 L; neither plant resolved on every pose at every width)",
+ "labels": "predictions by round 4's agent from seen draws only (2400 to 2599, round 3's, and the earlier rounds'); the corner line is predictions_camera_pr5a_fix.json's, derived before its run and not moved; the ladder's sizes were set before any rate at them was measured",
+ "seen_before": [
+  "the trigger (a two-minimum corner sub-ray whose two branches the search reads at one point, before any verification), local, float64, tmp diagnosis on seen seeds: coil 128 px seeds 2400 to 2411 fire on 8 of 12 draws (1 to 5 pixels, 1 to 32 sub-rays a draw); 2450, 2453, 2547, 2581 (round 3's guard hits) on 6, 1, 1 and 9 pixels; every guard hit on these draws lies on a triggered sub-ray (recall 7 of 7)",
+  "the refinement (the descent and the quartic from each branch's held point at a half and a quarter spacing; a sub-ray cleared where its two branches are then read apart and neither descent ran its reach), the same draws: it clears 10 to 50 % of the triggered sub-rays and none of the triggered pixels (at 2x: 49 to 33 sub-rays at 2450, 90 to 58 at 2581; at 4x 32 and 56; 8x no further); the guard's hits after it: 2450, 2453, 2547 unchanged, 2581 cleared. A shallow basin near a branch's fold (2450: a dip of 0.006 px between 6.09 and 6.79 spacings, its line 0.174 px against the reach 0.177; 2453: 0.001 px) is not a narrow one: a finer descent from the held point goes the other way",
+  "the dense window (16 a spacing, 7 spacings each side of the lost branch's held point), tmp diagnosis then the scheme: on 2450, 2453, 2547, 2581, 2400, 2402 (coil 128 px) every triggered sub-ray verified (absent 48, 11, 10, 88, 32, 4; read 1, 1, 1, 2), none left; the guard at 64 a spacing after it 0 hits on each (before: 1, 1, 1, 2)",
+  "the scheme with the verification, local, against 6152eb38 with it off: bitwise equal frames with the verification off (coil 128 2450, 2581; coil2 128 2423; coil 256 2528; coil2 512 2575; float64 and float32); with it on, 0 or 1 pixel a draw changed, by at most 5.2e-4; the flag 0 on each after the basin test (before it, float32 coil2 512 px 2575 flagged one pixel, bound 0.011: float32's rounding of the ray's point made six minima of one flat basin, 0.88 to 1.75 spacings, lines 0.0758 to 0.0763 px)",
+  "the gate at DETECTION_SEED 0, local, all 12 cases: largest 0.0014 to 0.0022 (0.04 to 0.14 L), unread 0, flagged 0, the flag's control 13 to 22 pixels with bound 0.32 to 0.46 and its error at least 0.014 below line plus bound; seed 2401 coil 128 px float64: single edge 0.146 (3.1 L), misread 0.3 px 0.141 (3.0 L), misread 0.05 px 0.049 (1.05 L)"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "GitHub runner, 4 vCPU, CPU (JAX_PLATFORMS=cpu); every arm through probe_launch.sh (each well under 12 GiB: round 3's arms peaked at 0.9 to 2.3 GiB); timings only from the P arms, every variant in one job (one CPU model)",
+  "sizes_and_parameters": "the corner gate as round 3's (the coil and coil2 from 0.1 m across a 3 mm field at 128, 256 and 512 px; 4 x 4 corner sub-samples; the truth at 64 x 64 jittered samples a pixel and 512 signs, float64), route 2 as round 3's head (6152eb38) plus the verification: VERIFY_STEPS 16 a spacing, VERIFY_REACH 7 spacings each side, VERIFY_FLOOR_ULPS 4, VERIFY_SHARE 1/2048 of the rays a turn; the premise guard's dense profile 64 a spacing (four times the verification's) across the whole march, float64; the cost on the in-loop coil (scripts/camera_route2/cases.py) at 160, 320 and 640 px",
+  "seeds_and_draws": "corner: DETECTION_SEED 2600 to 2799 (never run: the PR's draws were 0 to 59, the review's 1000 to 1059, the fix round's 2000 to 2199, the tail round's 2200 to 2399, round 3's 2400 to 2599), 200 a coil, width and dtype, clean, single edge and the misread ladder (0.05, 0.1, 0.15, 0.2, 0.3, 0.5 px), in arms of 100 (128, 256 px) or 25 (512 px); the cost at 20 steps, 3 repeats (node_measure.py), at the runner's threads and at one"
+ },
+ "gate_round4_corner": {
+  "claim": "on every pixel where two branches of a coil's outline cross, route 2 with its reading verified is within the corner line of the sign-only truth, at 128, 256 and 512 px, float64 and float32, on two coils; every least that reaches a corner sub-cell is read (the premise guard, at four times the verification's resolution across the whole march, counts none); the guard sees a lost second branch on every draw",
+  "kind": "bounds",
+  "case": "tests/sensing/test_sampled.py::test_the_two_branch_pixels_are_within_the_corner_line_of_the_truth[<dtype>-<width>-<coil>] through detection_rate.py (CAMERA_PLANT=single-edge, clean and planted; CAMERA_PLANT=misread with CAMERA_PLANT_SIZE, planted only), CORNER_RECORD holding each draw's largest error, its unread count, the lost-branch count, the run flag and the flag's control",
+  "prediction": {
+   "value": "the lines unchanged; the clean largest over 200 draws at most 0.35 of its line at every case, within 0.01 L of what the scheme without the verification gives (it changes 0 or 1 pixel a draw, by under 1e-3); no clean draw with an unread least; the lost-branch count above zero on every draw",
+   "band": [
+    0.0,
+    0.8
+   ],
+   "unit": "the clean largest's share of its line",
+   "basis": "measured (seen draws)",
+   "why": "the verification reads the lost branch's least wherever a basin of its own reaches the sub-cell, which is the guard's condition at a quarter of its resolution; round 3's hits were all such basins (0.3 to 0.8 spacing from the held point, or shallow near a fold), read on every seen draw"
+  },
+  "required": "per case: clean 0/200 (no clean draw over the line, none with an unread least, the guard's and the flag's controls above zero and the bound holding on every draw) and the clean largest at most 0.8 of the line; the single edge and each ladder size reported as caught/200 with the planted least's share of the line",
+  "control": {
+   "plant": "CAMERA_PLANT=single-edge, unchanged (the second branch dropped): its size is the dropped branch's area in each pixel, set by where the notch falls on the pixel grid",
+   "environment_variable": "CAMERA_PLANT",
+   "expected_rate": "200/200 at 256 and 512 px float64 and at 128 px (round 3: least 1.62 to 5.42 L but coil2 256 px float32 1.08 L and coil2 512 px float32 one missed at 0.59 L, float64 1.16 L): predicted 199 or 200/200 at coil2 512 px float32, and the 1.25 L margin missed at one or two of the twelve cases",
+   "runs": 200,
+   "clean_expected": "0/200 a case"
+  },
+  "control_guard": {
+   "plant": "in every run, the guard's count with the reading's second branch lost after the verification (lost_branch): asserted above zero",
+   "expected_rate": "above zero on every clean draw (round 3 least 19)",
+   "runs": "every clean run of the gate"
+  },
+  "if_wrong": "a clean draw over 0.8 of its line, or with an unread least, is a finding against the verification, reported with its pixel's cause (a least beyond the window's 7 spacings, a third branch, float32's floor); the line is not moved and the claim not loosened",
+  "cannot_discriminate_if": "a draw with no two-branch pixel (the test asserts some), the lost-branch count zero, or the truth's re-measurement at four times its samples moving the worst clean draw by more than the truth's floor"
+ },
+ "gate_round4_improvement": {
+  "claim": "the flags per 200 clean draws at each step, and the clean largest after each: before (the trigger: a lost branch on a corner sub-ray, the premise unverified; and round 3's guard, unread leasts before any verification), after (i) refinement at 2x and 4x the sampling on the triggered rays, after (ii) the dense window (the shipped run flag corner_unverified)",
+  "kind": "estimates",
+  "case": "probe/levels.py over each C arm's clean draws (the trigger and the refinement in the run's dtype, the shares from the reads as route 2 takes them, the guard before in float64), and CORNER_RECORD's flagged count (the frame's own flag in the run's dtype)",
+  "prediction": {
+   "value": "the trigger fires on 40 to 90 % of the draws of each case (80 to 180 of 200; 1 to 15 pixels a draw); refinement at 2x and at 4x clears 10 to 50 % of the triggered sub-rays but at most 10 % of the flagged draws (at least 70 of 200 still flagged after (i)); the guard before the verification on 1 to 12 draws of 200 (round 3's 1 to 7 at 16 a spacing; 64 a spacing finds a little more: 2581, 1 to 2); after (ii) the run flag on 0 draws of 200 in float64 and 0 to 2 in float32, every flagged clean draw within the line (a false alarm); the clean largest after (i) equal to before within 1e-4",
+   "band": [
+    0,
+    2
+   ],
+   "unit": "clean draws of 200 with a pixel flagged corner_unverified after (ii), per case",
+   "basis": "measured (seen draws)",
+   "why": "the triggered rays are mostly branches past their fold, whose least has gone: no finer search finds one, and only a look along the ray that can say none reaches the cell clears them; the window does, at 16 a spacing, with a basin test for float32's rounding"
+  },
+  "if_wrong": "after (i) and (ii) more than about 1 % of clean draws flagged (2 of 200), or the cost more than 1.5 times round 3's head: stop and return to the coordinator with the table (the brief's step 4)"
+ },
+ "gate_round4_flag": {
+  "claim": "the run flag corner_unverified counts, once a frame, the corner pixels whose reading the verification could not verify, with corner_bound the largest bound on their share beyond the line; never a refusal. Its bound holds: on every pixel it flags, the error against the truth is within the line plus the pixel's bound",
+  "kind": "bounds",
+  "case": "the same gate's flag control on every clean run (unread_second: the search's second branch lost before the verification, and the verification left to bound the leasts it finds without reading them), through _render._box_coverage as _render._seen takes it, in the run's dtype; the record's control_flagged, control_bound, control_past and control_tightness",
+  "prediction": {
+   "value": "the control flags pixels on every draw (200/200 a case; 10 to 40 pixels at 128 px, more at 512), control_past at most zero on every draw (the bound holds), tightness (a flagged pixel's error over its bound) median 0.2 to 0.7, at most 1.1 (the line's own terms make up the rest)",
+   "band": [
+    -1.0,
+    0.0
+   ],
+   "unit": "control_past: the most any judged pixel's error lies past the line and its bound",
+   "basis": "measured (seed 0, all cases) and derived",
+   "why": "the bound is each unread least's half-plane share of its sub-cell, read on the sub-ray as the coverage reads a line: an upper bound on what the union leaves out of the cell; the line covers the read branches' own terms"
+  },
+  "bound_derivation": "where the window finds a least it does not read, the bound is exact geometry: the share of the sub-cell inside that least's half-plane, summed over the pixel's sub-cells (each at most one sub-cell). A least the window cannot resolve (between two of its samples, a spacing s = h/16 apart) lies at most K s^2 / 8 below the samples' interpolation, K the sign function's curvature along the ray: for the helix near its zero level (the exact distance from the centreline less the filament's radius) K <= 1/r + kappa/(1 - kappa r) = 15.4 /mm on the coil (r = 80 um, kappa = 2.37 /mm) and 15.5 /mm on coil2 (kappa = 2.40 /mm), so K s^2 / 8 = 1.2e-8 m (s = 2.5 um at 48 samples on 1.9 mm): 5e-4 px at 128 px, 2e-3 px at 512 px; a least it hides reaches the cell by at most that, whose share of the sub-cell is at most (0.002 / 0.25)^2 = 6e-5 of a sub-cell: under 4e-6 of a pixel, below every other term. It is not added to the flag; it holds where the sign function is smooth (the helix's turn guess folds only far from its zero level, round 3's 2311 at 9.7 px), and a least beyond the window's 7 spacings is the guard's to find (whole march)",
+  "false_alarm_rate": "measured as gate_round4_improvement's after (ii): the flagged clean draws whose largest is within the line, of 200 a case",
+  "name": "corner_unverified (and corner_bound): it names the pixels it counts by what the user sees, a corner of the outline where two branches cross, and what is not verified there, the reading; premise_unverified would name the derivation's internals, which the run's report does not show",
+  "if_wrong": "a draw on which the control flags nothing says the flag cannot see a reading the verification cannot mend there; control_past above zero says the bound fails"
+ },
+ "gate_round4_ladder": {
+  "claim": "per width and dtype, the smallest misread (the second branch read X px of a pixel's footprint farther out on every ray, the tail's defect class) caught on 200 of 200 draws, with the clean arm at 0: the gate bounds errors of that class above X px; below it, it catches them at the measured rate",
+  "kind": "estimates",
+  "case": "CAMERA_PLANT=misread CAMERA_PLANT_SIZE in 0.05, 0.1, 0.15, 0.2, 0.3, 0.5 (planted only, detection_rate.py --clean-runs 0), the same seeds as the clean arm",
+  "prediction": {
+   "value": "X (caught 200/200, over the line) at coil 128 px 0.2 to 0.3 (round 3 at 0.1: least 0.47 to 0.51 L), coil 256 px 0.1 to 0.15, coil 512 px 0.1 (float64) and 0.1 to 0.15 (float32), coil2 128 px 0.15 to 0.2, coil2 256 px 0.15 to 0.2, coil2 512 px 0.15 to 0.3; the 1.25 L margin one ladder step above; at 0.05 px caught on 50 to 95 % of draws; the planted least grows slower than the size (seed 2401: 1.05 L at 0.05, 3.0 L at 0.3)",
+   "band": [
+    0.1,
+    0.5
+   ],
+   "unit": "px",
+   "basis": "measured (round 3's misread at 0.1 px; seed 2401)",
+   "why": "the misread's change in a pixel is the branch's length in the pixel times the shift, until the shifted line leaves the pixel; its least over draws is the draw whose second branch is shortest in its pixels, and the line shrinks with the pixel"
+  },
+  "if_wrong": "no size up to 0.5 px caught on every draw at some width: the gate there does not bound the class at any of these sizes, and its power at each is the table"
+ },
+ "gate_round4_cost": {
+  "claim": "each step's frame against round 3's head (6152eb38's _sampled.py) on one CPU model in one job, through the in-loop camera at 160, 320 and 640 px in both dtypes: refineonly (the trigger and the refinement, no window: step (i)), head (the trigger and the window: step (ii), shipped), refine (both: (i) then (ii))",
+  "kind": "estimates",
+  "case": "probe arms P-<width>-<dtype>: scripts/camera_route2/g19.py (node_measure.py) for each variant, at the runner's threads and at one thread",
+  "prediction": {
+   "value": "head over round 3's head 1.00 to 1.15 at both thread counts; refineonly 1.00 to 1.10; refine 1.00 to 1.20",
+   "band": [
+    0.95,
+    1.2
+   ],
+   "unit": "head's frame over round 3's head's",
+   "basis": "derived",
+   "why": "the window's 227 evaluations and lines run on the lost rays only, gathered 1/2048 of the rays a turn (a turn a sub-sample where any is lost: about 0.6 % of the corner pass's evaluations); the trigger and the reads' selects are elementwise on the pieces"
+  },
+  "required": "the brief's stop rule: head at most 1.5 times round 3's head",
+  "if_wrong": "a ratio over 1.5: stop and return with the table"
+ },
+ "outcomes": {
+  "written": "2026-11-15, after runs 43699692574 (probe/cam-pr5a-round4 @24eb62f4, 53 of 54 arms; C-coil2-256-float64-2700-100's runner was lost with no artifact) and 43711276007 (probe/cam-pr5a-round4b @8d9ff062, that arm again); both branches deleted after download; the predictions above were committed before either ran and are unchanged",
+  "run": "every corner arm failed only the step Memory against the estimate (the estimator's known underestimate of an eager pytest process: peaks 2 to 3 GiB against bounds of 0.6), each wrote its results, no inconclusive run; the 6 cost arms passed",
+  "corner_verdict": "the required clean rule (gate_round4_corner) PASSES in 10 of 12 cases and FAILS at coil2 512 px in both dtypes on one draw, 2667: the guard counts one unread least there. No clean draw is over the line or over 0.8 L (largest 0.249 L, coil2 512 px float64), the truth at 4x moves at most 0.0038 (floor 0.0123), the guard's control is above zero on every draw (least 12). The line is not moved and the guard not changed",
+  "guard_2667": "diagnosed locally (now seen): sub-ray (-0.375, -0.375) of pixel 154473, coil2 512 px. The lost branch's held point lies 2.57 spacings past the read point; the hit is a dip 2e-11 m deep (3.4e-6 px) and 0.03 spacing wide at +3.649 spacings, where the nearest angle passes the arc's end (theta 18.8496 = the sweep: the helix.end clamp, a C1 kink), inside the body (value -4.957e-7 m, line -0.0846 px). It is below the window's resolution (a sixteenth of a spacing) and the window has no record of it; the run flag is down. The sub-cell is wholly inside the read branch (its line -0.1437 px with its normal within 4 degrees of an axis: covered share 1.000000, and with the hit read the union's share is 1.000000 too, a change of 0): the guard's inside test (line below minus the half-diagonal, 0.177 px) is sufficient, not necessary, and the hit changes nothing the cell reads. A finding against the guard's premise test, not the image; reported, not fixed (the rule does not move)",
+  "improvement_verdict": "the brief's stop rule is not met: after (i) and (ii) no clean draw of 2400 is flagged (0 of 200 in every case, both dtypes); the trigger fires on 161 to 191 of 200 draws, refinement at 2x leaves 161 to 179, at 4x 140 to 164 (it clears 2 to 26 % of the flagged draws, and of the triggered sub-rays about 30 % at 128 px, 64 to 71 % at 256 and 84 to 86 % at 512); the window clears every one. Refinement is not shipped: it does not clear a draw the window does not, and the cascade costs what the window alone does",
+  "flag_verdict": "corner_unverified (pixels) and corner_bound (the largest bound) raised on 0 clean draws of 2400: a false-alarm rate of 0/2400 (95 % upper bound 0.12 %); its control flags pixels on every draw (least 5), its bound holds on every draw (control_past at most -0.0108), and a flagged pixel's error is a median 0.60 to 0.68 of its bound (the largest ratios, up to 1e5, are pixels whose bound is near zero and whose error is the line's own terms)",
+  "ladder_verdict": "the misread caught on every draw (200/200, over the line): coil 128 px none up to 0.5 px; coil 256 px none; coil 512 px 0.15 (float32) and 0.1 (float64); coil2 128 and 256 px 0.1; coil2 512 px 0.15 (float32) and 0.1 (float64). The draws no size catches are 2624 and 2791 (coil 128 px) and 2750 (coil 256 px): poses where the dropped branch itself (the single edge, the most this class can move a pixel) moves no judged pixel above 0.10, 0.72 and 0.34 L, so no misread there exceeds the line either. On the draws where the single edge is caught, X is 0.5 (coil 128; 2732's misread plateaus at 0.75 L from 0.15 to 0.3 px and is caught at 0.5), 0.15 and 0.1 (coil 256 float32 and float64), and as above elsewhere",
+  "cost_verdict": "head (the window) over round 3's head 1.04 to 1.10 at the runner's threads and 1.01 to 1.05 at one thread (same CPU in each job), under the 1.5 stop line; refineonly 1.00 to 1.06 and 0.99 to 1.03; refine (both) 1.03 to 1.10 and 1.00 to 1.04",
+  "corner_groups": [
+   {
+    "coil": "coil",
+    "width": 128,
+    "dtype": "float32",
+    "line": 0.050487988631789604,
+    "clean_draws": 200,
+    "clean_largest": 0.0036769509315490723,
+    "clean_largest_over_line": 0.0728,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 12,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 164,
+     "refined_2x": 161,
+     "refined_4x": 161,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 3085,
+     "refined_2x": 2369,
+     "refined_4x": 2144
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.0885,
+     "refined_2x": 0.0649,
+     "refined_4x": 0.0647,
+     "after_window": 0.0728
+    },
+    "guard_before_draws": 5,
+    "flag_control": {
+     "least_pixels": 5,
+     "zero_seeds": [],
+     "past_most": -0.0159,
+     "tightness_median": 0.64
+    },
+    "single_edge": {
+     "caught": 198,
+     "draws": 200,
+     "missed_seeds": [
+      2624,
+      2791
+     ],
+     "least_over_line": 0.09253549989596933,
+     "least_seed": 2624,
+     "under_1_25_line": [
+      2624,
+      2791
+     ]
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 74,
+      "draws": 200,
+      "least_over_line": 0.064,
+      "missed_seeds": "126 seeds"
+     },
+     "0.1": {
+      "caught": 193,
+      "draws": 200,
+      "least_over_line": 0.093,
+      "missed_seeds": [
+       2624,
+       2719,
+       2732,
+       2748,
+       2760,
+       2791,
+       2792
+      ]
+     },
+     "0.15": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.095,
+      "missed_seeds": [
+       2624,
+       2732,
+       2791
+      ]
+     },
+     "0.2": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.095,
+      "missed_seeds": [
+       2624,
+       2732,
+       2791
+      ]
+     },
+     "0.3": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.095,
+      "missed_seeds": [
+       2624,
+       2732,
+       2791
+      ]
+     },
+     "0.5": {
+      "caught": 198,
+      "draws": 200,
+      "least_over_line": 0.095,
+      "missed_seeds": [
+       2624,
+       2791
+      ]
+     }
+    },
+    "ladder_x_every_draw": null,
+    "ladder_x_where_the_single_edge_is_caught": "0.5",
+    "ladder_x_at_1_25_line_there": "0.5",
+    "truth_at_4x_moved_by_at_most": 0.001580953598022461,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil",
+    "width": 128,
+    "dtype": "float64",
+    "line": 0.04689145755885998,
+    "clean_draws": 200,
+    "clean_largest": 0.0034026046032200608,
+    "clean_largest_over_line": 0.0726,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 12,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 164,
+     "refined_2x": 162,
+     "refined_4x": 162,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 3110,
+     "refined_2x": 2388,
+     "refined_4x": 2160
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.0726,
+     "refined_2x": 0.0726,
+     "refined_4x": 0.0726,
+     "after_window": 0.0726
+    },
+    "guard_before_draws": 5,
+    "flag_control": {
+     "least_pixels": 5,
+     "zero_seeds": [],
+     "past_most": -0.01076,
+     "tightness_median": 0.662
+    },
+    "single_edge": {
+     "caught": 198,
+     "draws": 200,
+     "missed_seeds": [
+      2624,
+      2791
+     ],
+     "least_over_line": 0.09933174416343468,
+     "least_seed": 2624,
+     "under_1_25_line": [
+      2624,
+      2791
+     ]
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 126,
+      "draws": 200,
+      "least_over_line": 0.069,
+      "missed_seeds": "74 seeds"
+     },
+     "0.1": {
+      "caught": 194,
+      "draws": 200,
+      "least_over_line": 0.1,
+      "missed_seeds": [
+       2624,
+       2719,
+       2732,
+       2760,
+       2791,
+       2792
+      ]
+     },
+     "0.15": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.102,
+      "missed_seeds": [
+       2624,
+       2732,
+       2791
+      ]
+     },
+     "0.2": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.102,
+      "missed_seeds": [
+       2624,
+       2732,
+       2791
+      ]
+     },
+     "0.3": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.102,
+      "missed_seeds": [
+       2624,
+       2732,
+       2791
+      ]
+     },
+     "0.5": {
+      "caught": 198,
+      "draws": 200,
+      "least_over_line": 0.102,
+      "missed_seeds": [
+       2624,
+       2791
+      ]
+     }
+    },
+    "ladder_x_every_draw": null,
+    "ladder_x_where_the_single_edge_is_caught": "0.5",
+    "ladder_x_at_1_25_line_there": "0.5",
+    "truth_at_4x_moved_by_at_most": 0.0030517578125,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil",
+    "width": 256,
+    "dtype": "float32",
+    "line": 0.03688879092528923,
+    "clean_draws": 200,
+    "clean_largest": 0.0062143802642822266,
+    "clean_largest_over_line": 0.1685,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 15,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 175,
+     "refined_2x": 174,
+     "refined_4x": 162,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 4763,
+     "refined_2x": 2390,
+     "refined_4x": 1729
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1221,
+     "refined_2x": 0.1213,
+     "refined_4x": 0.1213,
+     "after_window": 0.1685
+    },
+    "guard_before_draws": 3,
+    "flag_control": {
+     "least_pixels": 7,
+     "zero_seeds": [],
+     "past_most": -0.0296,
+     "tightness_median": 0.614
+    },
+    "single_edge": {
+     "caught": 199,
+     "draws": 200,
+     "missed_seeds": [
+      2750
+     ],
+     "least_over_line": 0.26893094685220986,
+     "least_seed": 2750,
+     "under_1_25_line": [
+      2750
+     ]
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 171,
+      "draws": 200,
+      "least_over_line": 0.184,
+      "missed_seeds": "29 seeds"
+     },
+     "0.1": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.242,
+      "missed_seeds": [
+       2670,
+       2750,
+       2791
+      ]
+     },
+     "0.15": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.242,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.2": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.242,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.3": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.242,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.5": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.242,
+      "missed_seeds": [
+       2750
+      ]
+     }
+    },
+    "ladder_x_every_draw": null,
+    "ladder_x_where_the_single_edge_is_caught": "0.15",
+    "ladder_x_at_1_25_line_there": "0.2",
+    "truth_at_4x_moved_by_at_most": 0.001953125,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil",
+    "width": 256,
+    "dtype": "float64",
+    "line": 0.029695728779429983,
+    "clean_draws": 200,
+    "clean_largest": 0.0033765768811712116,
+    "clean_largest_over_line": 0.1137,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 15,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 176,
+     "refined_2x": 173,
+     "refined_4x": 164,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 4933,
+     "refined_2x": 2461,
+     "refined_4x": 1797
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1137,
+     "refined_2x": 0.1137,
+     "refined_4x": 0.1137,
+     "after_window": 0.1137
+    },
+    "guard_before_draws": 3,
+    "flag_control": {
+     "least_pixels": 7,
+     "zero_seeds": [],
+     "past_most": -0.02635,
+     "tightness_median": 0.637
+    },
+    "single_edge": {
+     "caught": 199,
+     "draws": 200,
+     "missed_seeds": [
+      2750
+     ],
+     "least_over_line": 0.342576812682286,
+     "least_seed": 2750,
+     "under_1_25_line": [
+      2750
+     ]
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 186,
+      "draws": 200,
+      "least_over_line": 0.239,
+      "missed_seeds": "14 seeds"
+     },
+     "0.1": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.312,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.15": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.312,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.2": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.312,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.3": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.312,
+      "missed_seeds": [
+       2750
+      ]
+     },
+     "0.5": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.312,
+      "missed_seeds": [
+       2750
+      ]
+     }
+    },
+    "ladder_x_every_draw": null,
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.15",
+    "truth_at_4x_moved_by_at_most": 0.003335185012342423,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil",
+    "width": 512,
+    "dtype": "float32",
+    "line": 0.03548398868143349,
+    "clean_draws": 200,
+    "clean_largest": 0.004478931427001953,
+    "clean_largest_over_line": 0.1262,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 17,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 191,
+     "refined_2x": 173,
+     "refined_4x": 142,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 9484,
+     "refined_2x": 2340,
+     "refined_4x": 1553
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1279,
+     "refined_2x": 0.1181,
+     "refined_4x": 0.1181,
+     "after_window": 0.1262
+    },
+    "guard_before_draws": 2,
+    "flag_control": {
+     "least_pixels": 5,
+     "zero_seeds": [],
+     "past_most": -0.02884,
+     "tightness_median": 0.599
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 1.0713671233763715,
+     "least_seed": 2750,
+     "under_1_25_line": [
+      2750
+     ]
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 174,
+      "draws": 200,
+      "least_over_line": 0.417,
+      "missed_seeds": "26 seeds"
+     },
+     "0.1": {
+      "caught": 197,
+      "draws": 200,
+      "least_over_line": 0.812,
+      "missed_seeds": [
+       2603,
+       2750,
+       2788
+      ]
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.009,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.058,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.058,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.058,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.15",
+    "ladder_x_where_the_single_edge_is_caught": "0.15",
+    "ladder_x_at_1_25_line_there": "0.2",
+    "truth_at_4x_moved_by_at_most": 0.00384521484375,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil",
+    "width": 512,
+    "dtype": "float64",
+    "line": 0.02109786438971499,
+    "clean_draws": 200,
+    "clean_largest": 0.0038273946559463923,
+    "clean_largest_over_line": 0.1814,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 17,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 191,
+     "refined_2x": 178,
+     "refined_4x": 153,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 10034,
+     "refined_2x": 2549,
+     "refined_4x": 1625
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1814,
+     "refined_2x": 0.1814,
+     "refined_4x": 0.1814,
+     "after_window": 0.1814
+    },
+    "guard_before_draws": 2,
+    "flag_control": {
+     "least_pixels": 5,
+     "zero_seeds": [],
+     "past_most": -0.01751,
+     "tightness_median": 0.625
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 1.7991629419410506,
+     "least_seed": 2750,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 196,
+      "draws": 200,
+      "least_over_line": 0.69,
+      "missed_seeds": [
+       2603,
+       2717,
+       2750,
+       2788
+      ]
+     },
+     "0.1": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.354,
+      "missed_seeds": []
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.698,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.782,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.782,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.782,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.1",
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.1",
+    "truth_at_4x_moved_by_at_most": 0.0033463504803841193,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil2",
+    "width": 128,
+    "dtype": "float32",
+    "line": 0.02948911893685113,
+    "clean_draws": 200,
+    "clean_largest": 0.004583895206451416,
+    "clean_largest_over_line": 0.1554,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 26,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 161,
+     "refined_2x": 161,
+     "refined_4x": 158,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 3227,
+     "refined_2x": 2477,
+     "refined_4x": 2211
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1342,
+     "refined_2x": 0.1342,
+     "refined_4x": 0.1342,
+     "after_window": 0.1554
+    },
+    "guard_before_draws": 2,
+    "flag_control": {
+     "least_pixels": 9,
+     "zero_seeds": [],
+     "past_most": -0.02282,
+     "tightness_median": 0.661
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 2.653739109985292,
+     "least_seed": 2677,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 192,
+      "draws": 200,
+      "least_over_line": 0.569,
+      "missed_seeds": [
+       2611,
+       2629,
+       2653,
+       2677,
+       2735,
+       2738,
+       2773,
+       2796
+      ]
+     },
+     "0.1": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.019,
+      "missed_seeds": []
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.523,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.884,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.256,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.56,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.1",
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.15",
+    "truth_at_4x_moved_by_at_most": 0.0020029544830322266,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil2",
+    "width": 128,
+    "dtype": "float64",
+    "line": 0.025892587863921505,
+    "clean_draws": 200,
+    "clean_largest": 0.003928486822477595,
+    "clean_largest_over_line": 0.1517,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 26,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 164,
+     "refined_2x": 164,
+     "refined_4x": 161,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 3309,
+     "refined_2x": 2532,
+     "refined_4x": 2247
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1517,
+     "refined_2x": 0.1517,
+     "refined_4x": 0.1517,
+     "after_window": 0.1517
+    },
+    "guard_before_draws": 2,
+    "flag_control": {
+     "least_pixels": 9,
+     "zero_seeds": [],
+     "past_most": -0.02187,
+     "tightness_median": 0.679
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 3.0191214403857036,
+     "least_seed": 2677,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 193,
+      "draws": 200,
+      "least_over_line": 0.641,
+      "missed_seeds": [
+       2611,
+       2629,
+       2653,
+       2677,
+       2735,
+       2738,
+       2773
+      ]
+     },
+     "0.1": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.16,
+      "missed_seeds": []
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.728,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.139,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.57,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.91,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.1",
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.15",
+    "truth_at_4x_moved_by_at_most": 0.0030962314574551897,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil2",
+    "width": 256,
+    "dtype": "float32",
+    "line": 0.026389356077820003,
+    "clean_draws": 200,
+    "clean_largest": 0.004452943801879883,
+    "clean_largest_over_line": 0.1687,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 31,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 172,
+     "refined_2x": 168,
+     "refined_4x": 158,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 4219,
+     "refined_2x": 1845,
+     "refined_4x": 1241
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1457,
+     "refined_2x": 0.1457,
+     "refined_4x": 0.1457,
+     "after_window": 0.1687
+    },
+    "guard_before_draws": 2,
+    "flag_control": {
+     "least_pixels": 10,
+     "zero_seeds": [],
+     "past_most": -0.01917,
+     "tightness_median": 0.636
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 4.45655763031636,
+     "least_seed": 2786,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 198,
+      "draws": 200,
+      "least_over_line": 0.648,
+      "missed_seeds": [
+       2668,
+       2786
+      ]
+     },
+     "0.1": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.408,
+      "missed_seeds": []
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.785,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.328,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 3.339,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 4.157,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.1",
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.1",
+    "truth_at_4x_moved_by_at_most": 0.0020751953125,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil2",
+    "width": 256,
+    "dtype": "float64",
+    "line": 0.019196293931960755,
+    "clean_draws": 200,
+    "clean_largest": 0.0035249077443327836,
+    "clean_largest_over_line": 0.1836,
+    "clean_over_line": [],
+    "unread_seeds": [],
+    "lost_branch_least": 31,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 173,
+     "refined_2x": 169,
+     "refined_4x": 158,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 4342,
+     "refined_2x": 1901,
+     "refined_4x": 1263
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1836,
+     "refined_2x": 0.1836,
+     "refined_4x": 0.1836,
+     "after_window": 0.1836
+    },
+    "guard_before_draws": 2,
+    "flag_control": {
+     "least_pixels": 10,
+     "zero_seeds": [],
+     "past_most": -0.01561,
+     "tightness_median": 0.662
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 6.165887553256474,
+     "least_seed": 2786,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 199,
+      "draws": 200,
+      "least_over_line": 0.895,
+      "missed_seeds": [
+       2668
+      ]
+     },
+     "0.1": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.948,
+      "missed_seeds": []
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.438,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 3.183,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 4.572,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 5.73,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.1",
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.1",
+    "truth_at_4x_moved_by_at_most": 0.00341796875,
+    "rule": "PASS"
+   },
+   {
+    "coil": "coil2",
+    "width": 512,
+    "dtype": "float32",
+    "line": 0.030234271257698873,
+    "clean_draws": 200,
+    "clean_largest": 0.006829380989074707,
+    "clean_largest_over_line": 0.2259,
+    "clean_over_line": [],
+    "unread_seeds": [
+     2667
+    ],
+    "lost_branch_least": 22,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 186,
+     "refined_2x": 175,
+     "refined_4x": 140,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 9339,
+     "refined_2x": 2249,
+     "refined_4x": 1355
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.1497,
+     "refined_2x": 0.1497,
+     "refined_4x": 0.1497,
+     "after_window": 0.2259
+    },
+    "guard_before_draws": 1,
+    "flag_control": {
+     "least_pixels": 9,
+     "zero_seeds": [],
+     "past_most": -0.0234,
+     "tightness_median": 0.643
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 1.810593620025989,
+     "least_seed": 2751,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 193,
+      "draws": 200,
+      "least_over_line": 0.359,
+      "missed_seeds": [
+       2628,
+       2670,
+       2716,
+       2724,
+       2733,
+       2748,
+       2751
+      ]
+     },
+     "0.1": {
+      "caught": 198,
+      "draws": 200,
+      "least_over_line": 0.696,
+      "missed_seeds": [
+       2628,
+       2751
+      ]
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.009,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.298,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.774,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.807,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.15",
+    "ladder_x_where_the_single_edge_is_caught": "0.15",
+    "ladder_x_at_1_25_line_there": "0.2",
+    "truth_at_4x_moved_by_at_most": 0.003173828125,
+    "rule": "FAIL"
+   },
+   {
+    "coil": "coil2",
+    "width": 512,
+    "dtype": "float64",
+    "line": 0.015848146965980376,
+    "clean_draws": 200,
+    "clean_largest": 0.0039486994562417665,
+    "clean_largest_over_line": 0.2492,
+    "clean_over_line": [],
+    "unread_seeds": [
+     2667
+    ],
+    "lost_branch_least": 22,
+    "flag_after_window": {
+     "draws": 0,
+     "pixels": 0,
+     "false_alarms": []
+    },
+    "steps_draws_flagged": {
+     "trigger": 190,
+     "refined_2x": 179,
+     "refined_4x": 141,
+     "window": 0,
+     "of": 200
+    },
+    "steps_sub_rays": {
+     "trigger": 9667,
+     "refined_2x": 2359,
+     "refined_4x": 1400
+    },
+    "steps_largest_over_line": {
+     "trigger": 0.2492,
+     "refined_2x": 0.2492,
+     "refined_4x": 0.2492,
+     "after_window": 0.2492
+    },
+    "guard_before_draws": 1,
+    "flag_control": {
+     "least_pixels": 9,
+     "zero_seeds": [],
+     "past_most": -0.01188,
+     "tightness_median": 0.669
+    },
+    "single_edge": {
+     "caught": 200,
+     "draws": 200,
+     "missed_seeds": [],
+     "least_over_line": 3.4447655059488995,
+     "least_seed": 2751,
+     "under_1_25_line": []
+    },
+    "ladder": {
+     "0.05": {
+      "caught": 198,
+      "draws": 200,
+      "least_over_line": 0.678,
+      "missed_seeds": [
+       2628,
+       2751
+      ]
+     },
+     "0.1": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.321,
+      "missed_seeds": []
+     },
+     "0.15": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 1.918,
+      "missed_seeds": []
+     },
+     "0.2": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 2.47,
+      "missed_seeds": []
+     },
+     "0.3": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 3.377,
+      "missed_seeds": []
+     },
+     "0.5": {
+      "caught": 200,
+      "draws": 200,
+      "least_over_line": 3.438,
+      "missed_seeds": []
+     }
+    },
+    "ladder_x_every_draw": "0.1",
+    "ladder_x_where_the_single_edge_is_caught": "0.1",
+    "ladder_x_at_1_25_line_there": "0.1",
+    "truth_at_4x_moved_by_at_most": 0.00347900390625,
+    "rule": "FAIL"
+   }
+  ],
+  "cost": {
+   "P-160-float32": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "r3_default_ms": 69.565,
+    "r3_one_ms": 153.685,
+    "refineonly_default_ms": 73.347,
+    "refineonly_one_ms": 157.483,
+    "head_default_ms": 73.501,
+    "head_one_ms": 159.131,
+    "refine_default_ms": 76.471,
+    "refine_one_ms": 158.582,
+    "refineonly_over_r3_default": 1.0544,
+    "refineonly_over_r3_one": 1.0247,
+    "head_over_r3_default": 1.0566,
+    "head_over_r3_one": 1.0354,
+    "refine_over_r3_default": 1.0993,
+    "refine_over_r3_one": 1.0319
+   },
+   "P-160-float64": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "r3_default_ms": 134.352,
+    "r3_one_ms": 287.94,
+    "refineonly_default_ms": 134.693,
+    "refineonly_one_ms": 295.869,
+    "head_default_ms": 140.072,
+    "head_one_ms": 299.747,
+    "refine_default_ms": 137.764,
+    "refine_one_ms": 296.601,
+    "refineonly_over_r3_default": 1.0025,
+    "refineonly_over_r3_one": 1.0275,
+    "head_over_r3_default": 1.0426,
+    "head_over_r3_one": 1.041,
+    "refine_over_r3_default": 1.0254,
+    "refine_over_r3_one": 1.0301
+   },
+   "P-320-float32": {
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "r3_default_ms": 253.408,
+    "r3_one_ms": 545.388,
+    "refineonly_default_ms": 268.85,
+    "refineonly_one_ms": 560.866,
+    "head_default_ms": 270.12,
+    "head_one_ms": 569.213,
+    "refine_default_ms": 267.576,
+    "refine_one_ms": 569.141,
+    "refineonly_over_r3_default": 1.0609,
+    "refineonly_over_r3_one": 1.0284,
+    "head_over_r3_default": 1.0659,
+    "head_over_r3_one": 1.0437,
+    "refine_over_r3_default": 1.0559,
+    "refine_over_r3_one": 1.0436
+   },
+   "P-320-float64": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "r3_default_ms": 487.128,
+    "r3_one_ms": 1140.955,
+    "refineonly_default_ms": 513.285,
+    "refineonly_one_ms": 1179.716,
+    "head_default_ms": 514.141,
+    "head_one_ms": 1180.04,
+    "refine_default_ms": 535.237,
+    "refine_one_ms": 1158.241,
+    "refineonly_over_r3_default": 1.0537,
+    "refineonly_over_r3_one": 1.034,
+    "head_over_r3_default": 1.0555,
+    "head_over_r3_one": 1.0343,
+    "refine_over_r3_default": 1.0988,
+    "refine_over_r3_one": 1.0152
+   },
+   "P-640-float32": {
+    "cpu": "AMD EPYC 9V45 96-Core Processor",
+    "r3_default_ms": 574.999,
+    "r3_one_ms": 1511.058,
+    "refineonly_default_ms": 592.618,
+    "refineonly_one_ms": 1493.938,
+    "head_default_ms": 600.33,
+    "head_one_ms": 1529.164,
+    "refine_default_ms": 605.121,
+    "refine_one_ms": 1516.307,
+    "refineonly_over_r3_default": 1.0306,
+    "refineonly_over_r3_one": 0.9887,
+    "head_over_r3_default": 1.0441,
+    "head_over_r3_one": 1.012,
+    "refine_over_r3_default": 1.0524,
+    "refine_over_r3_one": 1.0035
+   },
+   "P-640-float64": {
+    "cpu": "Intel(R) Xeon(R) 6973P-C",
+    "r3_default_ms": 1401.703,
+    "r3_one_ms": 3073.01,
+    "refineonly_default_ms": 1484.052,
+    "refineonly_one_ms": 3104.975,
+    "head_default_ms": 1541.968,
+    "head_one_ms": 3232.982,
+    "refine_default_ms": 1516.733,
+    "refine_one_ms": 3131.576,
+    "refineonly_over_r3_default": 1.0587,
+    "refineonly_over_r3_one": 1.0104,
+    "head_over_r3_default": 1.1001,
+    "head_over_r3_one": 1.0521,
+    "refine_over_r3_default": 1.0821,
+    "refine_over_r3_one": 1.0191
+   }
+  }
+ }
+}
