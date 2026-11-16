@@ -1,0 +1,91 @@
+{
+  "written": "2026-11-16, committed before any gate of USD-SURFACES ran on this branch (the commit that adds this file is the timestamp): deforming surfaces carrying fields, declared by an entry, drawn in the stage at rest, recorded in USD and shown in MIME's page, from spike USD-DEFORM",
+  "phase": "USD-SURFACES build PR into release/v0.3.0 (F0 record item 95)",
+  "labels": "predictions by the builder from the spike's measurements (seen_before), from the decisions in the build brief, and from derivation; a guess says so. Every control here is deterministic (no draw), so each is run once and a detection of 1/1 is its rate.",
+  "seen_before": [
+    "spike USD-DEFORM (2026-11-16, local branch spike/usd-deform): read-back of points and two fields equal to float32 bits at 40/40 samples; determinism of stage, recording, GLB and page across two processes; time codes = sample index, rate = 1/(every dt); the Khronos validator 2.0.0-dev.3.10 clean; picker restoring the time (plant: restore removed gave time 0); every plant caught 1/1",
+    "spike sizes: about 28.5 bytes per vertex-frame of the GLB for one moving field, page = 1.443 MB + 4/3 GLB; about 3.5e5 vertex-frames per 15 MB page; puncture 7,307 vertices, 14,044 triangles at 12.95 MB",
+    "spike stage bytes: full_toy, coupled_toy and the plugin's tip experiment sha256-equal with and without the seam"
+  ],
+  "operating_point": {
+    "dtype": ["float32", "float64"],
+    "platform": "CPU (laptop for development, GitHub's 4-vCPU runners for CI)",
+    "sizes_and_parameters": "toy.indented_sheet: a 1 mm sheet of count x count vertices (9 to 33 in tests, 129 for the decimation gates), a Gaussian dimple of sd 0.15 mm whose depth grows at 0.5 to 1 mm/s; 6 to 40 samples at 10 ms; the decimation's crater a dimple deeper than its width with a lateral pull towards its centre",
+    "seeds_and_draws": "none: every gate is deterministic"
+  },
+  "gate_readback": {
+    "claim": "every sample's points and fields in recording.usdc equal the node's values at that step, as float32 bits (points over metres per unit), in both dtypes; decimated, equal to the cluster map applied in float64 to within one float32 unit in the last place",
+    "kind": "equality to rounding",
+    "case": "tests/viz/test_surfaces.py",
+    "prediction": {"value": 0, "band": [0, 0], "unit": "samples whose bits differ", "basis": "measured-before"},
+    "control": {"plant": "the writer puts each sample's field (then points) one sample late", "expected_rate": "1/1 each", "clean_expected": "0 mismatches"}
+  },
+  "gate_determinism": {
+    "claim": "the same declarations give the same bytes for the stage, the recording, the GLB and the page, in two processes",
+    "kind": "equality",
+    "case": "tests/viz/test_surfaces.py",
+    "prediction": {"value": "equal", "basis": "measured-before"},
+    "control": {"plant": "the wall clock in the recording's layer data", "expected_rate": "1/1"}
+  },
+  "gate_time_base": {
+    "claim": "time codes are the sample indices 0..n-1, timeCodesPerSecond = framesPerSecond = 1/(every dt), code / rate = simulated seconds since the first sample",
+    "kind": "equality",
+    "case": "tests/viz/test_surfaces.py",
+    "prediction": {"value": "holds", "basis": "measured-before"},
+    "control": {"plant": "the rate doubled, and halved", "expected_rate": "2/2"}
+  },
+  "gate_glb_structure": {
+    "claim": "a time-sampled surface is one primitive whose morph targets number drawn samples x fields (at most MORPH_TARGETS), each with POSITION and a VEC4 COLOR_0; every POSITION accessor has min and max; one animation per field, run then run:<field>",
+    "kind": "equality",
+    "case": "tests/viz/test_surfaces.py",
+    "prediction": {"value": "holds", "basis": "measured-before"},
+    "control": {"plant": "a target's POSITION accessor without min and max; COLOR_0 written as VEC3", "expected_rate": "1/1 each"}
+  },
+  "gate_picker": {
+    "claim": "switching the field picker keeps the view's time and its play state, though the viewer resets the time on an animation change",
+    "kind": "equality (the page's own script, in Node, against a stand-in viewer that resets the time as model-viewer 4.3.1 does)",
+    "case": "tests/viz/test_viewer_basics.py",
+    "prediction": {"value": "time kept, paused kept", "basis": "measured-before"},
+    "control": {"plant": "the restore line removed", "expected_rate": "1/1 (time 0)"}
+  },
+  "gate_decimation": {
+    "claim": "a surface over SURFACE_TRIANGLES is drawn by vertex clustering at rest within the budget; its clusters do not fold under a crater (each drawn triangle's normal on the side of the full mesh's normals at its corners, at every sample); a field declared max keeps a damage front's peak, the mean default does not",
+    "kind": "bounds",
+    "case": "tests/build/test_surface_meshes.py",
+    "prediction": {"value": "drawn triangles <= budget; 0 folded triangles; max kept exactly, mean below it", "basis": "derived", "why": "a grid clustering at a cell well below the crater's width moves each cluster with its members' mean, a smooth deformation's; the maximum of maxima is the maximum"},
+    "control": {"plant": "clusters coarser than the crater (one cell across its rim), and a cluster map scrambled across the sheet; the mean in place of the declared max", "expected_rate": "1/1 each (folds found; peak lost)"},
+    "if_wrong": "a fold at the default cell size means the budget's clustering needs a fold check at build, not a test"
+  },
+  "gate_compare_refusal": {
+    "claim": "the ghosted comparison refuses members whose surfaces differ in vertex count; members with equal counts are written",
+    "kind": "equality",
+    "case": "tests/build/test_surface_meshes.py",
+    "prediction": {"value": "refused", "basis": "derived"},
+    "control": {"plant": "equal counts (the same sheet in both members)", "expected_rate": "written, 1/1"}
+  },
+  "gate_live_default": {
+    "claim": "live frames leave surfaces out by default and carry them when named in select=",
+    "kind": "equality",
+    "case": "tests/build/test_surface_meshes.py",
+    "prediction": {"value": "left out by default, carried by name", "basis": "derived"}
+  },
+  "gate_near_origin": {
+    "claim": "a surface whose rest centre lies further than SURFACE_ORIGIN_EXTENTS times its extent from its thing's origin is refused at build",
+    "kind": "equality",
+    "case": "tests/build/test_surface_meshes.py",
+    "prediction": {"value": "refused beyond, planned within", "basis": "derived"},
+    "control": {"plant": "the same sheet moved just inside the line", "expected_rate": "plans, 1/1"}
+  },
+  "gate_bits_unchanged": {
+    "claim": "where no entry declares a surface, the stage, the recording, the GLB, the page and the run's compiled step are the same bytes before and after this change",
+    "kind": "equality (sha256 of each on origin/release/v0.3.0 and on this branch, the same script in each)",
+    "case": "a measurement on full_toy and coupled_toy run_to + web, and the existing goldens (tests/build/golden) in CI",
+    "prediction": {"value": "equal", "basis": "measured-before for the stage; derived for the rest (the page's surface parts are emitted only where a surface is drawn)"},
+    "control": {"plant": "the indented sheet added to the same experiment", "expected_rate": "differs, 1/1"}
+  },
+  "size": {
+    "claim": "bytes per vertex-frame of the GLB for one moving field, and the page's own statement of its size",
+    "prediction": {"value": 28.5, "band": [26, 31], "unit": "bytes per vertex-frame", "basis": "measured-before"}
+  },
+  "outcomes": null
+}
