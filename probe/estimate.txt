@@ -1,0 +1,2 @@
+# the allocator scanned over the longest path, OctoMag 8 coils, 90000 ticks; every arm runs the same program in float64 and float32
+*: --raw tie_case:factory --path scripts/spikes/tie_chatter --dtype float64
