@@ -272,22 +272,27 @@ def march(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, du: Vec) -> Ma
                  interval, interior=interior, moving=moving)
 
 
-def _carried(value: Any, made: Callable[[Any], Any], live: Any) -> Any:
-    """``value``, a held result, carrying the derivative of ``made(live)``: ``made`` makes it again from ``live`` (what
-    it was made from) by the held computation's own arithmetic, its choices (an index, a branch of a ``where``) as they
-    fell, so the derivative is the held result's own on its branch. The value is ``value`` itself: where nothing is
-    differentiated nothing is made again."""
+def _carried(value: Any, made: Callable[[Any, Any], Any], live: Any, fixed: Any) -> Any:
+    """``value``, a held result, carrying the derivative of ``made(live, fixed)``: ``made`` makes it again from ``live``
+    (what it was made from) by the held computation's own arithmetic, ``fixed`` its choices as they fell (an index, the
+    branch of a ``where``, a held direction), so the derivative is the held result's own on its branch. The value is
+    ``value`` itself: where nothing is differentiated nothing is made again. Every array ``made`` reads is an argument
+    (the rule is traced where the derivative is taken, apart from the values it would close over)."""
 
     @_custom_jvp
-    def carried(held: Any, made_from: Any) -> Any:
+    def carried(held: Any, made_from: Any, choices: Any) -> Any:
         return held
 
-    def tangent(primals: tuple[Any, Any], tangents: tuple[Any, Any]) -> tuple[Any, Any]:
-        held, made_from = primals
-        return held, _jvp(made, (made_from,), (tangents[1],))[1]
+    def tangent(primals: tuple[Any, Any, Any], tangents: tuple[Any, Any, Any]) -> tuple[Any, Any]:
+        held, made_from, choices = primals
+
+        def again(live_again: Any) -> Any:
+            return made(live_again, choices)
+
+        return held, _jvp(again, (made_from,), (tangents[1],))[1]
 
     carried.defjvp(tangent)
-    return carried(value, live)
+    return carried(value, live, fixed)
 
 
 def _split(p: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -305,7 +310,7 @@ def _grid_moving(sampled: Sampled, p: Mapping[str, Any], ray: tuple[Vec, Vec, Ve
     (the square root's at zero is not taken)."""
     whole, parameters = _split(p)
 
-    def made(live: Any) -> tuple[Any, Any, Any]:
+    def made(live: Any, at: tuple[Any, Any]) -> tuple[Any, Any, Any]:
         (o, d, du), q = live
         q = {**whole, **q}
         n = sampled.samples
@@ -330,9 +335,9 @@ def _grid_moving(sampled: Sampled, p: Mapping[str, Any], ray: tuple[Vec, Vec, Ve
             shift = 0.5 * (before - after) / jnp.where(inner, curvature, 1.0)
             return t0 + (at.astype(t0.dtype) + jnp.where(inner, shift, 0.0)) * dt
 
-        return refined(least[0]), refined(least[1]), dt
+        return refined(at[0]), refined(at[1]), dt
 
-    return _carried(held, made, (ray, parameters))
+    return _carried(held, made, (ray, parameters), least)
 
 
 def chord(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, held: March) -> Any:
@@ -639,12 +644,11 @@ def _place(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, held: March, 
     spacing apart). That arithmetic is done again on live values, its choices as they fell: the march's points and
     spacing moving with the body (``March.moving``), the values with the body and the parameters, along the ray's held
     direction. A turn's share through the sub-ray's own direction is ``_moving``'s implicit step's."""
-    steps, base, window = made
-    direction = lax.stop_gradient(d)
     whole, parameters = _split(p)
 
-    def again(live: Any) -> Any:
+    def again(live: Any, fixed: Any) -> Any:
         origin, q, (ta, tb, spacing) = live
+        (steps, base, window), direction = fixed
         q = {**whole, **q}
 
         def at(t: Any) -> Any:
@@ -661,7 +665,7 @@ def _place(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, held: March, 
         shift = jnp.where(rising, 0.5 * (before - after) / jnp.where(rising, curvature, 1.0), 0.0)
         return jnp.where(window, centre + jnp.clip(shift, -1.0, 1.0) * fine, quartic)
 
-    return _carried(read, again, (o, parameters, held.moving))
+    return _carried(read, again, (o, parameters, held.moving), (made, lax.stop_gradient(d)))
 
 
 def _moving(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, at: Any, spacing: Any) -> Any:
