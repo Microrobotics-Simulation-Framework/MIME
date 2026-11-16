@@ -316,6 +316,7 @@ live.address-in-use           environment
 live.chunk                    user
 live.command                  user
 live.commands-not-loopback    user
+live.endpoint                 user
 live.frames-not-loopback      user
 live.input-mode               user
 live.input-unknown            user
@@ -324,7 +325,6 @@ live.log                      user
 live.pace                     user
 live.protocol                 user
 live.record                   user
-live.remote-bind              user
 live.select                   user
 live.stage-writer             user
 live.state                    user
@@ -354,6 +354,7 @@ load.other-release            user
 load.record-changed           user
 load.reference                user
 load.reference-changed        user
+load.run-folder               user
 load.setting                  user
 load.setting-unknown          user
 load.stage-changed            user
@@ -398,6 +399,7 @@ material.not-a-record         user
 material.require              user
 medium.field-role             user
 medium.flow-twice             user
+modal.out-exists              user
 modal.study-base              user
 modal.study-shards            user
 modal.wheel                   environment

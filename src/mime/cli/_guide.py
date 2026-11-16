@@ -120,7 +120,10 @@ class MimeParser(argparse.ArgumentParser):
     @override
     def error(self, message: str) -> Any:
         hints = hints_for(message, self, MimeParser.words)
-        super().error(message + "".join(f"\n  {hint}" for hint in hints))
+        # argparse parses the whole line with the top parser, so an argument no command took is reported by it, under
+        # the top usage: the usage and name of the command the line was for are the help (``mime run --bogus``)
+        target = _command_of(self, MimeParser.words) if "unrecognized arguments" in message else self
+        argparse.ArgumentParser.error(target, message + "".join(f"\n  {hint}" for hint in hints))
 
 
 def _subparsers_of(parser: argparse.ArgumentParser) -> argparse._SubParsersAction[argparse.ArgumentParser] | None:  # pyright: ignore[reportPrivateUsage]
@@ -129,6 +132,19 @@ def _subparsers_of(parser: argparse.ArgumentParser) -> argparse._SubParsersActio
         if isinstance(action, argparse._SubParsersAction):  # pyright: ignore[reportPrivateUsage]
             return cast("argparse._SubParsersAction[argparse.ArgumentParser]", action)  # pyright: ignore[reportPrivateUsage]
     return None
+
+
+def _command_of(top: argparse.ArgumentParser, words: Sequence[str]) -> argparse.ArgumentParser:
+    """The parser of the deepest command the line names: ``mime --plain study run x`` is ``study run``'s. Words are
+    read in order and stop at the first that is not a command's name once one was found."""
+    here = top
+    for word in words:
+        child = _children(here).get(word)
+        if child is not None:
+            here = child
+        elif here is not top and not word.startswith("-"):
+            break
+    return here
 
 
 def _children(parser: argparse.ArgumentParser) -> Mapping[str, argparse.ArgumentParser]:

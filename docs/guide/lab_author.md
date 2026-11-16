@@ -115,7 +115,10 @@ print as the lab's, exactly the following; nothing else comes from MIME's tests.
   `GradientRecord`: a `piecewise_kink` or `piecewise_jump` entry names the switches its law evaluates (its own, or its
   shape's); a `fixed_key`, `unverified` or `cut` entry states where, why and a route to exact. A value an entry leaves out
   of its record is `NOT_ESTABLISHED`: the pages print it as such and `mime docs check` counts it for a lab, and does not
-  fail it, except for an `unverified` or `cut` entry, whose reason and route must be stated.
+  fail it, except for an `unverified` or `cut` entry, whose reason and route must be stated. The owner of each switch it
+  declares starts with the plugin's **package** name, not its namespace (`mime_acme.nudge.cap`, not `acme.nudge.cap`): an
+  owner must be unique among everything installed together, and a package's name is, where a namespace is only so
+  among the plugins that happen to be installed. `mime docs check` names an owner that does not and says what to write.
 - **Validity lines.** The build reports them as *declared, not yet checked*. They say where the model holds; they are not
   evidence that it does.
 - **Conformance to a family**, by running the family's suite in the lab's own CI:

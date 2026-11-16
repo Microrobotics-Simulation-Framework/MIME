@@ -86,7 +86,7 @@ def _bind_problems(commands: str, frames: str, allow_remote_commands: bool) -> l
         try:
             host, _ = parse_endpoint(endpoint)
         except ValueError as error:
-            found.append(Refusal("live.remote-bind", RefusalClass.USER, str(error),
+            found.append(Refusal("live.endpoint", RefusalClass.USER, str(error),
                                  "give tcp://<host>:<port>, such as --commands tcp://127.0.0.1:5555"))
             continue
         if not allow_remote_commands and not is_loopback(host):

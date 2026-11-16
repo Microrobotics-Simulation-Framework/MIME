@@ -147,7 +147,7 @@ def test_localhost_is_loopback_only_where_it_resolves_to_loopback_only(binds, un
 
 
 def test_an_endpoint_that_is_not_tcp_is_refused_before_anything_binds(binds, unloaded):
-    assert served(unloaded, commands="127.0.0.1:5555", frames="tcp://127.0.0.1:0") == ["live.remote-bind"]
+    assert served(unloaded, commands="127.0.0.1:5555", frames="tcp://127.0.0.1:0") == ["live.endpoint"]
     assert binds.asked == []
 
 

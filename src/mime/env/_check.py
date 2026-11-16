@@ -26,6 +26,8 @@ from typing import Any, Protocol, cast
 
 import jax
 from packaging.markers import default_environment
+from packaging.requirements import InvalidRequirement, Requirement
+from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
 
 from mime._lock_json import read_lock
@@ -210,13 +212,57 @@ def optional_expected(expected: Mapping[str, Expected], markers: Mapping[str, st
             if name not in expected}
 
 
+def declared_ranges(name: str, paths: Sequence[str] | None = None) -> list[tuple[str, SpecifierSet]]:
+    """Every range an installed distribution declares for ``name`` (its ``Requires-Dist`` lines whose marker holds here;
+    MIME's own extras count, being what MIME offers, and no other distribution's, whose extras may not be installed),
+    each with who declares it."""
+    markers = cast(dict[str, str], dict(default_environment()))
+    found: list[tuple[str, SpecifierSet]] = []
+    for dist in importlib.metadata.distributions(path=list(paths or _environment_paths())):
+        extras = ["", *(dist.metadata.get_all("Provides-Extra") or [])] \
+            if canonicalize_name(dist.metadata["Name"] or "") == DISTRIBUTION else [""]
+        for line in dist.requires or ():
+            try:
+                requirement = Requirement(line)
+            except InvalidRequirement:
+                continue
+            if canonicalize_name(requirement.name) != name:
+                continue
+            if requirement.marker is None or any(requirement.marker.evaluate({**markers, "extra": extra})
+                                                 for extra in extras):
+                found.append((canonicalize_name(dist.metadata["Name"] or "?"), requirement.specifier))
+    return found
+
+
+def outside_declared_ranges(name: str, version: str, paths: Sequence[str] | None = None) -> str | None:
+    """Why ``version`` of ``name`` is outside the ranges the installed distributions declare for it, or ``None`` when it
+    is inside every one of them (and at least one declares a range: a distribution nothing requires is no one's
+    to judge)."""
+    held = declared_ranges(name, paths)
+    if not held:
+        return "no installed distribution declares a range for it"
+    for who, specifier in held:
+        if not specifier.contains(version, prereleases=True):
+            return f"outside {specifier} that {who} declares"
+    return None
+
+
 def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapping[str, Expected], *,
                           tolerated: frozenset[str] = frozenset(),
-                          optional: Mapping[str, Expected] | None = None) -> list[Refusal]:
+                          optional: Mapping[str, Expected] | None = None, strict: bool = True,
+                          notes: list[str] | None = None,
+                          outside: Callable[[str, str], str | None] = outside_declared_ranges) -> list[Refusal]:
     """A refusal for each pinned distribution missing or at another version, each installed one nothing pins
     (``tolerated`` names aside), and each of ``optional`` (MIME's own extras' and groups' pins, accepted where they are
-    installed) at another version than its pin."""
+    installed) at another version than its pin.
+
+    Unless ``strict`` (exact pins: what a reproduction needs), a distribution installed once at another version than its
+    pin is a refusal only where that version is outside the ranges the installed distributions declare for it
+    (``outside``), and a distribution nothing pins is no refusal: each is a line in ``notes`` instead, "tested with
+    X, installed Y", since a plain install resolves its dependencies within their ranges, newer than the pins CI
+    tested."""
     refusals: list[Refusal] = []
+    said = notes if notes is not None else []
     held_optional = dict(optional or {})
     for name, want in sorted(expected.items()):
         held = installed.get(name, ())
@@ -227,15 +273,25 @@ def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapp
                                     f"{name} {want.version}, pinned by {want.source}, is not installed", REBUILD,
                                     subject=subject))
         elif len(held) > 1 or not want.matches(held[0]):
+            reason = None if strict or len(held) > 1 else outside(name, held[0])
+            if not strict and len(held) == 1 and reason is None:
+                said.append(f"{name} is installed at {held[0]}; tested with {want.version} ({want.source}), and "
+                            f"{held[0]} is inside the ranges its dependants declare")
+                continue
             subject = Subject("installed distributions differ from their pins",
                               ("distribution", "installed", "pinned at", "pinned by"),
                               (name, ", ".join(held), want.version, want.source), REBUILD)
             refusals.append(Refusal("env.pin", RefusalClass.ENVIRONMENT,
                                     f"{name} is installed at {', '.join(held)} and pinned at {want.version} by "
-                                    f"{want.source}", REBUILD, subject=subject))
+                                    f"{want.source}" + (f", and {held[0]} is {reason}" if reason else ""),
+                                    REBUILD, subject=subject))
     for name, held in sorted(installed.items()):
         allowed = held_optional.get(name)
         if name not in expected and allowed is not None and name not in tolerated:
+            if not strict and len(held) == 1 and not allowed.matches(held[0]) and outside(name, held[0]) is None:
+                said.append(f"{name} is installed at {held[0]}; tested with {allowed.version} ({allowed.source}), and "
+                            f"{held[0]} is inside the ranges its dependants declare")
+                continue
             if len(held) > 1 or not allowed.matches(held[0]):
                 subject = Subject("installed distributions differ from their pins",
                                   ("distribution", "installed", "pinned at", "pinned by"),
@@ -243,6 +299,10 @@ def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapp
                 refusals.append(Refusal("env.pin", RefusalClass.ENVIRONMENT,
                                         f"{name} is installed at {', '.join(held)} and pinned at {allowed.version} by "
                                         f"{allowed.source}", REBUILD, subject=subject))
+            continue
+        if name not in expected and name not in tolerated and not strict:
+            said.append(f"{name} {', '.join(held)} is installed and nothing pins it (a distribution beside MIME's own, "
+                        f"which the pins neither test nor vouch for)")
             continue
         if name not in expected and name not in tolerated:
             subject = Subject("installed distributions are pinned by nothing", ("distribution", "installed"),
@@ -377,17 +437,21 @@ def device_refusals(devices: Sequence[DeviceLike], gpu: str | None) -> list[Refu
                     "--variant cuda12`)")]
 
 
-def missing_folder(folder: str | Path) -> BuildRefused:
-    """The refusal of a saved experiment's folder that does not exist, naming the saved experiments beside it."""
+def missing_folder(folder: str | Path, *, holding: tuple[str, ...] = (LOCK_FILE,)) -> BuildRefused:
+    """The refusal of a folder that does not exist, naming the folders beside it that hold one of the files ``holding``
+    (a saved experiment's lock, by default) and the nearest of them. Every command that takes a folder refuses an absent
+    one with this, so the user is told the same thing wherever the slip was made."""
     held = Path(folder)
     parent = held.parent if str(held.parent) else Path(".")
     beside = sorted(str(parent / other.name) if str(held.parent) not in ("", ".") else other.name
-                    for other in (parent.iterdir() if parent.is_dir() else ()) if (other / LOCK_FILE).is_file())
+                    for other in (parent.iterdir() if parent.is_dir() else ())
+                    if any((other / name).is_file() for name in holding))
     from mime.things import did_you_mean
 
     return BuildRefused([Refusal(
         "load.missing-folder", RefusalClass.USER, f"there is no folder {str(held)!r}",
-        "name the folder Experiment.save wrote, as in `mime run <folder> ...`"
+        ("name the folder Experiment.save wrote, as in `mime run <folder> ...`" if holding == (LOCK_FILE,) else
+         "name a folder that exists, as `mime check <folder>` and `mime push <folder>` take one")
         + (f". {did_you_mean(str(held), beside)}" if beside else ""))])
 
 
@@ -482,9 +546,15 @@ class EnvReport:
     #: On a GPU whose ``XLA_FLAGS`` leave XLA's Triton GEMM fusion on, the warning that says so
     #: (:func:`mime.env._host.triton_gemm_warning`); the check still passes, as the build does.
     triton_warning: str | None = None
+    #: Where the check was not strict: each distribution installed at a version inside its declared ranges but not the
+    #: pin's (tested with X, installed Y), and each one nothing pins. Notes, not refusals; ``--strict`` refuses them.
+    notes: tuple[str, ...] = ()
 
     def text(self) -> str:
-        lines = [f"environment: every one of the {self.distributions} distributions installed as pinned "
+        held = (f"{self.distributions - len([n for n in self.notes if 'tested with' in n])} of the "
+                f"{self.distributions} distributions installed as pinned" if self.notes else
+                f"every one of the {self.distributions} distributions installed as pinned")
+        lines = [f"environment: {held} "
                  f"({self.variant} pins{', the base image' if self.base else ''}"
                  f"{', the lab' if self.lab else ''}); MIME "
                  + (f"at {self.mime}, the pinned wheel's" if self.mime else "not held to a version")
@@ -498,6 +568,10 @@ class EnvReport:
         if self.matmul_precision is not None:
             lines.append(f"matmul precision: {self.matmul_precision}")
         lines.append(f"xla cache: {self.xla_cache or 'off'}")
+        if self.notes:
+            lines.append(f"{len(self.notes)} note{'s' if len(self.notes) != 1 else ''}, not failures (these differ "
+                         f"from the pins CI tested; --strict makes each one a refusal, for a reproduction):")
+            lines += [f"  note: {note}" for note in self.notes]
         if self.triton_warning is not None:
             lines.append(f"WARNING: {self.triton_warning}")
         return "\n".join(lines)
@@ -508,14 +582,14 @@ class EnvReport:
                 "matmul_precision": self.matmul_precision, "xla_cache": self.xla_cache,
                 "fingerprint": self.fingerprint, "runner": dict(self.runner), "base": self.base, "lab": self.lab,
                 "mime": self.mime, "shadows_checked": self.shadows_checked,
-                "triton_warning": self.triton_warning}
+                "triton_warning": self.triton_warning, "notes": list(self.notes)}
 
 
 def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = None, base: bool = False,
           lab: str | Path | None = None, xla_cache: str | Path | None = None, mime_version: str | None = None,
           installed: Mapping[str, Sequence[str]] | None = None, devices: Sequence[DeviceLike] | None = None,
           system: System | None = None, modules: Mapping[str, str] | None = None,
-          flags: str | None = None) -> EnvReport:
+          flags: str | None = None, strict: bool = True) -> EnvReport:
     """Check this environment against the pins of ``variant`` (with ``base``, against the base image of this Python
     series too, and with ``lab``, a requirements file, against the lab's pins), MIME against ``mime_version`` (the
     version of the pinned wheel; without it MIME is not held to one), and JAX's devices against ``gpu`` (an exact type,
@@ -525,7 +599,10 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
     ``installed``, ``devices``, ``system``, ``modules`` and ``flags`` (``XLA_FLAGS``) stand in for what the check reads, in
     tests (the imports are read only from this environment's own distributions). On a GPU whose flags do not turn
     XLA's Triton GEMM fusion off the report carries a warning (MIME-ANO-157); the check does not refuse, and never sets
-    the flag."""
+    the flag. ``strict`` (the default) holds every pin exactly, as a reproduction needs; without it a distribution
+    installed at another version than its pin, inside the ranges the installed distributions declare, and one nothing
+    pins, are notes in the report (``EnvReport.notes``) and not refusals, which is what a plain install of MIME meets
+    (it resolves within the ranges, newer than the pins CI tested)."""
     requested = gpu_type(gpu) if gpu is not None else None
     runner = runner_record()
     x64 = lock_x64(folder) if folder is not None else None
@@ -537,9 +614,11 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
                                                  mime_version=mime_version)
     found = installed if installed is not None else installed_distributions()
     refusals += conflicts
+    notes: list[str] = []
     tolerated = frozenset(() if base else INSTALLERS) | frozenset(() if mime_version is not None else (DISTRIBUTION,))
     refusals += distribution_refusals(found, expected, tolerated=tolerated,
-                                      optional=optional_expected(expected, held_system.markers))
+                                      optional=optional_expected(expected, held_system.markers), strict=strict,
+                                      notes=notes)
     held_modules = modules if modules is not None else (environment_modules() if installed is None else None)
     if held_modules is not None:
         refusals += shadow_refusals(held_modules)
@@ -565,7 +644,7 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
                      config.jax_default_matmul_precision, cache,
                      fingerprint() if installed is None else "not read (the distributions were given)", runner,
                      held_base, str(lab) if lab is not None else None, mime_version, held_modules is not None,
-                     rows, triton)
+                     rows, triton, tuple(notes))
 
 
 __all__ = ["AS_PINNED", "DISTRIBUTION", "INSTALLERS", "DistributionRow", "EnvRefused", "EnvReport", "System",
