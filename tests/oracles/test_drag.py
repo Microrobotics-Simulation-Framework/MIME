@@ -38,10 +38,10 @@ from hydro_oracles import PortFrameNode, StokesSphere, lubrication, sphere_resis
 from script_a import script_a
 
 from mime import Body, Experiment, Medium, Scene, State, Structure
-from mime import asset as scene_asset
 from mime.build import BuildRefused
 from mime.core import register_shape
-from mime.data import Asset, AssetError, asset
+from mime.assets import Asset, asset
+from mime.errors import MimeError
 from mime.docs import claim
 from mime.dynamics import RigidInertial
 from mime.gradients import GradientStatus
@@ -555,10 +555,11 @@ def test_weights_whose_hash_is_not_the_packaged_files_are_refused():
     text = refusal(script_a(drag=Drag.Surrogate(weights=Asset("dejongh_mlp_v2", "0" * 64))), "setting.value")
     assert f"has sha256 {SHA}, and the experiment asks for {'0' * 64}" in text
     assert "the surrogate rung reads its weights" in refusal(script_a(drag=Drag.Surrogate()), "setting.value")
-    named_by_path = Drag.Surrogate(weights=scene_asset("dejongh_mlp_v2"))
+    named_by_path = Drag.Surrogate(weights=asset(Path("dejongh_mlp_v2")))
     assert "is not a packaged asset" in refusal(script_a(drag=named_by_path), "setting.value")
-    with pytest.raises(AssetError, match="no packaged asset is named 'dejongh_mlp_v3'"):
+    with pytest.raises(MimeError, match="no record is named 'dejongh_mlp_v3'") as refused:
         asset("dejongh_mlp_v3")
+    assert refused.value.code == "asset.unknown"
 
 
 def test_the_alias_saves_as_the_written_rung():

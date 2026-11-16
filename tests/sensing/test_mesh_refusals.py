@@ -34,7 +34,8 @@ from mime.build import BuildRefused
 from mime.dynamics import RigidInertial
 from mime.interactions import Gravity
 from mime.observations import Camera, Mounted, World
-from mime.scene import Scene, Sphere, Tube, X, Z, asset
+from mime.scene import Scene, Sphere, Tube, X, Z
+from mime.assets import asset
 from mime.sensing._node import INTRINSICS, CameraNode
 from mime.study import Study, grid
 from mime.things import Part

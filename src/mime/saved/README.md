@@ -176,7 +176,7 @@ way, and a setting the document cannot hold.
   licence declared they are **unknown**, "the author's own, no licence declared: a reuser is granted no licence", never
   permitted. A folder of a form before licences declares none, and `mime pack` adds a line where it holds layers or
   descriptions: a third party's file in it is carried as the author's own until its terms are declared.
-- **A third-party file is declared with its terms** where it is declared, `asset(path, terms=Terms(...))`: its licence,
+- **A third-party file is declared with its terms** where it is declared, `asset(Path(...), terms=Terms(...))`: its licence,
   the credit its licence asks for, its role (results depend on it, or it only draws the scene) and its origin, the
   locations of its exact bytes. The document records them by the file's path below the folder, with the sha256 they
   were declared for. Terms bind by path, so two copies of one file's bytes (a mesh copied for a second prim) are

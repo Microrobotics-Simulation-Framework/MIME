@@ -51,9 +51,9 @@ Also:
   `ValueError` at the declaration, and a saved document declaring one is refused at load, `frame.up-not-y-or-z`);
   `units` one of `m`, `cm`, `mm`, `um` (MIME computes in SI whatever it is). `scene.up` is a signed axis, so
   `-scene.up` is down.
-- **`scene.reference(asset(path), at="/World/UMR")`** references an asset layer's default prim at a prim directly
+- **`scene.reference(asset(Path(...)), at="/World/UMR")`** references an asset layer's default prim at a prim directly
   below `/World`. The build reads the file once and pins it by the SHA-256 of its bytes (a pin given with
-  `asset(path, sha256=...)` refuses other bytes), and refuses an asset with no `defaultPrim`, with no or another
+  `asset(Path(...), sha256=...)` refuses other bytes), and refuses an asset with no `defaultPrim`, with no or another
   `metersPerUnit` than the scene's, or composing other files. `scene["/World/UMR"]` names a prim for a thing to bind.
 - **The stage**, written by `stage_text` from the build's plans and saved as `scene/scene.usda`, its assets'
   bytes under `scene/layers/`:
@@ -225,8 +225,8 @@ sphere about its centroid that holds it (`enclosing_radius`).
   description) by its whole record, a scan one study uses: the record's sha256 pins it, its licence, credit, role and
   locations are its terms and origin, and the build reads it from the asset cache (under the record's name, so a USD
   layer keeps its extension), never downloading it; a file not there is refused as `asset.missing` with the command.
-  `asset(path, sha256=, terms=)` stays the way to declare a file on disk; `mime.data.asset(name)` names MIME's own
-  packaged files.
+  `asset(Path(...), sha256=, terms=)` declares a file on disk. Both are the one `mime.assets.asset`; a layer is a file,
+  so a record's name, `asset("<name>")`, is refused here (`asset.source`).
 - **A drawn proxy holds at most its triangle budget** (`PROXY_TRIANGLES` in `mime.build`): a kind whose drawing at the
   writer's resolution would hold more is drawn at fewer facets a turn, and its proxy records the facets it was drawn
   at. The screw's proxy was nearly all of A0's saved stage.

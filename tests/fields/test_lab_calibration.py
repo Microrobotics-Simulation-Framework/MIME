@@ -1,8 +1,8 @@
 """A lab's own MPEM calibration (the calibration type ``mpem/1``): a record its package ships through the
 ``mime.assets`` entry point, named by the record's name and sha256, read from the asset cache through its licence gate.
 
-The lab fixture ships two small synthetic three-coil calibrations: ``labx_emns.yaml`` under Apache-2.0 (open) and
-``labx_emns_nc.yaml`` under CC-BY-NC-4.0 (conditional). Stored in a cache of the test's own:
+The lab fixture ships two small synthetic three-coil calibrations: ``labx.emns.yaml`` under Apache-2.0 (open) and
+``labx_emns_nc.yaml`` under CC-BY-NC-4.0 (conditional), the second still spelled the earlier way, with an underscore. Stored in a cache of the test's own:
 
 - the open one builds; its numbers are the file's as the reader reads it; the lock records the record; the build
   report names its type, tier and the unit its file names;
@@ -25,14 +25,15 @@ import pytest
 from believed_cases import believed_sphere, model_of
 
 from mime import assets
+from mime.assets import _cache, _fetch
 from mime.build import BuildRefused
-from mime.data import Asset
+from mime.assets import Asset
 from mime.fields import CalibratedMultipole
 from mime.nodes.actuation import read_calibration
 from mime.saved import LOCK_FILE
 
 lab = pytest.importorskip("mime_lab_fixture")
-OPEN, CONDITIONAL = "labx_emns.yaml", "labx_emns_nc.yaml"
+OPEN, CONDITIONAL = "labx.emns.yaml", "labx_emns_nc.yaml"
 #: The plant a control's detection rate is measured with (``AP3_PLANT``): ``gate``, the calibration read around the
 #: licence gate (the cached file taken with no acceptance asked for).
 PLANT = os.environ.get("AP3_PLANT", "")
@@ -41,8 +42,8 @@ PLANT = os.environ.get("AP3_PLANT", "")
 @pytest.fixture
 def cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     held = tmp_path / "cache"
-    monkeypatch.setenv(assets.ASSETS_DIR_VARIABLE, str(held))
-    monkeypatch.delenv(assets.OFFLINE_VARIABLE, raising=False)
+    monkeypatch.setenv(_cache.ASSETS_DIR_VARIABLE, str(held))
+    monkeypatch.delenv(_cache.OFFLINE_VARIABLE, raising=False)
     return held
 
 
@@ -57,8 +58,8 @@ def rig(name: str, sha256: str | None = None):
 
 def test_the_labs_open_calibration_builds_its_numbers_the_files_and_the_lock_records_it(cache: Path, tmp_path: Path):
     ref = assets.reference(OPEN)
-    assets.fetch(ref)
-    held = read_calibration(assets.locate(ref).read_bytes())
+    _fetch.fetch(ref)
+    held = read_calibration(_cache.locate(ref).read_bytes())
     model = model_of(rig(OPEN), "coils.magnetic")
     assert list(model.theta["coefficients"]) == list(held.coefficients.ravel())
     assert model.commands["currents"].shape == (3,)
@@ -75,10 +76,11 @@ def test_the_labs_open_calibration_builds_its_numbers_the_files_and_the_lock_rec
 @pytest.mark.parametrize("accepted", [False, True], ids=["never_accepted", "control_accepted"])
 def test_a_conditional_calibration_nothing_accepted_is_refused_by_the_gate(cache: Path, accepted: bool,
                                                                         monkeypatch: pytest.MonkeyPatch):
-    from mime.assets import _acceptances, licences_of
+    from mime.assets import _acceptances
+    from mime.assets._gates import licences_of
 
     ref = assets.reference(CONDITIONAL)
-    assets.fetch(ref, accept_licences=("CC-BY-NC-4.0",))  # stored, its acceptance holding for that call alone
+    _fetch.fetch(ref, accept_licences=("CC-BY-NC-4.0",))  # stored, its acceptance holding for that call alone
     if accepted:
         _acceptances.remember(list(licences_of(ref)))  # as a person who fetched it at a prompt accepted it
         rig(CONDITIONAL).plan()
@@ -86,7 +88,7 @@ def test_a_conditional_calibration_nothing_accepted_is_refused_by_the_gate(cache
     if PLANT == "gate":
         from mime.assets import _cache
 
-        monkeypatch.setattr(assets, "locate", lambda held, **_: _cache._found(held, None, None))  # noqa: SLF001
+        monkeypatch.setattr(_cache, "locate", lambda held, **_: _cache._found(held, None, None))  # noqa: SLF001
     with pytest.raises(BuildRefused) as refused:
         rig(CONDITIONAL).plan()
     assert refused.value.codes() == ["asset.licence-not-accepted"]
@@ -99,7 +101,7 @@ def test_a_record_not_stored_is_refused_as_missing(cache: Path):
 
 
 def test_another_sha256_than_the_records_is_refused_naming_the_record(cache: Path):
-    assets.fetch(assets.reference(OPEN))
+    _fetch.fetch(assets.reference(OPEN))
     with pytest.raises(BuildRefused) as refused:
         rig(OPEN, "0" * 64).plan()
     assert refused.value.codes() == ["setting.value"] and f"the record {OPEN!r} names the bytes" in str(refused.value)
@@ -121,8 +123,8 @@ def test_the_float32_guard_reaches_a_labs_calibration_file(cache: Path, dtype: s
     from mime.fields import _coil_array
 
     ref = assets.reference(OPEN)
-    assets.fetch(ref)
-    floor = read_calibration(assets.locate(ref).read_bytes()).floor(float(np.finfo(np.float32).eps))
+    _fetch.fetch(ref)
+    floor = read_calibration(_cache.locate(ref).read_bytes()).floor(float(np.finfo(np.float32).eps))
     monkeypatch.setattr(_coil_array, "FLOAT32_BUDGET", floor * budget_over_floor)
     held = jax.config.jax_enable_x64
     jax.config.update("jax_enable_x64", dtype == "float64")

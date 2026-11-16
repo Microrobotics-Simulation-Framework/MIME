@@ -1,0 +1,85 @@
+{
+  "about": "MIME's packaged files, read in place from the installed package and each held to its sha256: the drag surrogate's weights (dejongh_mlp_v2) and the exact sphere-plane resistance table (sphere_plane_resistance), MIME's own; copies of OpenMaterica's example records (openmaterica_example_water, openmaterica_example_ndfeb_n45); and ETH MSRL's published calibrations of three electromagnetic navigation systems (navion_2, octomag, cardiomag), byte for byte. Each file's provenance is in mime.data's README and on its card in docs/assets/.",
+  "assets": [
+    {
+      "name": "cardiomag",
+      "sha256": "31bd9b234586497275c8abff6ff292ece7ed029be8b6077b027264870facd51c",
+      "size": 21327,
+      "licence": "Apache-2.0",
+      "locations": [
+        "package:mime/emns_calibrations/cardiomag.yaml"
+      ],
+      "credit": "Multi-Scale Robotics Lab, ETH Zurich",
+      "role": "results",
+      "kind": "measured"
+    },
+    {
+      "name": "dejongh_mlp_v2",
+      "sha256": "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345",
+      "size": 151887,
+      "licence": "Apache-2.0",
+      "locations": [
+        "package:mime/mlp_cholesky_weights_v2.npz"
+      ],
+      "role": "results",
+      "kind": "derived"
+    },
+    {
+      "name": "navion_2",
+      "sha256": "ea6eeb803b48d73551648e4df08116373a03fed4e871eb2b5c13706f57796b56",
+      "size": 2841,
+      "licence": "Apache-2.0",
+      "locations": [
+        "package:mime/emns_calibrations/navion_2.yaml"
+      ],
+      "credit": "Multi-Scale Robotics Lab, ETH Zurich",
+      "role": "results",
+      "kind": "measured"
+    },
+    {
+      "name": "octomag",
+      "sha256": "d0d92541ea3669bb1c4d4daf4acd36b9d3100f728e6270e2aebac53906cc0ad0",
+      "size": 10610,
+      "licence": "Apache-2.0",
+      "locations": [
+        "package:mime/emns_calibrations/octomag.yaml"
+      ],
+      "credit": "Multi-Scale Robotics Lab, ETH Zurich",
+      "role": "results",
+      "kind": "measured"
+    },
+    {
+      "name": "openmaterica_example_ndfeb_n45",
+      "sha256": "40ff82e8a2fb472abcc6cea16bdd594cef78d13c80400d2a94f9926e6b37c4b0",
+      "size": 5062,
+      "licence": "CC0-1.0",
+      "locations": [
+        "package:mime/records/ndfeb_n45.json"
+      ],
+      "credit": "OpenMaterica",
+      "role": "results"
+    },
+    {
+      "name": "openmaterica_example_water",
+      "sha256": "36add4875e58ade4810d8924cdc5fa7a0dbce28f621c02e4d98fb3516bc92761",
+      "size": 22396,
+      "licence": "CC0-1.0",
+      "locations": [
+        "package:mime/records/water.json"
+      ],
+      "credit": "OpenMaterica",
+      "role": "results"
+    },
+    {
+      "name": "sphere_plane_resistance",
+      "sha256": "346bc025d0b56460a20ba98bdfc9023457cba32ca975d44e363585f80a904f5f",
+      "size": 34894,
+      "licence": "Apache-2.0",
+      "locations": [
+        "package:mime/sphere_plane_resistance.json"
+      ],
+      "role": "results",
+      "kind": "derived"
+    }
+  ]
+}

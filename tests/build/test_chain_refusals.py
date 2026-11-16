@@ -45,7 +45,8 @@ from mime.gradients import GradientStatus
 from mime.registry import BuildContext, Delivery, Interaction, Problem, Read, RoleKind, SupportRow, Value, \
     register_dynamics, register_field_provider, register_interaction, requires
 from mime.interactions import KEPT, Magnetic
-from mime.scene import Cylinder, Z, asset
+from mime.scene import Cylinder, Z
+from mime.assets import asset
 from mime.things import Apparatus, Body, Part, PermanentMagnet, State
 from mime.units import A_m2, N_m, N_m_s, kg, kg_m2, m, m_per_s, mm, ms, rad, rad_per_s
 from mime.vocabulary import APPLIED_WRENCH, FLUX_DENSITY, LINK_WRENCH, POSE, Capability, register_namespace

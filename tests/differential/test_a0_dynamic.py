@@ -56,7 +56,7 @@ from a0_dynamic_compare import (
 from a0_runs import REPORTED
 from script_a0_dynamic import a0_dynamic
 
-from mime.data import asset
+from mime.assets import asset
 
 HERE = Path(__file__).parent
 

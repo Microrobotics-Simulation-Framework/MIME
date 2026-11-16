@@ -25,7 +25,8 @@ from pathlib import Path
 from typing import Any, cast
 
 from mime._lock_json import read_lock
-from mime.assets import AssetRef, Manifest, read_manifest, read_manifest_data
+from mime.assets import AssetRef, Manifest, read_manifest
+from mime.assets._manifest import read_manifest_data
 from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, RefusalClass
 from mime.scene import (
     VISUAL_ASSET,
@@ -52,7 +53,7 @@ FALLBACK = "fallback"
 
 def visuals_dir() -> Path:
     """Where the baked meshes, their records, the overlays and the views live: ``visuals/`` in the asset cache."""
-    from mime.assets import cache_dir
+    from mime.assets._cache import cache_dir
 
     return cache_dir() / VISUALS_DIR
 
@@ -169,7 +170,8 @@ def bake(held: Manifest, *, budget: TriangleBudget = TriangleBudget(), say: Call
     asked, otherwise ``asset.licence-not-accepted``), the drive must have room for the files and for what the bake
     writes (:data:`~mime.assets.BAKE_OUTPUT_FACTOR` of their size), a large download is asked about (``yes`` answers),
     and one that would fill the drive is stopped (``force`` overrides). ``yes`` and ``force`` never accept a licence."""
-    from mime.assets import approved, bake_bytes, resolve
+    from mime.assets import approved, resolve
+    from mime.assets._gates import bake_bytes
 
     files = [(each.path, held.record(each.asset)) for each in held.files]
     sources: list[tuple[str, AssetRef]] = [(path, ref) for path, ref in files if ref is not None]
@@ -368,7 +370,7 @@ def _licences_of_layers(layers: list[Path], index: dict[str, Any]) -> tuple[Any,
     (``<layer>.json``) states its tier and its source's licence; where it states none, the set's ``index`` does (a bake
     an earlier MIME wrote may state neither, and its meshes' licence is then not stated: ``NOASSERTION``, accepted like
     any other). A mesh whose tier is open needs nothing."""
-    from mime.assets import licences_read
+    from mime.assets._gates import licences_read
 
     found: dict[str, Any] = {}
     for layer in layers:
@@ -400,7 +402,7 @@ def overlay(stage_path: Path, *, tiers: frozenset[str] | None = None, accept_lic
     terminal, or in a notebook), or accepted by name (``accept_licences``); where nobody can be asked, or the answer is
     no, that set's meshes are left out (``Overlay.unaccepted``) and its simple shapes stay drawn. Nothing is written
     beside the stage."""
-    from mime.assets import require_licences
+    from mime.assets._gates import require_licences
 
     folder = _folder_of(stage_path)
     manifests = {held.name: held for held in lock_manifests(folder)} if folder is not None else {}

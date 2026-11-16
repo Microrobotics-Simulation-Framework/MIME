@@ -27,7 +27,7 @@ from chain_cases import AR4, AR4_BASE, AR4_HOME
 
 from mime import Apparatus, Body, Experiment, State
 from mime.control import allocation_switch
-from mime.data import asset as packaged
+from mime.assets import asset as packaged
 from mime.drives import Constant
 from mime.dynamics import Arm, Motor, RigidInertial
 from mime.fields import CalibratedMultipole
@@ -35,7 +35,8 @@ from mime.fields._coil_array import calibration_of
 from mime.gradients import GradientStatus
 from mime.interactions import Magnetic
 from mime.registry import ControlLaw, Controller, GradientRecord, Signal, register_controller
-from mime.scene import Scene, Sphere, Z, asset
+from mime.scene import Scene, Sphere, Z
+from mime.assets import asset
 from mime.things import CommandPort, Part
 from mime.units import A, A_m2, N_m, kg, kg_m2, m, m_per_s, m_per_s2, mT, ms, rad, rad_per_s
 

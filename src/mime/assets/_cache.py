@@ -32,7 +32,7 @@ from mime._terminal import plain
 from mime.assets._commands import fetch_command
 from mime.assets._exclusive import LOCK_SUFFIX, exclusive
 from mime.assets._reference import AssetRef, BundleContainer
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._refusals import BuildRefused, Refusal, RefusalClass
 from mime.terms import NO_ASSERTION
 
 ASSETS_DIR_VARIABLE = "MIME_ASSETS_DIR"

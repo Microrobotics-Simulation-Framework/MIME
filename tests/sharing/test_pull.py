@@ -28,6 +28,7 @@ from bundles import contents, lock_with_assets, member, rewrite, write_bundle
 from fake_zenodo import DOI, RECORD, zenodo
 
 from mime import assets
+from mime.assets import _cache, _fetch, _gates
 from mime._said import DONE, STOPPED, kind_of
 from mime.build import BuildRefused
 from mime.cli import main
@@ -469,7 +470,7 @@ def test_a_package_the_lock_names_that_is_not_installed_is_listed_with_the_comma
 def test_the_summary_in_names_and_sizes(saved_toy: Path, tmp_path: Path, rig: Rig, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.chdir(tmp_path)
     cached, fresh = table_reference(rig, SMALL, "cached_table"), table_reference(rig)
-    assets.fetch(cached)
+    _fetch.fetch(cached)
     bundle = with_assets(saved_toy, tmp_path, cached, fresh)
     lines, keywords = said()
     pull(bundle, into="fl9_water", **keywords)  # type: ignore[arg-type]
@@ -490,7 +491,7 @@ def test_the_summary_with_no_assets_says_how_to_fetch_them(saved_toy: Path, tmp_
                                                            monkeypatch: pytest.MonkeyPatch):
     monkeypatch.chdir(tmp_path)
     cached, fresh = table_reference(rig, SMALL, "cached_table"), table_reference(rig)
-    assets.fetch(cached)
+    _fetch.fetch(cached)
     before = rig.requests
     lines, keywords = said(fetch_assets=False)
     pull(with_assets(saved_toy, tmp_path, cached, fresh), into="fl9_water", **keywords)  # type: ignore[arg-type]
@@ -501,7 +502,7 @@ def test_the_summary_with_no_assets_says_how_to_fetch_them(saved_toy: Path, tmp_
         "  - Assets: 1 cached, 1 not downloaded: run `mime assets fetch ./fl9_water/`",
         "  - Packages: all installed",
         "Next: mime verify ./fl9_water/"])]
-    assert not assets.is_cached(fresh)
+    assert not _cache.is_cached(fresh)
 
 
 def test_the_summary_when_the_bundle_references_no_asset(bundle: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -564,7 +565,7 @@ def large(saved_toy: Path, tmp_path: Path, rig: Rig, monkeypatch: pytest.MonkeyP
 
 
 def test_the_threshold_is_a_gigabyte_or_a_tenth_of_the_free_space():
-    assert (assets.CONFIRM_ABOVE_BYTES, assets.CONFIRM_ABOVE_FRACTION) == (1_000_000_000, 0.10)
+    assert (_gates.CONFIRM_ABOVE_BYTES, _gates.CONFIRM_ABOVE_FRACTION) == (1_000_000_000, 0.10)
 
 
 def test_a_download_over_the_threshold_is_asked_about_and_goes_ahead_when_accepted(large: tuple[Path, assets.AssetRef],
@@ -573,7 +574,7 @@ def test_a_download_over_the_threshold_is_asked_about_and_goes_ahead_when_accept
     asked: list[str] = []
     lines, keywords = said(confirm=lambda question: asked.append(question) or True)
     pull(bundle, into="out", **keywords)  # type: ignore[arg-type]
-    assert asked == ["Download 2.0 kB now?"] and assets.is_cached(ref)
+    assert asked == ["Download 2.0 kB now?"] and _cache.is_cached(ref)
     assert "1 downloaded (2 kB)" in lines[-1]
 
 
@@ -582,7 +583,7 @@ def test_a_refused_confirmation_downloads_nothing_and_says_how_to_continue(large
     before = rig.requests
     lines, keywords = said(confirm=lambda question: False)
     folder = pull(bundle, into="out", **keywords)  # type: ignore[arg-type]
-    assert folder.is_dir() and rig.requests == before and not assets.is_cached(ref)
+    assert folder.is_dir() and rig.requests == before and not _cache.is_cached(ref)
     assert "1 not downloaded: run `mime assets fetch ./out/`" in lines[-1]
 
 
@@ -593,7 +594,7 @@ def test_yes_goes_ahead_without_asking(large: tuple[Path, assets.AssetRef], rig:
         raise AssertionError("asked although --yes was given")
 
     pull(bundle, into="out", yes=True, confirm=never)
-    assert assets.is_cached(ref)
+    assert _cache.is_cached(ref)
 
 
 def test_without_a_terminal_and_without_yes_it_stops_with_the_command(large: tuple[Path, assets.AssetRef], rig: Rig):
@@ -604,7 +605,7 @@ def test_without_a_terminal_and_without_yes_it_stops_with_the_command(large: tup
         pull(bundle, into="out", **keywords)  # type: ignore[arg-type]
     assert stopped.value.codes() == ["asset.download-large"]
     assert "--yes" in str(stopped.value) and "2.0 kB" in str(stopped.value)
-    assert rig.requests == before and not assets.is_cached(ref)
+    assert rig.requests == before and not _cache.is_cached(ref)
     assert (Path("out") / "mime.lock").is_file() and "not downloaded" in lines[-1], "the folder and its summary are kept"
 
 
@@ -618,12 +619,12 @@ def test_an_asset_under_the_threshold_is_not_asked_about(saved_toy: Path, tmp_pa
         raise AssertionError("asked about a download at the threshold")
 
     pull(with_assets(saved_toy, tmp_path, ref), into="out", confirm=never)
-    assert assets.is_cached(ref)
+    assert _cache.is_cached(ref)
 
 
 def test_a_cached_asset_is_not_counted_in_the_size_asked_about(large: tuple[Path, assets.AssetRef], rig: Rig):
     bundle, ref = large
-    assets.fetch(ref, yes=True)
+    _fetch.fetch(ref, yes=True)
 
     def never(question: str) -> bool:
         raise AssertionError("asked about an asset already here")
@@ -655,7 +656,7 @@ def test_the_command_exits_two_on_a_refusal_and_names_the_command_for_a_large_do
     assert "asset.download-large" in captured.err and "--yes" in captured.err
     assert "Bundle 'full_toy' unpacked" in captured.out and "mime assets fetch ./out/" in captured.out
     assert main(["pull", str(bundle), "--into", "again", "--yes"]) == 0
-    assert assets.is_cached(ref)
+    assert _cache.is_cached(ref)
 
 
 def test_the_command_asks_on_a_terminal(large: tuple[Path, assets.AssetRef], capsys: pytest.CaptureFixture[str],
@@ -668,7 +669,7 @@ def test_the_command_asks_on_a_terminal(large: tuple[Path, assets.AssetRef], cap
 
     monkeypatch.setattr("sys.stdin", Terminal("n\n"))
     assert main(["pull", str(bundle), "--into", "no"]) == 0
-    assert not assets.is_cached(ref) and "Download 2.0 kB now? [y/N]" in capsys.readouterr().out
+    assert not _cache.is_cached(ref) and "Download 2.0 kB now? [y/N]" in capsys.readouterr().out
     monkeypatch.setattr("sys.stdin", Terminal("y\n"))
     assert main(["pull", str(bundle), "--into", "yes"]) == 0
-    assert assets.is_cached(ref)
+    assert _cache.is_cached(ref)

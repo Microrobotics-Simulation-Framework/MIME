@@ -278,12 +278,12 @@ def test_control_a_second_ar4_file_in_the_wheel_or_bytes_in_its_manifest_fail_th
 
 def test_neither_distribution_holds_a_file_that_may_not_be_redistributed_or_an_unrecorded_mesh(wheel, sdist,
                                                                                              tmp_path, monkeypatch):
-    from mime import assets
+    from mime.assets import _audit
 
     monkeypatch.setenv("MIME_ASSETS_DIR", str(tmp_path / "cache"))
     for built in (wheel.filename, sdist.name):
         assert built is not None
-        report = assets.audit(str(built), manifests=[ROOT / AR4_FOLDER / "visuals.json"])
+        report = _audit.audit(str(built), manifests=[ROOT / AR4_FOLDER / "visuals.json"])
         assert report.findings == (), report.text()
         assert report.files > 100
 
@@ -293,7 +293,7 @@ def test_control_a_planted_copy_in_the_wheel_fails_the_guard(wheel, tmp_path, mo
     none: the guard finds both."""
     import struct
 
-    from mime import assets
+    from mime.assets import _audit
 
     monkeypatch.setenv("MIME_ASSETS_DIR", str(tmp_path / "cache"))
     made = b"made".ljust(80, b"\0") + struct.pack("<I", 2) + bytes(100)
@@ -306,6 +306,6 @@ def test_control_a_planted_copy_in_the_wheel_fails_the_guard(wheel, tmp_path, mo
         for info in source.infolist():
             copy.writestr(info, source.read(info))
         copy.writestr("mime/data/visuals/link.STL", made)
-    found = assets.audit(planted, manifests=[tmp_path / "visuals.json"]).findings
+    found = _audit.audit(planted, manifests=[tmp_path / "visuals.json"]).findings
     assert [(each.path, each.kind) for each in found] == [("mime/data/visuals/link.STL", "referenced")]
-    assert [each.kind for each in assets.audit(planted).findings] == ["unrecorded mesh"]
+    assert [each.kind for each in _audit.audit(planted).findings] == ["unrecorded mesh"]

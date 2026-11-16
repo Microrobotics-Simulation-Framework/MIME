@@ -19,7 +19,7 @@ A chain is the apparatus's `chain` mapping, each segment's name to its dynamics,
 
 <!-- mime-fragment: a chain declared with the elision dots of a sketch (description=..., initial_positions=...), not a complete call -->
 ```python
-Apparatus("rig", chain={"arm": Arm.Dynamic(description=asset("arm.urdf"), initial_positions=...),
+Apparatus("rig", chain={"arm": Arm.Dynamic(description=asset(Path("arm.urdf")), initial_positions=...),
                         "motor": Motor.Dynamic(axis=Z, inertia=..., mount="link_6")}, ...)
 ```
 

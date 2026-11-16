@@ -21,6 +21,7 @@ from mrs_cases import BALL, mrs, mrs_tube, free_space
 
 import mime.env._modal_script as modal_generator
 from mime import assets
+from mime.assets import _lock
 from mime.build import BuildRefused
 from mime.experiment import Experiment
 from mime.nodes.hydro.mrs._tube import UNIT_TUBE
@@ -51,7 +52,7 @@ def edited(saved: Path, target: Path, change) -> Path:
 
 def test_a_tube_experiments_lock_names_the_tube_table_and_its_folder_references_it(saved: Path):
     assert lock_of(saved)["assets"] == [TABLE.to_record()]
-    assert assets.folder_assets(saved) == (TABLE,)
+    assert _lock.folder_assets(saved) == (TABLE,)
 
 
 def test_the_saved_tube_experiment_loads_and_its_modal_script_fetches_its_assets(saved: Path, tmp_path: Path,
@@ -85,7 +86,7 @@ def test_the_tube_experiments_bundle_says_what_a_reuser_needs_of_mimes_own_table
 def test_an_experiment_reading_no_remote_asset_writes_no_key(tmp_path: Path):
     folder = tmp_path / "ball"
     free_space("ball", {"ball": BALL}, mrs(mm(1.5))).build().save(folder, steps=2)
-    assert "assets" not in lock_of(folder) and assets.folder_assets(folder) == ()
+    assert "assets" not in lock_of(folder) and _lock.folder_assets(folder) == ()
 
 
 def test_control_a_lock_without_the_tables_name_is_refused_when_loaded_naming_it(saved: Path, tmp_path: Path):

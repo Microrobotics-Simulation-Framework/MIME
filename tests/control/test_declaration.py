@@ -401,7 +401,8 @@ def test_an_arm_with_a_prismatic_joint_is_refused_as_the_unit_cannot_tell_a_leng
     from chain_cases import DESCRIPTIONS
 
     from mime.control import ArmTracking
-    from mime.scene import X, asset
+    from mime.scene import X
+    from mime.assets import asset
 
     revolute = (DESCRIPTIONS / "three_link_planar.urdf").read_text()
     prismatic = tmp_path / "slider.urdf"

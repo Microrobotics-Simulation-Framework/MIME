@@ -15,6 +15,7 @@ import pytest
 from chain_cases import AR4_VISUALS
 
 from mime import assets
+from mime.assets import _manifest
 from mime.build import BuildRefused
 from mime.terms import CustomLicence
 
@@ -94,7 +95,7 @@ def test_the_ar4s_manifest_is_a_group_of_ordinary_records_each_referenced_by_its
 
 def test_a_manifest_round_trips_through_its_json():
     held = assets.read_manifest(AR4_VISUALS)
-    assert assets.read_manifest_data(held.to_json(), "again").to_json() == held.to_json()
+    assert _manifest.read_manifest_data(held.to_json(), "again").to_json() == held.to_json()
 
 
 def earlier_visual_set(tier: str) -> dict[str, object]:
@@ -109,7 +110,7 @@ def earlier_visual_set(tier: str) -> dict[str, object]:
 
 def test_the_earlier_visual_set_form_is_read_and_its_hand_written_tier_is_not_believed():
     for tier in ("no-redistribution", "open"):
-        held = assets.read_manifest_data(earlier_visual_set(tier), "an earlier set")
+        held = _manifest.read_manifest_data(earlier_visual_set(tier), "an earlier set")
         assert held.assets[0].tier == "referenced", tier
         assert held.file("meshes/a.STL") is not None
 
@@ -119,15 +120,23 @@ def test_the_earlier_visual_set_form_is_read_and_its_hand_written_tier_is_not_be
 def test_a_manifest_of_another_format_or_shape_is_refused_never_misread(change):
     data = copy.deepcopy(assets.read_manifest(AR4_VISUALS).to_json())
     data.update(change)
-    assert codes(lambda: assets.read_manifest_data(data, "planted")) == ["asset.manifest"]
+    assert codes(lambda: _manifest.read_manifest_data(data, "planted")) == ["asset.manifest"]
 
 
 def test_mime_ships_records_of_its_own_assets_only(tmp_path: Path):
-    """MIME's own data holds the wall tables' records and no manifest: a visual set lives beside its description."""
+    """MIME's own data holds the wall tables' records, its packaged files' records (each located inside MIME's own
+    package, and open) and no manifest: a visual set lives beside its description."""
+    from mime.assets._asset import packaged_path
     from mime.assets._sources import shared
 
-    mine = [each for sourced in shared().records.values() for each in sourced if each.source == "mime"]
-    assert mine and all(each.ref.name.startswith(("unit_tube_", "wall_")) or "wall" in each.ref.name for each in mine)
+    mine = [each.ref for sourced in shared().records.values() for each in sourced if each.source == "mime"]
+    packaged = [ref for ref in mine if packaged_path(ref) is not None]
+    tables = [ref for ref in mine if packaged_path(ref) is None]
+    assert tables and all(ref.name.startswith(("unit_tube_", "wall_")) or "wall" in ref.name for ref in tables)
+    assert sorted(ref.name for ref in packaged) == ["cardiomag", "dejongh_mlp_v2", "navion_2", "octomag",
+                                                    "openmaterica_example_ndfeb_n45", "openmaterica_example_water",
+                                                    "sphere_plane_resistance"]
+    assert all(ref.locations == (f"package:mime/{packaged_path(ref)}",) and ref.tier == "open" for ref in packaged)
     assert not [held for source, held in shared().manifests if source == "mime"]
 
 

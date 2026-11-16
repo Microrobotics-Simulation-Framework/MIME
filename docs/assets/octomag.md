@@ -4,7 +4,7 @@
 Packaged as `asset("octomag")`, read by the field provider `CalibratedMultipole`.
 
 **The file.** `src/mime/data/emns_calibrations/octomag.yaml`, byte for byte its upstream's, which every read checks
-(`mime.data.asset_bytes`), its sha256:
+(`mime.assets.Asset.read`), its sha256:
 
 `d0d92541ea3669bb1c4d4daf4acd36b9d3100f728e6270e2aebac53906cc0ad0`
 

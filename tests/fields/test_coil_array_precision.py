@@ -21,7 +21,7 @@ import pytest
 
 from mime import Apparatus, Body, Experiment, State
 from mime.build import BuildRefused
-from mime.data import asset
+from mime.assets import asset
 from mime.dynamics import RigidInertial
 from mime.fields import CalibratedMultipole, allocate
 from mime.fields._coil_array import FLOAT32_BUDGET, calibration_of

@@ -52,7 +52,7 @@ from lubrication_cases import (
 )
 from plane_oracles import brenner
 
-from mime.data import asset, asset_bytes
+from mime.assets import asset
 from mime.nodes.hydro._film import smooth_floor
 from mime.nodes.hydro.mrs._handover import HANDOVER_SPACINGS
 from mime.nodes.hydro.near_contact import AMBIENT_ZERO, LIFT_WIDTH, NearContact, ambient_point, increment, opening
@@ -95,7 +95,7 @@ def pinned(path: Path, sha256: str) -> dict:
 
 
 def table_file() -> dict:
-    return json.loads(asset_bytes(asset(_sphere.TABLE)))
+    return json.loads(asset(_sphere.TABLE).read())
 
 
 def plane_mfs() -> dict:
@@ -115,7 +115,7 @@ def rate(resistance: np.ndarray) -> float:
 
 def test_the_table_is_the_packaged_file_pinned():
     assert asset(_sphere.TABLE).sha256 == TABLE_SHA256
-    assert hashlib.sha256(asset_bytes(asset(_sphere.TABLE))).hexdigest() == TABLE_SHA256
+    assert hashlib.sha256(asset(_sphere.TABLE).read()).hexdigest() == TABLE_SHA256
 
 
 def test_the_tables_build_checks_hold():
@@ -123,7 +123,7 @@ def test_the_tables_build_checks_hold():
     collocated, and the change with the series' length and the quadrature, as the build measured them: its derivation
     record's checks, each within its tolerance (the file holds the numbers the law reads, the checks the record and the
     build's log)."""
-    from mime.assets import shipped_derivations
+    from mime.assets._derivation import shipped_derivations
 
     record = shipped_derivations()[_sphere.TABLE]
     for check in record.checks:
@@ -335,7 +335,7 @@ def test_a_graded_sphere_is_refused_the_spheres_form_with_its_measured_error_and
 def retired(rung: str, written: object) -> Any:
     """The refusal ``lubrication=written`` meets on drag 0.5.0's ``rung`` (a sphere above the plane)."""
     from mime.build import BuildRefused
-    from mime.data import asset
+    from mime.assets import asset
     from mime.interactions import Drag
 
     drag = Drag.MRS(spacing=m(0.2 * RADIUS), wall_kind="plane", lubrication=written) if rung == "mrs" else \

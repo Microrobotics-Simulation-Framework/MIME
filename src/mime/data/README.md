@@ -20,14 +20,16 @@ stops tracking one or ignores it, and `tests/test_packaging.py` if a built distr
 
 ## Status
 
-**`mlp_cholesky_weights_v2.npz`** (151,887 bytes, sha256 `ac1fca5c...0a345`), the drag
-surrogate's weights, as the asset **`dejongh_mlp_v2`**. `asset(name)` names a packaged asset with the sha256 MIME pins
-for it; `asset_bytes` reads its contents and refuses a file whose sha256 is not the one asked for.
-The saved form writes an asset by name and sha256, the lock records its source and sha256, and a load refuses an
-installation that ships other contents under the name: assets by name from MIME's own package. An external file is
-declared by its record (`mime.scene.asset(AssetRef(...))`), wherever it is kept (`mime.assets`).
+**`assets/packaged.json`**: every packaged file below as a record (its name, sha256, size, licence, credit, role and
+kind, located at `package:mime/<path>`), so a packaged file is named as any record is, `asset("dejongh_mlp_v2")`
+(`mime.assets.asset`), and read in place from the installed package, held to the sha256 the experiment pins: a load
+refuses an installation that ships other contents under the name (`asset.hash-mismatch`). The saved form writes it by
+name and sha256, and the lock records where its bytes come from, `mime.data/<path>`.
 
-**`assets/`**: the records of MIME's own remote assets, the wall tables (each with its role and kind, the corrected
+**`mlp_cholesky_weights_v2.npz`** (151,887 bytes, sha256 `ac1fca5c...0a345`), the drag surrogate's weights, as the
+record **`dejongh_mlp_v2`**.
+
+**`assets/`**: beside the packaged files' records, the records of MIME's own remote assets, the wall tables (each with its role and kind, the corrected
 tube table with its derivation record's sha256). MIME's data holds records of its own assets only: a robot's meshes are
 a manifest beside its description (the AR4's in `examples/descriptions/ar4/`), and a lab's records are its package's.
 

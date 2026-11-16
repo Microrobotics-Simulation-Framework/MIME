@@ -177,7 +177,7 @@ class TransferState:
 
     def text(self, now: float) -> str:
         """The line beside the bar: the bytes so far (of the size, where it is known), the speed and the time left."""
-        from mime.assets import size_text
+        from mime.assets._cache import size_text
 
         if self.ended is not None:
             parts = [size_text(self.done)]

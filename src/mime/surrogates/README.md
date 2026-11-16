@@ -63,7 +63,7 @@ Also:
   the margin (`resting_offset`). The build refuses, by name and before any case runs, a case outside the domain
   (`generator.outside-domain`) and an empty set (`generator.no-cases`). `accuracy` judges a surrogate on a held-out set
   per use, stating that it estimates the error against this method at this discretisation and bounds nothing about the
-  flow. Each case's checks are the build's: a case with a failed check produces no data (`mime.assets.derive`). The
+  flow. Each case's checks are the build's: a case with a failed check produces no data (`mime.assets._derivation.derive`, internal). The
   checks cannot see a jump confined to one spacing and gap (MIME-ANO-118).
 
 Releases are explained in the [package manifest](../README.md#status).

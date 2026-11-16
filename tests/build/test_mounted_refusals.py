@@ -33,7 +33,8 @@ from chain_cases import AR4, AR4_BASE, AR4_HOME, DESCRIPTIONS, MAGNET_DENSITY, M
 from mime.build import BuildRefused
 from mime.drives import Constant
 from mime.dynamics import Arm, Motor
-from mime.scene import Cylinder, X, Z, asset
+from mime.scene import Cylinder, X, Z
+from mime.assets import asset
 from mime.testing import first_steps
 from mime.things import Apparatus, Part
 from mime.units import N_m, N_m_s, kg_m2, kg_per_m3, m, mm, ms, rad, rad_per_s

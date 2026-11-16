@@ -33,7 +33,8 @@ from scenery_cases import (BALL_DISPLAY, VESSEL_DISPLAY, VESSEL_MESH, assets, sc
 from mime import Experiment
 from mime.build import BuildRefused
 from mime.observations import Camera
-from mime.scene import Composition, asset, compose
+from mime.scene import Composition, compose
+from mime.assets import asset
 from mime.scene import _compose, _scenery
 from mime.scene._scene import Reference
 from mime.sensing import _scene as scene

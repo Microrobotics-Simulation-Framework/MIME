@@ -38,7 +38,7 @@ import numpy as np
 from hypothesis import strategies as st
 from scipy.optimize import lsq_linear
 
-from mime.data import asset
+from mime.assets import asset
 from mime.fields import CalibratedMultipole
 from mime.fields._coil_array import calibration_of
 from mime.units import m

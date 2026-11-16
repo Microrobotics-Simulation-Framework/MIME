@@ -24,7 +24,7 @@ import pytest
 from chain_cases import tracked_rpm
 from script_a import script_a
 
-from mime.assets import folder_assets
+from mime.assets._lock import folder_assets
 from mime.build import BuildRefused
 from mime.env._check import lock_x64
 from mime.env._modal_script import _read_lock  # pyright: ignore[reportPrivateUsage]

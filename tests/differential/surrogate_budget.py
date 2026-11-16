@@ -21,7 +21,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from mime.data import asset
+from mime.assets import asset
 from mime.nodes.hydro import SurrogateDragNode
 
 ROOT = Path(__file__).resolve().parents[2]

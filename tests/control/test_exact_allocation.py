@@ -51,7 +51,7 @@ import mime.control._allocation as law_module
 from mime.build._refusals import ArgumentRefused
 from mime.control import EXACT_COMMANDS, exact_allocation
 from mime.core import switch
-from mime.data import asset
+from mime.assets import asset
 from mime.fields import CalibratedMultipole, allocate
 from mime.testing import fallback_problems
 from mime.units import A, T_per_m, m, mT, ms, uT

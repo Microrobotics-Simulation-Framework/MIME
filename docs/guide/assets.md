@@ -1,8 +1,7 @@
 # Assets in depth
 
 [Install and environment](install.md#assets-a-run-fetches) says how to fetch what a run needs. This page says what an asset
-is, where an experiment's records come from, where its bytes may go, and how a lab keeps its own copies. The full contract is
-in `src/mime/assets/README.md`.
+is, where an experiment's records come from, where its bytes may go, and how a lab keeps its own copies; the sections below are the whole contract a user relies on.
 
 ## The record
 

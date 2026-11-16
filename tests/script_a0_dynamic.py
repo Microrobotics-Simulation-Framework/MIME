@@ -27,13 +27,13 @@ from script_a import EPSILON, INERTIA, MASS, MOMENT, REASON, REFERENCE_START, VI
     CentreContact, fl9
 
 from mime import Body, Experiment, Medium, State, Structure
-from mime.data import asset
+from mime.assets import asset
 from mime.dynamics import Arm, Motor, RigidInertial
 from mime.fields import PointDipole
 from mime.interactions import KEPT, Gravity, Lubrication, Magnetic
 from mime.observations import SwimSpeed
 from mime.scene import Cylinder, Scene, Tube, X, Z
-from mime.scene import asset as file_asset
+from mime.assets import asset as file_asset
 from mime.things import Apparatus, Part, PermanentMagnet
 from mime.units import A_m2, Hz, N_m_s, kg_m2, kg_per_m3, m, m_per_s, m_per_s2, mm, ms, rad, rad_per_s
 

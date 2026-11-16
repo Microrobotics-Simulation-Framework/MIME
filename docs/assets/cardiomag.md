@@ -4,7 +4,7 @@
 interest. Packaged as `asset("cardiomag")`, read by the field provider `CalibratedMultipole`.
 
 **The file.** `src/mime/data/emns_calibrations/cardiomag.yaml`, byte for byte its upstream's, which every read checks
-(`mime.data.asset_bytes`), its sha256:
+(`mime.assets.Asset.read`), its sha256:
 
 `31bd9b234586497275c8abff6ff292ece7ed029be8b6077b027264870facd51c`
 

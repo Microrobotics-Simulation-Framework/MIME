@@ -19,7 +19,7 @@ import pytest
 from assets_rig import Rig, reference, run_with_rig
 
 from mime import assets
-from mime.assets import _fetch
+from mime.assets import _cache, _fetch
 from mime.build import BuildRefused
 
 PAYLOAD = b"a wall table, in miniature" * 1000
@@ -62,10 +62,10 @@ def a_file_under_each_accepted_name_is_taken_without_a_request(rig: Rig) -> None
         ref = ref_for(rig)
         path = place(rig, name, PAYLOAD)
         inode = path.stat().st_ino
-        taken = assets.fetch(ref)
+        taken = _fetch.fetch(ref)
         assert taken == rig.cache / ref.sha256 and taken.read_bytes() == PAYLOAD
         assert rig.requests == 0, f"{name}: a request was made for a file that was there"
-        assert assets.locate(ref) == taken and assets.is_cached(ref) and assets.check(ref) == "ok"
+        assert _cache.locate(ref) == taken and _cache.is_cached(ref) and assets.check(ref) == "ok"
         untouched(path, PAYLOAD, inode)
         (rig.cache / ref.sha256).unlink()
         (rig.cache / (ref.sha256 + ".verified")).unlink()
@@ -78,7 +78,7 @@ def a_wrong_file_under_the_assets_own_name_is_refused_and_left(rig: Rig) -> None
             ref = ref_for(rig)
             path = place(rig, name, wrong)
             inode = path.stat().st_ino
-            assert codes_of(lambda: assets.fetch(ref)) == ["asset.placed-file"]
+            assert codes_of(lambda: _fetch.fetch(ref)) == ["asset.placed-file"]
             assert codes_of(lambda: assets.resolve(ref)) == ["asset.placed-file"]
             assert rig.requests == 0 and not (rig.cache / ref.sha256).exists()
             untouched(path, wrong, inode)
@@ -89,7 +89,7 @@ def a_wrong_file_under_the_served_name_of_the_right_size_is_refused_and_left(rig
     ref = ref_for(rig)
     path = place(rig, SERVED, OTHER)
     inode = path.stat().st_ino
-    assert codes_of(lambda: assets.fetch(ref)) == ["asset.placed-file"]
+    assert codes_of(lambda: _fetch.fetch(ref)) == ["asset.placed-file"]
     assert rig.requests == 0
     untouched(path, OTHER, inode)
 
@@ -100,7 +100,7 @@ def a_file_of_another_size_under_the_served_name_belongs_to_another_asset(rig: R
     other = b"the r30 table" * 300
     path = place(rig, SERVED, other)
     inode = path.stat().st_ino
-    assert assets.fetch(r40).read_bytes() == PAYLOAD, "the other asset's file blocked this one"
+    assert _fetch.fetch(r40).read_bytes() == PAYLOAD, "the other asset's file blocked this one"
     assert rig.requests == 1
     untouched(path, other, inode)
 
@@ -109,14 +109,14 @@ def an_offline_run_takes_a_placed_file(rig: Rig, patch: pytest.MonkeyPatch) -> N
     patch.setenv("MIME_OFFLINE", "1")
     ref = ref_for(rig)
     place(rig, SERVED, PAYLOAD)
-    assert assets.fetch(ref).read_bytes() == PAYLOAD and rig.requests == 0
+    assert _fetch.fetch(ref).read_bytes() == PAYLOAD and rig.requests == 0
 
 
 def the_sha256_name_is_still_taken_first(rig: Rig) -> None:
     ref = ref_for(rig)
     path = place(rig, ref.sha256, PAYLOAD)
     place(rig, NAME, OTHER)  # a wrong file under the asset's name is never looked at once the sha256 file is right
-    assert assets.fetch(ref) == path and rig.requests == 0
+    assert _fetch.fetch(ref) == path and rig.requests == 0
 
 
 SCENARIOS: list[Callable[[Rig], None]] = [
@@ -151,7 +151,7 @@ def test_a_file_in_a_symlink_is_taken_and_the_link_left(rig: Rig):
     real.write_bytes(PAYLOAD)
     rig.cache.mkdir(parents=True, exist_ok=True)
     (rig.cache / SERVED).symlink_to(real)
-    assert assets.fetch(ref).read_bytes() == PAYLOAD and rig.requests == 0
+    assert _fetch.fetch(ref).read_bytes() == PAYLOAD and rig.requests == 0
     assert (rig.cache / SERVED).is_symlink() and real.read_bytes() == PAYLOAD
 
 

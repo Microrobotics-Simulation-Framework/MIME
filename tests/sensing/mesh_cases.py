@@ -14,7 +14,8 @@ from in_loop_cases import LOOK_ACROSS, ballistic, scene_without_camera
 
 from mime import Experiment
 from mime.observations import Camera, Detector, World
-from mime.scene import Scene, Z, asset
+from mime.scene import Scene, Z
+from mime.assets import asset
 from mime.units import m, ms
 from mime.viz import Mesh, write_mesh
 

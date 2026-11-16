@@ -58,7 +58,7 @@ from mime._said import (
 )
 from mime._terminal import plain
 from mime._transfers import Transfers
-from mime.assets import size_text
+from mime.assets._cache import size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials import Token
 from mime.push._client import Client, Dropped, Errors, Gone, Json, Owner, Transport, owned_refusals
@@ -177,7 +177,7 @@ def token_of(service: Service) -> Token:
     """The token push sends ``service``, and only where MIME may go online (``MIME_OFFLINE`` closes push too). The two
     real services' stored tokens are never the same one: a token stored under the other's name is refused."""
     from mime.credentials import _store
-    from mime.assets import offline
+    from mime.assets._cache import offline
 
     if offline():
         raise BuildRefused([_refuse(

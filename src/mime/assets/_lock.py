@@ -14,7 +14,8 @@ from typing import cast
 
 from mime._lock_json import read_lock
 from mime.assets._reference import AssetRef
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.assets._sources import claims_an_own_name
+from mime._refusals import BuildRefused, Refusal, RefusalClass
 
 #: The lock's file name in a folder (``mime.saved.LOCK_FILE``, which a test holds this to) and the key of its references.
 LOCK_FILE = "mime.lock"
@@ -52,5 +53,8 @@ def folder_assets(folder: str | os.PathLike[str]) -> tuple[AssetRef, ...]:
         if not isinstance(record, dict):
             raise _unreadable(where, f"an entry of {ASSETS_KEY!r} is not an object")
         ref = AssetRef.from_record(cast("dict[str, object]", record))
+        refused = claims_an_own_name(ref)
+        if refused is not None:
+            raise refused
         found.setdefault(ref.sha256, ref)
     return tuple(found.values())

@@ -14,7 +14,8 @@ from robot_asset import bound_robot, robot_file, write_robot
 from mime import Body, PermanentMagnet, State
 from mime.build import BuildRefused
 from mime.dynamics import RigidInertial
-from mime.scene import asset, sha256_hex
+from mime.scene import sha256_hex
+from mime.assets import asset
 from mime.things import PrimPath, Structure
 from mime.units import A_m2, m, m_per_s, mm, rad_per_s
 

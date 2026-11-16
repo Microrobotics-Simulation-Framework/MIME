@@ -27,7 +27,8 @@ from maddening.core.node import BoundaryInputSpec
 
 from mime.build import InteractionBuilder
 from mime.core import MimeNode, NodeFields, as_run_array, node_fields, node_input
-from mime.data import PACKAGED
+from mime.assets import asset
+from mime.assets._asset import packaged_path
 from mime.gradients import GradientStatus
 from mime.interactions import Drag
 from mime.interactions.hydrodynamic import UniformTube, uniform_tube
@@ -101,7 +102,7 @@ def sphere_oracle(read: Mapping[str, Any], settings: Mapping[str, Any]) -> dict[
 # -- the surrogate, again ---------------------------------------------------------------------------------------------
 
 def _weights() -> dict[str, np.ndarray]:
-    path = importlib.resources.files("mime.data") / PACKAGED["dejongh_mlp_v2"].file
+    path = importlib.resources.files("mime.data") / str(packaged_path(asset("dejongh_mlp_v2").ref()))
     with path.open("rb") as handle, np.load(handle) as stored:
         return {key: np.asarray(stored[key]) for key in stored.files}
 

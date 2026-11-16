@@ -674,15 +674,15 @@ def test_the_new_checks_pass_unplanted_twenty_times(tmp_path: Path, capsys: pyte
 def test_a_hosts_own_token_is_kept_beside_the_services_and_read_by_the_adapters_hook(folder: Path):
     """``mime credentials set host:<host>`` keeps a token for an asset adapter that needs one; the resolver's hook
     reads it for that host alone, and a pack searches files for it as for any token held."""
-    from mime import assets
+    from mime.assets import _adapters
 
     value = a_token()
     service = _store.host_service("Files.Lab.Example.org")
     assert service == "host:files.lab.example.org" and _store.is_host_service(service)
     put(service, value)
-    held = assets.stored_credential("files.lab.example.org")
+    held = _adapters.stored_credential("files.lab.example.org")
     assert held is not None and held.host == "files.lab.example.org" and held.token.reveal() == value
-    assert assets.stored_credential("other.example.org") is None
+    assert _adapters.stored_credential("other.example.org") is None
     assert value not in repr(held) and value not in str(held)
     assert any(each.reveal() == value for each in _store.held_tokens())
     assert _store.source(service) == "the credentials file"

@@ -48,7 +48,7 @@ lock records its hash.
   overlays (a ghost of another drag rung could sit at `/Compare/<rung>/<body>`). The layer carries the declared `upAxis`
   and `metersPerUnit`.
 - **One prim per thing**, with `mime:thing` (its kind) and `mime:name` (its name in the document): `/World/<name>` for a
-  thing written in Python, or the prim an asset is referenced at (`scene.reference(asset(path), at="/World/UMR")`) for a body
+  thing written in Python, or the prim an asset is referenced at (`scene.reference(asset(Path(...)), at="/World/UMR")`) for a body
   bound to it. A prim path is an experiment name, recorded in the saved form beside the thing's.
 - **Each geometry kind is a prim** with its kind and version recorded, placed by its transform. A kind with a native USD
   form (a sphere, a capsule, a cylinder) is that primitive; any other is an `Xform` with its shape settings in SI and its

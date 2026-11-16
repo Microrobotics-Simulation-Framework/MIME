@@ -1,7 +1,7 @@
 """A user must be able to annotate what a public function hands them or takes (maintainer's rule, SURFACE-REDUCTION item
 100: keep public every type a user would annotate), so no public signature names a class of ``mime.push``, ``mime.credentials``, ``mime.cli``, ``mime.scaffold``,
 ``mime.blocks``, ``mime.terms``, ``mime.errors``, ``mime.validity``, ``mime.walls``, ``mime.surrogates``,
-``mime.materials``, ``mime.env`` or ``mime.docs`` that no package exports.
+``mime.materials``, ``mime.env``, ``mime.docs`` or ``mime.assets`` that no package exports.
 
 The walk reads each name of the ``__all__`` of every public ``mime`` package: a function's parameters and return, a
 class's fields and the signatures of its public methods and properties. A class of the tooling packages that an
@@ -33,7 +33,7 @@ from mime.push._draft import Drafted
 
 TOOLING = ("mime.push", "mime.credentials", "mime.cli", "mime.scaffold", "mime.blocks",
            "mime.terms", "mime.errors", "mime.validity", "mime.walls", "mime.surrogates", "mime.materials",
-           "mime.env", "mime.docs")
+           "mime.env", "mime.docs", "mime.assets")
 
 #: The small paradigm packages (SURFACE-REDUCTION, PR 4). Their public subpackages (``mime.dynamics.flow``) count as
 #: places a class is exported from, as they are paths a script writes.
@@ -175,6 +175,13 @@ UNDECIDED = {
     "mime.env._check.System": "env.check(system=): stands in for what the check reads, in tests; the check family waits for the DUPLICATES work (rule 4)",
     "mime.env._check.DeviceLike": "env.check(devices=): the same test stand-in, as a protocol over what JAX's devices have; waits with check (rule 4)",
     "mime.materials._records.LoadedRecord": "saved.SavedRecord.records: plumbing of the saved package, which waits for its own reduction",
+    # mime.assets (DUPLICATES PR B with SURFACE-REDUCTION's assets step): types of names the triage keeps or defers.
+    "mime.assets._acceptances.Licence": "Acceptance.licence: Acceptance is kept by the triage while no public call hands one out; decided with it",
+    "mime.assets._reference.Kind": "AssetRef.kind: a record's vocabulary, decided with AssetRef's fields (deferred to DUPLICATES)",
+    "mime.assets._cache.Cached": "check's return: decided with check (deferred to DUPLICATES, the check family)",
+    "mime.assets._manifest.ManifestFile": "Manifest.files: decided with Manifest (deferred to DUPLICATES, the Manifest family)",
+    "mime.assets._derivation.Json": "CheckResult's JSON values: decided with CheckResult (deferred to DUPLICATES, the check family)",
+    "mime.assets._gates.Approval": "approved's return: approved is held public (the README and mime modal's script teach it); decided with it",
 }
 
 #: The paradigm packages' own, kept apart from the tooling list above. Each is judged by one line: would a user write
@@ -263,6 +270,24 @@ def test_the_walk_reads_the_paradigm_packages_and_counts_a_public_submodule_as_a
     found = private_types(exported(), {"planted": planted_private})
     assert found and any(f"names {package}." in found[0] for package in GUARDED), found
     assert not private_types(exported(), {"planted": planted_exported_by_a_submodule})
+
+
+def test_the_walk_reads_mime_assets_and_finds_a_private_type_of_it():
+    """The control for ``mime.assets`` (DUPLICATES PR B): a function returning its internal ``Plan`` (a download's plan,
+    exported by nothing) is found under the guarded packages, and one returning ``AssetRef`` is not."""
+    from mime.assets import AssetRef
+    from mime.assets._gates import Plan
+
+    def planted_private() -> Plan:
+        raise NotImplementedError
+
+    def planted_public() -> AssetRef:
+        raise NotImplementedError
+
+    found = private_types(exported(), {"planted": planted_private})
+    assert found and "names mime.assets._gates.Plan" in found[0] and any(
+        "names mime.assets." in found[0] for package in GUARDED if package == "mime.assets"), found
+    assert not private_types(exported(), {"planted": planted_public})
 
 
 def test_the_walk_reads_env_and_docs_and_finds_an_unexported_type_of_each():

@@ -20,6 +20,7 @@ from push_cases import copy_of, saved_toy, with_token, write_manifest
 from zenodo_records import FakeRecords, served
 
 from mime import assets
+from mime.assets import _fetch
 from mime.push import _client, _draft, _publish, _records, _service
 from mime.assets import _fetch
 from mime.build import BuildRefused
@@ -163,11 +164,11 @@ def test_an_asset_location_under_the_test_prefix_is_never_resolved(rig: Rig, mon
     asked = doi_org_asked(monkeypatch)
     ref = assets.AssetRef("sandboxed", "ab" * 32, 10, "CC0-1.0", ("doi:10.5072/zenodo.629525/t.npz",), unlisted=True)
     with pytest.raises(BuildRefused):
-        assets.fetch(ref)
+        _fetch.fetch(ref)
     assert asked == []
     monkeypatch.setattr(_fetch, "TEST_DOI", "doi:10.0000/")
     with pytest.raises(BuildRefused):
-        assets.fetch(ref)
+        _fetch.fetch(ref)
     assert any("doi.org" in url for url in asked), "the control: without the guard, doi.org is asked"
 
 

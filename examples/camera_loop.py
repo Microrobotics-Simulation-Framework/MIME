@@ -52,10 +52,9 @@ from typing import Any, NamedTuple
 
 import jax
 
-from mime import Apparatus, Body, CommandPort, Experiment, Measurement, State
+from mime import Apparatus, Body, CommandPort, Experiment, Measurement, State, asset
 from mime.control import allocation_switch
 from mime.core import quaternion, switch
-from mime.data import asset
 from mime.dynamics import RigidInertial
 from mime.fields import CalibratedMultipole
 from mime.gradients import GradientStatus

@@ -40,7 +40,7 @@ from types import MappingProxyType
 from typing import Protocol, cast
 
 from mime.assets._reference import AssetRef
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._refusals import BuildRefused, Refusal, RefusalClass
 from mime.terms import NO_ASSERTION, Verdict, derived_verdict, strictest
 
 #: A value a record holds: what JSON writes.

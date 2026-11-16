@@ -153,10 +153,10 @@ def staleness(surrogate: Surrogate, current: Mapping[str, Any] | None = None) ->
     """Why ``surrogate`` is stale, from its derivation record's inputs against ``current`` (what plays each role now,
     ``current_inputs()`` by default); none when every input it names is the one in use. A role the record names that
     neither ``current`` nor ``UNJUDGED_ROLES`` has (a misspelling) is refused, not passed as fresh."""
-    from mime import assets
+    from mime.assets import _derivation
 
-    record = assets.derivation_of(surrogate.provenance.derivation)
-    return assets.stale_inputs(record, current_inputs() if current is None else current, unjudged=UNJUDGED_ROLES)
+    record = _derivation.derivation_of(surrogate.provenance.derivation)
+    return _derivation.stale_inputs(record, current_inputs() if current is None else current, unjudged=UNJUDGED_ROLES)
 
 
 __all__ = ["OUTPUTS", "REFERENCE_POINTS", "UNJUDGED_ROLES", "Accuracy", "Evaluator", "Provenance", "Surrogate",

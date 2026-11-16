@@ -12,11 +12,11 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from mime.core import jnp
-from mime.data import asset, asset_bytes
+from mime.assets import asset
 from mime.surrogates import _cholesky_mlp
 from mime.surrogates._cholesky_mlp import DIAGONAL_FLOOR, TRIANGLE, cholesky_resistance, read_cholesky_mlp
 
-NETWORK = read_cholesky_mlp(asset_bytes(asset("dejongh_mlp_v2")))
+NETWORK = read_cholesky_mlp(asset("dejongh_mlp_v2").read())
 
 #: How many standard deviations about the stored mean the network's outputs are drawn over: its outputs are the stored
 #: statistics' normalised values, which a trained network keeps within a few of them.

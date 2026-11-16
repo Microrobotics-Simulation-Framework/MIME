@@ -21,7 +21,8 @@ from _terminal_support import stripped, terminal
 from chain_cases import AR4_VISUALS
 
 from mime import assets
-from mime.assets import AssetRef
+from mime.assets import AssetRef, _cache, _known
+from mime.assets._asset import packaged_path
 from mime.cli import main
 from mime.cli import _display
 from mime.cli._display import show_pending
@@ -76,9 +77,21 @@ def ar4_sets(monkeypatch: pytest.MonkeyPatch) -> None:
 # --- mime assets list ------------------------------------------------------------------------------------------------------
 
 
+def stored(ref: AssetRef) -> str:
+    """A packaged file is read in place, so the list says so rather than missing (DUPLICATES PR B)."""
+    return "packaged" if packaged_path(ref) is not None else "cached" if _cache.is_cached(ref) else "missing"
+
+
 def old_assets_list() -> str:
-    return "".join(f"{ref.name}  {assets.size_text(ref.size)}  {'cached' if assets.is_cached(ref) else 'missing'}  "
-                   f"{ref.licence}\n" for ref in assets.known().values())
+    return "".join(f"{ref.name}  {_cache.size_text(ref.size)}  {stored(ref)}  {ref.licence}\n"
+                   for ref in _known.known().values())
+
+
+def test_mimes_packaged_files_are_listed_as_packaged(capsys: pytest.CaptureFixture[str]):
+    out, _, code = piped(capsys, "assets", "list")
+    lines = {line.split("  ")[0]: line.split("  ")[2] for line in out.splitlines()}
+    assert code == 0 and lines["dejongh_mlp_v2"] == lines["navion_2"] == "packaged"
+    assert lines["unit_tube_R0.997"] in ("cached", "missing")
 
 
 def test_piped_assets_list_is_what_it_was(capsys: pytest.CaptureFixture[str]):
@@ -92,8 +105,8 @@ def test_assets_list_on_a_terminal_is_a_table_of_name_size_cached_licence_and_ti
     text = stripped(drawn)
     assert code == 0 and re.search(r"name\s+size\s+cached\s+licence\s+tier", text)
     assert holds_every_word_of(old_assets_list(), text)
-    for ref in assets.known().values():
-        assert re.search(rf"{re.escape(ref.name)}\s+{re.escape(assets.size_text(ref.size))}\s+\S+\s+{re.escape(ref.licence)}"
+    for ref in _known.known().values():
+        assert re.search(rf"{re.escape(ref.name)}\s+{re.escape(_cache.size_text(ref.size))}\s+\S+\s+{re.escape(ref.licence)}"
                          rf"\s+{ref.tier}", text), ref.name
 
 
@@ -123,7 +136,7 @@ def test_control_the_table_forced_on_a_pipe_is_caught_by_the_oracle(monkeypatch:
 
 def old_sources(ref: AssetRef) -> str:
     custom = ref.custom[ref.licence]
-    lines = [f"{ref.name}  {assets.size_text(ref.size)}  not cached  sha256 {ref.sha256}",
+    lines = [f"{ref.name}  {_cache.size_text(ref.size)}  not cached  sha256 {ref.sha256}",
              f"  terms: licence {ref.licence} ({custom.title}, {custom.url}); tier referenced (not permitted, referenced); "
              f"role presentation; kind authored; credit {ref.credit}",
              "  its bytes never travel inside a bundle, a push or a package: only this record does",
@@ -206,7 +219,8 @@ def test_visuals_list_with_nothing_says_how_to_get_a_set(monkeypatch: pytest.Mon
 @needs_pty
 def test_licences_on_a_terminal_is_a_table_and_piped_a_line_each(monkeypatch: pytest.MonkeyPatch,
                                                                  capsys: pytest.CaptureFixture[str]):
-    from mime.assets import Licence, _acceptances
+    from mime.assets import _acceptances
+    from mime.assets._gates import Licence
 
     licence = Licence("LicenseRef-Maker-NonCommercial", "Maker Licence 1.1", "https://example.org/licence",
                       ("non-commercial use only",))
@@ -225,7 +239,8 @@ def test_licences_table_keeps_an_id_whole_where_the_terminal_has_room_for_it_how
         monkeypatch: pytest.MonkeyPatch):
     """The id is what ``--revoke`` takes, and a folded id cannot be pasted: with a long title and a long link competing
     for the width, the id (which fits in half the terminal) is still one piece."""
-    from mime.assets import Licence, _acceptances
+    from mime.assets import _acceptances
+    from mime.assets._gates import Licence
 
     long_id = "LicenseRef-" + "Maker-Of-Meshes-" * 3 + "NonCommercial"
     assert len(long_id) + 2 <= COLUMNS // 2
@@ -240,7 +255,8 @@ def test_licences_table_keeps_an_id_whole_where_the_terminal_has_room_for_it_how
 def test_licences_table_draws_a_strangers_title_as_plain_characters(monkeypatch: pytest.MonkeyPatch):
     """An acceptance holds the title and link a manifest gave: no escape sequence of theirs reaches the terminal, and a
     newline in a title is not a row of the table's of its own."""
-    from mime.assets import Licence, _acceptances
+    from mime.assets import _acceptances
+    from mime.assets._gates import Licence
 
     _acceptances.remember([Licence("LicenseRef-Maker", "Maker \x1b[2J\x1b]0;pwned\x07 Licence\nI accept everything\n",
                                    "https://example.org/\x1b[99mlicence", ())])

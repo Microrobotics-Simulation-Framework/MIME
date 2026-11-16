@@ -82,16 +82,17 @@ def test_the_namespace_is_filled_in_the_six_places_it_appears(tmp_path: Path):
     assert project["mime.assets"] == {NAMESPACE: f"{PACKAGE}.records"}  # 2
     assert f'NAMESPACE, VERSION = "{NAMESPACE}", "0.1.0"' in held[f"src/{PACKAGE}/entries/_vocabulary.py"]  # 3
     assert f'name = "{NAMESPACE}.example_load"' in held[f"src/{PACKAGE}/entries/example_load.py"]  # 4
-    assert json.loads(held[f"src/{PACKAGE}/records/records.json"])["assets"][0]["name"] == f"{NAMESPACE}_example_record"  # 5
+    assert json.loads(held[f"src/{PACKAGE}/records/records.json"])["assets"][0]["name"] == f"{NAMESPACE}.example_record"  # 5
     assert f"`{NAMESPACE}.example_load:probe`" in held["examples/example.py"]  # 6
     assert f"package:{NAMESPACE}/data/example.json" in held[f"src/{PACKAGE}/records/records.json"]
 
 
 def test_the_naming_rule_is_written_as_comments(tmp_path: Path):
     text = files_of(scaffolded(tmp_path))[f"src/{PACKAGE}/entries/_vocabulary.py"]
-    assert f"`{NAMESPACE}.example_load`" in text and f"`{NAMESPACE}_example_record`" in text
+    assert f"`{NAMESPACE}.example_load`" in text and f"`{NAMESPACE}.example_record`" in text
     assert f"`{NAMESPACE}.example_load:probe`" in text
-    assert "with a dot" in text and "with an underscore" in text and "with a colon" in text
+    assert "with a dot" in text and "with a dot too" in text and "with a colon" in text
+    assert "with an underscore" not in text, "a record is named with a dot, as an entry is (record item 101)"
 
 
 def test_no_placeholder_or_escape_is_left_in_any_file(tmp_path: Path):

@@ -11,7 +11,7 @@ import materica
 from script_a import INERTIA, MASS, MOMENT, VOLUME, WATER, fl9
 
 from mime import Apparatus, Body, Experiment, Medium, State, Structure
-from mime.data import asset, asset_bytes
+from mime.assets import asset
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotating
 from mime.interactions import KEPT, Gravity, Lubrication, Magnetic
@@ -26,7 +26,7 @@ N45_BOUNDS = (1.32, 1.37)
 
 
 def example_water() -> dict:
-    return json.loads(asset_bytes(asset("openmaterica_example_water")).decode(), parse_int=float)
+    return json.loads(asset("openmaterica_example_water").read().decode(), parse_int=float)
 
 
 def water_at_37(folder: Path) -> Path:

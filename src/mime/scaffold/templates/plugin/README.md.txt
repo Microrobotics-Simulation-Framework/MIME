@@ -50,10 +50,11 @@ filter by namespace.
 
 The namespace `${namespace}` is filled in six places from one value: the `mime.entries` and `mime.assets` entry points in
 `pyproject.toml`, `src/${package}/entries/_vocabulary.py`, the entry's name, the record's name and the instance in
-`examples/`. Three separators, as MIME names things today:
+`examples/`. Two separators:
 
-- an entry, with a dot: `${namespace}.example_load`;
-- a record, with an underscore: `${namespace}_example_record`;
+- an entry, and a record, with a dot: `${namespace}.example_load`, `${namespace}.example_record` (a script names the
+  record `asset("${namespace}.example_record")`; a record's earlier spelling with an underscore is still found in this
+  release);
 - an instance of an entry on a thing, with a colon: `${namespace}.example_load:probe`.
 
 One name is one concept: a class or entry name that another layer already uses for something else is not reused (MIME's
