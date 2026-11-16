@@ -325,9 +325,12 @@ live.input-mode               user
 live.input-unknown            user
 live.input-value              user
 live.log                      user
+live.log-exists               user
+live.message-too-large        user environment
 live.pace                     user
 live.protocol                 user
 live.record                   user
+live.record-budget            user
 live.select                   user
 live.stage-writer             user
 live.state                    user

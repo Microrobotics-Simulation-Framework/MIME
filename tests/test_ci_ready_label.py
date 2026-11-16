@@ -136,7 +136,7 @@ class Run:
     attempt: int = 1
     mode: str = "full"
     jobs: int | None = 63
-    platforms: int | None = 5
+    platforms: int | None = 6
     changed: tuple[str, ...] = ()
     lanes: frozenset[str] = ALL_LANES
 
@@ -754,10 +754,13 @@ PLANTS = {
     "platforms-in-a-reduced-run": (
         "platforms.yml", lambda t: in_job(t, "smoke", "    if: needs.mode.outputs.full == 'true'\n", ""),
         "platforms.yml: a push to a pull request without the label: starts 5 jobs; the reduced set is 1"),
+    "live-in-a-reduced-run": (
+        "platforms.yml", lambda t: in_job(t, "live", "    if: needs.mode.outputs.full == 'true'\n", ""),
+        "platforms.yml: a push to a pull request without the label: starts 2 jobs; the reduced set is 1"),
     "platforms-reads-the-event": (
         "platforms.yml", lambda t: in_job(t, "smoke", "    if: needs.mode.outputs.full == 'true'\n",
                                           f"    if: github.event_name != 'pull_request' || {FROM_THE_EVENT}\n"),
-        "platforms.yml: a re-run after ready was added: starts 1 jobs; the full set is 5"),
+        "platforms.yml: a re-run after ready was added: starts 2 jobs; the full set is 6"),
     "platforms-marker-missing": (
         "platforms.yml", lambda t: in_job(t, "mode", "      - name: The full matrix runs\n", "      - name: Done\n"),
         "platforms.yml: the step 'The full matrix runs' does not run in the full set"),

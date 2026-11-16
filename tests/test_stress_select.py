@@ -471,3 +471,231 @@ def test_the_assumed_weight_of_an_unlisted_file_is_the_shard_deals():
 
     assert stress.table_seconds()[1] == sharding.new_file_weight()
     assert stress.table_seconds()[0] == sharding.load_seconds()
+
+
+# A file the table splits is dealt by test --------------------------------------------------------------------------------
+
+#: A heavy file the table splits (twelve listed tests of 100 seconds, one of 330, three tests the table does not list) and
+#: two files it does not.
+BY_TEST = {"tests/a/test_heavy.py": {**{f"test_h{i}[{i}]": 100 for i in range(12)}, "test_slow": 330}}
+UNLISTED_TESTS = {"tests/a/test_heavy.py": ["test_small_a", "test_small_b[1]", "test_small_b[2]"]}
+PLANTED = {"tests/a/test_heavy.py": 1530, "tests/a/test_mid1.py": 600, "tests/b/test_mid2.py": 500}
+HEAVY = "tests/a/test_heavy.py"
+
+
+def universe(by_test=None, extra=()) -> dict[str, list[str]]:
+    """The tests of each planted file, as pytest would collect them: the listed ones and the ones the table lacks."""
+    tests = {file: [*names] for file, names in (BY_TEST if by_test is None else by_test).items()}
+    tests[HEAVY] = [*tests.get(HEAVY, []), *UNLISTED_TESTS[HEAVY], *extra]
+    return tests
+
+
+def planted_ask(body: str = "", changed: list[str] | None = None, runs: int = 20, by_test=None, extra=()) -> stress.Request:
+    """The planted table's selection; ``extra`` is more tests of the heavy file that the table does not list."""
+    by_test = BY_TEST if by_test is None else by_test
+    names = {file: {n.split("[")[0] for n in universe(by_test, extra)[file]} for file in by_test}
+    return stress.select(f"stress: runs={runs} {body}", changed or list(PLANTED), lambda path: path in PLANTED, lambda: 7,
+                         (PLANTED, UNLISTED), by_test, names)
+
+
+def collected_by(parts, tests: dict[str, list[str]]) -> dict[str, list[int]]:
+    """Per test of ``tests`` (``file::name``), the parts that run it, as pytest reads a part's arguments: a file runs all its
+    tests, a node id the test of that id and its parameters, and a ``--deselect`` drops by prefix, from every argument."""
+    runs: dict[str, list[int]] = {f"{file}::{name}": [] for file, names in tests.items() for name in names}
+    for number, part in enumerate(parts):
+        dropped = tuple(a.split("=", 1)[1] for a in part if a.startswith("--deselect="))
+        chosen = set[str]()
+        for argument in (a for a in part if not a.startswith("-")):
+            chosen |= {t for t in runs if t == argument or t.startswith(argument + "[")
+                       or ("::" not in argument and t.split("::", 1)[0] == argument)}
+        for test in sorted(chosen):
+            if not test.startswith(dropped):
+                runs[test].append(number)
+    return runs
+
+
+def listed_seconds(part, tests: dict[str, int]) -> int:
+    """The seconds of the listed tests a part of the split file runs, as the table has them: with the file itself, every
+    listed test its ``--deselect`` options leave."""
+    if HEAVY in part:
+        dropped = {a.split("::", 1)[1] for a in part if a.startswith("--deselect=")}
+        return sum(sec for name, sec in tests.items() if name not in dropped)
+    return sum(tests.get(a.split("::", 1)[1], 0) for a in part if "::" in a and not a.startswith("-"))
+
+
+def test_a_file_the_table_splits_is_dealt_by_test_and_no_part_is_over_the_budget():
+    request = planted_ask()
+    assert sum(any(a.startswith(HEAVY) for a in part) for part in request.parts) > 1, "the heavy file is in one part, whole"
+    for part in request.parts:
+        assert listed_seconds(part, BY_TEST[HEAVY]) <= stress.PART_SECONDS + 330, part
+    before = planted_ask(by_test={})  # the table without the split: the file is one unit, in one part
+    assert sum(HEAVY in part for part in before.parts) == 1 and not any("::" in a for part in before.parts for a in part)
+
+
+def test_a_file_the_table_does_not_split_stays_whole_in_one_part():
+    request = planted_ask()
+    for file in ("tests/a/test_mid1.py", "tests/b/test_mid2.py"):
+        assert sum(a == file for part in request.parts for a in part) == 1
+        assert not any(file in a and a != file for part in request.parts for a in part)
+    only = planted_ask(f"{HEAVY}::test_slow only", [])
+    assert only.parts == ((f"{HEAVY}::test_slow",),)  # a node id alone is one part, not dealt again
+
+
+def test_every_test_of_a_split_file_is_in_exactly_one_part_the_listed_and_the_ones_the_table_lacks():
+    request = planted_ask()
+    assert len(request.parts) > 2
+    where = collected_by(request.parts, universe())
+    assert {t: n for t, n in where.items() if len(n) != 1} == {}
+    assert len(where) == len(universe()[HEAVY])
+    assert all(part for part in request.parts)
+
+
+def test_every_test_of_a_split_file_is_run_once_per_run_in_the_matrix():
+    for runs in (1, 5, 20):
+        request = planted_ask(runs=runs)
+        jobs = request.matrix()["include"]
+        assert len(jobs) == runs * len(request.parts) and {j["run"] for j in jobs} == set(range(1, runs + 1))
+        for test, parts in collected_by(request.parts, universe()).items():
+            assert sum(j["index"] in parts for j in jobs) == runs, test
+
+
+def test_control_the_reading_of_a_part_names_a_test_lost_doubled_or_taken_by_a_deselects_prefix():
+    request = planted_ask()
+    carried = next(part for part in request.parts if HEAVY in part)
+    no_deselect = [tuple(a for a in part if not a.startswith("--deselect=")) for part in request.parts]
+    assert any(len(n) > 1 for n in collected_by(no_deselect, universe()).values())
+    lost = [part for part in request.parts if part is not carried]
+    assert any(len(n) == 0 for n in collected_by(lost, universe()).values())
+    assert any(len(n) > 1 for n in collected_by([*request.parts, carried], universe()).values())
+    # a deselect of a name that is a prefix of an unlisted test's takes that test too: what pinning avoids
+    taken = {HEAVY: ["test_z", "test_zz_unlisted"]}
+    assert collected_by([(HEAVY, f"--deselect={HEAVY}::test_z")], taken) == {f"{HEAVY}::test_z": [], f"{HEAVY}::test_zz_unlisted": []}
+
+
+def test_a_listed_name_that_is_a_prefix_of_another_test_is_run_by_the_part_with_the_file_never_deselected():
+    pair = {HEAVY: {**{f"test_h{i}[{i}]": 100 for i in range(12)}, "test_h": 700, "test_h_more[1]": 100}}
+    request = planted_ask(by_test=pair, extra=["test_hx"])
+    assert len(request.parts) > 2
+    where = collected_by(request.parts, universe(pair, ["test_hx"]))
+    assert {t: n for t, n in where.items() if len(n) != 1} == {}
+    assert not any(a == f"--deselect={HEAVY}::test_h" for part in request.parts for a in part)
+
+
+def test_a_split_file_whose_listed_tests_are_all_pinned_is_dealt_whole():
+    tricky = {HEAVY: {"test_a": 700, "test_a_more": 700}}
+    request = planted_ask(by_test=tricky)
+    assert sum(a == HEAVY for part in request.parts for a in part) == 1
+    assert not any(a.startswith("--deselect") or "::" in a for part in request.parts for a in part)
+
+
+@given(st.dictionaries(st.from_regex(r"test_[a-z]{1,4}(\[[0-9]\])?", fullmatch=True), st.integers(1, 400), min_size=1,
+                       max_size=40), st.integers(1, 40), st.lists(st.from_regex(r"test_[a-z]{1,5}", fullmatch=True), max_size=5))
+def test_whatever_a_split_files_tests_every_one_is_in_one_part_and_no_job_is_given_nothing_to_run(tests, runs, extra):
+    by_test = {HEAVY: tests}
+    request = planted_ask(runs=runs, changed=[HEAVY], by_test=by_test, extra=extra)
+    names = universe(by_test, [e for e in extra if e not in tests and not any(t.startswith(e + "[") for t in tests)])
+    names[HEAVY] = list(dict.fromkeys(names[HEAVY]))
+    where = collected_by(request.parts, names)
+    assert {t: n for t, n in where.items() if len(n) != 1} == {}
+    assert len(request.matrix()["include"]) <= 256
+    assert all(any(parts == [number] for parts in where.values()) for number in range(len(request.parts)))
+
+
+def test_the_committed_tables_split_files_are_dealt_in_parts_within_the_budget():
+    """Each split file of the real table, selected alone (so as a change to it would be): its parts' listed seconds are at
+    most the budget and the heaviest listed test, over what the part that carries the file's unlisted and pinned tests adds."""
+    table = json.loads(stress.WEIGHTS.read_text(encoding="utf-8"))
+    for file, tests in table.get("split", {}).items():
+        request = stress.select(f"stress: {file} only", [], lambda path: True, lambda: 1)
+        assert len(request.parts) > 1, file
+        pinned = stress.pinned_tests(tests, stress.defined_tests(file))
+        extra = table["seconds"][file] - sum(tests.values()) + sum(tests[name] for name in pinned)
+        loads = [sum(sec for name, sec in tests.items() if name not in pinned and (f"{file}::{name}" in part or (
+            file in part and f"--deselect={file}::{name}" not in part))) for part in request.parts]
+        assert max(loads) <= stress.PART_SECONDS + max(tests.values()) + max(extra, 0), (file, loads)
+        assert sum(loads) == sum(sec for name, sec in tests.items() if name not in pinned)
+
+
+def test_the_caches_of_a_split_file_are_the_shards_of_the_listed_tests_a_part_runs_and_options_are_not_files():
+    import _sharding as sharding
+
+    listed = sharding.load_split()
+    file = next(iter(listed))
+    dealt, split = sharding.deal(sharding.load_weights(), 6), set(listed)
+    names = list(listed[file])
+
+    def shard(name: str) -> str:
+        return f"{sharding.shard_of(f'{file}::{name}', 6, dealt, split)}/6"
+
+    assert stress.cache_shards([f"{file}::{names[0]}"], 6) == [shard(names[0])]
+    assert stress.cache_shards([f"{file}::{names[0]}", f"--deselect={file}::{names[1]}"], 6) == [shard(names[0])]
+    only = stress.cache_shards([file, *(f"--deselect={file}::{n}" for n in names[1:])], 6)
+    assert only == [shard(names[0])]
+
+
+# By real pytest ---------------------------------------------------------------------------------------------------------
+
+REAL = "tests/a/test_real.py"
+LETTERS = "abcdefghijkl"  # test_fa .. test_fl: no one leads another
+REAL_SOURCE = '''import pytest
+
+
+class TestC:
+    def test_a(self): ...
+    def test_ab(self): ...
+
+
+class TestD:
+    def test_a(self): ...
+
+
+@pytest.mark.parametrize("v", ["x", "x1"])
+def test_p(v): ...
+
+
+''' + "".join(f"def test_f{c}(): ...\n" for c in LETTERS)
+
+
+def collected_by_pytest(root: Path, parts) -> dict[str, int]:
+    """How many parts' arguments (read by ``pytest --collect-only`` in ``root``) collect each test."""
+    import subprocess
+
+    def collect(arguments) -> list[str]:
+        done = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", "--rootdir",
+                               str(root), "-c", "/dev/null", *arguments], cwd=root, capture_output=True, text=True, check=False)
+        assert done.returncode in (0, 5), done.stdout + done.stderr
+        return [line for line in done.stdout.splitlines() if "::" in line and " " not in line]
+
+    counts = dict.fromkeys(collect([REAL]), 0)
+    for part in parts:
+        for nodeid in collect(list(part)):
+            counts[nodeid] += 1
+    return counts
+
+
+@pytest.mark.parametrize("carrier_first", [True, False])
+def test_by_real_pytest_a_class_method_whose_name_leads_another_methods_is_not_taken_by_a_deselect(tmp_path, carrier_first):
+    """``--deselect`` matches by the whole id, ``file::TestC::test_a``, so it also takes ``file::TestC::test_ab``; the table
+    lists the first and not the second. The review's plant: a bare function name list missed it, and ``test_ab`` was run by no
+    part. A parametrized pair beside it (``test_p[x]``, ``test_p[x1]``: the id ends in ``]``, so neither leads the other)
+    is dealt apart."""
+    (tmp_path / REAL).parent.mkdir(parents=True)
+    (tmp_path / REAL).write_text(REAL_SOURCE, encoding="utf-8")
+    listed = {**{f"test_f{c}": 100 for c in LETTERS}, "TestC::test_a": 100 if carrier_first else 300, "TestD::test_a": 100,
+              "test_p[x]": 100, "test_p[x1]": 100}
+    assert stress.defined_tests(REAL, tmp_path) >= {"TestC::test_a", "TestC::test_ab", "TestD::test_a", "test_p"}
+    assert stress.pinned_tests(listed, stress.defined_tests(REAL, tmp_path)) == {"TestC::test_a"}
+    request = stress.select(f"stress: {REAL} only", [], lambda path: True, lambda: 1, ({REAL: sum(listed.values())}, 70),
+                            {REAL: listed}, {REAL: stress.defined_tests(REAL, tmp_path)})
+    assert len(request.parts) > 1
+    counts = collected_by_pytest(tmp_path, request.parts)
+    assert len(counts) == 12 + 2 + 1 + 2 and {t: c for t, c in counts.items() if c != 1} == {}
+    assert f"{REAL}::TestC::test_ab" in counts
+
+
+def test_control_a_name_list_without_the_classes_would_have_left_a_method_in_no_part():
+    """The old reading: bare function names. ``test_a`` is then no prefix of ``test_ab`` as ``TestC::test_a`` is, so the
+    guard passes the listed ``TestC::test_a`` for a deselect."""
+    listed = {"TestC::test_a": 100, "test_f0": 100}
+    assert stress.pinned_tests(listed, {"test_a", "test_ab", "test_f0"}) == set()
+    assert stress.pinned_tests(listed, {"TestC::test_a", "TestC::test_ab", "test_f0"}) == {"TestC::test_a"}

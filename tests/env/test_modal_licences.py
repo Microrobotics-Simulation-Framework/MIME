@@ -24,7 +24,7 @@ import mime.env._modal_script as generator
 from mime import assets
 from mime.assets import AssetRef, _gates
 from mime.assets._acceptances import remember
-from mime.env import modal_script
+from mime.env._modal_script import modal_script
 from mime.saved import LOCK_FILE
 from mime.terms import CustomLicence
 from mime.testing.toys import full_toy

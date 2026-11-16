@@ -30,7 +30,8 @@ from planted_nodes import AFTER_FIRST_FREE, FIRST_FREE, ROWS, KeeperNode, NamedL
     TakesNextNode, UsurperNode
 
 from mime.core import switch
-from mime.docs import read_list, row_key
+from mime.docs._lists import read_list
+from mime.docs._symbols import row_key
 from mime.docs._check import LISTS, Report, bibliography_keys, entry_problems, list_path, node_classes, read_lists
 from mime.docs._export import load_namespaces
 from mime.docs._walk import is_documented
@@ -65,7 +66,7 @@ def test_mime_docs_check_passes_on_the_checkout():
               r"ledger \(unpaged\.txt\): \d+ lines", r"exempt from the hand-written half by namespace \(toy\): \d+",
               r"outside MIME, without a hand-written source here, counted, not failed: labx \d+ ",
               r"number tokens: a number token is a run of digits", r"number rule: \d+ files \(\d+ package READMEs",
-              r"same-token groups \(lines of one file carrying the same tokens\): \d+", r"idioms: 8 ",
+              r"same-token groups \(lines of one file carrying the same tokens\): \d+", r"idioms: 9 ",
               r"word-numeral warnings: \d+, never a failure", re.escape(f"lists: {lengths}"),
               r"pages: \d+ \(.*\) from \d+ hand-written sources in [\d.]+ s", r"hatches printed: ",
               r"citations: \d+ in \d+ pages and sources, \d+ checked against \d+ bibliography entries, 0 not found",

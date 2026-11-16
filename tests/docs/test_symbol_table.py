@@ -26,17 +26,17 @@ from planted_nodes import (
 )
 
 from mime.core import MimeNode, SymbolKind
-from mime.docs import (
+from mime.docs._symbols import (
     FrozenId,
     instance_problems,
     next_id,
     read_frozen_ids,
-    read_list,
     row_key,
     static_problems,
     symbols_of,
     tokens,
 )
+from mime.docs._lists import read_list
 from mime.docs._check import LISTS
 from mime.registry import DimensionedSetting
 from mime.units import DYNAMIC_VISCOSITY

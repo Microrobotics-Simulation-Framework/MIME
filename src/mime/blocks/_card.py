@@ -128,7 +128,7 @@ def verify_block(folder: str | os.PathLike[str], accept_licences: Collection[str
     from mime.blocks._check import case_refusals
     from mime.blocks._referenced import require_block_licence
     from mime.blocks._use import requires_refused
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
     from mime.experiment import Experiment
 
     root = Path(os.path.abspath(folder))

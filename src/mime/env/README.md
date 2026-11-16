@@ -4,6 +4,11 @@
 
 ## What is here
 
+What the package exports is what a user calls from Python: `check` with `EnvReport`, `DistributionRow` and
+`EnvRefused`, `apply_lock_precision`, `deterministic_mode`, the user's XLA cache (`user_xla_cache`, `use_xla_cache`, `user_xla_cache_root`,
+`prune_to_cap`) and `EXACT_GPUS`. The rest of the names below belong to MIME's commands (`mime env`, `mime modal`,
+`mime run`) and to the lock, and live in the package's private modules.
+
 - **The pins**, in `mime.data`'s `env/` folder, shipped in the wheel:
   - `requirements-cpu.txt` and `requirements-cuda12.txt`: `uv export`'s output from MIME's `uv.lock`, byte for byte,
     one file per variant. Every distribution a variant installs besides MIME is there with its version, its

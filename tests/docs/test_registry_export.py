@@ -14,7 +14,7 @@ import textwrap
 from dataclasses import dataclass
 from typing import ClassVar
 
-from mime.docs import completeness_problems, encode, entry_record, registry_export
+from mime.docs._export import completeness_problems, encode, entry_record, registry_export
 from mime.gradients import GradientStatus
 from mime.interactions import Drag
 from mime.registry import NOT_ESTABLISHED, EntryKind, Interaction, Registered, RoleKind, dimensioned_settings

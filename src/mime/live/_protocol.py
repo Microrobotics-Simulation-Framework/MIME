@@ -1,11 +1,13 @@
-"""``mime.live/1``: the messages of a live session, written independent of their transport.
+"""``mime.live/2``: the messages of a live session, written independent of their transport.
 
 A request is a JSON object with ``command`` and the command's arguments; a reply is a JSON object with ``protocol``,
 ``ok`` and, on a refusal, ``errors``, each in the coded shape of MIME's errors (code, class, message, why, action,
 where, page). A frame is one chunk's state, the fields the session's schema names in its order: binary (a 32-byte
 header, then each field's bytes, little-endian, in the run's own types) or JSON (the same keys), for debugging and web
-clients. Within ``mime.live/1`` fields may be added (a new schema id: a client ignores paths it does not know); any
-other change is ``mime.live/2``."""
+clients. Within ``mime.live/2`` fields may be added (a new schema id: a client ignores paths it does not know); any
+other change is ``mime.live/3``. ``mime.live/2`` changed what ``hello``'s ``stage``, ``visuals.overlay`` and
+``visuals.fetch`` and ``stop``'s ``folder`` hold (a name or id relative to the run folder, never a path of the serving
+machine); the binary frame is as in ``/1`` (``FRAME_VERSION`` stays 1)."""
 
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ import numpy as np
 
 from mime.build._refusals import Refusal
 
-PROTOCOL = "mime.live/1"
+PROTOCOL = "mime.live/2"
 #: The first four bytes of a binary frame, then its version.
 FRAME_MAGIC = b"MIMF"
 FRAME_VERSION = 1

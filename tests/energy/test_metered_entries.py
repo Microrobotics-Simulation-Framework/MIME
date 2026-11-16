@@ -23,7 +23,7 @@ from ledger_cases import ANGULAR_GIFT, PLANTS, PlantedBody
 
 from mime.build import BuildRefused
 from mime.core import ledger
-from mime.docs import load_namespaces
+from mime.docs._export import load_namespaces
 from mime.dynamics import RigidInertial
 from mime.interactions import Gravity
 from mime.nodes.body import RigidInertialNode

@@ -1,7 +1,7 @@
 """A user must be able to annotate what a public function hands them or takes (maintainer's rule, SURFACE-REDUCTION item
 100: keep public every type a user would annotate), so no public signature names a class of ``mime.push``, ``mime.credentials``, ``mime.cli``, ``mime.scaffold``,
 ``mime.blocks``, ``mime.terms``, ``mime.errors``, ``mime.validity``, ``mime.walls``, ``mime.surrogates``,
-``mime.materials`` or ``mime.assets`` that no package exports.
+``mime.materials``, ``mime.env``, ``mime.docs`` or ``mime.assets`` that no package exports.
 
 The walk reads each name of the ``__all__`` of every public ``mime`` package: a function's parameters and return, a
 class's fields and the signatures of its public methods and properties. A class of the tooling packages that an
@@ -32,7 +32,8 @@ import mime
 from mime.push._draft import Drafted
 
 TOOLING = ("mime.push", "mime.credentials", "mime.cli", "mime.scaffold", "mime.blocks",
-           "mime.terms", "mime.errors", "mime.validity", "mime.walls", "mime.surrogates", "mime.materials", "mime.assets")
+           "mime.terms", "mime.errors", "mime.validity", "mime.walls", "mime.surrogates", "mime.materials",
+           "mime.env", "mime.docs", "mime.assets")
 
 #: The small paradigm packages (SURFACE-REDUCTION, PR 4). Their public subpackages (``mime.dynamics.flow``) count as
 #: places a class is exported from, as they are paths a script writes.
@@ -171,6 +172,8 @@ UNDECIDED = {
     # for the SURFACE-REDUCTION ratchet's seed: both names are "open to go public again if we find a need later".
     "mime.validity._pending.Stamp": "results.Layout.stamp: plumbing of the results package, which waits for its own reduction",
     "mime.materials._values.ResolvedValue": "build.EntryPlan.values and ResolvedRegistration.values: plumbing of the build package, which waits for its reduction",
+    "mime.env._check.System": "env.check(system=): stands in for what the check reads, in tests; the check family waits for the DUPLICATES work (rule 4)",
+    "mime.env._check.DeviceLike": "env.check(devices=): the same test stand-in, as a protocol over what JAX's devices have; waits with check (rule 4)",
     "mime.materials._records.LoadedRecord": "saved.SavedRecord.records: plumbing of the saved package, which waits for its own reduction",
     # mime.assets (DUPLICATES PR B with SURFACE-REDUCTION's assets step): types of names the triage keeps or defers.
     "mime.assets._acceptances.Licence": "Acceptance.licence: Acceptance is kept by the triage while no public call hands one out; decided with it",
@@ -285,3 +288,32 @@ def test_the_walk_reads_mime_assets_and_finds_a_private_type_of_it():
     assert found and "names mime.assets._gates.Plan" in found[0] and any(
         "names mime.assets." in found[0] for package in GUARDED if package == "mime.assets"), found
     assert not private_types(exported(), {"planted": planted_public})
+
+
+def test_the_walk_reads_env_and_docs_and_finds_an_unexported_type_of_each():
+    """The control for ``mime.env`` and ``mime.docs``: a function that returns ``Device`` (``mime.env``'s, exported by
+    nothing) or ``Collection`` (``mime.docs``'s) is found, and ones returning ``EnvReport`` or ``Claim`` (exported) are not."""
+    from mime.docs import Claim
+    from mime.docs._evidence import Collection
+    from mime.env import EnvReport
+    from mime.env._check import Device
+
+    names = public_names()
+    assert "mime.env.check" in names and "mime.docs.claim" in names, "the walk does not read these packages"
+
+    def planted_env() -> Device:
+        raise NotImplementedError
+
+    def planted_docs() -> Collection:
+        raise NotImplementedError
+
+    def exported_env() -> EnvReport:
+        raise NotImplementedError
+
+    def exported_docs() -> Claim:
+        raise NotImplementedError
+
+    for planted, package in ((planted_env, "mime.env"), (planted_docs, "mime.docs")):
+        found = private_types(exported(), {"planted": planted})
+        assert found and f"names {package}." in found[0], found
+    assert not private_types(exported(), {"a": exported_env, "b": exported_docs})

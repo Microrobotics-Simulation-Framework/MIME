@@ -15,7 +15,7 @@ import re
 from checkout import ROOT, copy_checkout, docs_run
 
 from mime.build import REFUSAL_TABLE
-from mime.docs import read_list
+from mime.docs._lists import read_list
 from mime.docs._error_pages import ERRORS_INDEX, NO_TEST, error_pages, error_path
 
 PACKAGE = ROOT / "src" / "mime"

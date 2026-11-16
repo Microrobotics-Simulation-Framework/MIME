@@ -746,7 +746,7 @@ def verify_study(folder: str | os.PathLike[str]) -> StudyVerified:
     checks (every member done, the base's input hash, each figure's data), and each of its saved folders (the base, then
     each group's own build) loaded, rebuilt and rerun against its reference outputs in the precision its lock records,
     as ``mime verify`` verifies a saved folder. A study its checks refuse raises, and nothing is run."""
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
     from mime.experiment import Experiment
     from mime.results._study_read import read_study
 

@@ -18,22 +18,10 @@ from packaging.markers import default_environment
 
 from mime.build import BuildRefused
 from mime.cli import main as mime_main
-from mime.env import (
-    EXACT_GPUS,
-    LOOSE_GPUS,
-    EnvRefused,
-    System,
-    applicable,
-    bases,
-    check,
-    environment_modules,
-    gpu_type,
-    installed_distributions,
-    is_kind_of,
-    optional_pins,
-    pins,
-    shadow_refusals,
-)
+from mime.env import EXACT_GPUS, EnvRefused, check
+from mime.env._gpus import LOOSE_GPUS, gpu_type, is_kind_of
+from mime.env._check import System, environment_modules, installed_distributions, shadow_refusals
+from mime.env._pins import applicable, bases, optional_pins, pins
 from mime.env._check import distribution_refusals, distribution_rows, expected_distributions
 
 SERIES = "3.14"
@@ -394,7 +382,7 @@ def test_a_module_imported_from_outside_the_environments_site_packages_is_refuse
 
 SHADOW = """
 import sys
-from mime.env import environment_modules, shadow_refusals
+from mime.env._check import environment_modules, shadow_refusals
 modules = environment_modules()
 planted = sys.argv[1]
 refusals = shadow_refusals(modules)
@@ -406,7 +394,7 @@ print("REFUSALS", [(r.code, planted in r.message) for r in refusals])
 @pytest.fixture
 def unimported_module() -> str:
     """A module of this environment that nothing in a fresh process importing ``mime.env`` has loaded yet."""
-    probe = subprocess.run([sys.executable, "-c", "import sys, mime.env as e; "
+    probe = subprocess.run([sys.executable, "-c", "import sys, mime.env, mime.env._check as e; "
                             "print(' '.join(sorted(m for m in e.environment_modules() if m not in sys.modules "
                             "and not m.startswith('_') and '.' not in m)))"],
                            capture_output=True, text=True, check=True, env={**os.environ, "JAX_PLATFORMS": "cpu"})
