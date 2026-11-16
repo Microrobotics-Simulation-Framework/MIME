@@ -42,8 +42,8 @@ import numpy as np
 import pytest
 from allocation_cases import (GUARD_POINTS, LIMIT, OWNER, allocating_field, allocating_sphere, guard_point_derivative,
                               guard_point_value)
-from allocation_draws import (SLACK, General, Problem, bvls, column_oracle, general_at, generals, line, problems,
-                              provider, reach_of, residual_line, tie_window, unique, verdict)
+from allocation_draws import (DECLARED_TIE_ULPS, SLACK, General, Problem, bvls, column_oracle, general_at, generals, line, problems,
+                              provider, reach_of, residual_line, two_sided_window, unique, verdict)
 from hypothesis import HealthCheck, assume, event, given, settings
 from hypothesis import strategies as st
 
@@ -127,7 +127,7 @@ def test_a_unique_minimiser_binds_the_law_only_past_its_tie_window_in_float32():
     flipped = reference.copy()
     flipped[0] *= -1  # the tied face
     gap = float(np.linalg.norm(a @ flipped - b) - np.linalg.norm(a @ reference - b))
-    window = tie_window(problem, flipped, "float32") + tie_window(problem, reference, "float32")
+    window = two_sided_window(problem, reference, flipped, "float32")
     # the premise of the draw: unique, resolvable by float32's rounding, inside the windows
     assert unique(problem, "float32") and 8 * float(np.finfo("float32").eps) * float(np.linalg.norm(b)) < gap < window
     assert verdict(problem, flipped, "float32") == []
@@ -157,7 +157,7 @@ def test_a_unique_minimiser_with_a_command_off_its_bound_is_held_to_the_tie_wind
     reference = bvls(problem, "float32")
     law = np.asarray([5.0, -4.20883465, 4.74467897, -4.38866854, 5.0, -4.01990557, 3.06744909, -3.12709117])
     gap = float(np.linalg.norm(a @ law - b) - np.linalg.norm(a @ reference - b))
-    window = tie_window(problem, law, "float32") + tie_window(problem, reference, "float32")
+    window = two_sided_window(problem, reference, law, "float32")
     assert unique(problem, "float32") and float(np.max(np.abs(law - reference))) > line(problem, reference, "float32")
     assert 0.0 < gap < window
     assert verdict(problem, law, "float32") == []
@@ -165,6 +165,75 @@ def test_a_unique_minimiser_with_a_command_off_its_bound_is_held_to_the_tie_wind
     far[2] *= -1  # a command whose flip costs far more than the windows
     assert verdict(problem, far, "float32") != []
     assert verdict(problem, solved(problem, "float64"), "float64") == []
+
+
+# -- the tie window's pin ------------------------------------------------------------------------------------------
+
+@contextlib.contextmanager
+def tie_planted() -> Iterator[None]:
+    """The law's ``TIE_ULPS`` 16 times wider (``ALLOCATION_PLANT=tie_x16``) or a quarter as wide
+    (``ALLOCATION_PLANT=tie_div4``) for the context, if ``PLANT`` names one: the mutants the pin below is rated with
+    (a test-side patch of the module's constant, never a ``src/`` change)."""
+    with pytest.MonkeyPatch.context() as patch:
+        if PLANT == "tie_x16":
+            patch.setattr(law_module, "TIE_ULPS", law_module.TIE_ULPS * 16)
+        elif PLANT == "tie_div4":
+            patch.setattr(law_module, "TIE_ULPS", law_module.TIE_ULPS / 4)
+        yield
+
+
+def test_the_laws_tie_window_is_the_oracles_declared_64_ulps():
+    """The oracle carries its own copy of the window (``allocation_draws.DECLARED_TIE_ULPS``, a literal), never the law's
+    constant, so a change in the law moves nothing in the oracle and is seen here (x16 in the constant went unseen, 0
+    of 8 draws, while the oracle imported it)."""
+    assert DECLARED_TIE_ULPS == 64
+    with tie_planted():
+        assert law_module.TIE_ULPS == DECLARED_TIE_ULPS, (
+            f"the law's tie window is {law_module.TIE_ULPS} units in the last place, the declared contract is "
+            f"{DECLARED_TIE_ULPS}: changing the window is a contract change that needs the maintainer's word (the "
+            f"oracle's own copy is allocation_draws.DECLARED_TIE_ULPS)")
+
+
+def two_faces_problem(dtype: str, ratio: float) -> tuple[Problem, np.ndarray, np.ndarray]:
+    """Two faces whose residuals differ by ``ratio`` times the law's two-sided tie window (the oracle's own, 64 units),
+    and the problem's ``(problem, deep, bound)`` faces. The rows are ``diag(0.001, 1)`` over unit scales, the wanted
+    value ``(0.001 (1 - g), 0.3)``, the limits +-1 and the reference ``(1, 0.3)``: the first command is free at
+    ``1 - g`` (residual zero) or at its upper bound 1 (residual ``0.001 g``, effort zero, the reference). The lower
+    residual is the free face's, the lower effort the bound face's: tied, the law takes the bound face."""
+    eps, sensitivity, other = float(np.finfo(dtype).eps), 1e-3, 0.3
+    window = 4 * DECLARED_TIE_ULPS * eps * float(np.hypot(sensitivity, other))
+    gap = ratio * window / sensitivity
+    problem = Problem("two_faces", "synthetic", np.diag([sensitivity, 1.0]),
+                      np.asarray([sensitivity * (1.0 - gap), other]), np.ones(2), 1.0)
+    return problem, np.asarray([1.0 - gap, other]), np.asarray([1.0, other])
+
+
+def two_faces_law(problem: Problem, dtype: str) -> np.ndarray:
+    with in_dtype(dtype), tie_planted():
+        a, b, s = (jnp.asarray(v, dtype=dtype) for v in (problem.matrix, problem.target, problem.scales))
+        found = exact_allocation(a, b, lower=-jnp.ones(2, dtype=dtype), upper=jnp.ones(2, dtype=dtype), scales=s,
+                                 owner=OWNER, reference=jnp.asarray([1.0, 0.3], dtype=dtype))
+        return np.asarray(found.commands, dtype=np.float64)
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+@pytest.mark.parametrize("ratio", [0.95, 1.05])
+def test_the_law_ties_two_faces_just_inside_its_window_and_not_just_outside(dtype, ratio):
+    """The law's tie window as a contract, on a constructed problem (``two_faces_problem``): the faces' residuals differ
+    by 0.95 of the oracle's two-sided window and the law ties them (the lower effort, the bound face, is taken); by 1.05
+    of it and the law does not (the lower residual, the free face, is taken). The premise is asserted on the faces as
+    rounded in ``dtype``: the oracle's own ratio of the gap to the window, in float64, within 0.04 of the nominal. A
+    law whose window is 16 times wider ties the 1.05 pair, one a quarter as wide does not tie the 0.95 pair."""
+    problem, free, bound = two_faces_problem(dtype, ratio)
+    a, b = problem.scaled(dtype)
+    free, bound = (np.asarray(v, dtype=dtype).astype(np.float64) for v in (free, bound))
+    gap = float(np.linalg.norm(a @ bound - b) - np.linalg.norm(a @ free - b))
+    measured = gap / two_sided_window(problem, free, bound, dtype)
+    assert abs(measured - ratio) < 0.04, (measured, ratio)
+    taken = two_faces_law(problem, dtype)
+    expected = bound if ratio < 1.0 else free
+    assert np.allclose(taken, expected, rtol=0.0, atol=0.25 * (bound[0] - free[0])), (taken, expected)
+    assert (taken[0] == bound[0]) == (ratio < 1.0), (taken, ratio)
 
 
 def fixed_problems() -> list[Problem]:
