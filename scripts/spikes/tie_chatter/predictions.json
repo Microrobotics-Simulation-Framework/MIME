@@ -1,0 +1,66 @@
+{
+  "written": "2026-11-16, committed before the harness exists and before any arm runs (the commit that adds this file is the timestamp). Spike: does the exact allocator's tie window make a closed loop chatter between faces?",
+  "phase": "measurement spike spike/tie-chatter (no PR, no src/ change)",
+  "labels": "predictions by the spike agent (Sonnet) from reading _allocation.py and the two tie draws; PR 323's measured gap numbers; and a handful of single-process scans (not rates, not the arms) that located where the law's face moves along a scaling of each draw's target",
+  "seen_before": [
+    "PR 323: OctoMag at the centre, field along y at e times the 5 A reach: float64 faces differ by 0.0062 in residual norm (85 ulps of |target| in float32), the law's window is 0.0047 each side at that draw; both faces have effort 200 (all eight coils at a bound), so the tie goes to the lowest set index",
+    "scan, float64 BVLS faces along the scaling u (target = reach e^u along y): the optimum face has the same signs from u=0.5 to 2.0, the residual gap between it and the face with command 0 flipped is about constant (0.0062 +- 0.0001) while |target| grows e^u, so the gap in ulps falls as e^-u (198 at u=0, 85 at 1, 31 at 2) and the two-sided window grows as e^u",
+    "scan, float32 law at TIE_ULPS 64 along u in [-0.2, 1.6]: one switch (command jump 10 A) at u = 0.60; at TIE_ULPS 0 and in float64 at 0 and 64: none",
+    "scan, CardioMag draw (wanted scaled by e^u, u in [-1.5, 1.5] and [-0.3, 0.3]): no command jump above 1.3 A anywhere (one, at u=0.09, identical in float32 and float64, so legitimate); at the draw the float32 law holds command 5 at its 5 A bound where float64 has 4.952 (0.05 A), a face difference of at most about 0.06 A; 40 random target lines through the draw: no 10 A jump in either dtype"
+  ],
+  "operating_point": {
+    "dtype": ["float32", "float64"],
+    "platform": "a GitHub runner, CPU (JAX_PLATFORMS=cpu); one job per arm; the allocator called through lax.scan, one tick a call, in the dtype's own arithmetic",
+    "sizes_and_parameters": "OctoMag at the centre of its region, kind both (3 field rows over 10 mT, 5 gradient rows over 1 T/m), limits +-5 A, target = (field along y at the 5 A reach) x e^u, u(k) = 1.0 + 1.4 sin(2 pi k / T + phi), phi = -pi/2 (start at u=-0.4, the optimum face's side) or +pi/2 (start at u=2.4, inside the tied band); CardioMag at the centre, the second draw's wanted vector x e^u, u(k) = 0.3 sin(2 pi k / T + phi). Fast T = 9000 (OctoMag), 2000 (CardioMag), 3 periods; slow T = 90000 (OctoMag), 20000 (CardioMag), 1 period: the target's relative move per tick is at most 9.4e-4 (fast) and 9.4e-5 (slow), under the tolerance 1e-3 (0.1 % of |target|). A switch is chatter when the largest command jump between consecutive ticks exceeds 1 A while the relative move of the scaled target is under the tolerance. 1 A is a fifth of the 5 A limit and a tenth of the 10 A box; a legitimate command move on this path is at most 5 A x 1e-3 x the problem's gain (about 0.005 to 0.01 A a tick, measured by the scans), and float32's rounding of a 5 A command is 6e-7 A.",
+    "arms": "TIE_ULPS 0, 16, 64, 128 (a patched module constant, a fresh jit per arm, the traced value recorded); sticky64 (window 64, the previous tick's face kept if inside the window, prototyped in the spike); w64x (float64 only, the window 64 x 2^29 so that it is as wide in absolute terms as float32's 64: the noise-free control of the edge crossings)",
+    "extra_problem": "octo_field: OctoMag, field rows only (3 rows, 8 coils: wide, non-unique), target 0.3 x the 5 A reach x e^u, u in [-0.5, 0.5], T = 9000 x 3 periods: the problem the window is for, where faces tie in exact arithmetic and the least-effort rule must break the tie. Not F0's draws; read apart"
+  },
+  "gate_1_float64_is_quiet": {
+    "claim": "float64 does not chatter in any arm on either draw, at either speed and phase",
+    "kind": "equality",
+    "prediction": {"value": "0 switches", "band": [0, 0], "unit": "chatter switches per run, in each of arms TIE0, TIE16, TIE64, TIE128, sticky64 and each draw/speed/phase",
+                   "basis": "derived: float64's window at 64 ulps is 1.7e-11 in residual norm against a face gap of 0.0062 (OctoMag) so the faces never tie; the CardioMag faces differ by 0.06 A, not 1 A",
+                   "why": "the window is about 2.7e8 times too narrow in float64 to reach the gap"},
+    "control": {"plant": "w64x, float64 with the window widened to float32's absolute width: expected exactly 2 x periods switches on OctoMag (6 fast, 2 slow) and no flicker, because float64's noise (1e-13) is far under the margin's change per tick (5e-6)"},
+    "if_wrong": "a float64 switch means the path's own optimum face changes with a 1 A jump (a legitimate switch the baseline must subtract) or the tie logic is not what the reading says; read the tick's two faces first",
+    "cannot_discriminate_if": "the path never reaches the region where the float32 law switches: the TIE64 float32 arm then also reads 0 and the whole test says nothing (then the path is wrong, not the allocator)"
+  },
+  "gate_2_octomag_float32_chatters_in_the_wide_windows": {
+    "claim": "OctoMag in float32 switches faces with 10 A jumps at tiny target moves for TIE_ULPS 64 (at u about 0.57), 128 (at u about -0.1) and 16 (at u about 1.94), twice per period at least, with rounding flicker on top; TIE_ULPS 0 does not",
+    "kind": "range",
+    "prediction": {"value": "TIE0: 0. TIE16, TIE64, TIE128: at least 6 per fast run (2 crossings x 3 periods), centre 14, band [6, 40]; at least 2 per slow run, centre 30, band [2, 150] (flicker scales with the ticks inside the rounding band around each edge, about 4 fast and about 40 slow)",
+                   "band": [6, 40], "unit": "chatter switches per fast run, bottom-start phase",
+                   "basis": "derived: at TIE64 the two-sided window 0.0095 e^(u-1) crosses the constant gap 0.0062 at u = 0.57 (the scan saw 0.60); the margin changes by about 5e-6 a tick at the fast speed against residual noise about 2e-5 (0.3 ulp of |target| in float32)",
+                   "why": "the tie is a threshold on a rounded residual; a target moving through it flips the tie set, and with equal effort the lowest set index wins, B inside, A outside"},
+    "control": {"plant": "a law that alternates faces every tick, run through the same counter on the same path", "expected": "ticks - 1 switches, every run, 20 of 20; and the same plant on a path that moves 5 % a tick (over the tolerance) counts 0, 20 of 20"},
+    "if_wrong": "TIE128's edge is the least certain (the face structure changes below u about 0.3, where command 0 leaves its bound, so the two faces may not be both feasible at the edge): a miss there is the path, not the law; TIE16's edge at u=1.94 depends on the gap staying constant to u=2",
+    "cannot_discriminate_if": "float64's w64x arm also shows flicker (then the flicker is not rounding noise)"
+  },
+  "gate_3_cardiomag_is_below_the_threshold": {
+    "claim": "on the CardioMag draw no arm reaches a 1 A jump, in either dtype: F0's definition cannot fire there; at 0.03 A (the difference between the law's and BVLS's face, 0.05 to 0.06 A, being above the legitimate 0.005 to 0.01 A a tick) the float32 TIE64 arm counts at least 2 per period and the other arms in float64 and TIE0 and TIE16 count 0",
+    "kind": "equality at 1 A; range at 0.03 A",
+    "prediction": {"value": "1 A: 0 in every arm and dtype. 0.03 A: float32 TIE64 and TIE128: 2 to 20 per fast run; float32 TIE0 and TIE16 and float64 everywhere: 0; sticky64: 0 to 1",
+                   "band": [0, 20], "unit": "switches per fast run", "basis": "the scans: the law pins command 5 to the bound across u in (-0.052, 0.051) in float32 at TIE64, the scan's one face edge pair with jumps about 0.05 A",
+                   "why": "the faces tied here are neighbours in command space, one command at a bound or just inside"},
+    "if_wrong": "a 1 A switch on CardioMag would mean a face I did not scan (the path covers u in [-0.3, 0.3] only)"
+  },
+  "gate_4_sticky_removes_it": {
+    "claim": "the sticky variant at window 64 counts at most 1 switch per run in float32 on every draw, speed and phase: 0 starting on the optimum face, 1 starting inside the tied band (the forced exit when the target leaves the band)",
+    "kind": "range", "prediction": {"value": "bottom start 0; top start 1 (band 0 to 1 and 1 to 2)", "band": [0, 2], "unit": "chatter switches per run",
+                                    "basis": "derived: the optimum face is always inside its own window, so once the loop holds it, no other face's entering the window moves it; the other face leaves the window only when the gap exceeds it, and then the previous face is dropped, once",
+                                    "why": "hysteresis: the optimum face is absorbing"},
+    "if_wrong": "flicker under sticky means the optimum face itself is not always inside its window (the best's own tie test), or the prototype's previous-face seam is wrong: check its index map first"
+  },
+  "gate_5_the_window_is_for_the_nonunique_case": {
+    "claim": "on octo_field (non-unique) TIE_ULPS 0 returns faces chosen by residual noise: it chatters in float32 (more than 0 jumps of 1 A or more on the path), where TIE16, TIE64, TIE128 and sticky64 do not; float64 at TIE0 may also, by its own noise",
+    "kind": "range", "prediction": {"value": "float32 TIE0: at least 1, centre 10; the windowed arms 0", "band": [1, 200], "unit": "switches per run",
+                                    "basis": "all eight coils can make zero residual by many faces; their residuals differ by rounding only (0.3 ulp), the window 0 ranks by that",
+                                    "why": "TIE 0 turns the tie-break on noise"},
+    "cannot_discriminate_if": "every face in the path has the same effort, or the problem is reachable by one face only (then it reads 0 and says only that the case is not one)"
+  },
+  "smallest_change": {
+    "prediction": "no change of the constant removes chatter for any problem: each non-zero window has an edge where a face gap equals it, so TIE16 and TIE128 chatter at u about 1.94 and about -0.1 (if the path reaches them), and TIE0 removes it on the two draws at the price of gate 5's case. Sticky at 64 is the smallest that removes it at the draws without losing the window",
+    "controls": "float64 and w64x; a planted alternating law counted on every run"
+  },
+  "outcomes": null
+}
