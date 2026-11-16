@@ -286,11 +286,17 @@ through it. Where the solve did not converge it is the implicit function's at th
 step's flag says so.
 
 **Its resolution.** The tangent system is the exact Hessian's, whose condition is the square of the rows': where it is
-past what the dtype resolves, the derivative is not resolved, whatever the commands' accuracy. `found.resolution` is
-a bound on its error over its size, the tangent system's condition times the units in the last place that its
+past what the dtype resolves, the derivative is not resolved, whatever the commands' accuracy. The derivative is flagged
+resolved or unresolved; where it is resolved, its error is measured, not bounded. `found.resolution` is an indicator of
+its error over its size, not a bound on it: the tangent system's condition times the units in the last place that its
 assembly (the Hessian's sums over the rows) and its LU each add, and `found.resolved` holds where it is at most
-`RESOLVED`; through `ctx.allocator` the controller raises the flag `allocation_derivative_unresolved` at
-a tick where it is not, carrying the bound. In single precision at a weak effort (the A0 follower's arm, its tangent's
+`RESOLVED`, a line that is declared (a tenth), not fitted; through `ctx.allocator` the controller raises the flag
+`allocation_derivative_unresolved` at a tick where it is not, carrying the indicator. It is no bound because the
+commands single precision reaches are not the minimiser's (their micro-radians move the derivative itself), and a drawn
+example read resolved with an error far past the line a first fit, on a few dozen draws, had set. The error of the
+derivatives called resolved is measured at the follower's problem in single precision over draws as the test makes
+them (its median, upper percentile and largest are in the docstring of `mime.control._iterative`, not restated here), and
+the test holds the flag to the declared line, never to a fitted constant. In single precision at a weak effort (the A0 follower's arm, its tangent's
 condition near the reciprocal of single precision's rounding) the derivative was off by more than its size at every
 draw while the joints were within micro-radians of double precision's: there the flag is raised at every tick, and a gradient through the run needs double precision. A
 double-precision tangent at the single-precision commands was as far off (the derivative there is not the minimiser's),
@@ -304,7 +310,7 @@ once at the solution:
 | an affine model, regularised or its rows of full column rank | `piecewise_kink` | a convex quadratic: the minimiser is continuous, and its derivative jumps where a command reaches a bound or leaves it |
 | a model that is not affine (an arm) | `piecewise_jump` | the stationary point followed from the start can change branch, or settle at a bound, as what is wanted moves |
 | a step whose solve did not converge | flagged | the derivative solves nothing there: `allocation_unconverged` marks the step |
-| a step whose derivative the dtype does not resolve | flagged | `allocation_derivative_unresolved` marks the step, carrying the derivative's error bound |
+| a step whose derivative the dtype does not resolve | flagged | `allocation_derivative_unresolved` marks the step, carrying the derivative's error indicator (not a bound) |
 
 **What it bounds, and what it estimates.** Against the exact path on the arrays MIME ships (three to eight coils, both
 dtypes), against SciPy's BVLS on nine to sixteen commands, and against the rigid-body library's inverse kinematics on

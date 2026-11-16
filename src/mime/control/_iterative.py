@@ -84,18 +84,22 @@ the derivative of the converged commands: where the solve did not converge, it i
 iterate, which solves nothing, and the step's flag says so.
 
 **Its resolution.** The tangent system is the exact Hessian's, whose condition is the square of the rows' (a weak
-effort's: the follower's is 4e6 to 1e8). Its error over its size is bounded by its condition times ``M + 3 K`` units
-in the last place (the assembly's sums over the ``M`` rows and the LU's ``3 K``, Higham's bound for a solve, growth
-aside), whatever the forward solve's accuracy: ``resolution`` is that bound, read at the commands returned on the
-system as the derivative factors it (rows and columns equilibrated), and ``resolved`` holds where it is at most
-:data:`RESOLVED`. Measured at the follower's problem in float32, efforts 0.05 to 20 rad (56 draws), the derivative's
-error against float64's was 0.005 to 0.7 of the bound; at its own effort the derivative was 2.3 times its largest
-entry off (median of 60 draws) while the joints were 2e-6 rad from float64's. Where it is not resolved,
-``ctx.allocator`` raises the flag ``allocation_derivative_unresolved``, carrying the bound: a derivative through that
-step is not resolved in the run's dtype (in float32 at the follower's problem, at every step; float64 resolves it).
-The derivative is left as the LU gives it. Neither a float64 tangent system at the float32 commands (its error a median
-0.6 of the largest entry, at most 46, over 20 draws: the derivative at the commands float32 reaches is not the
-minimiser's, the condition times their 2e-6 rad) nor a pseudo-inverse on the resolved directions (median 3.3, which
+effort's: the follower's is 4e6 to 1e8). The derivative is flagged resolved or unresolved; where it is resolved, its
+error is measured, not bounded. ``resolution`` is an indicator of its error over its size, not a bound on it: the
+condition of the tangent system, read at the commands returned as the derivative factors it (rows and columns
+equilibrated), times ``M + 3 K`` units in the last place (the assembly's sums over the ``M`` rows and the LU's ``3 K``,
+the order of Higham's bound for a solve, growth aside), and ``resolved`` holds where it is at most :data:`RESOLVED`,
+which is declared, not fitted. It is no bound because the commands float32 reaches are not the minimiser's, and their
+2e-6 rad move the derivative itself, not only the LU's rounding: a float64 tangent system at the float32 commands was as
+far off, and a drawn example (seed 73172, effort 1) read resolved with an error 9.4 times the first fit's line, a
+constant fitted on 56 heavy-tailed draws. Measured at the follower's problem in float32 (the target 0.2 to 2 mm from the
+flange, efforts 0.05 to 20 rad, draws as the test makes them: DISTRIBUTION). At its own effort (20 rad) the derivative
+was 2.3 times its largest entry off (median of 60 draws) while the joints were 2e-6 rad from float64's. Where it is not
+resolved, ``ctx.allocator`` raises the flag ``allocation_derivative_unresolved``, carrying the indicator: a derivative
+through that step is not resolved in the run's dtype (in float32 at the follower's problem, at every step; float64
+resolves it). The derivative is left as the LU gives it. Neither a float64 tangent system at the float32 commands (its
+error a median 0.6 of the largest entry, at most 46, over 20 draws: the derivative at the commands float32 reaches is not
+the minimiser's, the condition times their 2e-6 rad) nor a pseudo-inverse on the resolved directions (median 3.3, which
 drops the response along the others) resolves it. What did, at float64's commands, is the rows' own factorisation (the
 Gauss-Newton part by QR of ``J``, median 4e-4), which leaves the second-order part out: a route, not built here.
 
@@ -141,8 +145,8 @@ FLOOR = {dtype: value * value for dtype, value in RCOND.items()}
 #: singularity at most 3e-2 of it, and the float32 follower's least singular value (its rows' at 1 to 5 cm, the
 #: review's draws) 8 to 40 times it.
 RANK = 10.0
-#: The largest error bound over its size at which the derivative is called resolved (``resolution``, see the module):
-#: a tenth, declared.
+#: The largest value of the indicator (``resolution``, see the module) at which the derivative is called resolved: a
+#: tenth, declared, not fitted. Where it is resolved, its error is measured (the module), not bounded by this.
 RESOLVED = 0.1
 #: Transtrum and Sethna's acceptance of the bend (geodesic acceleration, 2012), their standard value: a bend longer than
 #: ``ACCELERATION / 2`` of its step, in the scaled commands, is left out of it. A default the maintainer may revise.
@@ -187,8 +191,8 @@ class IterativeAllocation(NamedTuple):
     ``+1`` at its upper one; the ``objective`` there, the sum of the squares of the rows; whether it ``converged`` (read
     at the commands returned: see the module for what it claims); its ``stationarity`` there, over the problem's size;
     the ``iterations`` it took; whether its derivative is ``resolved`` in the dtype, and its ``resolution``, the tangent
-    system's condition times ``M + 3 K`` units in the last place, a bound on its error over its size (see the
-    module)."""
+    system's condition times ``M + 3 K`` units in the last place, an indicator of its error over its size, not a
+    bound on it (see the module)."""
 
     commands: Any
     active: Any

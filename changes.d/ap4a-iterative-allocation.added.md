@@ -41,9 +41,10 @@
     converge the commands are the last iterate inside the bounds, and `converged` says so. **Its derivative** is the
     implicit function's (`jax.lax.custom_root` on the projected gradient's fixed point): the exact Hessian's tangent
     system on the free commands, a held command's derivative its bound's, one dense LU of order the commands, its rows
-    and columns equilibrated; forward and reverse mode. **Its resolution**: `resolution`, a bound on its error over its
-    size (the tangent system's condition times `M + 3K` units in the last place), and `resolved` where it is at most
-    `RESOLVED` (a tenth); in float32 at the follower's problem (a weak effort,
+    and columns equilibrated; forward and reverse mode. **Its resolution**: the derivative is flagged resolved or unresolved, and
+    where resolved its error is measured, not bounded: `resolution` is an indicator of its error over its size, not a bound
+    on it (the tangent system's condition times `M + 3K` units in the last place), and `resolved` holds where it is at
+    most `RESOLVED` (a tenth, declared; DISTRIBUTION); in float32 at the follower's problem (a weak effort,
     the tangent's condition 4e6 to 1e8) the derivative was 2.3 times its largest entry off (median of 60 draws) with
     every solve converged, and neither a float64 tangent at the float32 commands (0.4 to 1.4 off) nor a pseudo-inverse
     on the resolved directions (1.1 to 13) resolves it: the solve says so instead. Status: `piecewise_kink` on an affine model
@@ -68,7 +69,7 @@
     through it). **`allocation_unconverged`** is the first: declared by a law that allocates on the iterative path,
     raised at a tick whose solve did not converge, its value the stationarity. A controller that declares none builds
     nothing new. **`allocation_derivative_unresolved`** is the second: raised at a tick whose derivative the run's
-    dtype does not resolve, its value the error bound (in float32 at the follower's problem, every tick; float64
+    dtype does not resolve, its value the error indicator (in float32 at the follower's problem, every tick; float64
     resolves it). `Study.gradient`'s and a fit's flags now read the run's paths (a named flag's name, not its field).
   - **`ForwardModel.misses`**: a quantity's own miss where it is not the difference of its rows; the kinematic arm's
     model gives each frame's `<frame>.position` (m) and `<frame>.orientation` (a quaternion whose miss is the rotation

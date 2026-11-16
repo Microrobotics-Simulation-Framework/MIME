@@ -185,7 +185,7 @@ class Allocator:
     switch's owner, which the controller declares (``allocation_switch(owner, orders)``). ``path`` is the one chosen
     when the law was made; the iterative one raises the controller's flag ``allocation_unconverged`` at a tick whose
     solve did not converge, carrying its stationarity, and ``allocation_derivative_unresolved`` at a tick whose
-    derivative the run's dtype does not resolve, carrying its error bound."""
+    derivative the run's dtype does not resolve, carrying the error indicator (not a bound)."""
 
     model: ForwardModel
     commands: tuple[str, ...]

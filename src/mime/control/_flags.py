@@ -21,7 +21,7 @@ UNRESOLVED = Flag(
     "dtype: its tangent system, the exact Hessian's, is singular at the dtype's rank line, so that a derivative "
     "through the step can be wrong by more than its size (in float32 at a weak effort, the follower's problem, at "
     "every step; float64 resolves it); its commands are not affected; the value is the tangent system's condition "
-    "times its order's units in the last place, the derivative's error bound over its size",
+    "times its order's units in the last place, an indicator of the derivative's error over its size, not a bound on it",
     warns=True)
 
 __all__ = ["UNCONVERGED", "UNRESOLVED", "declared_flags", "raise_flag"]

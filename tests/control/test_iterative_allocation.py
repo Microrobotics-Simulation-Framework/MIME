@@ -697,6 +697,7 @@ def test_the_wrists_singular_pose_is_not_claimed_converged(dtype):
 
 @settings(max_examples=40, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
 @example(seed=25)  # the review's draw: rank ratio 2.4e-8 in float64, read -1.1e-7 in float32
+@example(seed=657325)  # EPYC 7763: a NaN Newton step in the local phase left the start as the best point
 @given(seed=st.integers(0, 2 ** 32 - 1))
 def test_float32_converges_at_the_followers_problem_where_float64_does(seed):
     """A0's follower's problem (a weak effort, the target 1 to 5 cm from the flange): where float64 converges, so does
@@ -742,16 +743,19 @@ def effort_call(dtype: str, name: str, *args: Any, plant: str = "") -> Any:
 @pytest.mark.memory_heavy
 @settings(max_examples=30, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
 @example(seed=26, effort=EFFORT)  # the review's worst follower draw: float32's derivative 17 times its largest entry off
+@example(seed=73172, effort=1.0)  # resolved with an error 9.4 times a fitted bound's line: the indicator is no bound
 @given(seed=st.integers(0, 2 ** 32 - 1), effort=st.floats(np.log(0.05), np.log(EFFORT)).map(np.exp))
-def test_float32s_derivative_at_the_followers_problem_is_within_its_bound_or_flagged(seed, effort):
+def test_float32s_derivative_at_the_followers_problem_is_flagged_unresolved_where_it_is_off_the_declared_line(seed, effort):
     """The follower's problem (the target 0.2 to 2 mm from the flange) in float32, at efforts from 0.05 rad to its own
-    20, so that the tangent system's condition (about 9e4 times the effort squared) spans what float32 resolves:
-    where the solve claims its derivative (converged and resolved), it is float64's within the bound the condition
-    gives, float64's tangent system's condition times ``M + 3 K`` units in float32's last place, and never past
-    ``RESOLVED`` (a tenth) of its largest entry; past that, the solve says so (``resolved`` false), which raises the flag
-    ``allocation_derivative_unresolved``. At the follower's own effort the derivative was 2.3 times its largest entry
-    off (median of 60 draws) with every solve converged and nothing said (the plant ``unflagged``, every derivative
-    called resolved). Measured over 56 draws, the error was 0.005 to 0.7 of the bound."""
+    20, so that the tangent system's condition (about 9e4 times the effort squared) spans what float32 resolves. The
+    claim is the flag's, not a bound on the error: the derivative is flagged resolved or unresolved, and where it is
+    flagged resolved its error is measured (the module's distribution), here held to ``RESOLVED`` (a tenth of float64's
+    largest entry), a line that is DECLARED, not fitted. An unresolved derivative is flagged: a derivative past that line
+    is never called resolved, and the flag ``allocation_derivative_unresolved`` follows. ``resolution`` (the tangent
+    system's condition times ``M + 3 K`` units in the last place) is an indicator, not a bound: a constant fitted on 56
+    draws (seed 73172, effort 1) was 9.4 times off, the draw that is the second example. At the follower's own effort the
+    derivative was 2.3 times its largest entry off (median of 60 draws) with every solve converged and nothing said (the
+    plant ``unflagged``, every derivative called resolved)."""
     target, joints = follower_draw(seed, (2e-4, 2e-3))
     zero = np.zeros(9)
     plant = PLANT if PLANT == "unflagged" else ""
@@ -759,14 +763,12 @@ def test_float32s_derivative_at_the_followers_problem_is_within_its_bound_or_fla
     narrow = effort_call("float32", "solve", zero, target, joints, effort, plant=plant)
     assert bool(wide.converged) and bool(wide.resolved), (float(wide.stationarity), float(wide.resolution))
     if not (bool(narrow.converged) and bool(narrow.resolved)):
-        return  # not claimed: the step's flags say so
+        return  # flagged: the step's flags say so
     d64 = np.asarray(effort_call("float64", "forward", zero, target, joints, effort))
     d32 = np.asarray(effort_call("float32", "forward", zero, target, joints, effort, plant=plant), np.float64)
-    # The bound at float64's condition (the true one), in float32's units: float64's resolution is the same condition
-    # times the same M + 3 K units of float64's last place.
-    bound = float(wide.resolution) * float(np.finfo(np.float32).eps / np.finfo(np.float64).eps)
+    largest = float(np.max(np.abs(d64)))
     miss = float(np.max(np.abs(d32 - d64)))
-    assert miss <= min(bound, module.RESOLVED) * float(np.max(np.abs(d64))), (miss, bound, float(np.max(np.abs(d64))))
+    assert miss <= module.RESOLVED * largest, (miss, largest, float(narrow.resolution))
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])

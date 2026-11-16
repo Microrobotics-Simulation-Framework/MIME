@@ -48,7 +48,7 @@
     "tests/control/test_iterative_controller.py::test_a_study_sweeps_a_setting_of_a_controller_on_the_iterative_path": 2085,
     "tests/control/test_iterative_controller.py::test_the_derivative_of_the_follower_in_its_standoff_is_central_differences": 2594,
     "tests/control/test_iterative_allocation.py::test_the_wrists_singular_pose_is_not_claimed_converged": 2137,
-    "tests/control/test_iterative_allocation.py::test_float32s_derivative_at_the_followers_problem_is_within_its_bound_or_flagged": 3061,
+    "tests/control/test_iterative_allocation.py::test_float32s_derivative_at_the_followers_problem_is_flagged_unresolved_where_it_is_off_the_declared_line": 3061,
     "tests/control/test_iterative_controller.py::test_the_float32_followers_derivative_is_flagged_unresolved_at_every_step_and_float64s_at_none": 2552,
     "tests/control/test_iterative_allocation.py::test_float32_converges_at_the_followers_problem_where_float64_does": 2009,
     "tests/sensing/test_mesh_refusals.py::test_a_derivative_through_the_poses_with_a_mesh_in_view_passes_in_both_modes": 2112

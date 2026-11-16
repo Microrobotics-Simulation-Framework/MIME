@@ -36,8 +36,8 @@ commands within bounds that minimise half the squared rows a function of them ma
 any model: projected Newton (Newton's step on the exact Hessian where it is definite on the free commands,
 Gauss-Newton's where not), the bounds a projection, Armijo's test on a difference of squares; its cap, tolerance and
 stagnation stop declared; `converged` read at the commands returned (a first-order stationary point, isolated, the
-rank judged from singular values at `RANK`; not a local minimiser). Its derivative's `resolved` and `resolution` read
-the tangent system's condition. Its derivative is the implicit function's
+rank judged from singular values at `RANK`; not a local minimiser). Its derivative is flagged `resolved` or not; `resolution`, the tangent system's condition times its order's units in the
+last place, is an indicator of its error, not a bound (where resolved, the error is measured: `docs/allocation.md`). Its derivative is the implicit function's
 (`jax.lax.custom_root`, the exact Hessian's tangent system, one dense LU through `mime.core.solves.dense_solve`). Its
 switch is the caller's owner, evaluated once at the solution; its forward solve and its root are traced with any switch
 collector hidden (`mime.core.switch.not_collected`), whose rows would keep their tracers.
