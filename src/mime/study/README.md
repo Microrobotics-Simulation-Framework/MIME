@@ -60,6 +60,19 @@
   numbers (a direction, a body's initial orientation) as the list of its numbers, read back as the tuple. A value held in a node's program as a constant
   of its own, not as a leaf, is a silent bake: every member would run the first point's. The two-builds check
   (`mime.testing.two_builds`) is how an entry shows it holds none.
+- **A command port's numbers** (`AxisKind.PORT`): `<apparatus>.ports.<command>.bounds` (one quantity `q` for `(-q, q)`,
+  or a pair, as `CommandPort(bounds=...)` takes it), `.low`, `.high` and `.slew`, and `[i]` on `.low`, `.high` or
+  `.slew` for one element where the port declares one per element. A point writes the
+  port's number; the port's `reason` is its own, for what the point leaves as declared, followed by
+  `; <path> = <value>: <reason>`, the value's own reason, else the study's for the axis, else `STUDY_REASON`
+  (`port_reason`). The plan judges the port at each point (finite, low at most high, the dimension). The stage holds
+  each number as a leaf, and so does a controller inside the compiled step whose allocation reads it
+  (`mime.control`, `ctx.allocator`): one axis writes both, so a sweep of a current limit is one group and one compile,
+  and a derivative in it passes through the stage and the allocation. A port that trips (`on_bound="trip"`) makes the
+  derivative in its bound a jump, declared in the gradient's path (`piecewise_jump`). A number the port does not
+  declare is refused (`study.port-undeclared`): bounds its receiver states (an arm's joint limits) are the receiver's,
+  and a slew it leaves out is a rung the stage does not build; declare it on the port to vary it. A port's rate and
+  latency (whole step counts) and its `rest` are no axes.
 - **Declared ranges** (`exp.declare_range(path, low, high, reason=...)`, saved with the experiment): on any axis but `dt`,
   the precision, a rung and a numerical setting. Every choice an entry makes from the value (a count, a spacing) is made
   over the range through `mime.registry.choose_over`, with a rule it declares (`ChoiceRule.Monotone`, judged at the
