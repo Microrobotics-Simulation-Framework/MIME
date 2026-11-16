@@ -18,13 +18,14 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from functools import cache
+from typing import Any
 
 from jax import Array
 from jaxtyping import Float
 from typing_extensions import Annotated, NoExtraItems, NotRequired, ReadOnly, Required, get_args, get_origin, \
     get_type_hints, is_typeddict
 
-from mime.units import Marker, UnitError, unit_label
+from mime.core._labels import label_error, write_label
 
 #: The point a constraint held, a row per group, in the world (m): a row stands for a contact only where its paired
 #: force acts, and elsewhere is wherever the search ended (MIME-ANO-144).
@@ -55,8 +56,8 @@ class Units:
 
     text: str
 
-    def __init__(self, *parts: Marker) -> None:
-        object.__setattr__(self, "text", unit_label(*parts))
+    def __init__(self, *parts: Any) -> None:  # ``mime.units.Marker``: a dimension marker or a label
+        object.__setattr__(self, "text", write_label(*parts))
 
 
 _KINDS: Mapping[object, FieldKind] = {HeldPoints: FieldKind.HELD_POINTS, HeldForces: FieldKind.HELD_FORCES}
@@ -119,7 +120,7 @@ def _typed(state: type) -> tuple[Mapping[str, object], frozenset[str]] | None:
     """A TypedDict's evaluated hints and its required fields; ``None`` where its annotations do not evaluate."""
     try:
         hints = get_type_hints(state, include_extras=True)
-    except UnitError:  # a ``Units(...)`` that is not a unit, in an annotation a module postponed: refused where it is read
+    except label_error():  # a ``Units(...)`` that is not a unit, in an annotation a module postponed: refused where it is read
         raise
     except Exception:  # noqa: BLE001  (a TypedDict whose annotations do not evaluate types none of its fields)
         return None

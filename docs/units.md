@@ -31,10 +31,11 @@ a run's speeds); an array quantity is a result and never a declaration.
   `False`, a NumPy zero (a scalar or a zero-dimensional array) and an array of zeros are refused as any bare number is, and so
   is a quantity plus the int zero. An array of numbers plus a quantity is that refusal too, not an array of one quantity per
   number. The start is the one bare number accepted so that `sum` works, and it opens no hole in `+`.
-- **NumPy's functions are not a quantity's.** A quantity is not an array of numbers: `np.abs(q)`, `np.sqrt(q)` and the like
+- **NumPy's functions are not a quantity's.** A quantity is not an array of numbers: `np.sqrt(q)`, `np.exp(q)` and the like
   are refused with `call.units` and what to write (`abs(q)`, a power by `**`, `q.to(unit)`; `q.value` is the number in SI). The
   operators that a NumPy scalar on the left hands to the quantity (its product and quotient with one, and the order
-  comparisons, which are refused as a bare number is) are the quantity's own, as they were.
+  comparisons, which are refused as a bare number is) are the quantity's own, as they were, and so are the NumPy functions that keep
+  a unit (`np.negative`, `np.positive`, `np.absolute`, `np.square`), which give what `-q`, `abs(q)` and `q * q` give.
 - **`==` with a bare number is `False`, not an error.** A quantity compared for equality with a bare number is `False` (and
   `!=` is `True`), where an order (`<`) with a bare number is refused. Python's equality must not raise without breaking
   containers and dataclass comparison, which ask `==` of what they hold, so MIME leaves it. Write the comparison in a unit,

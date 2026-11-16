@@ -357,9 +357,19 @@ class Quantity:
     def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: object, **kwargs: object) -> object:
         """NumPy's ufuncs leave a quantity to its own operators: ``numbers_array + quantity`` is :meth:`__radd__`'s
         refusal and not an array of one quantity per number, and ``numpy_scalar * quantity`` is :meth:`__mul__`'s (the
-        operator the ufunc stands for, with the quantity on the right, as Python would have called it). Any other call
-        (``np.abs(q)``, ``np.sqrt(q)``) is a coded refusal that says what to write: ``__array_ufunc__ = None`` would
+        operator the ufunc stands for, with the quantity on the right, as Python would have called it). The ufuncs
+        that keep a unit are the quantity's own operators, as they were when NumPy took a quantity for an object
+        (``np.negative``, ``np.positive``, ``np.absolute``, ``np.square``). Any other call (``np.sqrt(q)``) is a coded refusal that says what to write: ``__array_ufunc__ = None`` would
         have made it NumPy's own ``TypeError``, which has no code and names nothing to do."""
+        if method == "__call__" and not kwargs and len(inputs) == 1 and inputs[0] is self:
+            if ufunc is np.negative:
+                return -self
+            if ufunc is np.positive:
+                return self
+            if ufunc is np.absolute:
+                return abs(self)
+            if ufunc is np.square:
+                return self * self
         reflected = _REFLECTED.get(ufunc.__name__)
         if (method == "__call__" and not kwargs and len(inputs) == 2 and inputs[1] is self
                 and not isinstance(inputs[0], Quantity) and hasattr(self, reflected or "")):
@@ -1139,6 +1149,10 @@ def standard_gravity(*, reason: Basis | None = None) -> Quantity:
     when it states none."""
     return m_per_s2(9.80665, reason=reason)
 
+
+from mime.core._labels import install_label_reader  # noqa: E402  (``mime.core`` reads labels with this module's reader)
+
+install_label_reader(parse_label, unit_label, UnitError)
 
 __all__ = [
     "ACCELERATION", "ANGULAR_VELOCITY", "AREA", "AngularVelocity", "Area", "COMPLIANCE", "Compliance", "HYDRAULIC_RESISTANCE",

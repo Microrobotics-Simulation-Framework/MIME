@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from mime.core._labels import read_label
+
 
 class SymbolKind(Enum):
     """Where a symbol's ``name`` is declared: a parameter in ``param_specs()``, a state field in ``initial_state()``,
@@ -38,6 +40,4 @@ class Symbol:
 
     def __post_init__(self) -> None:
         if not self.prose_units:
-            from mime.units import parse_label
-
-            parse_label(self.units)
+            read_label(self.units)

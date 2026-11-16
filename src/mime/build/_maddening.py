@@ -26,7 +26,8 @@ from maddening.core.static_data import StaticArray
 from numpy.typing import NDArray
 
 from mime.core import MimeNode, differentiated_nodes, one_ulp_up_leaf, run_constants_made
-from mime.core._node import node_param_specs, run_constants_for_derivative
+from mime._refusals import InternalError, entry_defect
+from mime.core._node import run_constants_for_derivative
 from mime.units import UnitError
 
 type NodeFields = dict[str, dict[str, Array]]
@@ -141,6 +142,21 @@ def node_state(graph: GraphManager, name: str) -> dict[str, Array]:
 def parameter_leaves(graph: GraphManager) -> dict[str, dict[str, Any]]:
     """``params["nodes"]``: the leaves the compiled step reads, by node."""
     return cast(dict[str, dict[str, Any]], _held(graph).params.get("nodes", {}))
+
+
+def node_param_specs(node: SimulationNode) -> Mapping[str, Any]:
+    """``node.param_specs()``, where a unit label MIME cannot read in a ``ParamSpec`` it builds is reported as the node's
+    defect (``entry.defect``, an internal refusal naming the node and the label's own refusal), not as the ``units.label``
+    refusal of a user's label: a node's author wrote it. A label is read when the specs are, never at import, so every
+    place that reads the specs of a node reads them through this (a fit or gradient study, the docs pages, the trainable
+    helper)."""
+    try:
+        return cast(Mapping[str, Any], node.param_specs())
+    except UnitError as error:
+        cls = type(node)
+        raise InternalError([entry_defect(
+            cls, f"param_specs() declares a ParamSpec whose units label cannot be read: {error}",
+            label=cls.__name__)]) from error
 
 
 def parameter_specs(graph: GraphManager) -> dict[str, dict[str, ParamSpec]]:

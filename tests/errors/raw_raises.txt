@@ -26,6 +26,7 @@ cli/__main__.py::<module> SystemExit 1  # the command's exit code
 control/_arm_tracking.py::ArmTracking.read ValueError 2  # caught where it is raised and refused with its code (the controller's law, an entry.defect naming it)
 core/_geometry.py::register_shape ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 core/_geometry.py::shape_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+core/_labels.py::_installed RuntimeError 1  # construction: a label made before `mime.units` was imported, which `import mime` never allows (it imports units first); fails closed instead of passing a label unread
 core/_node.py::MimeNode.__init__ TypeError 2  # a node's constructor given a ledger it cannot take (not a sequence of strings, or a node that writes no step identity), which only the build gives and only to a metered receiver: reached, it is error.uncoded
 core/_node.py::MimeNode.energy NotImplementedError 1  # the hook a potential law's node overrides; reached on another node, it is error.uncoded, keeping its class
 core/_node.py::MimeNode.identity_terms NotImplementedError 1  # the hook a metered receiver overrides; reached on another node, it is error.uncoded, keeping its class

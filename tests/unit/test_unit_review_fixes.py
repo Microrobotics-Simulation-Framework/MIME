@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 import mime
@@ -267,11 +267,15 @@ def test_a_rate_a_spec_writes_reads_back_as_the_rate_it_counts(rate):
     assert not same_unit(back, other), "the comparison tells the two rates apart"
 
 
+@example(exponents=(0, 0, -1, 0, 0, 0, 0), number=1.0)  # stress run 4's failing draw: a rate that counts no angle
 @given(exponents=st.tuples(*[st.integers(-3, 3)] * 7), number=st.floats(0.001, 1000.0))
 def test_a_spec_written_value_of_any_dimension_reads_back_as_written(exponents, number):
+    """Through the spec's own writer (``value_text``): a quantity of any dimension, a rate per second that counts no angle
+    included (``Hz`` would read it back as turns, a silent change of what it counts; the blob above is that draw)."""
+    from mime.study._spec import value_text
+
     dimension = Dimension.of(exponents)
-    unit = unit_symbol(dimension)
-    held = parse_value(f"{number!r}" if unit == "1" else f"{number!r} {unit}")  # a spec writes a pure number bare
+    held = parse_value(str(value_text(Quantity(number, dimension), "axis")))  # a spec writes a pure number bare
     assert held is not None and same_unit(held, dimension) and held.value == number
 
 
@@ -451,7 +455,7 @@ def test_every_node_of_mime_declares_its_parameters_with_the_checked_param_spec(
 # -- a ufunc of NumPy on a quantity ---------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("call", [np.abs, np.sqrt, np.exp, np.negative, lambda q: np.add(q, q), lambda q: np.add(q, 1.0),
+@pytest.mark.parametrize("call", [np.sqrt, np.exp, np.log, lambda q: np.add(q, q), lambda q: np.add(q, 1.0),
                                   lambda q: np.subtract(1.0, q), lambda q: np.multiply(q, 2.0)])
 def test_a_ufunc_of_numpy_on_a_quantity_is_a_coded_refusal_that_says_what_to_write(call):
     """``__array_ufunc__ = None`` made these NumPy's own ``TypeError``, which has no code and says nothing to do."""
@@ -460,6 +464,18 @@ def test_a_ufunc_of_numpy_on_a_quantity_is_a_coded_refusal_that_says_what_to_wri
     error = caught.value
     assert error.codes() == ["call.units"] and not isinstance(error, TypeError)
     assert "abs(q)" in error.refusals[0].action and "q.to(unit)" in error.refusals[0].action
+
+
+def test_the_ufuncs_that_keep_a_unit_are_the_quantitys_own_operators_for_a_length_and_for_both_kinds_of_rate():
+    """``np.negative(q)`` and the others were the quantity's own operators when NumPy took a quantity for an object (the
+    angular-rate operations test needs them): what they hand back counts what the quantity did."""
+    for q in (mm(-2.0), units.Hz(5.0), units.rad_per_s(5.0)):
+        negated, held = np.negative(q), np.positive(q)
+        assert negated == -q and negated.angle == q.angle and held == q and held.angle == q.angle
+        assert np.absolute(q) == abs(q) and np.abs(q) == abs(q) and np.abs(q).angle == q.angle
+    assert np.square(mm(3.0)) == mm(3.0) * mm(3.0)
+    with pytest.raises(UnitError):  # the control: a ufunc with a keyword is not the operator
+        np.negative(mm(2.0), where=True)
 
 
 def test_every_operator_numpy_defers_to_a_quantity_is_still_the_quantitys_own():
@@ -573,7 +589,7 @@ def test_a_label_typo_in_a_nodes_param_specs_is_the_nodes_defect_where_a_study_r
 
 def test_a_label_typo_in_a_nodes_param_specs_is_the_nodes_defect_where_the_docs_and_the_trainable_helper_read_a_nodes_specs(
         script_a_spec, a_torque_node_whose_param_specs_has_a_typo):
-    from mime.core._node import node_param_specs
+    from mime.build._maddening import node_param_specs
 
     held = script_a_spec().build().graph._nodes  # pyright: ignore[reportPrivateUsage]
     node = next(h.node for h in held.values() if type(h.node) is a_torque_node_whose_param_specs_has_a_typo)

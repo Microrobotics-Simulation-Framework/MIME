@@ -24,7 +24,7 @@ from maddening.core.compliance.metadata import NodeMeta
 from maddening.core.node import SimulationNode
 
 from mime.core import Symbol, SymbolKind
-from mime.core._node import node_param_specs
+from mime.build._maddening import node_param_specs
 from mime.docs._lists import RatchetList, floor_problems, list_problems
 from mime.registry import DimensionedSetting
 from mime.units import UnitError, parse_label, unit_symbol

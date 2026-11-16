@@ -65,9 +65,18 @@ class _Loader(yaml.SafeLoader):
         return super().construct_mapping(node, deep)
 
 
+def written_unit(value: Quantity, symbol: object) -> object:
+    """The unit a spec writes ``value`` in, which reads back as the quantity it counts: a rate per second as the angle it
+    counts, ``rad/s`` for radians and ``Hz`` for turns, and ``s^-1`` for a rate that counts neither (a result's, or
+    ``1 / s(2.0)``), which ``Hz`` would read back as turns. Any other quantity as ``symbol``, its dimension's."""
+    if value.dimension != FREQUENCY:
+        return symbol
+    return {"radian": rate_symbol(ANGULAR_VELOCITY), "turn": "Hz", None: "s^-1"}[value.angle]
+
+
 def value_text(value: object, path: str) -> object:
-    """An axis value as a spec writes it: a quantity as ``<number(s)> <unit>`` (a rate of radians as ``rad/s``, so that the spec reads back as
-    the rate it counts, not as turns: :func:`encode_value`'s symbol is the dimension's, ``Hz``), a tuple of bare numbers (a direction, a
+    """An axis value as a spec writes it: a quantity as ``<number(s)> <unit>`` (a rate as :func:`written_unit` writes it: :func:`encode_value`'s symbol is the
+    dimension's, ``Hz``, which reads back as turns), a tuple of bare numbers (a direction, a
     quaternion) as a list of its numbers, a name as it is, a number or boolean as it is."""
     numbers = bare_vector(value)
     if numbers is not None:
@@ -77,7 +86,7 @@ def value_text(value: object, path: str) -> object:
         magnitude = held["value"]
         text = ", ".join(repr(float(v)) for v in cast(list[float], magnitude)) if isinstance(magnitude, list) \
             else repr(float(cast(float, magnitude)))
-        unit = rate_symbol(ANGULAR_VELOCITY) if value.dimension == FREQUENCY and value.angle == "radian" else held["unit"]
+        unit = written_unit(value, held["unit"])
         return text if unit == "1" else f"{text} {unit}"
     if isinstance(value, str):
         if parse_value(value) is not None:
