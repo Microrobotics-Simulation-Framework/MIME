@@ -231,12 +231,13 @@ def usage_refusal(target: argparse.ArgumentParser, message: str, hints: Sequence
     sub = _subparsers_of(target) if _NO_SUBCOMMAND.search(message) else None
     if sub is not None:
         listed = "; ".join(f"`{named} {action.dest}` ({_first_clause(action.help)})" for action in sub._get_subactions())
-        action = (f"name one of its commands: {listed}. `{named} <command> --help` shows one's options, with an "
-                  "example")
-        return Refusal("cli.usage", RefusalClass.USER, f"{named} is a group of commands, and none was named", action)
-    action = " ".join([*hints, f"`{named} --help` shows its options"
-                       + (f"; for example `{example}`" if example is not None else "") + "."])
-    return Refusal("cli.usage", RefusalClass.USER, message, action)
+        return Refusal("cli.usage", RefusalClass.USER, f"{named} is a group of commands, and none was named",
+                       f"name one of its commands: {listed}. `{named} <command> --help` shows one's options, with an "
+                       f"example")
+    nearest = "".join(f"{hint} " for hint in hints)
+    shown = f"; for example `{example}`" if example is not None else ""
+    return Refusal("cli.usage", RefusalClass.USER, message,
+                   f"{nearest}`{named} --help` shows its options{shown}.")
 
 
 def _subparsers_of(parser: argparse.ArgumentParser) -> argparse._SubParsersAction[argparse.ArgumentParser] | None:  # pyright: ignore[reportPrivateUsage]
