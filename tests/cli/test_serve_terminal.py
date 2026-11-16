@@ -285,7 +285,7 @@ def oracle(load_text: str, ready: dict) -> str:
 
     command = tunnel({"REP": ready["commands"], "PUB": ready["frames"]})
     return (f"{load_text}\n"
-            f"mime serve: tracked ready (mime.live/1); commands on {ready['commands']}, frames on {ready['frames']}; its run "
+            f"mime serve: tracked ready (mime.live/2); commands on {ready['commands']}, frames on {ready['frames']}; its run "
             f"folder will be {ready['out']}\n"
             f"mime serve: from another machine, run there {command} (with the name it knows this machine by, if "
             "another), and connect to the same endpoints\n"

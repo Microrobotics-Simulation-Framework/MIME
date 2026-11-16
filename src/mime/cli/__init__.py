@@ -1983,7 +1983,7 @@ def build_parser() -> _guide.MimeParser:
     visuals_web.add_argument("--open", action="store_true", help="open the page in the default browser")
     from mime.live import DEFAULT_COMMANDS, DEFAULT_FRAMES
 
-    serve = commands.add_parser("serve", help="serve a saved experiment's live session (mime.live/1, over ZMQ)")
+    serve = commands.add_parser("serve", help="serve a saved experiment's live session (mime.live/2, over ZMQ)")
     serve.add_argument("folder", type=Path, help="a folder written by Experiment.save")
     serve.add_argument("--no-xla-cache", action="store_true", help=no_cache_help)
     serve.add_argument("--commands", default=DEFAULT_COMMANDS, metavar="ENDPOINT",
@@ -2158,7 +2158,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ``mime serve <folder> [--commands <endpoint>] [--frames <endpoint>] [--chunk <seconds>] [--pace <factor>]
     [--out <dir> [--force]] [--record-budget <samples>] [--start]``: the saved experiment's live session, speaking
-    ``mime.live/1`` over ZMQ (commands on a REP, frames on a PUB), bound to loopback unless ``--allow-remote-commands``
+    ``mime.live/2`` over ZMQ (commands on a REP, frames on a PUB), bound to loopback unless ``--allow-remote-commands``
     (which warns, naming each address that is not), until a ``stop`` command, a signal, or the exit of the process that
     launched it (unless ``--outlive-launcher``), or ``--idle-timeout`` with no client connected, or ``--max-wall`` (each
     at the end of the chunk in hand); it writes a run folder when it stops (``--out`` new or empty, as for ``mime run``,

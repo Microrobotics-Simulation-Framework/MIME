@@ -19,7 +19,7 @@
   from the session's first tick, at its declared default until it is set, so that no `set` compiles the step again. A
   command that changes the run waits for the chunk in flight; `status` and `hello` do not, and say what the session is
   doing (`activity`). A request a client got wrong is refused by its code, and no request stops the session.
-- **`mime.live/1`** (`_protocol.py`): the messages, independent of their transport. Requests and replies are JSON, a
+- **`mime.live/2`** (`_protocol.py`): the messages, independent of their transport. Requests and replies are JSON, a
   refusal in the coded shape of MIME's errors; a frame is binary (a header with its schema's id, its number, its step
   and its time, then each field's bytes in the run's own type) or JSON. `FrameOrder` sees a frame dropped or out of
   order.

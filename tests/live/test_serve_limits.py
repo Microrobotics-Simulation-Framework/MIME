@@ -75,7 +75,7 @@ def connect(ready: Path) -> LiveClient:
     return client(ready, timeout=60.0)
 
 
-#: The keys of the ready file, under mime.live/1's rule: fields may be added and a reader ignores what it does not know.
+#: The keys of the ready file, under mime.live/2's rule: fields may be added and a reader ignores what it does not know.
 #: ``mechanism`` and ``server_key`` are reserved for a later CURVE session and are not written now.
 READY_KEYS = {"protocol", "commands", "frames", "out"}
 

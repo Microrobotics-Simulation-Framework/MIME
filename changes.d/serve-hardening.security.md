@@ -21,3 +21,5 @@
     (`allow_remote=`), resolves `localhost` once and binds the address it resolved, and refuses a port outside 0 to
     65535 as a malformed endpoint (`live.endpoint`), closing the socket it opened first: before, `--frames
     tcp://127.0.0.1:99999` raised an uncoded `OverflowError` (exit 3) with the command socket left open.
+  - **`mime.live/2`.** The four values above changed meaning, so the protocol is `mime.live/2`: the server announces it, MIME's
+    client speaks it, and a request that says `"protocol": "mime.live/1"` is refused with `live.protocol`.

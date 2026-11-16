@@ -1,4 +1,4 @@
-# Live sessions and `mime.live/1`
+# Live sessions and `mime.live/2`
 
 A live session runs a built experiment while you watch it: it steps the run in chunks of one fixed size, hands each
 chunk's state to its subscribers as a frame, takes the controller's live inputs between ticks, and records the stage
@@ -151,12 +151,12 @@ mime serve: from another machine, run there ssh -N -L 5555:127.0.0.1:5555 -L 555
 ### The ready file
 
 `--ready-file <file>` is how a program that starts `mime serve` learns where to connect, whatever the server prints: it is
-written as one JSON object once the sockets listen. Its format is part of `mime.live/1` and follows the protocol's rule
+written as one JSON object once the sockets listen. Its format is part of `mime.live/2` and follows the protocol's rule
 below, that fields may be added and a reader ignores what it does not know.
 
 | Key | What it holds |
 |---|---|
-| `protocol` | `mime.live/1` |
+| `protocol` | `mime.live/2` |
 | `commands` | the endpoint the commands are sent to, `tcp://<host>:<port>` (the port that was bound, when any free one was asked for) |
 | `frames` | the endpoint the frames are received on |
 | `out` | the run folder the session writes when it stops |
@@ -238,15 +238,22 @@ The transport is ZMQ: a REP socket for commands and a PUB socket for frames. MIM
 (ZMTP with the NULL mechanism), so `mime serve` needs no extra package, and any ZMQ library connects to it as it would
 to libzmq's own sockets: a REQ (or a DEALER) for commands, a SUB for frames. `mime.live.LiveClient` is a Python client.
 
-## The protocol: `mime.live/1`
+## The protocol: `mime.live/2`
 
 The messages are written independent of their transport: a WebSocket or a WebRTC data channel could carry them as
-they are. Within `mime.live/1` fields may be added (a new schema id; a client ignores what it does not know); any other
+they are. Within `mime.live/2` fields may be added (a new schema id; a client ignores what it does not know); any other
 change is a new major version.
+
+**`mime.live/2`** (this page) replaced `mime.live/1`, which the 0.3.0 development line carried until `mime serve`'s hardening: four values
+changed meaning, so a client that kept `mime.live/1`'s reading would misread them without a sign. `hello`'s `stage` is a path
+relative to the run folder (not the serving machine's absolute path), `visuals.overlay` is the overlay's id (not its
+path), each `visuals.fetch` folder is relative to the run folder, and `stop`'s `folder` is the run folder's name. Frames
+and their version are unchanged. A client that sends `"protocol": "mime.live/1"` is refused with `live.protocol` in
+its first request; one that sends no `protocol` is answered as `mime.live/2`, so read `hello`'s `protocol`.
 
 ### Requests and replies
 
-A request is a JSON object, `{"command": "<name>", ...}` (with `"protocol": "mime.live/1"`, optional). A reply is a
+A request is a JSON object, `{"command": "<name>", ...}` (with `"protocol": "mime.live/2"`, optional). A reply is a
 JSON object with `protocol`, `ok` and `command`; on success the session's status (`state`, `step`, `time`, `frames`,
 `pace`, `recording`, `non_finite`; `stepping`, the chunks a step in hand has still to take; `activity`, what the
 session is doing, `compiling`, `stepping` or `idle`; and `pending`, the commands taken while a chunk runs that act at

@@ -3,7 +3,7 @@
 :class:`ServeState` is the state of a running ``mime serve`` as a person watching it needs it: the session's status as
 a client reads it (``state``, ``step``, ``time``, ``frames``, ``pace``, ``recording``, ``activity``, ``pending``, and the
 optional ``wall_time``, ``clients`` and ``recent``), the rows of the table of values, the flags seen raised, the
-events not yet shown, and how the session stopped. It is fed from three places, none of which a client of ``mime.live/1``
+events not yet shown, and how the session stopped. It is fed from three places, none of which a client of ``mime.live/2``
 could not also reach: :meth:`ServeState.note_status` (a status reply's fields), :meth:`ServeState.take` (a frame) and the
 server's own account of who connected and what was asked (:meth:`ServeState.peer`, :meth:`ServeState.command`). A later
 ``mime watch`` fills the same state from a status poll and the frames it subscribes to, and the one renderer

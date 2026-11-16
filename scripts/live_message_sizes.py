@@ -1,4 +1,4 @@
-"""The largest legitimate messages of ``mime.live/1`` on the repository's rigs, which the transport's limits
+"""The largest legitimate messages of ``mime.live/2`` on the repository's rigs, which the transport's limits
 (``mime.live._zmtp.LIMITS``) are set from with a stated margin (``docs/live.md``, "Message sizes"); and each rig's
 default recording budget. A measurement, never a CI check; sizes depend on the rig and not on the machine.
 

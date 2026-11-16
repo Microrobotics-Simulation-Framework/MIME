@@ -1,4 +1,4 @@
-"""``mime.live/1``'s messages and MIME's own ZMTP, without a session: a frame's binary and JSON forms read back to the
+"""``mime.live/2``'s messages and MIME's own ZMTP, without a session: a frame's binary and JSON forms read back to the
 same arrays in their own dtypes, a frame of another schema or length refused, the frame order checker seeing a frame
 dropped or delivered out of order, and the handshakes libzmq's own sockets sent (captured from libzmq 4.3.5 through
 pyzmq, ``libzmq_handshakes.json``) answered by MIME's server as libzmq's would answer them, with the controls: a peer

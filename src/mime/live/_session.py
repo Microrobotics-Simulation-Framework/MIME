@@ -121,7 +121,7 @@ def frame_schema(built: BuiltExperiment, select: Sequence[str] | None = None) ->
 class LiveSession:
     """A built experiment run live (``built.live(...)``). Its loop steps the compiled run ``chunk_steps`` base steps at
     a time, one length for the whole session, since each new length compiles anew; after each chunk it hands a frame
-    of the selected fields to every subscriber. Its commands are those of ``mime.live/1`` (:meth:`command`), each also
+    of the selected fields to every subscriber. Its commands are those of ``mime.live/2`` (:meth:`command`), each also
     a method: :meth:`start`, :meth:`pause`, :meth:`step`, :meth:`stop` (which stops in every state), :meth:`set` (a
     live input of the controller in the callback mode), :meth:`record` (the recording layer, on or off) and
     :meth:`set_pace`. Every command is logged with the step it took effect at, so :func:`replay` reproduces the
@@ -638,7 +638,7 @@ class LiveSession:
             return self._status()
 
     def command(self, message: Mapping[str, Any]) -> dict[str, Any]:
-        """One ``mime.live/1`` request, answered: the reply, or the refusal in MIME's coded shape. Never raises: a
+        """One ``mime.live/2`` request, answered: the reply, or the refusal in MIME's coded shape. Never raises: a
         request a client got wrong is refused with its code, and any other error is answered in the coded shape of
         MIME's errors, the session going on. A ``step`` to a session a loop drives (``mime serve``'s) only takes its
         chunks in hand (:meth:`begin_step`): the loop steps them between its other requests and answers it when they

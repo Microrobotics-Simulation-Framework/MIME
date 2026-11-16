@@ -1,4 +1,4 @@
-"""``mime serve``: a saved experiment's live session in a process of its own, speaking ``mime.live/1`` over ZMQ, a PUB
+"""``mime serve``: a saved experiment's live session in a process of its own, speaking ``mime.live/2`` over ZMQ, a PUB
 for its frames and a REP for its commands, bound to localhost unless asked otherwise; and the Python client of it.
 
 A served session does not outlive the process that launched it (:class:`LauncherWatch`): when that process is gone, the

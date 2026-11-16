@@ -169,7 +169,7 @@ def test_what_a_session_refuses():
         "set shape": session.command({"command": "set", "values": {"offset": [1.0, 2.0]}}),
         "set nothing": session.command({"command": "set"}),
         "no command": session.command({"command": "jump"}),
-        "protocol": session.command({"protocol": "mime.live/2", "command": "hello"}),
+        "protocol": session.command({"protocol": "mime.live/3", "command": "hello"}),
     }
     assert {name: reply["errors"][0]["code"] for name, reply in codes.items()} == {
         "set unknown": "live.input-unknown", "set shape": "live.input-value", "set nothing": "live.input-value",
@@ -220,10 +220,23 @@ def test_a_log_of_another_experiment_or_no_log_at_all_is_refused(tmp_path):
         replay(steered().build(), tmp_path / "not_a_log.jsonl", None)
 
 
+def test_a_client_that_speaks_protocol_1_is_refused_by_its_code_and_the_session_says_it_speaks_2():
+    """``stage``, ``visuals.overlay``, ``visuals.fetch`` and ``stop.folder`` changed meaning in ``/2``, so a ``/1``
+    client must meet a refusal, not a misread path. Control: the same request as ``/2`` (and with no ``protocol``) is
+    answered, so the refusal is the version's and not the request's."""
+    session = steered().build().live(pace=None)
+    refused = session.command({"protocol": "mime.live/1", "command": "hello"})
+    assert not refused["ok"] and refused["errors"][0]["code"] == "live.protocol"
+    assert "mime.live/1" in refused["errors"][0]["message"] and "mime.live/2" in refused["errors"][0]["message"]
+    assert "stage" not in refused and "visuals" not in refused
+    assert session.command({"protocol": "mime.live/2", "command": "hello"})["protocol"] == "mime.live/2"
+    assert session.command({"command": "hello"})["ok"]
+
+
 def test_hello_describes_the_session():
     session = steered().build().live(pace=None)
     hello = session.command({"command": "hello"})
-    assert hello["ok"] and hello["protocol"] == "mime.live/1" and hello["state"] == READY
+    assert hello["ok"] and hello["protocol"] == "mime.live/2" and hello["state"] == READY
     assert hello["chunk_steps"] % 3 == 0 and hello["controller"]["mode"] == "callback"
     assert hello["live_inputs"] == {"offset": {"units": "1", "shape": [], "meaning": "added to every angle it writes",
                                                "default": 0.0}}
