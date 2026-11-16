@@ -1596,6 +1596,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   terminal is `asset.download-large` (it was `pull.assets-large`), and `mime.saved.ASSET_CONFIRM_BYTES` is gone
   (`mime.assets.CONFIRM_ABOVE_BYTES`). `-y`, `-f` and `--accept-licence` are options of `assets fetch`, `visuals fetch`
   and `pull`.
+- **Changelog fragments** (`changes.d/`, `scripts/assemble_changelog.py`). A change writes `changes.d/<slug>.<kind>.md`
+  (`added`, `changed`, `deprecated`, `removed`, `fixed`, `security` or `anomaly`) instead of editing `CHANGELOG.md`, so that
+  two changes no longer conflict on its Unreleased block (18 of the last 45 pull requests did). A small pull request after a
+  merge, or a burst of merges, folds the waiting fragments into the block's sections, by kind and then slug, and deletes them.
+  A fragment with a heading line or unbalanced code fences, and a changelog the fold cannot read (not one Unreleased heading,
+  unbalanced fences, mixed line endings), are refused before anything is written. The fold touches nothing else in the file
+  and keeps its line endings, so a hand edit survives, and a second fold changes nothing. The page and the text checks read
+  the fragments too.
+- **A command port's bounds and slew as study axes** (`mime.study`, `AxisKind.PORT`; G14a). `<apparatus>.ports.<command>.bounds`
+  (one quantity for a symmetric pair, or a pair), `.low`, `.high` and `.slew`, and `[i]` for one element where the port
+  declares one per element, are axes of a study, a run's override and a range: a point writes the port's number, its
+  reason the port's own followed by the point's, and the plan judges the port at each point. The stage already held each
+  number as a leaf; a controller inside the compiled step whose allocation (`ctx.allocator`) reads a declared bound or
+  slew now holds it as a leaf of its node too (`port_<apparatus>__<command>__<number>`), and one axis writes both. A sweep
+  of a current limit is one group and one compile, and `Study.gradient(..., wrt=["coils.ports.currents.high"])` passes
+  through the stage and the allocation alike (what a stronger amplifier buys), declared a jump where the port trips. A
+  number the port does not declare is refused (`study.port-undeclared`, the route to declare it). A controller called on
+  the host makes its law from each member's declared bounds, as built, with no derivative through it. Not built: a
+  controller believing a limit other than the hardware's. **The derived hash of every in-graph allocating loop over
+  declared bounds moves** (the controller's node holds the port's numbers as leaves where it held them as constants); its
+  outputs at the declared bound are those of the release before it, bit for bit on the eight such programs the repo builds (float64
+  and float32), and a loop that reads no bound or runs on the host keeps its hash.
+- **Usability bundle 5: `mime.scene.rotation`, two filters, and a warning at `run()`.** `mime.scene.rotation(axis, angle)`
+  is the unit quaternion for a turn of `angle` (`deg(30.0)`) about `axis` (`Z`, or three numbers), right-handed and in
+  MIME's order `(w, x, y, z)`, which `State`'s docstring now states (`(x, y, z, w)` from ROS or SciPy is a different
+  rotation, never refused); a zero axis, a bare number or a non-finite angle is refused as `call.rotation`.
+  `mime registry --entry <name>` lists (or, with `--json`, exports, with the namespaces of those entries) the entries of one name, every version and kind, and
+  `mime assets list --namespace <source>` the records of one asset source (`mime`, or an installed package's `mime.assets`
+  entry point); a name that holds nothing is refused with the nearest names (`registry.unknown-entry`, `asset.unknown`),
+  never an empty answer. `run()` warns, before it spends the run, of an observation whose window starts at or after
+  the run's end (its outputs at the end would read as nothing observed, `run.window-past-end`, at the read).
+- **Surfaces that deform and carry fields, recorded in USD and shown in MIME's page** (USD-SURFACES, from spike
+  USD-DEFORM). An entry declares the surfaces its node moves, `Entry.surface_meshes(settings)` returning
+  `mime.registry.SurfaceMesh` (fixed triangles, the rest in its thing's frame, the node field holding the points, `None`
+  for a still surface, and its fields as `MeshField`s: name, unit, port, a range, a reduction), drawn below its thing's
+  prim or the role it names (`on=`).
+  - **The stage** holds each at rest, a `UsdGeom.Mesh` of float32 points with `mime:mesh:owner`, `mime:mesh:fields`,
+    `mime:display` (`revolved`, `extruded`) and a vertex primvar `primvars:mime:<field>` per field. A surface over
+    `SURFACE_TRIANGLES` (16,000) is decimated by vertex clustering at rest, each sample reduced over its clusters (a field's
+    `mean`, or `max` for a damage-like field, so a front is not smeared); no drawn triangle folds under a crater up to ten
+    widths deep (a test, with a mirrored map as its control). A surface whose rest's centre lies more than
+    `SURFACE_ORIGIN_EXTENTS` (100) times its extent from its thing's origin is refused at build.
+  - **The recording** time-samples its points and its fields' values (physics values, never colours) on the run's one
+    time base, each the node's value at that step to the float32 bit, in float32 and float64 (each with a planted
+    one-sample shift caught).
+  - **The page** draws it with morph targets (POSITION and a four-component COLOR_0, viridis, one animation per field, at
+    most 256 targets a surface), a field legend, a picker that keeps the time and the play state, and its own size. A page
+    of about 15 MB holds about 3.5e5 vertex-frames of one moving field (`docs/recordings.md` has the rows).
+  - **The stage binding is `mime.binding/2`**, with the kinds `points` and `field` (`space` `thing`, `vertices`,
+    `surface_field`, `reduction`, `clusters` where decimated); its `pose` and `vector` entries are unchanged. Live
+    frames leave a surface out unless `select=` names it. A ghosted comparison refuses members whose surfaces differ in
+    vertex count (`compare.scene`).
+  - A toy, `toy.indented_sheet`, declares one. Where no entry declares a surface, the stage, the recording, the run's
+    state, the GLB and the page are the same bytes as before, in float32 and float64 (measured on three experiments, with
+    the sheet added as the control that differs).
 
 ### Changed
 
@@ -2008,6 +2063,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the report's summary written into it are not changed. A file inside the run folder and `viz.web` carry the mark too; a copy of the folder, which no session knows, is shown
   with no mark. A result pickled (sent back from a worker process) keeps no link to the experiment: it still pickles and
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
+- The public surface of the tooling packages is smaller: 113 names that only the commands and MIME's own modules used left
+  their package's `__all__`, with no shim (no plugin imported any of them). Kept public because a public signature names
+  them (a user annotates them): `mime.push.Checked` and `Item` (what `check` returns and holds), `mime.credentials.Token` (what `pull` takes for
+  a share link) and `mime.blocks.BlockHandle` (what `Experiment.use` returns) and `Drafted` (what `fragment_from` returns), beside `mime.push.check`, `read_manifest`,
+  `Manifest` and the `MANIFEST_*` names (their duplicate families wait for their own decision), `mime.blocks.fragment_from`
+  and `MANIFEST_FILE`. `mime.scaffold` has no public names, since `mime scaffold` is how it is reached; `mime.cli`'s
+  `__all__` is empty (`main` is still the `mime` entry point, and its names are defined in the module itself, so they stay
+  importable from it). A name that left is imported from the module that defines it (`mime.push._draft.push`,
+  `mime.credentials._store.token`, `mime.scaffold._scaffold.scaffold`, `mime.blocks._definition.is_block_folder`): no
+  command's behaviour or `--help` text changed. A test (`tests/test_signature_types_are_public.py`) fails when a public
+  signature names a class of these packages that no package exports. Out of `mime.push`: `AlsoCite`, `Answer`, `AssetChoice`, `CONTRIBUTOR_TYPES`, `Choices`, `Client`, `DEFAULTS_FILE`, `DEFAULT_LICENCE`, `DraftState`, `Drafted`, `Dropped`, `Errors`, `FIELD_OWNERS`, `FULL_FLAG`, `Gone`, `HttpTransport`, `KEEP_FLAG`, `KEYWORD`, `LONGEST_WAIT_SECONDS`, `MOST_BYTES`, `MOST_FILES`, `OVERWRITE_FLAG`, `PAUSE_SECONDS`, `PRODUCTION_FACTS`, `Person`, `Plan`, `PublicRecord`, `Published`, `RDM_TYPE`, `RELATION_TYPES`, `RETRIES`, `RecordContainer`, `RecordFile`, `Related`, `SANDBOX_FACTS`, `SERVICES`, `Service`, `ShareLink`, `Sharing`, `TEST_PREFIX`, `Transport`, `UPLOAD_ATTEMPTS`, `Uploaded`, `Uploader`, `ZENODO`, `ZENODO_SANDBOX`, `card_html`, `confirmation`, `defaults_lines`, `defaults_path`, `discard`, `draft_identifier`, `edit_defaults`, `edited_fields`, `field_owner`, `fingerprint`, `init`, `make_plan`, `metadata_marks`, `orcid_problem`, `own_location`, `public_record`, `publish`, `push`, `read_defaults`, `read_state`, `record_number`, `send`, `setup`, `share_link`, `staged_lock`, `state_directory`, `status`, `write_defaults`. Out of
+  `mime.credentials`: `CREDENTIALS_FILE`, `DIRECTORY_MODE`, `FILE_MODE`, `HOST_PREFIX`, `MINIMUM_LENGTH`, `SERVICES`, `SHOWN_FROM_LENGTH`, `credentials_path`, `describe`, `held_tokens`, `host_service`, `is_host_service`, `prompt`, `remove`, `source`, `store`, `token`. Out of `mime.scaffold`: `KEYS`, `KINDS`, `Scaffolded`, `scaffold`. Out of `mime.blocks`:
+  `BlockRefused`, `Definition`, `FRAGMENT_FILE`, `FRAGMENT_SCHEMA`, `Fragment`, `FragmentDoc`, `SOCKET_KINDS`, `content_hash`, `definition_of`, `is_block_folder`, `read_definition`, `read_fragment`, `requirement_rows`. Out of `mime.cli`'s `__all__`: `FAILED`, `REFUSED`, `TRACEBACK_FLAG`, `main`, `refused`.
+- **Usability bundle 5: messages that name the problem once and blame the right party.** A body whose part was refused (a
+  solid's radius below zero) is one problem: what follows from it (the body's derived mass, a drag's need of its hull)
+  is no longer refused apart, and the part's refusal says so. A run of zero steps, a negative one or one under a step
+  is named as such (`run.duration`), and its "do:" offers one run, not the same one twice. A reason that is only a
+  placeholder word (`"pending"`, `"TODO"`, `"TBD"`, `"FIXME"`), or starts as a label with one (`"TODO: fill in"`,
+  `"TBD - ask"`), is refused with "did you mean `pending()`"; prose that merely begins with the word still passes. An entry's
+  or a namespace's version must be a version (numbers joined by dots, PEP 440; `"banana"` stops registering, and so does a text with whitespace around it, which would have been a second key of the
+  same version; a second spelling of a registered version, `0.1` beside `0.1.0`, is refused) and versions list in that order
+  (`0.9.0` before `0.10.0`). `run()`'s docstring and the README say that a run continues the
+  last one. A check of the built graph that faults a node (`maddening.shape`, `maddening.dtype`,
+  `maddening.units`, `maddening.error` where an edge reads a field the node's state lacks, `post-build.units`,
+  `post-build.input-units`, `post-build.unsaved-arguments`, `run.run-constant`) is blamed on the code that has the flaw,
+  the node's class, whatever entry built it: a class outside MIME is no longer worded "MIME defect: report it with this
+  build report" but names the node's class and its package, says what its author changes, and the footer says it is not
+  MIME's defect; a node of one of MIME's own classes is still MIME's, under a lab's entry too. MADDENING's other errors
+  (a coupling group mixed, a non-float loop, a cycle, a missing node) are worded as they were.
 
 ### Fixed
 
@@ -2269,6 +2353,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its vector. A0's own field, about 1 mT in its first samples, draws an 8 mm arrow, within the cap and unchanged. The cap is in the view alone (the
   glTF and the page), the page's notes name each capped arrow by its prim path, and the stage and the recording are
   unchanged.
+- **G22 (the camera's tree against brute force) no longer judges a ray the float32 crossing test cannot place.** A ray passing a
+  far, grazing triangle's edge within the rounding of its barycentric coordinates (about `4 eps (distance / edge) (edge^2 / 2 area) /
+  cos` of incidence: the sheared corners carry the error of the distance, not of the triangle) may lose or keep a fold's two
+  crossings together; the oracle now leaves such rays out by that derived bound, where it left out only a fixed `1e-4`.
+  A test change; the renderer is unchanged.
+
+### Security
+
+- **`mime serve` binds loopback only unless `--allow-remote-commands`** (it replaces `--remote`, and `serve()`'s
+  `allow_remote_commands=` replaces `remote=`). A live session has no authentication, so an address that is not
+  loopback (127.0.0.0/8, `::1`, or `localhost` where it resolves to loopback only; a host name is not resolved for
+  this) is refused before anything binds: `live.commands-not-loopback` for the command socket,
+  `live.frames-not-loopback` for the frame socket. The flag binds it all the same and warns on standard error, naming
+  each such address and what it gives whoever reaches it. `localhost` was trusted by its name before; it is now checked
+  by what it resolves to. A port in use, by a second `mime serve` say, is refused naming that port and its option
+  (`live.address-in-use`), with free ports (`tcp://127.0.0.1:0`) as the way out.
 
 ### Known Anomalies
 

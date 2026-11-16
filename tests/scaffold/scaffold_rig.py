@@ -38,7 +38,7 @@ import hatchling.build
 import pytest
 import yaml
 
-from mime import scaffold
+from mime.scaffold import _scaffold
 from mime.cli import main as mime_main
 from mime.push import _check, _defaults, _draft
 from mime.scaffold import _templates
@@ -245,7 +245,7 @@ def failures_of(kind: str, root: Path, name: str | None = None, sets: list[str] 
         sets = sets if sets is not None else CHOSEN.get(kind, [])
         if kind == "plugin":
             chosen_content_licence()
-        scaffold.scaffold(kind, path, yes=True, sets=sets, say=lambda line: None)
+        _scaffold.scaffold(kind, path, yes=True, sets=sets, say=lambda line: None)
         if kind == "experiment":
             return verified(path / "saved")
         if kind == "plugin":
@@ -393,7 +393,7 @@ def plugin_base(root: Path) -> PluginBase:
     before = environment()
     folder = root / "scafx-probes"
     chosen_content_licence()
-    scaffold.scaffold("plugin", folder, yes=True, sets=[f"plugin.namespace={NAMESPACE}"], say=lambda line: None)
+    _scaffold.scaffold("plugin", folder, yes=True, sets=[f"plugin.namespace={NAMESPACE}"], say=lambda line: None)
     project, failures = plugin_static(folder)
     target = root / "target"
     return PluginBase(folder, target, failures or plugin_listing(folder, target, project), before)

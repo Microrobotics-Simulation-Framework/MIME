@@ -52,9 +52,10 @@ from hypothesis import strategies as st
 from push_cases import copy_of, saved_toy, write_manifest
 
 from mime import cli, push
+from mime.push import _draft, _setup
 from mime.build import BuildRefused
 from mime.cli import main
-from mime.push import _defaults, _fields, _manifest, _setup, _sharing, _toml
+from mime.push import _defaults, _fields, _manifest, _sharing, _toml
 
 ORCID = "0000-0002-1825-0097"
 #: The same iD with its check digit mistyped.
@@ -99,7 +100,7 @@ def held_in(folder: Path) -> dict[str, object]:
 
 
 def walk(folder: Path, person: Person) -> dict[str, object]:
-    push.setup(folder, typed=person.typed, ask=person.ask, say=person.say, service="zenodo-sandbox")
+    _setup.setup(folder, typed=person.typed, ask=person.ask, say=person.say, service="zenodo-sandbox")
     assert person.answers == [], f"answers left unasked: {person.answers}"
     return held_in(folder)
 
@@ -209,7 +210,7 @@ def test_without_a_terminal_setup_is_refused_naming_init_and_writes_nothing(save
                                                                           capsys: pytest.CaptureFixture[str]):
     folder = copy_of(saved, tmp_path)
     with pytest.raises(BuildRefused) as refused:
-        push.setup(folder, typed=None, ask=None, say=lambda line: None)
+        _setup.setup(folder, typed=None, ask=None, say=lambda line: None)
     assert refused.value.codes() == ["push.setup"] and "--init" in refused.value.refusals[0].action
     assert main(["push", str(folder), "--setup"]) == 2  # pytest's standard input is no terminal
     assert "push.setup" in capsys.readouterr().err and not (folder / "mime.toml").exists()
@@ -273,7 +274,7 @@ def test_a_sharing_yaml_value_toml_cannot_hold_is_refused_before_anything_is_wri
     assert old != OLD
     (folder / "sharing.yaml").write_text(old, encoding="utf-8")
     with pytest.raises(BuildRefused) as refused:
-        push.init(folder)
+        _draft.init(folder)
     assert refused.value.codes() == ["manifest.read"]
     message = refused.value.refusals[0].message
     assert f"{key}" in message and " is a value TOML cannot hold" in message
@@ -283,7 +284,7 @@ def test_a_sharing_yaml_value_toml_cannot_hold_is_refused_before_anything_is_wri
         walk(folder, person)
     assert asked.value.codes() == ["manifest.read"] and person.asked == [] and not (folder / "mime.toml").exists()
     (folder / "sharing.yaml").write_text(OLD, encoding="utf-8")
-    assert push.init(folder)[1], "the control: the same file in plain YAML writes mime.toml"
+    assert _draft.init(folder)[1], "the control: the same file in plain YAML writes mime.toml"
 
 
 @pytest.mark.parametrize(("old", "named"), [
@@ -301,7 +302,7 @@ def test_what_toml_cannot_carry_over_from_sharing_yaml_is_refused_naming_it_neve
     folder = copy_of(saved, tmp_path)
     (folder / "sharing.yaml").write_text(old, encoding="utf-8")
     with pytest.raises(BuildRefused) as refused:
-        push.init(folder)
+        _draft.init(folder)
     assert refused.value.codes() == ["manifest.read"] and named in refused.value.refusals[0].message
     assert not (folder / "mime.toml").exists() and (folder / "sharing.yaml").read_text(encoding="utf-8") == old
     person = Person()
@@ -314,7 +315,7 @@ def test_a_key_left_empty_in_sharing_yaml_holds_nothing_and_is_not_a_loss(saved:
     """The control: ``uploader: null`` (a key with no value) is a key not given, as it was, and the move writes."""
     folder = copy_of(saved, tmp_path)
     (folder / "sharing.yaml").write_text(OLD, encoding="utf-8")
-    assert "uploader: null" in OLD and push.init(folder)[1]
+    assert "uploader: null" in OLD and _draft.init(folder)[1]
 
 
 @pytest.mark.parametrize(("line", "named"), [
@@ -427,7 +428,7 @@ def test_saving_the_record_values_keeps_the_licences_and_the_namespace():
 
 def test_with_no_defaults_init_writes_the_scaffold_as_it_always_was(saved: Path, tmp_path: Path):
     folder = copy_of(saved, tmp_path)
-    push.init(folder)
+    _draft.init(folder)
     assert (folder / "mime.toml").read_text(encoding="utf-8") == _manifest.manifest_text("bundle", "full_toy",
                                                                                         "CC-BY-4.0")
 

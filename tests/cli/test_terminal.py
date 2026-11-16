@@ -483,13 +483,15 @@ def refused_env_check(tmp_path) -> list[str]:
     """``mime env check``'s words for a check refused for many distributions in any lane: a lab's pins, at a version
     no lane installs, of every distribution MIME's own extras and groups add to the cpu variant's (the dev group's
     tools, about twenty). A checkout's own tools pass the check at the lock's pins, so the environment itself refuses
-    at most CI's lab fixture."""
+    at most CI's lab fixture. ``--strict``: without it a version inside the ranges the installed distributions
+    declare is a note, and only a handful of the pins would refuse (no longer many reasons for the grouping to
+    shorten)."""
     from mime.env import optional_pins, pins
 
     added = sorted({pin.name for pin in optional_pins()} - {pin.name for pin in pins("cpu")})
     lab = tmp_path / "lab_pins.txt"
     lab.write_text("".join(f"{name}==0.0.1\n" for name in added), encoding="utf-8")
-    return ["env", "check", "--variant", "cpu", "--lab", str(lab)]
+    return ["env", "check", "--variant", "cpu", "--strict", "--lab", str(lab)]
 
 
 def test_env_check_on_a_terminal_is_one_block_per_code_and_every_package_the_pipe_names_is_a_row(saved, tmp_path):

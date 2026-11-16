@@ -165,7 +165,7 @@ def manifest_problems(folder: str | os.PathLike[str], *,
     there is one. What makes it unreadable is refused at once: no ``mime.toml``, ``sharing.yaml`` alone or beside it
     (:func:`present`), TOML that does not read (``manifest.read``), a newer format (``load.newer-form``), a kind its folder
     is not (``manifest.kind``). ``old_ignored`` as :func:`present`'s. A block folder's is read as a block's definition
-    (:func:`mime.blocks.read_definition`), its ``[record]`` with it."""
+    (:func:`mime.blocks._definition.read_definition`), its ``[record]`` with it."""
     root = Path(os.path.abspath(folder))
     if folder_kind(root) == BLOCK:
         from mime.blocks._definition import read_definition

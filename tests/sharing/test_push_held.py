@@ -34,10 +34,11 @@ from push_cases import copy_of, saved_toy, with_token, write_manifest
 from terms_cases import NO_REDISTRIBUTION, layered, same_reference_run, write_mesh
 from zenodo_records import Entry, FakeRecords, FakeTransport, Killed
 
-from mime import assets, push
+from mime import assets
+from mime.push import _client, _draft, _publish, _service, _state
 from mime.build import BuildRefused
 from mime.cli import main
-from mime.push import _client, _draft, _edits, _manifest, _plan, _publish, _stage, _state, _toml
+from mime.push import _edits, _manifest, _plan, _stage, _toml
 from mime.push._state import Uploaded, metadata_marks, read_state, write_state
 from mime.saved import card_text, pack
 from mime.saved._bundle import _own_location
@@ -104,17 +105,17 @@ class Terminal:
         return "\n".join(self.said)
 
 
-def pushed(folder: Path, fake: FakeRecords, service: push.Service, person: Terminal | None = None,
-           **extra: object) -> push.Drafted:
+def pushed(folder: Path, fake: FakeRecords, service: _service.Service, person: Terminal | None = None,
+           **extra: object) -> _draft.Drafted:
     """A push: in a terminal (``person``), or from a script."""
-    return push.push(folder, service, confirm=person.ask if person else None, say=person.say if person else _quiet,
+    return _draft.push(folder, service, confirm=person.ask if person else None, say=person.say if person else _quiet,
                      transport=FakeTransport(fake), pause=0, sleep=lambda seconds: None, **extra)  # type: ignore[arg-type]
 
 
-def published(folder: Path, fake: FakeRecords, service: push.Service, person: Terminal | None = None,
-              confirm: str | None = None, **extra: object) -> push.Published | None:
+def published(folder: Path, fake: FakeRecords, service: _service.Service, person: Terminal | None = None,
+              confirm: str | None = None, **extra: object) -> _state.Published | None:
     """A publish: in a terminal (``person``), or from a script (``person`` None, with ``confirm``)."""
-    return push.publish(folder, service, confirm=confirm, ask=person.ask if person else None,
+    return _publish.publish(folder, service, confirm=confirm, ask=person.ask if person else None,
                         typed=person.typed if person else None, say=person.say if person else _quiet,
                         transport=FakeTransport(fake), pause=0, sleep=lambda seconds: None, **extra)  # type: ignore[arg-type]
 
@@ -157,12 +158,12 @@ def replaced_content(folder: Path, source: Path) -> None:
         shutil.copytree(path, target) if path.is_dir() else shutil.copy2(path, target)
 
 
-def production(monkeypatch: pytest.MonkeyPatch) -> tuple[FakeRecords, push.Service]:
+def production(monkeypatch: pytest.MonkeyPatch) -> tuple[FakeRecords, _service.Service]:
     fake = FakeRecords(with_token(monkeypatch, "zenodo"), prefix="10.5281")
     return fake, fake.service("zenodo", production=True)
 
 
-def sandbox(monkeypatch: pytest.MonkeyPatch) -> tuple[FakeRecords, push.Service]:
+def sandbox(monkeypatch: pytest.MonkeyPatch) -> tuple[FakeRecords, _service.Service]:
     fake = FakeRecords(with_token(monkeypatch))
     return fake, fake.service()
 
@@ -347,7 +348,7 @@ def test_an_unquoted_day_of_an_embargo_is_read_as_the_day(toy: Path, tmp_path: P
 # --- F3: site edits survive a new version --------------------------------------------------------------------------
 
 
-def published_then_changed(folder: Path, changed: Path, fake: FakeRecords, service: push.Service,
+def published_then_changed(folder: Path, changed: Path, fake: FakeRecords, service: _service.Service,
                            edit: Callable[[dict[str, object]], None]) -> None:
     """Version 1 published, ``edit`` made on the record's page, and the folder changed."""
     pushed(folder, fake, service)
@@ -491,7 +492,7 @@ def test_control_every_field_read_as_one_the_service_resets_is_caught_dropping_a
 # --- F4: push's record of a published version is the record's own ---------------------------------------------------
 
 
-def lost_publish_then_resave(folder: Path, changed: Path, fake: FakeRecords, service: push.Service, how: str) -> None:
+def lost_publish_then_resave(folder: Path, changed: Path, fake: FakeRecords, service: _service.Service, how: str) -> None:
     pushed(folder, fake, service)
     if how == "the site's button":
         fake.publish(NUMBER)
@@ -799,7 +800,7 @@ def test_a_file_added_on_the_site_to_the_concepts_open_version_is_never_deleted_
     service = fake.service()
     folder = copy_of(toy, tmp_path)
     published_then_changed(folder, changed, fake, service, lambda held: None)
-    headers = {"Authorization": f"Bearer {token}", "Accept": push.RDM_TYPE}
+    headers = {"Authorization": f"Bearer {token}", "Accept": _client.RDM_TYPE}
     opened = str(json.loads(fake.handle("POST", f"{fake.api}/records/{NUMBER}/versions", headers, None).body)["id"])
     fake.handle("POST", f"{fake.api}/records/{opened}/draft/actions/files-import", headers, None)
     data = b"the author's own supplement"
@@ -816,7 +817,7 @@ def test_a_version_published_on_the_site_between_pushs_two_is_counted(toy: Path,
     service = fake.service()
     folder = copy_of(toy, tmp_path)
     published_then_changed(folder, changed, fake, service, lambda held: None)
-    headers = {"Authorization": f"Bearer {token}", "Accept": push.RDM_TYPE}
+    headers = {"Authorization": f"Bearer {token}", "Accept": _client.RDM_TYPE}
     opened = str(json.loads(fake.handle("POST", f"{fake.api}/records/{NUMBER}/versions", headers, None).body)["id"])
     fake.handle("POST", f"{fake.api}/records/{opened}/draft/actions/files-import", headers, None)
     fake.publish(opened)
@@ -1170,7 +1171,7 @@ def test_a_publish_answered_2xx_listing_errors_is_a_refusal_naming_them(toy: Pat
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake, service)
     fake.plant("status", lambda method, path: path.endswith("/actions/publish"), status=202,
-               headers={"content-type": push.RDM_TYPE},
+               headers={"content-type": _client.RDM_TYPE},
                body={"errors": [{"field": "metadata.title", "messages": ["Too plain."]}]})
     with pytest.raises(BuildRefused) as refused:
         published(folder, fake, service, confirm=DOI)
@@ -1183,7 +1184,7 @@ def test_a_new_version_answered_2xx_listing_errors_is_a_refusal_naming_them(toy:
     folder = copy_of(toy, tmp_path)
     published_then_changed(folder, changed, fake, service, lambda held: None)
     fake.plant("status", lambda method, path: path.endswith("/versions"), status=201,
-               headers={"content-type": push.RDM_TYPE},
+               headers={"content-type": _client.RDM_TYPE},
                body={"errors": [{"field": "metadata.title", "messages": ["Too plain."]}]})
     with pytest.raises(BuildRefused) as refused:
         pushed(folder, fake, service)
@@ -1342,7 +1343,7 @@ def test_status_says_the_access_the_record_would_have(toy: Path, tmp_path: Path,
     pushed(folder, fake, service)
     embargoed(fake)
     said: list[str] = []
-    push.status(folder, service, say=said.append, transport=FakeTransport(fake), pause=0)
+    _draft.status(folder, service, say=said.append, transport=FakeTransport(fake), pause=0)
     assert any("access once published: the record public, its files restricted, embargoed until 2030-01-01" in line
                for line in said), said
 
@@ -1352,7 +1353,7 @@ def test_stdin_closed_at_a_publish_is_a_refusal_not_a_crash(toy: Path, tmp_path:
     fake, service = sandbox(monkeypatch)
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake, service)
-    monkeypatch.setitem(push.SERVICES, "zenodo-sandbox", service)  # type: ignore[index]
+    monkeypatch.setitem(_service.SERVICES, "zenodo-sandbox", service)  # type: ignore[index]
     monkeypatch.setattr(_client, "HttpTransport", lambda *a, **k: FakeTransport(fake))
     monkeypatch.setattr("sys.stdin", None)
     assert main(["push", str(folder), "--to", "zenodo-sandbox", "--publish"]) == 2
@@ -1366,7 +1367,7 @@ def test_an_interrupt_at_the_number_says_so_and_publishes_nothing(toy: Path, tmp
     fake, service = sandbox(monkeypatch)
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake, service)
-    monkeypatch.setitem(push.SERVICES, "zenodo-sandbox", service)  # type: ignore[index]
+    monkeypatch.setitem(_service.SERVICES, "zenodo-sandbox", service)  # type: ignore[index]
     monkeypatch.setattr(_client, "HttpTransport", lambda *a, **k: FakeTransport(fake))
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
 

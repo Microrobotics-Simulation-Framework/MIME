@@ -8,7 +8,7 @@ what the fake answers.
 
 It reads the token ``mime credentials set zenodo-sandbox`` stored (or ``ZENODO_SANDBOX_TOKEN``) through
 ``mime.credentials`` and nothing else, never prints it, and sends it only to ``https://sandbox.zenodo.org``, a
-constant of MIME's (``mime.push.ZENODO_SANDBOX``; nothing here or in the environment can name another host). Requests
+constant of MIME's (``mime.push._service.ZENODO_SANDBOX``; nothing here or in the environment can name another host). Requests
 are paced a second apart. Nothing is published unless ``--publish`` says so, and then on the sandbox only (production
 is never this script's).
 
@@ -65,11 +65,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "tests"), str(ROOT / "tests" / "sharing")]
 
-from mime import credentials, push  # noqa: E402
+from mime import push  # noqa: E402
 from mime.build import BuildRefused  # noqa: E402
+from mime.credentials import _store  # noqa: E402
 from mime.credentials import Token  # noqa: E402
-from mime.push import ZENODO_SANDBOX, Answer, HttpTransport  # noqa: E402
-from mime.push._service import loopback  # noqa: E402
+from mime.push import _draft, _publish, _service  # noqa: E402
+from mime.push._client import Answer, HttpTransport  # noqa: E402
+from mime.push._service import ZENODO_SANDBOX, loopback  # noqa: E402
 from mime.push._state import namespace, state_root  # noqa: E402
 
 PAUSE = 1.0
@@ -227,7 +229,7 @@ def write_manifest(folder: Path, creator: str, orcid: str | None, title: str) ->
     path = folder / push.MANIFEST_FILE
     if path.exists():
         return
-    push.init(folder)
+    _draft.init(folder)
     family, _, given = (part.strip() for part in creator.partition(","))
     person = {"family": family, **({"given": given} if given else {}), **({"orcid": orcid} if orcid else {})}
     text = path.read_text(encoding="utf-8")
@@ -245,12 +247,12 @@ def _declare(question: str) -> bool:
     return input(f"{question} [y/N] ").strip().lower() in ("y", "yes")
 
 
-def _published(folder: Path, service: push.Service, doi: str, declare: object, transport: object, pause: float,
+def _published(folder: Path, service: _service.Service, doi: str, declare: object, transport: object, pause: float,
                noted: list[str]) -> None:
     """A publish. A field that reads back from the published record otherwise than the draft held it is what this lane
     is here to find: noted, and the lane goes on (the record is published and recorded)."""
     try:
-        push.publish(folder, service, confirm=doi, ask=declare, say=print, transport=transport,  # type: ignore[arg-type]
+        _publish.publish(folder, service, confirm=doi, ask=declare, say=print, transport=transport,  # type: ignore[arg-type]
                      pause=pause)
     except BuildRefused as refused:
         if refused.codes() != ["push.metadata-read-back"]:
@@ -259,26 +261,26 @@ def _published(folder: Path, service: push.Service, doi: str, declare: object, t
         noted.append(refused.refusals[0].message)
 
 
-def cycle(folder: Path, service: push.Service, transport: object, discard: bool, publish: bool = False,
-          declare: object = _declare, noted: list[str] | None = None) -> push.Drafted | None:
+def cycle(folder: Path, service: _service.Service, transport: object, discard: bool, publish: bool = False,
+          declare: object = _declare, noted: list[str] | None = None) -> _draft.Drafted | None:
     """Push, read the draft, push again (nothing sent again), and discard or publish where asked: a second apart on
     the sandbox, at once against a fake. Publishing, the toy's next version is pushed and published too. What reads back
     otherwise from a published record is added to ``noted``."""
     read_back = noted if noted is not None else []
     remote = isinstance(getattr(transport, "inner", transport), HttpTransport) and not loopback(service.api)
     pause = PAUSE if remote else 0.0
-    first = push.push(folder, service, yes=True, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
-    push.status(folder, service, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
-    again = push.push(folder, service, yes=True, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
+    first = _draft.push(folder, service, yes=True, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
+    _draft.status(folder, service, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
+    again = _draft.push(folder, service, yes=True, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
     assert again is not None and not again.uploaded, f"the second push sent {again and again.uploaded} again"
     if discard:
-        push.discard(folder, service, yes=True, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
+        _draft.discard(folder, service, yes=True, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
     if publish:
-        assert service.name != push.ZENODO.name and not service.production, "the lane publishes on the sandbox only"
+        assert service.name != _service.ZENODO.name and not service.production, "the lane publishes on the sandbox only"
         _published(folder, service, first.doi, declare, transport, pause, read_back)
         if folder.name == "mime_sandbox_toy":
             _toy_demo(folder.parent, steps=9)
-            later = push.push(folder, service, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
+            later = _draft.push(folder, service, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
             _published(folder, service, later.doi, declare, transport, pause, read_back)
     return first
 
@@ -307,7 +309,7 @@ def differences(sandbox: list[dict[str, object]], fake: list[dict[str, object]])
 
 
 @contextlib.contextmanager
-def sandbox_side(dry_run: bool, token: Token) -> Iterator[tuple[push.Service, object]]:
+def sandbox_side(dry_run: bool, token: Token) -> Iterator[tuple[_service.Service, object]]:
     """What the lane pushes to: the sandbox itself, over HTTP; or, for a dry run, the fake behind a server on this
     machine, through the same transport, with an address, a name and so a namespace of push's records of its own
     (``mime.push._state.namespace``), which never reads or writes the sandbox's records."""
@@ -327,7 +329,7 @@ def dry_token(dry_run: bool) -> Iterator[None]:
     if not dry_run:
         yield
         return
-    variable = credentials.SERVICES[ZENODO_SANDBOX.credential]
+    variable = _store.SERVICES[ZENODO_SANDBOX.credential]
     held = os.environ.get(variable)
     os.environ[variable] = secrets.token_urlsafe(30)[:40]
     try:
@@ -339,9 +341,9 @@ def dry_token(dry_run: bool) -> Iterator[None]:
             os.environ[variable] = held
 
 
-def remove_records(service: push.Service) -> None:
+def remove_records(service: _service.Service) -> None:
     """A stand-in's records in the state directory, and the directories they leave empty; never a real service's."""
-    if namespace(service) in (ZENODO_SANDBOX.name, push.ZENODO.name):
+    if namespace(service) in (ZENODO_SANDBOX.name, _service.ZENODO.name):
         return
     shutil.rmtree(state_root() / namespace(service), ignore_errors=True)
     for directory in ((state_root() / namespace(service)).parent, state_root(), state_root().parent):
@@ -386,13 +388,13 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def lane(arguments: argparse.Namespace) -> int:
-    token = credentials.token(ZENODO_SANDBOX.credential)
+    token = _store.token(ZENODO_SANDBOX.credential)
     if token is None:
         print("no zenodo-sandbox token: `mime credentials set zenodo-sandbox`", file=sys.stderr)
         return 2
     log = arguments.log if arguments.log is not None else None if arguments.dry_run else Path.cwd()
     work = Path(tempfile.mkdtemp(prefix="mime-sandbox-lane-"))
-    stand_ins: list[push.Service] = []
+    stand_ins: list[_service.Service] = []
     try:
         folders = [Path(shutil.copytree(folder, work / "given" / f"{index}" / folder.name))
                    for index, folder in enumerate(arguments.folder)]
@@ -416,7 +418,7 @@ def lane(arguments: argparse.Namespace) -> int:
 
 
 def compared(arguments: argparse.Namespace, folders: list[Path], token: Token, log: Path | None,
-             stand_ins: list[push.Service]) -> list[str] | None:
+             stand_ins: list[_service.Service]) -> list[str] | None:
     """Each folder's cycle on the lane's side and on the fake in this process, and their differences; ``None`` when
     the log would have held the token."""
     from zenodo_records import FakeRecords, FakeTransport
@@ -458,7 +460,7 @@ def compared(arguments: argparse.Namespace, folders: list[Path], token: Token, l
             stand_ins.append(stand_in)
             cycle(folder, stand_in, made, arguments.discard, arguments.publish, declare=lambda question: True)
             if not arguments.discard and not arguments.publish:
-                push.discard(folder, stand_in, yes=True, transport=FakeTransport(fake), pause=0)
+                _draft.discard(folder, stand_in, yes=True, transport=FakeTransport(fake), pause=0)
             found += [f"{folder.name}: {each}" for each in differences(real.shapes, made.shapes)]
             lines += [{"folder": folder.name, "service": "fake", **each} for each in made.shapes]
             if drafted is not None:

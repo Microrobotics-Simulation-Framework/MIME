@@ -25,6 +25,7 @@ from hypothesis import strategies as st
 from push_cases import CREATOR, copy_of, saved_toy, write_manifest
 
 from mime import push
+from mime.push import _defaults, _draft, _sharing
 from mime.build import BuildRefused
 from mime.cli import main
 from mime.push._sharing import orcid_problem
@@ -86,7 +87,7 @@ def grouped(digits: str) -> str:
 
 def test_init_writes_the_title_and_the_licence_the_folder_declares(toy: Path, tmp_path: Path):
     folder = copy_of(toy, tmp_path)
-    path, made, licence = push.init(folder)
+    path, made, licence = _draft.init(folder)
     assert made and licence == "CC-BY-4.0" and path == folder / "mime.toml"
     text = path.read_text(encoding="utf-8")
     assert 'title = "full_toy"' in text and '[bundle]\nlicence = "CC-BY-4.0"' in text and "creators = []" in text
@@ -96,19 +97,19 @@ def test_init_writes_the_title_and_the_licence_the_folder_declares(toy: Path, tm
 def test_init_prefills_cc_by_4_where_the_experiment_declares_none_and_never_overwrites(unlicensed: Path,
                                                                                       tmp_path: Path):
     folder = copy_of(unlicensed, tmp_path)
-    path, made, licence = push.init(folder)
-    assert made and licence is None and f'licence = "{push.DEFAULT_LICENCE}"' in path.read_text(encoding="utf-8")
+    path, made, licence = _draft.init(folder)
+    assert made and licence is None and f'licence = "{_sharing.DEFAULT_LICENCE}"' in path.read_text(encoding="utf-8")
     path.write_text("edited\n", encoding="utf-8")
-    assert push.init(folder)[1] is False and path.read_text(encoding="utf-8") == "edited\n"
+    assert _draft.init(folder)[1] is False and path.read_text(encoding="utf-8") == "edited\n"
 
 
 def test_init_takes_the_persons_content_licence_where_the_experiment_declares_none(unlicensed: Path, tmp_path: Path):
-    push.write_defaults(licences={"content": "CC0-1.0"})
+    _defaults.write_defaults(licences={"content": "CC0-1.0"})
     try:
-        path, _, _ = push.init(copy_of(unlicensed, tmp_path))
+        path, _, _ = _draft.init(copy_of(unlicensed, tmp_path))
         assert '[bundle]\nlicence = "CC0-1.0"' in path.read_text(encoding="utf-8")
     finally:
-        push.defaults_path().unlink()
+        _defaults.defaults_path().unlink()
 
 
 def test_a_written_file_reads_back_with_its_creator(toy: Path, tmp_path: Path):
@@ -296,7 +297,7 @@ def test_also_cite_is_stated_as_supplement_to_unless_related_names_it(toy: Path,
     record = push.read_manifest(folder).record
     assert [(each.identifier, each.relation) for each in record.related_with_citations()] == [
         ("10.1234/paper", "IsSupplementTo"), ("https://example.org/b", "IsSupplementTo")]
-    named = replace(record, related=(push.Related("10.1234/paper", "Cites"),))
+    named = replace(record, related=(_sharing.Related("10.1234/paper", "Cites"),))
     assert [(each.identifier, each.relation) for each in named.related_with_citations()] == [
         ("10.1234/paper", "Cites"), ("https://example.org/b", "IsSupplementTo")]
 

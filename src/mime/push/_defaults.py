@@ -212,7 +212,7 @@ def defaults_text(found: Defaults) -> str:
 
 def _write(path: Path, found: Defaults) -> Path:
     """Write ``found`` at ``path``, whole or not at all, once its text reads back as it and holds no token MIME stores."""
-    from mime.credentials import held_tokens
+    from mime.credentials._store import held_tokens
 
     text = defaults_text(found)
     again, refusals = checked(tomllib.loads(text), path)

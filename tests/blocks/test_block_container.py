@@ -221,7 +221,7 @@ def test_exp_use_takes_a_blocks_file(tmp_path: Path):
 
 
 def test_the_card_and_the_push_plan_of_a_block(tmp_path: Path):
-    from mime import push
+    from mime.push import _service
     from mime.push._manifest import read_record
     from mime.push._plan import make_block_plan
 
@@ -231,7 +231,7 @@ def test_the_card_and_the_push_plan_of_a_block(tmp_path: Path):
         card = block_card_text(folder)
         assert card.startswith("# A nudged probe (a lab's block in miniature)") and "Sockets, which its user binds: " \
                "`medium` (medium)." in card
-        plan = make_block_plan(folder, push.SERVICES["zenodo-sandbox"], read_record(folder), tmp_path / "staged")
+        plan = make_block_plan(folder, _service.SERVICES["zenodo-sandbox"], read_record(folder), tmp_path / "staged")
     assert [file.key for file in plan.files] == ["labx.nudged_probe-0.1.0.mimeblock", "NOTICE.txt"]
     keywords: Any = plan.payload["metadata"]["subjects"] if "subjects" in plan.payload["metadata"] else \
         plan.payload["metadata"].get("keywords")

@@ -316,17 +316,21 @@ def test_an_address_without_the_tcp_scheme_is_refused_as_an_endpoint_not_as_a_re
 # -- (h) a reduced docs build says so, at its start and at its end ---------------------------------------------------------
 
 
-def test_a_docs_build_outside_a_checkout_says_what_it_left_out_twice(tmp_path, capsys):
+def test_a_docs_build_outside_a_checkout_says_what_it_left_out_twice(tmp_path):
     """With no hand-written sources (no checkout at ``--root``) the build wrote only the generated pages, silently:
-    132 of the full set, with nothing to say the guides were missing."""
-    assert mime_main(["docs", "build", "--root", str(tmp_path / "empty"), "--out", str(tmp_path / "pages"),
-                      "--skip-evidence"]) == 0
-    lines = capsys.readouterr().out.splitlines()
+    132 of the full set, with nothing to say the guides were missing. In a process of its own: the registry of a test
+    process holds the tests' planted entries, which the build refuses."""
+    done = subprocess.run([sys.executable, "-m", "mime.cli", "docs", "build", "--root", str(tmp_path / "empty"),
+                           "--out", str(tmp_path / "pages"), "--skip-evidence"],
+                          capture_output=True, text=True, check=False, timeout=600)
+    assert done.returncode == 0, done.stdout + done.stderr
+    lines = done.stdout.splitlines()
     notes = [line for line in lines if "left out" in line]
     assert len(notes) == 2 and "--root <checkout>" in notes[0] and "--root <checkout>" in notes[1]
     assert lines[0] == notes[0], "first, before the summary lines"
     assert lines[-1] == notes[1], "again in the closing summary"
     assert lines[-1].startswith("mime docs build: wrote ")
+    assert str(tmp_path) not in done.stdout, "no absolute path in the output"
 
 
 # -- (a) a plain install passes its own env check: a version inside the declared ranges is a note -------------------------

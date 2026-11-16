@@ -506,7 +506,7 @@ def test_the_content_licence_a_person_keeps_still_reaches_the_plugin_example(tmp
 
 def test_a_bundle_scaffolded_over_an_experiment_declaring_no_licence_writes_the_placeholder_and_check_refuses_it(
         tmp_path, capsys):
-    from mime.scaffold import scaffold
+    from mime.scaffold._scaffold import scaffold
     from mime.testing.toys import coupled_toy
 
     folder = tmp_path / "undeclared"

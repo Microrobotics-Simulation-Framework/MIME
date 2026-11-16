@@ -316,7 +316,9 @@ ledger.unmetered              user
 live.address-in-use           environment
 live.chunk                    user
 live.command                  user
+live.commands-not-loopback    user
 live.endpoint                 user
+live.frames-not-loopback      user
 live.input-mode               user
 live.input-unknown            user
 live.input-value              user
@@ -324,7 +326,6 @@ live.log                      user
 live.pace                     user
 live.protocol                 user
 live.record                   user
-live.remote-bind              user
 live.select                   user
 live.stage-writer             user
 live.state                    user
