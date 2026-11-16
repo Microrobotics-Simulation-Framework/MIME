@@ -20,7 +20,9 @@ refuses another, ``study.stage-every``, with the nearest valid one); the time co
 the study folder: the reference group's stage (``experiment/scene/scene.usda`` or the group's own build). A member of a
 group whose build differs is drawn with the reference's geometry, and the layer says so. Each member's ``mime_compare`` holds ``geometry_from`` (the member whose geometry
 it is drawn with) and ``own_build`` (whether its group is the reference's: ``false`` is drawn with a borrowed geometry), and
-writing the layer warns for such a member. The writer of a stage still emits
+writing the layer warns for such a member. A member whose surface (``mime.registry.SurfaceMesh``) has another vertex
+count than the reference's is refused, not warned (``compare.scene``): its points would be drawn on the reference's
+triangles. The writer of a stage still emits
 only ``/World``; this is the overlay on a root prim of its own (``mime.scene``)."""
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
-from mime.build._binding import Bound
+from mime.build._binding import SURFACE_KINDS, Bound
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.errors._frames import warn_at_script
 from mime.results._study_folder import BASE_DIR, COMPARE_FILE, GROUPS_DIR
@@ -58,12 +60,12 @@ def _refuse(code: str, category: RefusalClass, message: str, action: str) -> Arg
 
 
 def _bound(record: StageRecord) -> list[Bound]:
-    found: list[Bound] = []
-    for e in record.entries():
-        at = e.get("at")
-        found.append(Bound(str(e["prim"]), str(e["node"]), str(e["field"]), e["index"], str(e["kind"]), str(e["thing"]),
-                           str(e["name"]), str(e["unit"]), (str(at["node"]), str(at["field"])) if at else None))
-    return found
+    return [Bound.of(entry) for entry in record.entries()]
+
+
+def _surfaces(entries: Sequence[Bound]) -> dict[str, tuple[int | None, int | None]]:
+    """Each surface's prim with its vertices as the stage draws them and as its node holds them."""
+    return {entry.prim: (entry.count, entry.source_count) for entry in entries if entry.kind in SURFACE_KINDS}
 
 
 def _things(entries: Sequence[Bound]) -> list[str]:
@@ -126,6 +128,16 @@ def compare_layer(study: StudyResult, reference: int = 0, *, stage: str | None =
     if any([e.prim for e in _bound(r)] != [e.prim for e in entries] for r in records):
         raise _refuse("compare.scene", RefusalClass.USER, "the members bind different things to their stages",
                        "compare members of the same scene: `result.write_compare(reference=0)`")
+    surfaces = _surfaces(entries)
+    differing = [member_name(study.points[index]) for index, record in enumerate(records)
+                 if _surfaces(_bound(record)) != surfaces]
+    if differing:
+        raise _refuse("compare.scene", RefusalClass.USER,
+                      f"{', '.join(differing)} {'has' if len(differing) == 1 else 'have'} a surface of another vertex "
+                      f"count than the reference's, {member_name(study.points[reference])}: a ghost moves the "
+                      "reference's mesh, so its points would be drawn on the reference's triangles",
+                      "sweep settings that leave each surface's mesh as it is, then compare again: "
+                      "`result.write_compare(reference=0)`; or view one member's run alone: `mime visuals web <run>`")
     layer = Sdf.Layer.CreateAnonymous(".usda")
     layer.subLayerPaths.append(stage or f"{BASE_DIR}/{STAGE_FILE}")
     layer.startTimeCode, layer.endTimeCode = 0.0, float(len(times[reference]) - 1)

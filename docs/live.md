@@ -28,7 +28,8 @@ session.stop()                # the run folder: a0_live/
   control periods when a controller is called back.
 - **Frames.** A frame is the state after a chunk: its number in the session (from zero), the base steps taken, the
   time, and the fields its schema names (`select=`, `<node>.<field>`; by default every pose and vector the stage
-  binding moves, every per-step output of an observation, and every flag). Frame zero is the state the session
+  binding moves, every per-step output of an observation, and every flag, but no surface's points or fields, which
+  `select=` names: a large surface would be most of every frame). Frame zero is the state the session
   starts from. A frame's values are the run's own, in its own float type: a batch run of the same steps gives the
   same bits.
 - **Pace.** `pace=` is a factor of real time (the default holds the loop to real time), and `pace=None` runs it as
@@ -254,6 +255,26 @@ are drawn or not: see [recordings](recordings.md)), the stage binding (`binding`
 and the status. `stage` is the path on the machine that serves the session: a client on another machine opens its own
 copy of the saved folder (the one it gave `mime serve`, or a `mime pull` of it) and checks it is the same experiment
 by `hashes`, the lock's.
+
+### The stage binding
+
+`binding` in `hello` says which field of the state moves which prim of the stage, so that a client needs no knowledge
+of MIME's state layout: `{"format": "mime.binding/2", "entries": [...]}`, bodies first, then each chain segment's
+frames, then field vectors, then each surface's points and fields. Each entry holds `prim`, `node`, `field`, `index`
+(a row of a stacked field, or null), `kind`, `thing`, `name`, `unit` and `space`, and by its kind:
+
+| `kind` | The value | Keys of its own |
+|---|---|---|
+| `pose` | seven numbers, the prim's world translation (metres) and orientation `(w, x, y, z)`, applied to its `translate` and `orient` | `space` `world` |
+| `vector` | three numbers in the world's axes, a field at a body, drawn at the pose `at` names | `at` (`node`, `field`); `space` `world` |
+| `points` | a surface's points, a point a vertex, metres in its thing's frame, the mesh's `points` | `space` `thing`; `vertices`, the mesh's; `clusters` where decimated |
+| `field` | a surface's values, one a vertex, the mesh's primvar `primvars:mime:<surface_field>` | `space` `thing`; `vertices`; `surface_field`; `reduction`, `mean` or `max`; `clusters` where decimated |
+
+A surface over the stage's triangle budget is drawn decimated ([recordings](recordings.md#surfaces-that-deform-and-carry-fields)):
+its entries' `clusters` hold the drawn vertex of each of the node's vertices, and a client that moves the mesh from the
+node's own values (`select=` names them) draws vertex `k` at the mean of the points whose cluster is `k`, and a field's
+value there at their mean or maximum, as `reduction` says. The format's second version adds the kinds `points` and
+`field`; its `pose` and `vector` entries are the first version's, unchanged.
 
 ### Frames
 

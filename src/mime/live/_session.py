@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, TextIO, cast
 import numpy as np
 
 from mime.build import Mode
+from mime.build._binding import SURFACE_KINDS
 from mime.build._refusals import ArgumentRefused, MimeError, Refusal, RefusalClass
 from mime.registry import Controller, LiveInput, live_default
 from mime.live._protocol import COMMANDS, PROTOCOL, Frame, FrameSchema, refused, reply
@@ -76,10 +77,12 @@ def _units(built: BuiltExperiment) -> dict[tuple[str, str], str]:
 
 
 def _selection(built: BuiltExperiment, select: Sequence[str] | None, state: History) -> list[tuple[str, str]]:
-    """The fields the frames carry: those ``select`` names, or every bound field, per-step observation output and
-    flag, each once."""
+    """The fields the frames carry: those ``select`` names, or every bound field but a surface's, per-step observation
+    output and flag, each once. A surface's points and fields are carried when ``select`` names them: by default they
+    would be most of every frame (a surface of 7,000 vertices, about 230 kB a frame)."""
     if select is None:
-        chosen = dict.fromkeys(built.binding().fields())
+        chosen = dict.fromkeys((entry.node, entry.field) for entry in built.binding().entries
+                               if entry.kind not in SURFACE_KINDS)
         chosen.update(dict.fromkeys((o.node, o.field) for o in built.layout.per_step()))
         chosen.update(dict.fromkeys((f.node, f.field) for f in built.layout.flags))
         return list(chosen)

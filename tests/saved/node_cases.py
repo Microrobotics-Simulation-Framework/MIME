@@ -208,6 +208,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
         no_node="a registration with the medium's dynamics: the medium's node reads the body and loads it"),
     ("interaction", "toy.twist", "0.1.0"): NodeCase(
         no_node="refused at plan time: it delivers into a reserved interface"),
+    ("dynamics", "toy.indented_sheet", "0.1.0"): NodeCase(),
     ("observation", "toy.recorder", "0.1.0"): NodeCase(),
     # The probe's drawn position lies about the solids it probes, a few millimetres across.
     # Its nearest point and normal are not smooth at a shape's switches (a medial set, the screw's axis among it, the
