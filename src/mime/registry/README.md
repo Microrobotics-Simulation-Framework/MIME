@@ -37,7 +37,11 @@ The small form:
 Annotated[Quantity, Length]`, with the markers of `mime.units`. Registration reads the annotations
 (`dimensioned_settings`, recorded on `Registered.settings`) and refuses a `Quantity` setting with no marker (`rate`
 excepted, a period or a frequency with its own rule), a marker on a setting that holds no `Quantity`, and a default of
-another dimension. A rate per second, as a setting, a command (`Command.dimension`) or an initial state, is
+another dimension. An angle is `Annotated[Quantity, Angle]` (radians: `deg(...)`, `rad(...)`; a bare number is refused). A
+setting whose annotation holds a `Quantity`, a setting group or a dimension marker in a form the reader does not read (a `|`
+or `Optional` around the `Annotated`, a `type` alias, a container of quantities, metadata that is no dimension) is refused,
+never left out: write `Annotated[Quantity | None, Length]`, or mark quantities in a container the entry checks itself
+`Annotated[..., CheckedByEntry]` (a declaration, not a check). A rate per second, as a setting, a command (`Command.dimension`) or an initial state, is
 `Frequency` (Hz, turns) or `AngularVelocity` (rad/s, radians), never a rate that says neither (`rate_problems`), so
 that phase 1 refuses one of the other kind. Phase 1 refuses a setting of another dimension, naming the entry, the setting and both dimensions,
 and hands the entry its settings in SI through its context: `ctx.scalar("margin")`, `ctx.vector("x0")`.

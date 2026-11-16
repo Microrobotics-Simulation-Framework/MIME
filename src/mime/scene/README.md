@@ -234,7 +234,7 @@ sphere about its centroid that holds it (`enclosing_radius`).
   rest below its thing's prim (or the prim of the role it names, `on=`), its points float32 in the thing's frame,
   `mime:mesh:owner` and `mime:mesh:fields`, one vertex primvar `primvars:mime:<field>` a field with its units and
   declared range in its `customData`, and `mime:display` where it is a section shown as a surface (`revolved`,
-  `extruded`). A recording moves its points and sets its fields' values; colour is the view's. Within the budget
+  `extruded`, `mirrored`). A recording moves its points and sets its fields' values; colour is the view's. Within the budget
   `SURFACE_TRIANGLES` (`mime.build._surfaces`) it is drawn as declared; over it, decimated by vertex clustering at
   rest, each sample reduced over the clusters (points and fields by their mean, a field declaring `reduction="max"`
   by its maximum). A surface whose rest lies further from its thing's origin than `SURFACE_ORIGIN_EXTENTS` times its

@@ -282,7 +282,7 @@ class Reading:
     def unit(self) -> str:
         return unit_symbol(self.held.dimension)
 
-    def to(self, unit: Unit) -> Values:
+    def to(self, unit: Unit | str) -> Values:
         return self.quantity.to(unit)
 
     def text(self) -> str:
@@ -395,7 +395,7 @@ class Series:
     def __len__(self) -> int:
         return len(self.steps)
 
-    def to(self, unit: Unit) -> Values:
+    def to(self, unit: Unit | str) -> Values:
         return self.values.to(unit)
 
     @public
