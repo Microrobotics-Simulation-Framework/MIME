@@ -13,9 +13,11 @@
   forward program's structural count is 1.0 % larger with it, measured, its cause not traced); G17's derivative holds within the central difference's own error. The rendered image's own
   derivative error against the exact geometry is known and pinned, not removed: a sliver at the rod's end where a
   sub-ray passes within 0.0025 px of the side's axis (up to 14.9 px² a px), a ripple at caps turned under about 8
-  degrees (up to 0.88; 0.49 px a px on G17's aggregates), thin caps by their flag; CI holds each class to a line by
-  band of the turn (1.25 times the 360-pose scan's largest in the band), so neither can grow unseen. The follow-up
-  "creased image accuracy" is to remove them. New switches:
+  degrees (up to 0.88; 0.49 px a px on G17's aggregates), thin caps by their flag wherever the axis passes; CI holds
+  the ripple to a line by band of the turn (1.25 times the 360-pose scan's largest in the band) and the sliver to one
+  line under 8 degrees (its largest there times 1.25, since one pose's sliver moves by about a quarter between
+  machines) and by band above, so neither can grow unseen. The follow-up "creased image accuracy" (the route to exact)
+  removes the sliver, after which these lines tighten. New switches:
   `camera.composed.{end,low,high,empty}`, `camera.sampled.body`, `cylinder.cap_side`. Known gap, recorded and not
   changed: camera PR 5a's `union_covered` reads 0.125 more than the exact share for a line repeated along a cell's side
   (a case of measure zero; `composed_covered` is exact there).

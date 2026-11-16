@@ -9,24 +9,29 @@ which the renderer's jvp now is: each read point carries the derivative of the i
 image's (``hull_oracle``'s central difference at ``EXACT_STEP``), in pixels of share a pixel of the body's motion. That
 is the scheme's departure from the outline's motion, which no derivative fix changes: only the image can.
 
-**The declared classes**, set apart before the scan ran and never moved:
+**The declared classes**, set apart before the scan ran; their order moved once, on the maintainer's word (F0 record
+item 103, after a fresh view's thin cap's pixel was judged by the sliver's line): **thin first**, a thin cap's pixels
+judged by its flag wherever the axis passes, the sliver's class only pixels outside thin boxes; the scan re-run and the
+bands re-derived after it, before any fresh view of the second draw:
 
-- **singular**: a pixel one of whose sixteen sub-rays passes within ``NEAR`` (a hundredth of a pixel, at the body) of
-  the side's axis line. At the rod's end, with the cap's outline seen nearly edge-on, the span is read at the side's
-  least along such a sub-ray, where the side's profile is nearly a V (the ray's distance from the axis a small share of
-  the march's spacing); the span's line is ill-conditioned there and the sub-cell's share turns within about a
-  thousandth of a pixel of motion, a spurious sliver the exact image does not have (``crease_singular_check.py``: 15.1
-  px a px against an exact 0). ``NEAR`` is the near-axis plant's reach, declared with that plant before any data, four
-  times the farthest the march scan found its term (0.0025 px). Inside the rod the class's pixels are wholly covered
-  (the radius is about 9.3 px), so it reaches the band only at the rod's ends.
 - **thin**: the pixels about a cap narrower than two sub-pixels (G18's ``judged_pixels``), which the gates judge by the
   ``thin_cap`` flag: the image does not carry such a cap's outline.
+- **singular**: a pixel outside the thin boxes one of whose sixteen sub-rays passes within ``NEAR`` (a hundredth of a
+  pixel, at the body) of the side's axis line. At the rod's end, with the cap's outline seen nearly edge-on, the span
+  is read at the side's least along such a sub-ray, where the side's profile is nearly a V (the ray's distance from the
+  axis a small share of the march's spacing); the span's line is ill-conditioned there and the sub-cell's share turns
+  within about a thousandth of a pixel of motion, a spurious sliver the exact image does not have
+  (``crease_singular_check.py``: 15.1 px a px against an exact 0). ``NEAR`` is the near-axis plant's reach, declared
+  with that plant before any data, four times the farthest the march scan found its term (0.0025 px). Inside the rod
+  the class's pixels are wholly covered (the radius is about 9.3 px), so it reaches the band only at the rod's ends.
+- **rest**: every other band pixel (the ripple's).
 
-**The line** is ``SAFETY`` (1.25, declared, not derived, as the crease line's) times the scan's largest image error at
-the other band pixels, over both directions; the singular and thin classes' largest are reported beside it, never
-judged. G17's image check fails a view when any band pixel outside the two classes departs from the exact image's
-derivative by more than the line: the image error is carried by the check, confined to its declared class, and its
-size there stated, never hidden in a band."""
+**The lines** (``--bands``) are kept by band of the turn: the ripple's, in each band ``SAFETY`` (1.25, declared, not
+derived, as the crease line's) times the scan's largest over the band's poses; the sliver's the same from
+``SLIVER_ONE_BELOW`` degrees up, and below it one line for every band, ``SAFETY`` times the scan's largest over all
+those turns (``bands``). The thin class has no line: judged by the ``thin_cap`` flag. G17's image check fails a view
+when a judged pixel departs from the exact image's derivative by more than its class's line at the view's turn: the
+image error is carried by the check, confined to its declared class, and its size there stated, never hidden."""
 
 from __future__ import annotations
 
@@ -90,10 +95,10 @@ def flagged(centre: np.ndarray, axis: np.ndarray) -> np.ndarray:
 
 
 def classes(band: np.ndarray, near: np.ndarray, thin: np.ndarray) -> dict[str, np.ndarray]:
-    """The band's pixels by class: ``singular`` (a sub-ray within ``NEAR`` of the axis), ``thin`` (about a thin cap,
-    not singular) and ``rest`` (the pixels the line judges)."""
-    singular = band & (near < NEAR)
-    thin = band & thin & ~singular
+    """The band's pixels by class, thin first: ``thin`` (about a thin cap, wherever the axis passes), ``singular`` (a
+    sub-ray within ``NEAR`` of the axis, outside thin boxes) and ``rest`` (the ripple's)."""
+    thin = band & thin
+    singular = band & ~thin & (near < NEAR)
     return {"rest": band & ~singular & ~thin, "singular": singular, "thin": thin}
 
 
@@ -201,22 +206,37 @@ def aggregate_pose(pose: tuple) -> dict:
 BAND_EDGES = (0.0, 1.0, 2.0, 4.0, 8.0, 15.0, 30.0)
 #: The classes a band's lines judge: the ripple's (``rest``) and the sliver's (``singular``); thin caps by their flag.
 JUDGED = ("rest", "singular")
+#: The turn, in degrees, below which the sliver has one line for every band (the maintainer's word, F0 record item 103):
+#: there a single pose's sliver sets a band's line, and the sliver's derivative, ill-conditioned, moves by about a
+#: quarter between machines (the tenth probe's runner against the laptop), so a per-band line of 1.25 times one pose
+#: would flake. The bands' own values are kept beside it (``singular_band``) for the follow-up that removes the sliver,
+#: after which the lines tighten.
+SLIVER_ONE_BELOW = 8.0
+
+
+def largest(rows: list[dict], name: str) -> tuple[float, dict]:
+    """``SAFETY`` times the rows' largest error in a class, and the pose that sets it (a tail, which CI pins)."""
+    worst = max((row for row in rows if row[name] is not None), key=lambda row: row[name]["error"])
+    return SAFETY * worst[name]["error"], {"turn": worst["turn"], "roll": worst["roll"], "offset": worst["offset"],
+                                           "largest": worst[name]["error"], "direction": worst[name]["direction"],
+                                           "at_v_u": worst[name]["at_v_u"]}
 
 
 def bands(scan: dict) -> list[dict]:
     """Each band's lines: ``SAFETY`` times the scan's largest error in each judged class over the poses whose turn lies
     in the closed band (both edges' turns, so a view between two of the scan's turns is bracketed by both), with the
-    pose that sets it (the band's tail, which CI pins)."""
+    pose that sets it (the band's tail, which CI pins); below ``SLIVER_ONE_BELOW`` the sliver's line is one for every
+    band, over all the poses there, the band's own beside it."""
+    below = [row for row in scan["rows"] if row["turn"] <= SLIVER_ONE_BELOW]
     found = []
     for low, high in zip(BAND_EDGES, BAND_EDGES[1:]):
         rows = [row for row in scan["rows"] if low <= row["turn"] <= high]
         band: dict = {"turns": [low, high], "poses": len(rows)}
         for name in JUDGED:
-            worst = max((row for row in rows if row[name] is not None), key=lambda row: row[name]["error"])
-            band[name] = SAFETY * worst[name]["error"]
-            band[f"{name}_tail"] = {"turn": worst["turn"], "roll": worst["roll"], "offset": worst["offset"],
-                                    "largest": worst[name]["error"], "direction": worst[name]["direction"],
-                                    "at_v_u": worst[name]["at_v_u"]}
+            band[name], band[f"{name}_tail"] = largest(rows, name)
+        if high <= SLIVER_ONE_BELOW:
+            band["singular_band"], band["singular_band_tail"] = band["singular"], band["singular_tail"]
+            band["singular"], band["singular_tail"] = largest(below, "singular")
         found.append(band)
     return found
 
@@ -227,7 +247,8 @@ def main() -> None:
     if "--bands" in sys.argv:
         scan = json.loads((Path(__file__).resolve().parents[2] / "tests" / "sensing" /
                            "crease_image_line_pr5b.json").read_text())
-        print(json.dumps({"edges": BAND_EDGES, "safety": SAFETY, "bands": bands(scan)}, indent=1))
+        print(json.dumps({"edges": BAND_EDGES, "safety": SAFETY, "sliver_one_below": SLIVER_ONE_BELOW,
+                          "bands": bands(scan)}, indent=1))
         return
     if "--aggregates" in sys.argv:
         poses = list(itertools.product(C.TURNS, C.ROLLS, C.OFFSETS))

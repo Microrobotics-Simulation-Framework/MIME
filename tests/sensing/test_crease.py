@@ -38,11 +38,14 @@ the march's branches and their regions, each corner cell the exact share of that
   the 360-pose scan's largest in the band, a margin declared, not derived): **the sliver** (a pixel one of whose
   sub-rays passes within ``NEAR_AXIS`` of the side's axis, at the rod's end with the cap nearly edge-on: 14.9 px² a px
   at worst, where the exact image's is 0) and **the ripple** (every other pixel about the outline: up to 0.88 at caps
-  turned under about 8 degrees, under 0.16 from 15 up). Thin caps are judged by their flag. A known error of the image,
-  carried and bounded so neither class can grow unseen, not a bound on the image's accuracy; the follow-up "creased
-  image accuracy" is to remove it. Checked at G17's views and at each band's tails (the scan's poses that set its
-  lines). **Controls** (``CAMERA_PLANT=grown-ripple``, ``grown-sliver``: the error grown by ``PLANT_SIZE`` px² a px in
-  the image itself, which the jvp gate cannot see; ``single-edge-crease``)."""
+  turned under about 8 degrees, under 0.16 from 15 up). Thin caps are judged by their flag wherever the axis passes
+  (thin first, the maintainer's word after a fresh view's thin cap's pixel crossed the sliver's line), and under 8
+  degrees the sliver has one line for every band (the scan's largest there, at turn 6, times 1.25): one pose's sliver
+  moves by about a quarter between machines. A known error of the image, carried and bounded so neither class can grow
+  unseen, not a bound on the image's accuracy; the follow-up "creased image accuracy" (the route to exact) removes the
+  sliver, after which these lines tighten. Checked at G17's views and at each band's tails (the scan's poses that set
+  its lines). **Controls** (``CAMERA_PLANT=grown-ripple``, ``grown-sliver``: the error grown by ``PLANT_SIZE`` px² a px
+  in the image itself, which the jvp gate cannot see; ``single-edge-crease``)."""
 
 from __future__ import annotations
 
@@ -490,14 +493,16 @@ EXACT_STEP = 1e-4
 #: The derivative's views (turn, roll, offset in pixels). ``DERIVATIVE_SEEN``: the first forms' views, measured before
 #: the held march's term was found (their failure at turns 4 and 15 is why it was looked for); ``DERIVATIVE_SINGULAR``:
 #: the three poses where a sub-ray passes the side's axis at the rod's end (``crease_singular_check.py``), measured in
-#: ``crease_held_point_check.py``. Both kept, neither evidence. ``DERIVATIVE_FRESH``: drawn from fresh entropy after
-#: this line and the image check's bands were committed, their predictions committed before they ran
-#: (``predictions_camera_pr5b.json``, ``image_guard``).
+#: ``crease_held_point_check.py``. Both kept, neither evidence. ``DERIVATIVE_FIRST_FRESH``: the first fresh draw, run
+#: under the first class order (the sliver's before the thin's), where one view's thin cap's pixel crossed the sliver's
+#: line; the order then moved on the maintainer's word, so they are seen views, pinned. ``DERIVATIVE_FRESH``: drawn from
+#: fresh entropy after the class order and the lines were committed, their predictions committed before they ran
+#: (``predictions_camera_pr5b.json``, ``image_guard`` and ``image_guard_thin_first``).
 DERIVATIVE_SEEN = tuple((turn, 20.0, (0.0, 0.0)) for turn in (0.0, 2.0, 4.0, 15.0))
 DERIVATIVE_SINGULAR = ((6.0, 75.0, (0.3, 0.8)), (3.0, 0.0, (0.0, 0.0)), (2.0, 0.0, (0.0, 0.0)))
 #: Drawn 2026-11-16 by ``numpy.random.default_rng(10666201688275216299)`` (the seed from fresh entropy): turn U(0, 30),
 #: roll U(0, 90), offsets U(0, 1).
-DERIVATIVE_FRESH: tuple[tuple[float, float, tuple[float, float]], ...] = (
+DERIVATIVE_FIRST_FRESH: tuple[tuple[float, float, tuple[float, float]], ...] = (
     (1.3482647412161108, 24.808128585345663, (0.7863700316759962, 0.129462421621917)),
     (1.8428440541539104, 19.019379682163457, (0.8730422629648931, 0.21199331858582915)),
     (29.36202677012414, 87.47250430703737, (0.7066187859364247, 0.34617106753450977)),
@@ -505,6 +510,8 @@ DERIVATIVE_FRESH: tuple[tuple[float, float, tuple[float, float]], ...] = (
     (11.932991353146052, 18.46225045457095, (0.6634188681067769, 0.3227586724944974)),
     (21.635710677105802, 66.65891259309886, (0.1369225864345428, 0.20859012790484321)),
 )
+#: Not yet drawn: drawn after the class order and the lines are committed.
+DERIVATIVE_FRESH: tuple[tuple[float, float, tuple[float, float]], ...] = ()
 
 
 def derivative_line(differences: list[np.ndarray], floor: np.ndarray) -> float:
@@ -539,7 +546,9 @@ def _view_id(view) -> str:
 #: The image check's lines by band of the turn (``scripts/camera_route2/crease_image_line.py --bands``, held in the
 #: predictions file before any fresh view): in each band, for the ripple's class (``rest``) and the sliver's
 #: (``singular``), 1.25 times the 360-pose scan's largest error over its poses in the closed band, in pixels of share a
-#: pixel of the body's motion, with the pose that set it (its tail). Never fitted, never moved.
+#: pixel of the body's motion, with the pose that set it (its tail); under 8 degrees the sliver's line is one for every
+#: band, over all the poses there (the bands' own beside it, ``singular_band``). Never fitted; moved once, on the
+#: maintainer's word (thin first, and the sliver's one line), the scan re-run before any view of the second draw.
 IMAGE_BANDS = PREDICTIONS["lines"]["image_bands"]["bands"]
 #: Each band's tails, the scan's poses that set its lines, once each: pinned, so a growth of either class past the
 #: declared margin at the pose where it was largest fails, whatever the drawn views find.
@@ -578,18 +587,19 @@ def exact_shares(centre: np.ndarray, axis: np.ndarray) -> np.ndarray:
 
 
 def image_classes(centre: np.ndarray, axis: np.ndarray) -> dict[str, np.ndarray]:
-    """The band's pixels (within two of a partial pixel of the exact image) by class, as the scan set them apart:
-    ``singular`` (a sub-ray within ``NEAR_AXIS`` of the side's axis), ``thin`` (about a cap narrower than two
-    sub-pixels, judged by its flag) and ``rest``."""
+    """The band's pixels (within two of a partial pixel of the exact image) by class, as the scan set them apart, thin
+    first (the maintainer's word, F0 record item 103): ``thin`` (about a cap narrower than two sub-pixels, judged by its
+    flag wherever the axis passes), ``singular`` (a sub-ray within ``NEAR_AXIS`` of the side's axis, outside thin boxes)
+    and ``rest``."""
     exact = exact_shares(centre, axis)
     partial = (exact > 0) & (exact < 1)
     band = partial.copy()
     for dj in range(-2, 3):
         for di in range(-2, 3):
             band |= np.roll(np.roll(partial, dj, 0), di, 1)
-    singular = band & (axis_distance(centre, axis) < NEAR_AXIS)
     judged, _ = judged_pixels(centre, axis)
-    return {"rest": band & ~singular & judged, "singular": singular, "thin": band & ~singular & ~judged}
+    singular = band & judged & (axis_distance(centre, axis) < NEAR_AXIS)
+    return {"rest": band & judged & ~singular, "singular": singular, "thin": band & ~judged}
 
 
 def image_check(turn: float, centre: np.ndarray, axis: np.ndarray, moved: dict[int, np.ndarray], flag: bool
@@ -625,7 +635,8 @@ def image_check(turn: float, centre: np.ndarray, axis: np.ndarray, moved: dict[i
     return problems, worst
 
 
-@pytest.mark.parametrize("view", DERIVATIVE_SEEN + DERIVATIVE_SINGULAR + DERIVATIVE_FRESH, ids=_view_id)
+@pytest.mark.parametrize("view", DERIVATIVE_SEEN + DERIVATIVE_SINGULAR + DERIVATIVE_FIRST_FRESH + DERIVATIVE_FRESH,
+                         ids=_view_id)
 def test_g17_the_creased_derivative_is_the_images(float64, view, monkeypatch):
     """The jvp of the darkness's equivalent radius and centroid, on the pixels about the caps' rims and on the rest
     apart, in the body's x and z, against the central difference of the same renderer at the sweep's last step, within

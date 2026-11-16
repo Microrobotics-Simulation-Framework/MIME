@@ -110,20 +110,24 @@ stages:
     the exact one: up to 0.88 (over 0.1 at 168 of the 360 poses), at most 0.16 from 15 degrees up; on G17's aggregates
     (the equivalent radius and centroid on the caps' rims) up to 0.49 px a px, above 0.1 at 21 poses, at most 0.04 from
     8 degrees. It is not the held least's (unchanged with an exact least); its source is not yet found.
-  - **thin caps** (narrower than two sub-pixels): up to 50.8 at one pixel; judged by the `thin_cap` flag.
+  - **thin caps** (narrower than two sub-pixels): up to 50.8 at one pixel; judged by the `thin_cap` flag wherever
+    the axis passes (thin first: the sliver's class holds only pixels outside the thin caps' boxes).
 
-  These are an **acceptance of a known error, not an accuracy claim**: CI pins each class by band of the turn, its line
-  1.25 times the scan's largest in the band (`IMAGE_BANDS` in `tests/sensing/test_crease.py`, from
-  `crease_image_line.py --bands`), at G17's views and at the poses that set each line, so neither can grow unseen:
+  These are an **acceptance of a known error, not an accuracy claim**: CI pins each class by band of the turn (`IMAGE_BANDS`
+  in `tests/sensing/test_crease.py`, from `crease_image_line.py --bands`), at G17's views and at the poses that set each
+  line, so neither can grow unseen. The ripple's line in each band is 1.25 times the scan's largest there. The sliver's
+  is the same from 8 degrees up; under 8 degrees it is one line for every band, 1.25 times its largest over those turns
+  (at turn 6, roll 75), because one pose's sliver moves by about a quarter between machines (ill-conditioned, as the
+  sweep found), so a line set by one pose a band would flake:
 
   | turn (degrees) | 0 to 1 | 1 to 2 | 2 to 4 | 4 to 8 | 8 to 15 | 15 to 30 |
   |---|---|---|---|---|---|---|
   | the ripple's line | 1.10 | 0.73 | 0.99 | 0.99 | 0.30 | 0.20 |
-  | the sliver's line | 0.038 | 1.26 | 1.78 | 18.5 | 0.0018 | 0.0019 |
+  | the sliver's line | 18.5 | 18.5 | 18.5 | 18.5 | 0.0018 | 0.0019 |
 
   The route to exact is the follow-up **"creased image accuracy"** (approved, next): the ripple's source found, each
-  sub-ray's least refined where the side's profile is a V (a gathered Newton refinement, for the sliver), and the crease
-  line, G18, G17 and the switch scan's lines re-derived once.
+  sub-ray's least refined where the side's profile is a V (a gathered Newton refinement, which removes the sliver, after
+  which these lines tighten), and the crease line, G18, G17 and the switch scan's lines re-derived once.
 - **The kinds' sign functions** (`mime.scene._signs`, `Geometry.sign_function`): the sphere, capsule, cylinder (side and
   span) and slab their exact signed distances; the ellipsoid its radius in units of its semi-axes, less one, with its gradient's length;
   the screw's thread its radius less its modulated cross-section's, with its gradient's length in closed form; the helix the distance from its centreline's
