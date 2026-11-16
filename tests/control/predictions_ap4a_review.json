@@ -30,6 +30,13 @@
     "control": {"plant": "unflagged: every derivative called resolved", "environment_variable": "ITERATIVE_PLANT", "expected_rate": "30/30", "runs": 30, "clean_expected": "0/30"},
     "if_wrong": "a clean failure means the bound (M + 3K units) is not a bound on some draw: the constant is restated from the miss, not the tolerance loosened"
   },
+  "gate_2b_unresolved_flag_in_the_controller": {
+    "claim": "the controller raises allocation_derivative_unresolved at every float32 step of the follower and at none in float64, in both modes, and says so in its warning and its history",
+    "kind": "bounds",
+    "case": "tests/control/test_iterative_controller.py::test_the_float32_followers_derivative_is_flagged_unresolved_at_every_step_and_float64s_at_none",
+    "prediction": {"value": "every clean run passes; silent caught 30/30", "band": [30, 30], "unit": "planted runs caught of 30", "basis": "guess (the test and its plant were not run locally; added to this file before the probe, for run.sh's arms det_unres_a to det_unres_c)", "why": "the plant removes the flag's raise whatever the draws, and the program is fixed (no draws)"},
+    "control": {"plant": "silent: raise_flag a no-op", "environment_variable": "ITERATIVE_PLANT", "expected_rate": "30/30", "runs": 30, "clean_expected": "0/30"}
+  },
   "gate_3_bend": {
     "claim": "the bend's sign is guarded (the bend is the least-squares fit of J b = -r''), and the acceptance holds Rosenbrock-6 to 1 of 300 at the cap",
     "kind": "equality",

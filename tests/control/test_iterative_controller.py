@@ -130,6 +130,7 @@ def test_an_unconverged_solve_raises_its_flag_counted_and_warned_and_a_converged
     assert np.all(values > module.TOLERANCE[np.dtype("float64")])
 
 
+@pytest.mark.memory_heavy
 @pytest.mark.parametrize("mode", ["graph", "callback"])
 def test_the_float32_followers_derivative_is_flagged_unresolved_at_every_step_and_float64s_at_none(mode, monkeypatch):
     """A0's follower (a weak effort, its tangent system's condition 4e6 to 1e8): in float32 its derivative is not

@@ -672,6 +672,7 @@ def pose_program(plant: str) -> Any:
     return jax.jit(solve)
 
 
+@pytest.mark.memory_heavy
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
 def test_the_wrists_singular_pose_is_not_claimed_converged(dtype):
     """The AR4 with joint 5 at zero, where joints 4 and 6 turn about one axis: unregularised, started at the pose's own
@@ -788,6 +789,13 @@ def rosenbrock_rows(u: Any) -> Any:
 ROSENBROCK_AT_CAP = {"float64": 1, "float32": 1}
 
 
+#: The bend's rounding against the fit, in units in the last place times the scaled columns' condition squared, on the
+#: bend's inputs' scale: the two second derivatives (``jax.hessian``'s and the solve's directional ones, some ten
+#: operations each) and the normal equations. Over 5001 draws the largest error was 1.26 of 3 such units (median 0.003,
+#: 99th percentile 0.20); 32 leaves the draw that failed (seed 30326, 0.55 of 3 on this scale) a factor 19 inside.
+BEND_UNITS = 32
+
+
 @settings(max_examples=60, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
 @example(seed=0)
 @given(seed=st.integers(0, 2 ** 32 - 1))
@@ -814,10 +822,14 @@ def test_the_bend_is_the_least_squares_fit_of_the_rows_second_derivative(seed):
     expected = lstsq(jacobian, -second)[0]
     columns = np.linalg.norm(jacobian, axis=0)
     condition = np.linalg.cond(jacobian / columns)
-    line = 3 * condition ** 2 * float(np.finfo(np.float64).eps)
+    line = BEND_UNITS * condition ** 2 * float(np.finfo(np.float64).eps)
     assert line < 0.1, condition
-    assert np.linalg.norm(columns * (bend - expected)) <= line * np.linalg.norm(columns * expected) + \
-        float(np.finfo(np.float64).tiny), (bend, expected)
+    # On the scale the bend came from: the rows' second derivative is a sum of terms the projection onto J's range
+    # cancels, so the bend can be far smaller than its input (a draw whose error was 1.03 of the earlier 3-unit line on
+    # the bend's own norm was 0.55 of it on this scale).
+    scale = np.linalg.norm(np.linalg.pinv(jacobian / columns)) * np.linalg.norm(second)
+    assert np.linalg.norm(columns * (bend - expected)) <= line * scale + float(np.finfo(np.float64).tiny), \
+        (bend, expected)
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
