@@ -39,7 +39,7 @@
   sevenfold with every core busy.
 - `test_report_test_durations.py` and `duration_allowlist.txt`: the time budget's gate (see *The time budget*).
 - `test_licence.py`: the licence is the Apache-2.0 text, NOTICE names the copyright and the 0.2 line's licence, and
-  no other tracked file but the changelog and its development records names that licence, with a planted mention
+  no other tracked file but the changelog (its fragments in `changes.d/` too) and its development records names that licence, with a planted mention
   as the control.
 - `test_collection.py`: every test file under `tests/` is collected. pytest skips a folder named `build` by default,
   so `pyproject.toml` lists the folders to skip without it, and this test fails if one is ever left out again.

@@ -9,6 +9,7 @@
   {"requirement": "scipy>=1.14", "extra": null, "module": "scipy"},
   {"requirement": "pooch>=1.8", "extra": null, "module": "pooch"},
   {"requirement": "platformdirs>=3", "extra": null, "module": "platformdirs"},
+  {"requirement": "filelock>=3.12", "extra": null, "module": "filelock"},
   {"requirement": "packaging>=24.2", "extra": null, "module": "packaging"},
   {"requirement": "rich>=13.9", "extra": null, "module": "rich"},
   {"requirement": "hypothesis>=6.165", "extra": "verify", "module": "hypothesis"},

@@ -18,6 +18,7 @@ import pytest
 from mime.cli import main as mime_main
 from mime.env import USER_CACHE_CAP_BYTES, clear_user_xla_cache, prune_to_cap, user_xla_cache, user_xla_cache_root
 from mime.env import _xla_cache
+from mime.env._xla_cache import DIRECTORY_LIMIT_BYTES
 from mime.env._xla_cache import point_xla_cache
 from mime.saved import read_folder
 from mime.testing.toys import coupled_toy, full_toy
@@ -142,7 +143,7 @@ def test_the_cap_is_two_gigabytes_and_is_applied_at_the_start(home, tmp_path):
     assert USER_CACHE_CAP_BYTES == 2 * 1024**3
     old = write(tmp_path / "xla" / "jaxlib-0" / "cpu" / "x" / "old-cache", 600, 1)
     new = write(tmp_path / "xla" / "jaxlib-0" / "cpu" / "x" / "new-cache", 600, 2)
-    with user_xla_cache(root=tmp_path / "xla", cap=700):
+    with user_xla_cache(root=tmp_path / "xla", cap=DIRECTORY_LIMIT_BYTES + 700):
         assert not old.exists() and new.exists()
 
 
