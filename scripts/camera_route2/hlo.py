@@ -1,7 +1,9 @@
 """Route 1's compiled programs, their text with source locations stripped, as uint8 arrays in an NPZ (bit_compare.py
 compares them base against head, the command run from each tree's root): python scripts/camera_route2/hlo.py PROGRAM OUT.npz, PROGRAM one of step32, step64, run32, run64,
 jvp32, jvp64, render32, render64, mesh32, mesh64 (the in-loop step of a camera tracing a drawn ellipsoid structure, a kind
-route 2 could take, beside a ball). BUMP=1 moves the camera one ulp (of the program's dtype) along y (the control: every program's text differs)."""
+route 2 could take, beside a ball), sampled32, sampled64 (route 2's uncreased bodies, camera PR 5a's: the jvp of a frame
+of an opaque helix and an attenuating ellipsoid, both on the sampled route). BUMP=1 moves the camera one ulp (of the
+program's dtype) along y (the control: every program's text differs)."""
 
 from __future__ import annotations
 
@@ -60,6 +62,27 @@ if program.startswith("render"):
         return found.expected
 
     at = jnp.asarray([0.3e-3, 0.0, 0.1e-3])
+    compiled = jax.jit(lambda a: jax.jvp(frame, (a,), (jnp.ones_like(a),))).lower(at).compile()
+    np.savez(out, text=text(compiled))
+    sys.exit(0)
+
+if program.startswith("sampled"):
+    from mime.sensing import Appearance, CameraPose, Pinhole, Subject, render
+
+    s = math.sqrt(0.5)
+    lens = Pinhole(64, 48, 900.0, 900.0, 31.5, 23.5)
+    pose = CameraPose(jnp.asarray([0.0, Y * 30.0, 0.0]), jnp.asarray([s, -s, 0.0, 0.0]))
+    coil = Subject("coil", "helix", {"radius": 0.4e-3, "pitch": 0.6e-3, "turns": 2.5, "filament_radius": 0.08e-3},
+                   appearance=Appearance.opaque(), moving=True)
+    egg = Subject("egg", "ellipsoid", {"semi_axes": [0.3e-3, 0.2e-3, 0.15e-3]}, appearance=Appearance.attenuating(500.0),
+                  moving=True)
+    identity = jnp.asarray((1.0, 0.0, 0.0, 0.0))
+
+    def frame(at):
+        return render([coil, egg], lens, pose, {"coil": (at, identity),
+                                                 "egg": (at + jnp.asarray([0.2e-3, 1e-3, 0.1e-3]), identity)}).expected
+
+    at = jnp.asarray([0.1e-3, 0.0, 0.05e-3])
     compiled = jax.jit(lambda a: jax.jvp(frame, (a,), (jnp.ones_like(a),))).lower(at).compile()
     np.savez(out, text=text(compiled))
     sys.exit(0)

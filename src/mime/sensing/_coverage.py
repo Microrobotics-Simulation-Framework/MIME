@@ -149,12 +149,17 @@ def _both(first: tuple[Any, Any], second: tuple[Any, Any]) -> Any:
                         resolution=lambda: switch.rounding(1.0), indicator=together)
 
 
-def _chord(nu: Any, nv: Any, c: Any) -> tuple[Any, Any, Any]:
-    """A line's chord through the cell (``nu y_u + nv y_v = c``, the normal unit): its length and its middle."""
+def _chord(nu: Any, nv: Any, c: Any, closed: bool = False) -> tuple[Any, Any, Any]:
+    """A line's chord through the cell (``nu y_u + nv y_v = c``, the normal unit): its length and its middle. ``closed``:
+    a line along one of the cell's sides (parallel to it within ``UNION_FLOOR``, on it) keeps its whole chord, the cell
+    taken as closed, where otherwise the floor's division leaves it half (``composed_covered``'s sides meet it there)."""
 
     def slab(along: Any, foot: Any) -> tuple[Any, Any]:
         held = jnp.copysign(jnp.maximum(jnp.abs(along), UNION_FLOOR), along)
-        return -foot / held, 0.5 / jnp.abs(held)
+        if not closed:
+            return -foot / held, 0.5 / jnp.abs(held)
+        half = jnp.where(jnp.abs(along) > UNION_FLOOR, 0.5, 0.5 + UNION_FLOOR)
+        return -foot / held, half / jnp.abs(held)
 
     (cu, wu), (cv, wv) = slab(-nv, c * nu), slab(nu, c * nv)
     start = switch.maximum(cu - wu, cv - wv, owner="camera.union.chord_start",
@@ -183,6 +188,111 @@ def union_covered(a: Line, b: Line, size: float = 1.0) -> Any:
         kept = _share(ou * mu + ov * mv - oc, length * (ov * nu - ou * nv))
         outside = outside - 0.5 * c * length * kept
     return 1.0 - outside
+
+
+#: The most terms a composition's union may have for its exact share (``composed_covered``): its inclusion and exclusion
+#: takes every nonempty subset of them.
+MOST_TERMS = 6
+
+
+class _Terms(NamedTuple):
+    """A composition of half-planes as a union of intersections: each term the set of the pieces it intersects."""
+
+    terms: tuple[frozenset[int], ...]
+
+
+def terms_of(compose: Any, count: int) -> tuple[tuple[int, ...], ...]:
+    """The composition ``compose(pieces, lesser, greater)`` of ``count`` pieces as a union of intersections of their
+    half-planes (``lesser`` a union, ``greater`` an intersection), each term the pieces it intersects: a term holding
+    another is dropped (the union holds it already), and so is a repeated one. Read once, when a form is made."""
+    def union(a: _Terms, b: _Terms) -> _Terms:
+        return _Terms(a.terms + b.terms)
+
+    def intersection(a: _Terms, b: _Terms) -> _Terms:
+        return _Terms(tuple(x | y for x in a.terms for y in b.terms))
+
+    found = compose([_Terms((frozenset((i,)),)) for i in range(count)], union, intersection).terms
+    kept: list[frozenset[int]] = []
+    for term in sorted(set(found), key=lambda t: (len(t), sorted(t))):
+        if not any(held <= term for held in kept):
+            kept.append(term)
+    if len(kept) > MOST_TERMS:
+        raise ValueError(f"a composition of {len(kept)} terms: the exact share takes at most {MOST_TERMS}")
+    return tuple(tuple(sorted(term)) for term in kept)
+
+
+def _kept(middle: Any, slope: Any, later: bool = False, beyond: Any = None) -> tuple[Any, Any]:
+    """Where on a segment (from -1/2 to 1/2 of its length) a linear function is at least zero, given its middle's value
+    and its change along the segment: the interval from the end it keeps, ``_share`` of the segment long. Where the
+    change is within ``UNION_FLOOR`` of zero and the function is zero to it too (two lines that coincide), the share is
+    a half, kept from the end ``later`` names (the later of the two lines the start, the earlier the end), so that two
+    coinciding lines' chords keep the two halves of one chord between them. ``beyond``: on a side of the cell, the
+    line's distance from the cell's centre; a side on the line is taken as just outside the cell, kept whole where the
+    body lies beyond it (the distance below zero) and not at all where the body holds the cell, so that with the line's
+    whole chord (``_chord``, closed) it counts the side once, or cancels it."""
+    if beyond is not None:
+        middle = jnp.where(jnp.abs(slope) > UNION_FLOOR, middle, middle - UNION_FLOOR * beyond)
+    share = _share(middle, slope)
+    high = jnp.where(jnp.abs(slope) > UNION_FLOOR, slope > 0.0, later)
+    low_end = switch.where(high, 0.5 - share, -0.5, owner="camera.composed.end",
+                           resolution=lambda: switch.rounding(1.0), indicator=slope)
+    high_end = switch.where(high, 0.5, share - 0.5, owner="camera.composed.end",
+                            resolution=lambda: switch.rounding(1.0), indicator=slope)
+    return low_end, high_end
+
+
+def _within(bounds: list[tuple[Any, Any]]) -> Any:
+    """The length, as a share of its segment, of the intersection of the intervals ``bounds`` on it."""
+    low, high = bounds[0]
+    for lower, upper in bounds[1:]:
+        low_now, high_now = low, high
+        low = switch.maximum(low_now, lower, owner="camera.composed.low", resolution=lambda: switch.rounding(1.0),
+                             indicator=lambda: low_now - lower)
+        high = switch.minimum(high_now, upper, owner="camera.composed.high", resolution=lambda: switch.rounding(1.0),
+                              indicator=lambda: upper - high_now)
+    return switch.maximum(high - low, 0.0, owner="camera.composed.empty", resolution=lambda: switch.rounding(1.0),
+                          indicator=high - low)
+
+
+def composed_covered(terms: tuple[tuple[int, ...], ...], lines: list[Line], size: float = 1.0) -> Any:
+    """The exact share of a square ``size`` pixels a side, centred where the lines were read, inside a composition of
+    the lines' bodies given as a union of intersections (``terms``, from ``terms_of``): by inclusion and exclusion, the
+    signed sum of the areas of the intersections of every nonempty subset of the terms. Each is a convex polygon whose
+    area is its boundary integral (half the sum over its sides of each side's distance from the centre times its
+    length); its sides are the square's, each the share of it inside every body of the subset, and each line's chord
+    through the square, the share of it inside the others'. Exact for straight lines, continuous in each; two lines that
+    coincide (to ``UNION_FLOOR``) keep a half of their chord each, and a line on one of the square's sides keeps its whole
+    chord while that side is counted by the side the body lies on (``_kept``'s ``beyond``)."""
+    used = sorted({index for term in terms for index in term})
+    planes = {index: _outside(lines[index], size) for index in used}
+    side_bounds: dict[int, list[tuple[Any, Any]]] = {index: [] for index in used}
+    for (mu, mv), (eu, ev) in _SIDES:
+        for index in used:
+            nu, nv, c = planes[index]
+            side_bounds[index].append(_kept(c - nu * mu - nv * mv, -(nu * eu + nv * ev), beyond=c))
+    chords = {index: _chord(*planes[index], closed=True) for index in used}
+    chord_bounds: dict[tuple[int, int], tuple[Any, Any]] = {}
+    for j in used:
+        length, mu, mv = chords[j]
+        nu, nv, _ = planes[j]
+        for k in used:
+            if k != j:
+                ou, ov, oc = planes[k]
+                chord_bounds[j, k] = _kept(oc - ou * mu - ov * mv, -length * (ov * nu - ou * nv), j > k)
+    total = jnp.zeros_like(planes[used[0]][2])
+    for chosen in range(1, 2 ** len(terms)):
+        subset = [term for bit, term in enumerate(terms) if chosen >> bit & 1]
+        held = sorted({index for term in subset for index in term})
+        area = jnp.zeros_like(total)
+        for side in range(len(_SIDES)):
+            area = area + 0.25 * _within([side_bounds[index][side] for index in held])
+        for j in held:
+            others = [chord_bounds[j, k] for k in held if k != j]
+            length = chords[j][0]
+            kept = _within(others) if others else jnp.ones_like(length)
+            area = area + 0.5 * planes[j][2] * length * kept
+        total = total + (area if len(subset) % 2 else -area)
+    return total
 
 
 def near(edge: Line) -> Any:

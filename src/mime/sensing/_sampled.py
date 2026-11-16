@@ -40,7 +40,7 @@ lie at most ``SPACING`` of its smallest feature apart (``samples_for``): a struc
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, NamedTuple, cast
 
@@ -57,6 +57,8 @@ lax: Any = jax.lax
 #: JAX's jit and linearize, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
 _jit: Any = cast(Any, jax).jit
 _linearize: Any = cast(Any, jax).linearize
+_jvp: Any = cast(Any, jax).jvp
+_custom_jvp: Any = cast(Any, jax).custom_jvp
 
 #: Samples a ray by default: camera truth 1's count, within 1 % of the physical silhouette in motion off the crease.
 SAMPLES = 32
@@ -112,13 +114,18 @@ COST_LINE = 1.0e9
 @dataclass(frozen=True)
 class Sampled:
     """A body route 2 images: its geometry kind (made from its settings), the region it marches, its smallest
-    feature's size and its enclosing radius (m), and the samples a ray."""
+    feature's size and its enclosing radius (m), and the samples a ray. A body whose kind declares a crease measure
+    (``Geometry.crease_measure``) also holds its other ``regions`` (read at each branch's least), its measure's count of
+    pieces (``creases``) and its composition (``compose``)."""
 
     kind: Geometry
     region: str
     feature: float
     enclosing: float
     samples: int
+    regions: tuple[str, ...] = ()
+    creases: int = 0
+    compose: Callable[..., Any] | None = None
 
 
 def kind_named(name: str) -> type[Geometry] | None:
@@ -153,11 +160,30 @@ def evaluate(sampled: Sampled, p: Mapping[str, Any], x: Any, y: Any, z: Any) -> 
     return found.value / found.slope
 
 
+def _region(sampled: Sampled, p: Mapping[str, Any], region: str, x: Any, y: Any, z: Any) -> Any:
+    found = sampled.kind.sign_function(p, region, (x, y, z))
+    return found.value / found.slope
+
+
+def body(sampled: Sampled, p: Mapping[str, Any], x: Any, y: Any, z: Any) -> Any:
+    """The body's first-order distance where it is creased: the greatest of its regions' (its sign is the body's), the
+    marched region's where it is not."""
+    found = evaluate(sampled, p, x, y, z)
+    for region in sampled.regions:
+        other = _region(sampled, p, region, x, y, z)
+        held = found
+        found = switch.maximum(held, other, owner="camera.sampled.body", resolution=lambda: switch.rounding(
+            sampled.enclosing), indicator=lambda: held - other)
+    return found
+
+
 class March(NamedTuple):
     """The march's held result on each ray: the least sample's refined point and the least other local minimum's,
     whether there is another, the samples' points and spacing, which spacings lie inside the body, which it is entered
     or left in (each a held mask, one or zero), and the held interval the flags read; on a frame's corner sub-samples,
-    which rays' pixels are corners and the ray table's derivatives along ``u`` and ``v`` (``Form.at_corners``)."""
+    which rays' pixels are corners and the ray table's derivatives along ``u`` and ``v`` (``Form.at_corners``). For a
+    creased body, whether each least sample is interior to the samples, and ``moving``: the two refined points and the
+    spacing again, each carrying its derivative in what the march was made from (``_grid_moving``)."""
 
     ta: Any
     tb: Any
@@ -171,6 +197,8 @@ class March(NamedTuple):
     corner: Any = None
     du: Any = None
     dv: Any = None
+    interior: Any = None
+    moving: Any = None
 
 
 def _margins(v: Any) -> Any:
@@ -188,7 +216,8 @@ def march(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, du: Vec) -> Ma
     """The held search along rays ``o + t d`` (``du`` the ray table's derivative along a pixel's row, for the
     footprint): the samples across the widened enclosing ball, the least sample (the first branch), the least of the
     other local minima (the second), each refined by the parabola through its neighbours."""
-    o, d, du = lax.stop_gradient((o, d, du))
+    ray = (o, d, du)
+    o, d, du = lax.stop_gradient(ray)
     held_p = {name: value if isinstance(value, int) else lax.stop_gradient(value) for name, value in p.items()}
     n = sampled.samples
     b = forms.dot(o, d)
@@ -227,14 +256,88 @@ def march(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, du: Vec) -> Ma
 
     ta = refined(first)
     tb = refined(second)
+    if sampled.regions:
+        v = body(sampled, held_p, *(o[i] + t * d[i][..., None] for i in range(3)))
     entering = (v[..., :-1] >= 0.0) & (v[..., 1:] < 0.0)
     leaving = (v[..., :-1] < 0.0) & (v[..., 1:] >= 0.0)
     inside = (v[..., :-1] < 0.0) & (v[..., 1:] < 0.0)
     across = t[..., :-1] + dt[..., None] * v[..., :-1] / jnp.where(entering | leaving, v[..., :-1] - v[..., 1:], 1.0)
     interval = (jnp.min(jnp.where(entering, across, forms.FAR), axis=-1),
                 jnp.max(jnp.where(leaving, across, -forms.FAR), axis=-1))
+    # A creased body's marched region reaches past its enclosing ball (a cylinder's side, a screw's thread): a least at
+    # the ends of the samples is not the region's least along the ray, and the body is not there.
+    interior = None if sampled.compose is None else (first > 0) & (first < n - 1)
+    moving = None if sampled.compose is None else _grid_moving(sampled, p, ray, (first, second), (ta, tb, dt))
     return March(ta, tb, has2, t, dt, inside.astype(v.dtype), entering.astype(v.dtype), leaving.astype(v.dtype),
-                 interval)
+                 interval, interior=interior, moving=moving)
+
+
+def _carried(value: Any, made: Callable[[Any, Any], Any], live: Any, fixed: Any) -> Any:
+    """``value``, a held result, carrying the derivative of ``made(live, fixed)``: ``made`` makes it again from ``live``
+    (what it was made from) by the held computation's own arithmetic, ``fixed`` its choices as they fell (an index, the
+    branch of a ``where``, a held direction), so the derivative is the held result's own on its branch. The value is
+    ``value`` itself: where nothing is differentiated nothing is made again. Every array ``made`` reads is an argument
+    (the rule is traced where the derivative is taken, apart from the values it would close over)."""
+
+    @_custom_jvp
+    def carried(held: Any, made_from: Any, choices: Any) -> Any:
+        return held
+
+    def tangent(primals: tuple[Any, Any, Any], tangents: tuple[Any, Any, Any]) -> tuple[Any, Any]:
+        held, made_from, choices = primals
+
+        def again(live_again: Any) -> Any:
+            return made(live_again, choices)
+
+        return held, _jvp(again, (made_from,), (tangents[1],))[1]
+
+    carried.defjvp(tangent)
+    return carried(value, live, fixed)
+
+
+def _split(p: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """A kind's parameters as its integers (a screw's starts, never differentiated) and the rest."""
+    whole = {name: value for name, value in p.items() if isinstance(value, int)}
+    return whole, {name: value for name, value in p.items() if name not in whole}
+
+
+def _grid_moving(sampled: Sampled, p: Mapping[str, Any], ray: tuple[Vec, Vec, Vec], least: tuple[Any, Any],
+                 held: tuple[Any, Any, Any]) -> Any:
+    """The march's two refined points and its spacing (``held``) carrying their derivative in the rays (``ray``: their
+    origins, directions and derivatives along a row) and the parameters: the samples' places across the widened ball
+    and the parabola through the three samples about each least sample (``least``, the march's indices), the march's
+    own arithmetic with its choices as they fell. A ray that misses the widened ball has no derivative of its places
+    (the square root's at zero is not taken)."""
+    whole, parameters = _split(p)
+
+    def made(live: Any, at: tuple[Any, Any]) -> tuple[Any, Any, Any]:
+        (o, d, du), q = live
+        q = {**whole, **q}
+        n = sampled.samples
+        b = forms.dot(o, d)
+        across = forms.dot(o, o) * forms.dot(du, du)
+        wide = across > 0.0
+        reach = sampled.enclosing + MARGIN_PX * jnp.where(wide, jnp.sqrt(jnp.where(wide, across, 1.0)), 0.0)
+        square = b * b - (forms.dot(o, o) - reach * reach)
+        meets = square > 0.0
+        half = jnp.where(meets, jnp.sqrt(jnp.where(meets, square, 1.0)), 0.0)
+        t0 = jnp.maximum(-b - half, 0.0)
+        dt = (jnp.maximum(-b + half, t0) - t0) / (n - 1)
+
+        def refined(at: Any) -> Any:
+            def near(offset: int) -> Any:
+                t = t0 + jnp.clip(at + offset, 0, n - 1).astype(t0.dtype) * dt
+                return evaluate(sampled, q, *(o[i] + t * d[i] for i in range(3)))
+
+            before, middle, after = near(-1), near(0), near(1)
+            curvature = before - 2.0 * middle + after
+            inner = (at > 0) & (at < n - 1) & (curvature > 0.0)
+            shift = 0.5 * (before - after) / jnp.where(inner, curvature, 1.0)
+            return t0 + (at.astype(t0.dtype) + jnp.where(inner, shift, 0.0)) * dt
+
+        return refined(at[0]), refined(at[1]), dt
+
+    return _carried(held, made, (ray, parameters), least)
 
 
 def chord(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, held: March) -> Any:
@@ -242,7 +345,7 @@ def chord(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, held: March) -
     and where it found the body entered or left, the share inside by linear interpolation of the live values at the
     held samples. The masks are held: a sample crossing the surface moves the crossing from one spacing to its
     neighbour, where the interpolation puts it at the same place, so the chord is continuous across it."""
-    v = evaluate(sampled, p, *(o[i] + held.t * d[i][..., None] for i in range(3)))
+    v = (body if sampled.regions else evaluate)(sampled, p, *(o[i] + held.t * d[i][..., None] for i in range(3)))
     a, b = v[..., :-1], v[..., 1:]
     changes = (held.entering + held.leaving) > 0.0
     share = a / switch.domain_guard(changes, a - b, 1.0)
@@ -300,11 +403,11 @@ def _quartic_least(far_low: Any, low: Any, middle: Any, high: Any, far_high: Any
 
 
 def _gathered(at: Any, start: Any, other: Any, spacing: Any, near: tuple[Any, Any, Any],
-              read: Any) -> tuple[Any, Any]:
+              read: Any, centred: bool = False) -> tuple[Any, ...]:
     """The pieces' least points and merges (``_leasts``) with the descent gathered: each piece the quartic about its
     held point, and those whose lower neighbour a spacing away is below it (``read``: whose least is read at all)
     descend together, ``DESCENT_SHARE`` of the list a turn, until none is left. ``at(t, index)`` evaluates the pieces
-    ``index`` (all where it is ``None``)."""
+    ``index`` (all where it is ``None``). ``centred``: each piece's quartic's middle (where its descent stopped) too."""
     before, middle, after = near
     point = start + 0.5 * _quartic_least(before, at(start - 0.5 * spacing), middle, at(start + 0.5 * spacing),
                                          after) * spacing
@@ -316,8 +419,8 @@ def _gathered(at: Any, start: Any, other: Any, spacing: Any, near: tuple[Any, An
     order = jnp.nonzero(moves, size=turns * width, fill_value=count)[0]
     moving = jnp.sum(moves)
 
-    def turn(state: tuple[Any, Any, Any]) -> tuple[Any, Any, Any]:
-        k, point, merged = state
+    def turn(state: tuple[Any, ...]) -> tuple[Any, ...]:
+        k, point, merged, *centres = state
         index = lax.dynamic_slice(order, (k * width,), (width,))
 
         def taken(values: Any) -> Any:
@@ -333,24 +436,27 @@ def _gathered(at: Any, start: Any, other: Any, spacing: Any, near: tuple[Any, An
         moved = centre + 0.5 * _quartic_least(below, along(centre - 0.5 * h), value, along(centre + 0.5 * h),
                                               above) * h
         return (k + 1, point.at[index].set(moved, mode="drop"),
-                merged.at[index].set(ran & (toward * (taken(other) - t) > 0.0), mode="drop"))
+                merged.at[index].set(ran & (toward * (taken(other) - t) > 0.0), mode="drop"),
+                *(c.at[index].set(centre, mode="drop") for c in centres))
 
-    def left(state: tuple[Any, Any, Any]) -> Any:
+    def left(state: tuple[Any, ...]) -> Any:
         return state[0] * width < moving
 
-    _, point, merged = lax.while_loop(left, turn, (0, point, merged))
-    return point, merged
+    return lax.while_loop(left, turn, (0, point, merged, *((start,) if centred else ())))[1:]
 
 
-def _leasts(sampled: Sampled, held: March, p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
+def _leasts(sampled: Sampled, held: March, p: Mapping[str, Any], o: Vec, d: Vec,
+            recipes: bool = False) -> tuple[Any, ...]:
     """Each branch's held point moved to its ray's least nearby (a corner sub-sample's, whose least is not its
     pixel's), on rays ``o + t d``: the descent at the march's spacing to the sample lower than both its neighbours
     (``_descended``), then the least of the quartic through the distance at five points half a spacing apart about it
     (``_quartic_least``); a branch merged into the other's basin (its descent ran its whole reach towards the other
     branch's held point: past the fold where its own least vanishes) read at the other's point; and, on a corner
     pixel's sub-ray (``March.corner``), the reading verified where a branch is lost (``_verified``). Returns the two
-    read points and the bound on each ray's sub-cell (zero where verified). Held, as the march is: no derivative passes
-    through it, and at the least the distance does not move with it.
+    read points and the bound on each ray's sub-cell (zero where verified); with ``recipes``, each read point's making
+    as well (``_place``: the march's point it started from, its moves from there in spacings, and whether it is a
+    verified window's). Held, as the march is: no derivative passes through it, and at the least the distance does
+    not move with it.
 
     The two branches' pieces are one list. Every piece takes its five values about its held point; where the lower of
     its neighbours a spacing away is lower than it, the descent moves (otherwise it stops where it starts, and the
@@ -385,16 +491,30 @@ def _leasts(sampled: Sampled, held: March, p: Mapping[str, Any], o: Vec, d: Vec)
                                               above) * spacing
         merged = ran & (toward * (other - start) > 0.0)
     else:
-        point, merged = _gathered(at, start, other, spacing, (before, middle, after), listed(True, held.has2))
+        found = _gathered(at, start, other, spacing, (before, middle, after), listed(True, held.has2), recipes)
+        point, merged = found[0], found[1]
+        centre = found[2] if recipes else None
     has2 = jnp.broadcast_to(held.has2, shape).reshape(-1)
     a, b, a_merged, b_merged = point[:rays], point[rays:], merged[:rays], merged[rays:]
     # A branch merged into the other's basin is read at the other's point.
-    first, second = jnp.where(has2 & a_merged & ~b_merged, b, a), jnp.where(b_merged, a, b)
+    swapped = has2 & a_merged & ~b_merged
+    first, second = jnp.where(swapped, b, a), jnp.where(b_merged, a, b)
+    made = None
+    if recipes:
+        # Each read point's making follows its choice: a merged branch's is the other's. A ray that misses the widened
+        # ball has no spacing (its samples are one point, its descent's centre its start): its moves are none, never 0/0,
+        # which the read point's derivative would carry (``_place``: the start plus the moves times the spacing).
+        steps = (centre - start) / jnp.where(spacing > 0.0, spacing, 1.0)
+        made = ((jnp.where(swapped, steps[rays:], steps[:rays]), swapped, jnp.zeros_like(swapped)),
+                (jnp.where(b_merged, steps[:rays], steps[rays:]), ~b_merged, jnp.zeros_like(swapped)))
     bound = jnp.zeros_like(first)
     if held.corner is not None:
-        first, second, bound = _verified(sampled, held, p, o, d, shape, first, second, (a_merged, b_merged))
+        verified = _verified(sampled, held, p, o, d, shape, first, second, (a_merged, b_merged), made=made)
+        first, second, bound = verified[:3]
+        made = verified[3] if recipes else None
     first, second = lax.stop_gradient((first, second))
-    return first.reshape(shape), second.reshape(shape), lax.stop_gradient(bound).reshape(shape)
+    found = first.reshape(shape), second.reshape(shape), lax.stop_gradient(bound).reshape(shape)
+    return found if made is None else (*found, tuple(tuple(c.reshape(shape) for c in recipe) for recipe in made))
 
 
 def _ridges(values: Any, at: Any) -> Any:
@@ -406,7 +526,8 @@ def _ridges(values: Any, at: Any) -> Any:
 
 
 def _verified(sampled: Sampled, held: March, p: Mapping[str, Any], o: Vec, d: Vec, shape: tuple[int, ...],
-              first: Any, second: Any, merged: tuple[Any, Any], reads: bool = True) -> tuple[Any, Any, Any]:
+              first: Any, second: Any, merged: tuple[Any, Any], reads: bool = True,
+              made: Any = None) -> tuple[Any, ...]:
     """The reading of a corner pixel's sub-rays verified where a branch is lost (both read at one point). The
     derivation's premise is that each least reaching a sub-cell (its line within ``SUB_REACH`` of the sub-cell's
     centre, the cell not wholly inside the read branch) is read. The lost branch's dense window (``VERIFY_STEPS`` a
@@ -417,7 +538,8 @@ def _verified(sampled: Sampled, held: March, p: Mapping[str, Any], o: Vec, d: Ve
     the only one; the share of the sub-cell inside each other's half-plane is the bound on what the cell's union
     leaves out (zero where verified). Where not ``reads`` (the flag's control) the least found is bounded, not read.
     The lost rays are gathered, ``VERIFY_SHARE`` of them a turn. Each of ``first``, ``second`` and ``merged`` is one
-    a ray; returned with the bound, one a ray."""
+    a ray; returned with the bound, one a ray. ``made``: the two read points' makings (``_leasts``' recipes), returned
+    as they are after the reading (a point found in the window is the window's)."""
     def flat(c: Any) -> Any:
         return jnp.broadcast_to(c, shape).reshape(-1)
 
@@ -477,34 +599,155 @@ def _verified(sampled: Sampled, held: March, p: Mapping[str, Any], o: Vec, d: Ve
         others = reaching & parted(found) if reads else reaching
         share = coverage.covered(line, 1.0 / coverage.CORNER_SAMPLES)
         bound = jnp.minimum(jnp.sum(jnp.where(others, share, 0.0), axis=1), 1.0)
-        return jnp.where(any_found & reads, found, r), bound
+        windowed = (jnp.take(steps, nearest), any_found & reads) if made is not None else ()
+        return jnp.where(any_found & reads, found, r), bound, *windowed
 
     if switch.collector_open():
         # A switch collector keeps what a loop's body traces beyond it, so while one is open every ray is verified at
         # once, as the verification is written without the gathering: the same values on the lost rays.
-        point, bound = verify(jnp.arange(count))
+        point, bound, *windowed = verify(jnp.arange(count))
     else:
         width = max(1, math.ceil(VERIFY_SHARE * count))
         order = jnp.nonzero(lost, size=-(-count // width) * width, fill_value=count)[0]
 
-        def turn(state: tuple[Any, Any, Any]) -> tuple[Any, Any, Any]:
-            k, point, bound = state
+        def turn(state: tuple[Any, ...]) -> tuple[Any, ...]:
+            k, *kept = state
             index = lax.dynamic_slice(order, (k * width,), (width,))
-            found, left = verify(index)
-            return k + 1, point.at[index].set(found, mode="drop"), bound.at[index].set(left, mode="drop")
+            return k + 1, *(c.at[index].set(v, mode="drop") for c, v in zip(kept, verify(index), strict=True))
 
-        def pending(state: tuple[Any, Any, Any]) -> Any:
+        def pending(state: tuple[Any, ...]) -> Any:
             return state[0] * width < jnp.sum(lost)
 
-        _, point, bound = lax.while_loop(pending, turn, (0, first, jnp.zeros_like(first)))
+        windows = (jnp.zeros_like(first), jnp.zeros_like(lost)) if made is not None else ()
+        _, point, bound, *windowed = lax.while_loop(pending, turn, (0, first, jnp.zeros_like(first), *windows))
     bound = jnp.where(lost, bound, 0.0)
-    return jnp.where(lost & ~second_lost, point, first), jnp.where(lost & second_lost, point, second), bound
+    read = jnp.where(lost & ~second_lost, point, first), jnp.where(lost & second_lost, point, second), bound
+    if made is None:
+        return read
+    # A point found in the lost branch's window is the window's parabola about its sample, from the march's point the
+    # window was laid about; a lost second branch read at the first's point takes the first's making.
+    (first_steps, first_base, first_window), (second_steps, second_base, second_window) = made
+    window_steps, window_found = windowed
+    window = (lost & ~second_lost & window_found, lost & second_lost & window_found)
+    to_first = lost & second_lost & ~window_found
+    second_made = (jnp.where(to_first, first_steps, second_steps), jnp.where(to_first, first_base, second_base),
+                   jnp.where(to_first, first_window, second_window))
+    return (*read, ((jnp.where(window[0], window_steps, first_steps), jnp.where(window[0], second_lost, first_base),
+                     window[0] | first_window),
+                    (jnp.where(window[1], window_steps, second_made[0]),
+                     jnp.where(window[1], second_lost, second_made[1]), window[1] | second_made[2])))
+
+
+def _place(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, held: March, read: Any, made: Any) -> Any:
+    """A branch's read point ``read`` on the rays ``o + t d``, carrying the derivative of the image's own held point:
+    ``made`` (``_leasts``' recipe) is how it was made, from the march's refined point (the second's where ``base``),
+    ``steps`` march spacings on to where its descent stopped (or a verified window's sample) and the quartic's least
+    through the five values half a spacing apart about there (or, in a ``window``, the parabola through three a window's
+    spacing apart). That arithmetic is done again on live values, its choices as they fell: the march's points and
+    spacing moving with the body (``March.moving``), the values with the body and the parameters, along the ray's held
+    direction. A turn's share through the sub-ray's own direction is ``_moving``'s implicit step's."""
+    whole, parameters = _split(p)
+
+    def again(live: Any, fixed: Any) -> Any:
+        origin, q, (ta, tb, spacing) = live
+        (steps, base, window), direction = fixed
+        q = {**whole, **q}
+
+        def at(t: Any) -> Any:
+            return evaluate(sampled, q, *(origin[i] + t * direction[i] for i in range(3)))
+
+        centre = jnp.where(base, tb, ta) + steps * spacing
+        middle = at(centre)
+        quartic = centre + 0.5 * _quartic_least(at(centre - spacing), at(centre - 0.5 * spacing), middle,
+                                                at(centre + 0.5 * spacing), at(centre + spacing)) * spacing
+        fine = spacing / VERIFY_STEPS
+        before, after = at(centre - fine), at(centre + fine)
+        curvature = before - 2.0 * middle + after
+        rising = curvature > 0.0
+        shift = jnp.where(rising, 0.5 * (before - after) / jnp.where(rising, curvature, 1.0), 0.0)
+        return jnp.where(window, centre + jnp.clip(shift, -1.0, 1.0) * fine, quartic)
+
+    return _carried(read, again, (o, parameters, held.moving), (made, lax.stop_gradient(d)))
+
+
+def _moving(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, at: Any, spacing: Any) -> Any:
+    """A branch's least's place ``at`` on the rays (its derivative the image's own held point's, ``_place``) moved
+    with the ray's direction by one Newton step on the marched function's slope along the ray, its value taken off (the
+    slope less itself read along the held direction), so the place is ``at`` and its derivative in the direction is
+    the implicit function's: the line a piece read there takes across the pixel. The step's curvature is the profile's
+    second difference at the march's ``spacing``: at a kink of the profile (a ray through the region's medial set, a
+    cylinder's axis) the curvature a spacing wide keeps the step finite; where it is not convex the place moves only
+    with ``at``. The slope and the curvature are read at the place as it moves, with the spacing as it moves: the step
+    is zero in the body's place, and its change with the body's place is the rendered image's."""
+    held = lax.stop_gradient(d)
+
+    def along(t: Any, direction: Vec) -> Any:
+        return evaluate(sampled, p, *(o[i] + t * direction[i] for i in range(3)))
+
+    def slope(direction: Vec) -> Any:
+        def on(t: Any) -> Any:
+            return along(t, direction)
+
+        return _jvp(on, (at,), (jnp.ones_like(at),))[1]
+
+    curvature = (along(at + spacing, held) - 2.0 * along(at, held) + along(at - spacing, held)) / (spacing * spacing)
+    convex = curvature > 0.0
+    step = (slope(d) - slope(held)) / switch.domain_guard(convex, curvature, 1.0)
+    # Both branches are zero in value (the step's slope less itself): the choice moves only the derivative.
+    return at - jnp.where(convex, step, jnp.zeros_like(step))
+
+
+def _creased_pieces(sampled: Sampled, held: March) -> Any:
+    """A creased body's pieces on rays: the two branches' (as ``pieces``), each branch's other regions' first-order
+    distances at its least (``Sampled.regions``, the least's place moving with its derivative, ``_moving``), and the
+    crease measure's pieces; on a frame's corner sub-samples followed by the bound. A second branch read at the
+    first's point is moved out by the enclosing radius, as one that is not there: the two would repeat one term of the
+    composition. Each branch and its regions are read at its least's place as the image's own held point moves with
+    the body (``_place``): the image's derivative on its branch."""
+
+    def made(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
+        def at(t: Any) -> Any:
+            return evaluate(sampled, p, *(o[i] + t * d[i] for i in range(3)))
+
+        at_first, at_second, bound, recipes = _leasts(sampled, held, p, o, d, recipes=True)
+        places = [_place(sampled, p, o, d, held, read, recipe) for read, recipe in zip((at_first, at_second), recipes,
+                                                                                      strict=True)]
+        first, second = at(places[0]), at(places[1])
+        second = jnp.where(held.has2 & (at_second != at_first), second, first + sampled.enclosing)
+        # The least at the ends of the samples lies past the enclosing ball's margin, two footprints from the body.
+        first = jnp.where(held.interior, first, first + 2.0 * sampled.enclosing)
+        regions: list[Any] = []
+        for place in places:
+            moving = _moving(sampled, p, o, d, place, held.moving[2])
+            regions += [_region(sampled, p, region, *(o[i] + moving * d[i] for i in range(3)))
+                        for region in sampled.regions]
+        found = sampled.kind.crease_measure(p, o, d)
+        made_pieces = (first, second, *regions, *found.pieces)
+        return made_pieces if held.corner is None else (*made_pieces, bound)
+
+    return made
+
+
+def creased_compose(sampled: Sampled) -> Any:
+    """A creased body's composition of its pieces (``_creased_pieces``' order): its crease measure's, given each
+    branch's regions and the creases."""
+    count = len(sampled.regions)
+    compose = sampled.compose
+    assert compose is not None
+
+    def composed(parts: Sequence[Any], lesser: Any, greater: Any) -> Any:
+        marched = [(parts[0], *parts[2:2 + count]), (parts[1], *parts[2 + count:2 + 2 * count])]
+        return compose(marched, parts[2 + 2 * count:2 + 2 * count + sampled.creases], lesser, greater)
+
+    return composed
 
 
 def pieces(sampled: Sampled, held: March) -> Any:
     """The two branches' pieces on rays: each the first-order distance at its ray's own least near its held point
     (``_leasts``); the second, where there is no second minimum, the first moved out by the enclosing radius; on a
     frame's corner sub-samples (``March.corner``) followed by the bound where the reading is not verified."""
+    if sampled.compose is not None:
+        return _creased_pieces(sampled, held)
 
     def made(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
         def at(t: Any) -> Any:
@@ -541,6 +784,8 @@ def form(sampled: Sampled, held: March | None = None) -> Form:
     def enclosing(settings: Mapping[str, float]) -> float:
         return sampled.enclosing
 
+    if sampled.compose is not None:
+        return _creased_form(sampled, held, interval, enclosing)
     if held is None:
         def unmarched(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
             raise TypeError("a sampled form's pieces are made from its march (form(sampled, held))")
@@ -557,6 +802,40 @@ def form(sampled: Sampled, held: March | None = None) -> Form:
                 at_corners=at_corners)
 
 
+def _creased_form(sampled: Sampled, held: March | None, interval: Any, enclosing: Any) -> Form:
+    """A creased body's form: its pieces (``_creased_pieces``), composed by its crease measure, each cell the exact
+    share of that composition of the pieces' half-planes (``coverage.composed_covered``), the creases' pieces taken as
+    turning (a cap's outline turns within a pixel where it is seen near edge-on)."""
+    compose = creased_compose(sampled)
+    count = 2 + 2 * len(sampled.regions) + sampled.creases
+    terms = coverage.terms_of(compose, count)
+    turning = tuple(range(2 + 2 * len(sampled.regions), count))
+
+    def cover(lines: Sequence[Any], size: float) -> Any:
+        return coverage.composed_covered(terms, list(lines), size)
+
+    if held is None:
+        def unmarched(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
+            raise TypeError("a sampled form's pieces are made from its march (form(sampled, held))")
+
+        return Form(interval, unmarched, enclosing, compose, corners=True, turning=turning, cover=cover)
+    if held.corner is not None:
+        return Form(interval, pieces(sampled, held), enclosing, compose, corners=True, turning=turning, cover=cover,
+                    unverified=1)
+
+    def at_corners(corner: Any, du: Vec, dv: Vec) -> Form:
+        return form(sampled, held._replace(corner=corner, du=du, dv=dv))
+
+    return Form(interval, pieces(sampled, held), enclosing, compose, corners=True, turning=turning, cover=cover,
+                at_corners=at_corners)
+
+
+def faces(sampled: Sampled, p: Mapping[str, Any]) -> tuple[tuple[Any, Any, Any], ...]:
+    """A creased body's planar faces (``CreaseMeasure.faces``), in its kind's frame."""
+    zero = jnp.zeros(())
+    return sampled.kind.crease_measure(p, (zero, zero, zero), (zero, zero, jnp.ones(()))).faces
+
+
 def evaluation_cost(sampled: Sampled, parameters: Mapping[str, Any], dtype: Any) -> float:
     """The flops-equivalents of one evaluation of the marched function (flops plus ``TRANSCENDENTAL_WEIGHT`` times
     the transcendentals), from XLA's cost analysis of the lowered program on one point: a count of the program, never
@@ -571,12 +850,53 @@ def evaluation_cost(sampled: Sampled, parameters: Mapping[str, Any], dtype: Any)
     return float(cost.get("flops", 0.0)) + TRANSCENDENTAL_WEIGHT * float(cost.get("transcendentals", 0.0))
 
 
+def _counted(function: Any, *shapes: Any) -> float:
+    cost: Mapping[str, float] = _jit(function).lower(*shapes).cost_analysis() or {}
+    return float(cost.get("flops", 0.0)) + TRANSCENDENTAL_WEIGHT * float(cost.get("transcendentals", 0.0))
+
+
+def crease_cost(sampled: Sampled, parameters: Mapping[str, Any], dtype: Any) -> tuple[float, float]:
+    """A creased body's counts besides its marched function's, in flops-equivalents: its crease measure's pieces and its
+    other regions on one ray, and the exact share of its composition in one cell (``coverage.composed_covered``)."""
+    point = jax.ShapeDtypeStruct((), dtype)
+    held = {name: (value if isinstance(value, int) else jnp.asarray(value, dtype=dtype))
+            for name, value in parameters.items()}
+
+    def measured(ox: Any, oy: Any, oz: Any, dx: Any, dy: Any, dz: Any) -> Any:
+        found = sampled.kind.crease_measure(held, (ox, oy, oz), (dx, dy, dz)).pieces
+        regions = [_region(sampled, held, region, ox, oy, oz) for region in sampled.regions]
+        return sum((*found, *regions), start=jnp.zeros((), dtype))
+
+    count = 2 + 2 * len(sampled.regions) + sampled.creases
+    terms = coverage.terms_of(creased_compose(sampled), count)
+
+    def covered(values: Any) -> Any:
+        lines = [coverage.Line(values[3 * k], values[3 * k + 1], values[3 * k + 2]) for k in range(count)]
+        return coverage.composed_covered(terms, lines, 1.0 / coverage.CORNER_SAMPLES)
+
+    return (_counted(measured, *([point] * 6)),
+            _counted(covered, jax.ShapeDtypeStruct((3 * count,), dtype)))
+
+
+#: Evaluations of the marched function a creased body adds to each set of its pieces (a ray's, and each corner
+#: sub-sample's): each branch's least's place moving with its derivative, its slope along the ray (two) and its second
+#: difference (three, ``_moving``).
+CREASE_EVALUATIONS = 10
+
+
 def frame_cost(sampled: Sampled, parameters: Mapping[str, Any], rays: int, sub_frames: int, dtype: Any) -> float:
     """The structural cost estimate of a body's frame, in flops-equivalents: its rays (its window's) times the
     sub-frames times one evaluation's count times the evaluations a ray takes (its samples, its pieces, and the corner
-    sub-samples, counted as running: a frame with a corner in view runs them on every ray)."""
-    per_ray = sampled.samples + PIECE_EVALUATIONS + CORNER_EVALUATIONS
-    return float(rays) * sub_frames * per_ray * evaluation_cost(sampled, parameters, dtype)
+    sub-samples, counted as running: a frame with a corner in view runs them on every ray); for a creased body, each set
+    of pieces' crease measure, other regions and moving leasts, and each corner sub-sample's exact share of its
+    composition."""
+    one = evaluation_cost(sampled, parameters, dtype)
+    per_ray = (sampled.samples + PIECE_EVALUATIONS + CORNER_EVALUATIONS) * one
+    if sampled.compose is not None:
+        measure, cover = crease_cost(sampled, parameters, dtype)
+        sub_cells = coverage.CORNER_SAMPLES ** 2
+        per_ray += (1 + sub_cells) * (CREASE_EVALUATIONS * one + measure) + sub_cells * cover
+    return float(rays) * sub_frames * per_ray
 
 
 def made_kind(kind: type[Geometry], settings: Mapping[str, Any]) -> Geometry:
@@ -616,6 +936,6 @@ def smallest_length(kind: type[Geometry], settings: Mapping[str, Any]) -> float:
     return min(positive) if positive else math.inf
 
 
-__all__ = ["COST_LINE", "MARGIN_PX", "SAMPLES", "SPACING", "Sampled", "chord", "creased", "evaluate", "evaluation_cost",
-           "form", "frame_cost",
+__all__ = ["COST_LINE", "MARGIN_PX", "SAMPLES", "SPACING", "Sampled", "body", "chord", "crease_cost", "creased",
+           "creased_compose", "evaluate", "evaluation_cost", "faces", "form", "frame_cost",
            "has_sign", "kind_named", "made_kind", "march", "samples_for", "smallest_length"]

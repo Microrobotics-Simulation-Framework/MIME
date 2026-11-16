@@ -162,6 +162,7 @@ from mime.testing._centreline import CENTRELINE_ROUNDING_ULPS, centreline_proble
 from mime.testing._kind_conformance import (
     KIND_ROUNDING_ULPS,
     NORMAL_ROUNDING_ULPS,
+    crease_measure_problems,
     drawing_checks,
     drawing_kinds,
     drawing_problems,
@@ -363,6 +364,7 @@ __all__ = [
     "sampling_quality",
     "shape_probes",
     "sign_function_problems",
+    "crease_measure_problems",
     "suite_spacing",
     "support_problems",
     "switch_distances",

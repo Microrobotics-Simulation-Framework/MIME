@@ -26,9 +26,10 @@ stages:
 - **The route is chosen by capability**: a kind with a closed form registered (`register_closed_form`) takes the closed-form
   route; one whose geometry kind declares a cheap sign function (`Geometry.sign_function`) takes the sampled route (below);
   a creased kind (a solid whose body is the intersection of two or more regions: the cylinder, the box, the screw) takes
-  the sampled route only with its crease measure (`Geometry.crease_measure`), and is refused without it
-  (`camera.crease-unmeasured`: the box and the screw, until the screw's measure comes); one with neither is refused
-  (`camera.no-route`). The choice never reads a measured time. `route=` is an override only: `"closed form"` on a kind
+  the sampled route only with its crease measure (`Geometry.crease_measure`) and a cheap sign function, and is refused
+  without the measure (`camera.crease-unmeasured`: the box and the screw, until the screw's measure comes); one with
+  neither is refused (`camera.no-route`). The cylinder declares its measure, but its default stays the closed form:
+  it takes the sampled route only under `route="sampled"`. The choice never reads a measured time. `route=` is an override only: `"closed form"` on a kind
   without one is refused (`camera.no-closed-form`), and `"sampled"` takes the sampled route where a closed form exists
   (the swap test's use). In the in-loop camera a *structure* of a kind the stage draws with no closed form (an ellipsoid,
   a box, a helix, a screw) stands still, and is imaged by its drawing as a static mesh (below), as the mesh tracer measured it,
@@ -63,6 +64,73 @@ stages:
   it; the tighter measurements (the worst-position step sweep, the derivative against the sign-only truth) are the
   probe scripts' in `scripts/camera_route2/`, which CI does not collect, and are in
   `tests/sensing/predictions_camera_pr5a_round5_gates.json`.
+- **A creased body** (camera PR 5b): its crease measure (`Geometry.crease_measure`, `mime.registry.CreaseMeasure`)
+  gives its creases' exact edge functions on the rays (a capped body's caps, each by its cone from the pinhole, and each
+  cap's bounding ball, `mime.scene._creases`) and its composition: the caps and, for each of the march's two branches,
+  the intersection of its regions' first-order distances at its least (the marched region's, and each other region's,
+  a span's, read at the same place). **The read place's derivative is the image's own held point's** (`_sampled._place`:
+  the march's points and spacing as they move with the body, the quartic's least through its five live values, its
+  steps and branches as they fell, as a custom derivative whose value is the held point, so an image is bit for bit
+  what it was, its forward program's structural count 1.0 % larger, cause not traced); across the pixel the place
+  moves with the ray's direction by one implicit step whose curvature is the
+  profile's second difference a march spacing wide (finite at a kink of the profile, a ray through a cylinder's axis),
+  read at the place as it moves. So the jvp is the rendered image's derivative on its branch in the body's place (G17's
+  derivative, within the central difference's own error: the held march's term, up to 0.5 px a px at one pixel where a
+  sub-ray passes the side's axis at the rod's end, is gone); a turn's share through a sub-ray's own direction is the
+  implicit step's.
+  A least at the samples' ends is not the marched region's (a cylinder's side and a screw's thread reach past the
+  enclosing ball, and the body is not there): that branch is moved out. The crease pieces are taken as turning, so a
+  frame with a cap in view takes its corner sub-samples, and each cell takes the **exact share of the composition** of
+  its pieces' lines (`_coverage.composed_covered`: the union of intersections by inclusion and exclusion, each subset's
+  convex polygon by its boundary integral, coinciding lines keeping half of their chord each); a second branch read at
+  the first's point is moved out, as one that is not there. A face of a crease narrower than two sub-pixels in view
+  raises `thin_cap`, as route 1's caps do (`CreaseMeasure.faces`). An attenuating creased body's chord is its body's
+  sign (the greatest of its regions' first-order distances) at the samples. `mime.testing.crease_measure_problems`
+  holds a kind's measure to its regions' signs (G17's conformance). Measured: the cylinder by the sampled route
+  against the exact image and the closed form (`tests/sensing/test_crease.py`). Its lines are
+  `scripts/camera_route2/crease_line.py`'s, fixed before the gate's draws: what they bound is the scan's largest error
+  at its 360 poses (the scheme re-implemented exactly in numpy, equal to the renderer's to 1e-11 where both ran); the
+  factor of 1.25 on it is a margin **declared, not derived**, for the poses between the scan's points, which the drawn
+  views test, and it is never moved after them. The gate's controls, by their measured power: `single-edge-crease`
+  (one straight edge a pixel) fails every pinned view and 26 and 24 of 40 fresh drawn views (float32, float64), every
+  view turned under 10 degrees and almost none turned 15.5 or more, where the caps open and one edge a pixel is nearly
+  right; `no-crease-measure` fails 40 of 40 in each; `crease-lag` (the caps a share of the body's step behind it) fails
+  the motion line on 40 of 40, and the smallest lag caught on every pinned view is 0.05 of a one-pixel step (0.025 was
+  predicted, a miss, recorded).
+- **A creased body's derivative is the rendered image's; the image's own derivative error is known, by class, and
+  pinned.** G17 holds the jvp to the rendered image's central difference within that difference's own error. The
+  rendered image's derivative is not the exact geometry's everywhere: against the exact image's (`hull_oracle`), on the
+  pixels about the outline, over the 360 poses of `scripts/camera_route2/crease_image_line.py` (in px² of share a pixel
+  of the body's motion; `tests/sensing/crease_image_*_pr5b.json`):
+  - **the sliver**: at the rod's end, the cap nearly edge-on, a sub-ray within 0.0025 px of the side's axis: 14.9 and
+    5.1 (x, z) at one pose (turn 6, roll 75), 1.48 and 0.72 (z) at two others, against an exact derivative of about 0 there; from
+    0.003 px off the axis at most 2.4e-4. It is the held least's: with each sub-ray's least exact it is 0.
+  - **the ripple**: at caps seen nearly edge-on (turns under about 8 degrees), at ordinary pixels, the share's error is
+    small in value (within the pixel line) but ripples with the body's place, so its derivative is up to about twice
+    the exact one: up to 0.88 (over 0.1 at 168 of the 360 poses), at most 0.16 from 15 degrees up; on G17's aggregates
+    (the equivalent radius and centroid on the caps' rims) up to 0.49 px a px, above 0.1 at 21 poses, at most 0.04 from
+    8 degrees. It is not the held least's (unchanged with an exact least); its source is not yet found.
+  - **thin caps** (narrower than two sub-pixels): up to 50.8 at one pixel; judged by the `thin_cap` flag wherever
+    the axis passes (thin first: the sliver's class holds only pixels outside the thin caps' boxes).
+
+  These are an **acceptance of a known error, not an accuracy claim**: CI pins each class by band of the turn (`IMAGE_BANDS`
+  in `tests/sensing/test_crease.py`, from `crease_image_line.py --bands`), at G17's views and at the poses that set each
+  line. The ripple's line in each band is 1.25 times the scan's largest there. The sliver's
+  is the same from 8 degrees up; under 8 degrees it is one line for every band, 1.25 times its largest over those turns
+  (at turn 6, roll 75), because one pose's sliver moves by about a quarter between machines (ill-conditioned, as the
+  sweep found), so a line set by one pose a band would flake. **That line is a machine-robust placeholder, not a tight
+  bound**: the sliver's growth there is caught only past about a quarter of its value at the pose that sets the line (the
+  line's one control, a plant confined to the class, caught on every run of a runner's probe, none clean flagged), with none of its own at the other poses
+  of that range, where the catches of a grown sliver are the ripple class's:
+
+  | turn (degrees) | 0 to 1 | 1 to 2 | 2 to 4 | 4 to 8 | 8 to 15 | 15 to 30 |
+  |---|---|---|---|---|---|---|
+  | the ripple's line | 1.10 | 0.73 | 0.99 | 0.99 | 0.30 | 0.20 |
+  | the sliver's line | 18.5 | 18.5 | 18.5 | 18.5 | 0.0018 | 0.0019 |
+
+  The route to exact is the follow-up **"creased image accuracy"** (approved, next): the ripple's source found, each
+  sub-ray's least refined where the side's profile is a V (a gathered Newton refinement, which removes the sliver, after
+  which these lines tighten), and the crease line, G18, G17 and the switch scan's lines re-derived once.
 - **The kinds' sign functions** (`mime.scene._signs`, `Geometry.sign_function`): the sphere, capsule, cylinder (side and
   span) and slab their exact signed distances; the ellipsoid its radius in units of its semi-axes, less one, with its gradient's length;
   the screw's thread its radius less its modulated cross-section's, with its gradient's length in closed form; the helix the distance from its centreline's
@@ -214,8 +282,8 @@ the static structure**, by a bounding volume hierarchy, so a run's frames cost 1
 
 ## What it does not do yet
 
-The tracker and the controller that reads the in-loop camera, the crease measures (and so the screw, the cylinder and the box
-on the sampled route), moving meshes (a refit tree for offline renders and the display view) and the display view's
+The tracker and the controller that reads the in-loop camera, the screw's and the box's crease measures (and so the screw
+and the box on the sampled route), moving meshes (a refit tree for offline renders and the display view) and the display view's
 lighting and colour, X-ray detectors: each comes in a later piece of the camera lane. Its switch sites (the box edge's pieces, the chords'
 intersections) go through `mime.core.switch` where a switch has a branch a derivative can take, under the owners
 `camera.*` (`_switches.py`, declared on the `camera` entry, each a row of the switch harness); the sites that stay raw are
