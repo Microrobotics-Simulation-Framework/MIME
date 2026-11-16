@@ -134,7 +134,6 @@ from mime.scene import (
 )
 from mime.scene._sampling import JUDGED_SAMPLES, judged_samples, quadrature_arrays, quadrature_counts, samples_shortfall
 from mime.things import (
-    WORLD,
     Apparatus,
     Body,
     CommandPort,
@@ -145,17 +144,17 @@ from mime.things import (
     Measurement,
     Medium,
     Part,
-    PartMass,
     PermanentMagnet,
     RegionPath,
     Structure,
     SurfacePath,
-    Thing,
     ThingKind,
     TypedPath,
-    did_you_mean,
-    prim_path_of,
 )
+from mime.things._handles import did_you_mean
+from mime.things._parts import PartMass
+from mime.things._prims import WORLD
+from mime.things._things import Thing, prim_path_of
 from mime.units import FREQUENCY, LENGTH, SAY_THE_ANGLE, TIME, Dimension, Magnitude, Quantity, UnitError, \
     rate_symbol, says_its_angle, si, unit_symbol
 from mime.registry._ranges import RangeChoice, planned_over, recording

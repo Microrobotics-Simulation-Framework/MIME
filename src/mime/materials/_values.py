@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import cast
 
-from mime.things import ThingKind, did_you_mean
+from mime.things import ThingKind
+from mime.things._handles import did_you_mean
 from mime.units import (
     AREA,
     DENSITY,

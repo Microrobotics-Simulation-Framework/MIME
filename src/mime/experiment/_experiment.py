@@ -126,8 +126,8 @@ from mime.things import (
     Structure,
     StructureHandle,
     TypedPath,
-    did_you_mean,
 )
+from mime.things._handles import did_you_mean
 from mime.units import DIMENSIONLESS, TIME, Condition, Quantity, si
 from mime.validity import DEFAULT_PROFILE, Basis, Profile
 from mime.vocabulary import JOINT_VELOCITIES

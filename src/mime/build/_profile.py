@@ -36,7 +36,8 @@ from mime.registry import (
     registration_of,
     setting_names,
 )
-from mime.things import Apparatus, Body, Medium, Structure, TypedPath, did_you_mean
+from mime.things import Apparatus, Body, Medium, Structure, TypedPath
+from mime.things._handles import did_you_mean
 from mime.units import Condition, Quantity, unit_symbol
 from mime.validity import (
     PENDING,

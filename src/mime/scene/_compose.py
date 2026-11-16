@@ -19,7 +19,8 @@ from mime.scene._frame import Problem
 from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom
 from mime.scene._scene import Reference, sha256_hex
 from mime.scene._scenery import SceneryGprim, scenery
-from mime.things import WORLD, did_you_mean
+from mime.things._handles import did_you_mean
+from mime.things._prims import WORLD
 
 #: The ``mime:`` applied schema for a magnet's design data, written as the ``apiSchemas`` token on a part prim plus
 #: its namespaced attribute: no compiled or codeless plugin, so any USD reads and writes it.

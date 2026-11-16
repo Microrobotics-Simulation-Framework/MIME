@@ -225,7 +225,7 @@ def test_a_form_eight_folder_that_rested_on_the_waiver_of_its_products_is_refuse
 
 def test_a_script_that_builds_the_kept_version_with_products_gets_the_scripts_route_under_the_same_code():
     """The load's wording is the load's: the same refusal from a script's build names how to build a body."""
-    from mime.dynamics.body import RigidInertialMoments
+    from mime.dynamics.body._previous import RigidInertialMoments
 
     found = RigidInertialMoments().value_problems(
         {"inertia": (1e-10, 2e-11, 0.0, 2e-11, 1e-10, 0.0, 0.0, 0.0, 1e-10)})

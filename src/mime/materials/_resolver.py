@@ -25,7 +25,8 @@ from mime.materials._values import (
     not_above_zero,
     resolve_declared,
 )
-from mime.things import DERIVED, Derived, PartMass, ThingKind, derive, magnetisation
+from mime.things import ThingKind
+from mime.things._parts import DERIVED, Derived, PartMass, derive, magnetisation
 from mime.units import unit_symbol
 from mime.validity import Judge
 

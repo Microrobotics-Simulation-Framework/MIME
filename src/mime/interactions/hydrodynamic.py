@@ -2860,4 +2860,4 @@ def _outside_training(surrogate: ScrewSurrogate, ctx: PlanContext, tube: Uniform
     return found
 
 
-__all__ = ["Drag", "ForceSampling", "Lubrication", "NearField", "PointForceDrag", "UncoupledDrag", "UniformTube", "uniform_tube"]
+__all__ = ["Drag", "ForceSampling", "Lubrication", "NearField", "PointForceDrag", "UncoupledDrag"]
