@@ -625,7 +625,8 @@ def _serve(arguments: argparse.Namespace) -> int:
               chunk=s(arguments.chunk) if arguments.chunk is not None else None,
               pace=None if arguments.unpaced else arguments.pace, out=arguments.out,
               select=arguments.select or None, json_frames=arguments.json_frames, start=arguments.start,
-              remote=arguments.remote, ready_file=arguments.ready_file, say=say,
+              allow_remote_commands=arguments.allow_remote_commands, ready_file=arguments.ready_file, say=say,
+              warn=lambda line: amber_line(sys.stderr, line),
               outlive_launcher=arguments.outlive_launcher, watch=arguments.watch or None, view=display,
               idle_timeout=idle_timeout, max_wall=max_wall)
     finally:
@@ -1947,8 +1948,10 @@ def build_parser() -> _guide.MimeParser:
                             "vector, every per-step output and every flag)")
     serve.add_argument("--json-frames", action="store_true", help="send frames as JSON, for debugging")
     serve.add_argument("--start", action="store_true", help="start stepping at once, before a client's start")
-    serve.add_argument("--remote", action="store_true",
-                       help="allow an address that is not loopback (no authentication: prefer an SSH tunnel)")
+    serve.add_argument("--allow-remote-commands", action="store_true",
+                       help="bind an address that is not loopback all the same: whoever reaches it can command the "
+                            "session, as nothing authenticates a client (prefer an SSH tunnel); it warns, naming each "
+                            "such address")
     serve.add_argument("--ready-file", type=Path, default=None, metavar="FILE",
                        help="write the bound endpoints as JSON to FILE once the sockets listen")
     serve.add_argument("--outlive-launcher", action="store_true",
@@ -2081,9 +2084,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ``mime serve <folder> [--commands <endpoint>] [--frames <endpoint>] [--chunk <seconds>] [--pace <factor>]
     [--out <dir>] [--start]``: the saved experiment's live session, speaking ``mime.live/1`` over ZMQ (commands on a REP,
-    frames on a PUB), bound to localhost unless ``--remote``, until a ``stop`` command, a signal, or the exit of the
-    process that launched it (unless ``--outlive-launcher``), or ``--idle-timeout`` with no client connected, or
-    ``--max-wall`` (each at the end of the chunk in hand); it writes a run folder when it stops, and says why. On a terminal it draws a live view on standard
+    frames on a PUB), bound to loopback unless ``--allow-remote-commands`` (which warns, naming each address that is
+    not), until a ``stop`` command, a signal, or the exit of the process that launched it (unless
+    ``--outlive-launcher``), or ``--idle-timeout`` with no client connected, or ``--max-wall`` (each at the end of
+    the chunk in hand); it writes a run folder when it stops, and says why. On a terminal it draws a live view on standard
     error (the state, the step, the speed, the clients, a table of values chosen by ``--watch``, and the commands
     clients ask); anywhere else it prints its two lines on standard output and nothing more.
 
