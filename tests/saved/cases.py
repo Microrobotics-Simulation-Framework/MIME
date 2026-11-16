@@ -35,6 +35,7 @@ from mime.scene import Capsule, Sphere
 from mime.testing.toys import (
     ToyAnchoredBody,
     ToyBody,
+    ToyIndentedSheet,
     ToyRegionProbe,
     ToySpring,
     ToyTwist,
@@ -288,6 +289,17 @@ def anchored_toy() -> Experiment:
     experiment = toy_experiment("anchored_toy")
     experiment.add_body(Body("anchor", dynamics=ToyAnchoredBody(), initial=State(position=m((0.1, 0.0, -0.2)))))
     experiment.attach(ToySpring(k=N(2.3) / m(1.0)), body="anchor")
+    return experiment
+
+
+def indented_sheet() -> Experiment:
+    """A body whose node moves a surface carrying two fields (``toy.indented_sheet``), drawn as a section would be and
+    its depth reduced by the maximum, so that the stage writes every name a surface's mesh carries. Its side, speed and width
+    are written (a value equal to its default is not in the document, so the walk would find no float to move)."""
+    experiment = toy_experiment("indented_sheet")
+    experiment.add_body(Body("sheet", dynamics=ToyIndentedSheet(side=mm(1.2), count=5, speed=m_per_s(1.5e-3), width=mm(0.2),
+                                                          display="extruded", peak=True),
+                             initial=State(position=m((0.0, 0.0, 0.0)))))
     return experiment
 
 
@@ -642,6 +654,7 @@ CASES = (
     Case("full_toy", full_toy),
     Case("walled_toy", walled_toy),
     Case("anchored_toy", anchored_toy),
+    Case("indented_sheet", indented_sheet),
     Case("twisted_toy", twisted_toy, refused=("vocabulary.reserved",)),
     Case("nudged_toy", nudged_toy, lab=True),
     # A body bound to a prim of a referenced robot asset, its magnet's direction read from the asset: the folder

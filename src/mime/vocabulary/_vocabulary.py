@@ -6,6 +6,7 @@ from enum import Enum
 from typing import cast
 
 from mime.units import UnitError, parse_label
+from mime.vocabulary._versions import version_problem
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 MIME_NAMESPACE = "mime"
@@ -147,6 +148,8 @@ def register_namespace(name: str, version: str) -> None:
             raise ValueError(f"namespace {name!r} is the first word of MIME's {what} ({', '.join(taken[:3])}"
                              f"{', ...' if len(taken) > 3 else ''}), which it would take for its own; choose another "
                              f"name")
+    if (problem := version_problem(version)) is not None:
+        raise ValueError(f"namespace {name!r} has {problem}")
     held = _namespaces.get(name)
     if held is not None and held != version:
         raise ValueError(f"namespace {name!r} is registered at version {held}, not {version}")

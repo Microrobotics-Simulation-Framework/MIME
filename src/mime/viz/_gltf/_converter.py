@@ -4,7 +4,8 @@
 # tessellates (mime.viz._primitives), with their purposes; one buffer and one animation, its time a time code over the
 # stage's time codes per second, slowed; a material from displayColor and displayOpacity; a root node turning the
 # stage's up axis to glTF's +Y and scaling its units; the PointInstancer gathering (a NameError in 0.3.5), USDZ,
-# materials, skins, lights, cameras and gltflib's export dropped.
+# materials, skins, lights, cameras and gltflib's export dropped; a mesh whose points or fields are time-sampled drawn
+# with morph targets (MIME's own addition).
 # SPDX-License-Identifier: MIT
 """A composed USD stage as a glTF 2.0 scene: its prims' hierarchy as nodes, each mesh and analytic shape as triangles,
 each transform's time samples as one animation, written as a GLB (``mime.viz._gltf._writer``)."""
@@ -18,7 +19,9 @@ from typing import Any
 
 import numpy as np
 
+from mime.scene import MESH_FIELDS, mesh_field_attribute
 from mime.scene._pxr import Usd, UsdGeom
+from mime.viz._fields import linear, srgb
 from mime.viz._gltf._common import clamped
 from mime.viz._gltf._mesh import Triangles, triangles_of
 from mime.viz._gltf._writer import ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, Buffers
@@ -31,6 +34,10 @@ PURPOSES = ("default", "proxy")
 ANIMATION = "run"
 #: A colour for a shape with none.
 GREY = (0.8, 0.8, 0.8)
+#: The most morph targets a mesh is drawn with: one per recorded sample and field. The viewer holds a mesh's targets as
+#: the layers of one array texture, and WebGL 2 promises 256 layers; a recording with more samples is drawn at that many,
+#: evenly chosen, the first and the last among them, and the view says so.
+MORPH_TARGETS = 256
 
 
 @dataclass(frozen=True)
@@ -49,6 +56,8 @@ class Settings:
     #: The most a prim's scale is drawn at, by prim path (a component above it is drawn at it): the view's own limit,
     #: the stage and its time samples left as they are.
     scale_limits: Mapping[str, float] = field(default_factory=dict[str, float])
+    #: The most morph targets a deforming mesh is drawn with.
+    morph_targets: int = MORPH_TARGETS
 
 
 @dataclass
@@ -62,6 +71,12 @@ class Converted:
     triangles: int = 0
     duration: float = 0.0
     skipped: dict[str, int] = field(default_factory=dict[str, int])
+    #: Each mesh drawn with morph targets: its prim, vertices, samples recorded and drawn, targets, and its fields
+    #: (name, units, the range mapped, whether it was declared).
+    morphs: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    #: The animations, one per field (``run`` the first's, ``run:<field>`` each other's), each with every transform's
+    #: tracks.
+    animations: list[str] = field(default_factory=list[str])
 
 
 def _attribute(prim: Any, name: str, default: Any) -> Any:
@@ -110,6 +125,10 @@ class _Builder:
         self.result = Converted(b"")
         self.rate = float(stage.GetTimeCodesPerSecond()) or 1.0
         self.start = float(stage.GetStartTimeCode()) if stage.HasAuthoredTimeCodeRange() else 0.0
+        #: Each morphing mesh's node, its weights' time input, and its weights' output by field name ("" for a mesh
+        #: with no field), with the output a field it does not carry takes.
+        self.weights: list[tuple[int, int, dict[str, int], int]] = []
+        self.fields: list[str] = []
 
     def material(self, colour: tuple[float, float, float], opacity: float, *, per_vertex: bool) -> int:
         key = (*colour, opacity, float(per_vertex))
@@ -143,15 +162,116 @@ class _Builder:
         self.result.triangles += len(shape.triangles)
         return len(self.meshes) - 1
 
-    def track(self, node: int, path: str, codes: np.ndarray, values: np.ndarray) -> None:
+    def times(self, codes: np.ndarray) -> int:
+        """The accessor of the display seconds of ``codes``, one accessor per set of times."""
         times = ((codes - self.start) / self.rate * self.settings.slow).astype(np.float32)
         key = times.tobytes()
         if key not in self._inputs:
             self._inputs[key] = self.buffers.accessor(times)
-        output = self.buffers.accessor(values.astype(np.float32))
-        self.samplers.append({"input": self._inputs[key], "output": output, "interpolation": "LINEAR"})
-        self.channels.append({"sampler": len(self.samplers) - 1, "target": {"node": node, "path": path}})
         self.result.duration = max(self.result.duration, float(times.max()))
+        return self._inputs[key]
+
+    def morphed(self, prim: Any, shape: Triangles, node: int) -> int | None:
+        """A mesh whose points or fields are time-sampled as one primitive with a morph target per sample drawn (and per
+        field): each target its points' change from the first sample, and its colours' (each field mapped over its
+        range, linear) from the first sample's of the first field; every target carries both, since a viewer may read
+        a missing one as the base. The weights are one at the target of the sample, linear between samples: a weights
+        track per field, which the animations take. ``None`` where nothing is time-sampled or the mesh's points are not
+        its vertices one to one (a per-corner attribute)."""
+        mesh = UsdGeom.Mesh(prim)
+        points_attribute = mesh.GetPointsAttr()
+        listed: list[Any] = list(prim.GetAttribute(MESH_FIELDS).Get() or []) if prim.HasAttribute(MESH_FIELDS) else []
+        names = [str(n) for n in listed]
+        held = [(name, prim.GetAttribute(mesh_field_attribute(name))) for name in names]
+        held = [(name, attribute) for name, attribute in held if attribute and attribute.GetTimeSamples()]
+        sampled: list[float] = [float(c) for c in points_attribute.GetTimeSamples()]
+        codes: list[float] = sorted(set(sampled)
+                       | {float(c) for _, attribute in held for c in attribute.GetTimeSamples()})
+        if len(codes) < 2:
+            return None
+        count = len(shape.points)
+        points = np.stack([np.asarray(points_attribute.Get(Usd.TimeCode(code)), dtype=np.float64).reshape(-1, 3)
+                           for code in codes])
+        if points.shape[1] != count or not np.array_equal(points[0], shape.points):
+            return None
+        values = {name: np.stack([np.asarray(attribute.Get(Usd.TimeCode(code)), dtype=np.float64) for code in codes])
+                  for name, attribute in held}
+        if any(v.shape[1] != count for v in values.values()):
+            return None
+        ranges: dict[str, tuple[float, float, bool]] = {}
+        for name, attribute in held:
+            declared = attribute.GetCustomDataByKey("range")
+            if declared is not None:
+                ranges[name] = (float(declared[0]), float(declared[1]), True)
+            else:
+                ranges[name] = (float(values[name].min()), float(values[name].max()), False)
+        per = max(1, len(held))
+        shown = len(codes) if len(codes) * per <= self.settings.morph_targets else max(2, self.settings.morph_targets // per)
+        chosen: list[int] = [int(k) for k in np.unique(np.round(np.linspace(0, len(codes) - 1, shown)).astype(np.int64))]
+        base = points[0]
+        still: int | None = None  # one accessor of no change, shared by every sample whose points are the first's
+
+        def change_of(k: int) -> int:
+            nonlocal still
+            if np.array_equal(points[k], base):
+                if still is None:
+                    still = self.buffers.accessor(np.zeros((count, 3), dtype=np.float32), target=ARRAY_BUFFER)
+                return still
+            return self.buffers.accessor((points[k] - base).astype(np.float32), target=ARRAY_BUFFER)
+
+        moved = [change_of(k) for k in chosen]
+        attributes: dict[str, int] = {"POSITION": self.buffers.accessor(base.astype(np.float32), target=ARRAY_BUFFER)}
+        targets: list[dict[str, int]] = []
+        names_of: list[str] = []
+        if held:
+            first = held[0][0]
+            # Four components, alpha one and its changes zero: model-viewer 4.3.1's three.js compiles a colour morph only
+            # for a four-component colour (its three-component branch adds a vec3 to its vec4 varying and fails to link).
+            colour0 = np.concatenate([linear(srgb(values[first][0], ranges[first][0], ranges[first][1])),
+                                      np.ones((count, 1))], axis=1)
+            attributes["COLOR_0"] = self.buffers.accessor(colour0.astype(np.float32), target=ARRAY_BUFFER)
+            for name, _ in held:
+                low, high, _declared = ranges[name]
+                for j, k in enumerate(chosen):
+                    change = np.concatenate([linear(srgb(values[name][k], low, high)), np.ones((count, 1))], axis=1) - colour0
+                    targets.append({"POSITION": moved[j],
+                                    "COLOR_0": self.buffers.accessor(change.astype(np.float32), target=ARRAY_BUFFER)})
+                    names_of.append(f"{name}@{int(codes[k])}")
+        else:
+            targets = [{"POSITION": moved[j]} for j in range(len(chosen))]
+            names_of = [f"points@{int(codes[k])}" for k in chosen]
+        index_type = np.uint16 if count < 65536 else np.uint32
+        indices = self.buffers.accessor(shape.triangles.reshape(-1).astype(index_type), target=ELEMENT_ARRAY_BUFFER)
+        self.materials.append({"pbrMetallicRoughness": {"baseColorFactor": [1.0, 1.0, 1.0, 1.0] if held else
+                                                        [*GREY, 1.0], "metallicFactor": 0.0, "roughnessFactor": 0.6},
+                               "doubleSided": True})
+        self.meshes.append({"name": str(prim.GetName()), "weights": [0.0] * len(targets),
+                            "extras": {"targetNames": names_of},
+                            "primitives": [{"attributes": attributes, "indices": indices, "targets": targets,
+                                            "material": len(self.materials) - 1}]})
+        self.result.triangles += len(shape.triangles)
+        times = self.times(np.asarray([codes[k] for k in chosen], dtype=np.float64))
+        outputs: dict[str, int] = {}
+        for f, name in enumerate([name for name, _ in held] or [""]):
+            weights = np.zeros((len(chosen), len(targets)), dtype=np.float32)
+            weights[np.arange(len(chosen)), f * len(chosen) + np.arange(len(chosen))] = 1.0
+            outputs[name] = self.buffers.accessor(weights.reshape(-1))
+            if name and name not in self.fields:
+                self.fields.append(name)
+        self.weights.append((node, times, outputs, next(iter(outputs.values()))))
+        self.result.morphs.append({
+            "prim": str(prim.GetPath()), "vertices": count, "triangles": int(len(shape.triangles)),
+            "samples": len(codes), "drawn": int(len(chosen)), "targets": len(targets),
+            "fields": [{"name": name, "unit": str(attribute.GetCustomDataByKey("units") or ""),
+                        "low": ranges[name][0], "high": ranges[name][1], "declared": ranges[name][2]}
+                       for name, attribute in held]})
+        return len(self.meshes) - 1
+
+    def track(self, node: int, path: str, codes: np.ndarray, values: np.ndarray) -> None:
+        input_ = self.times(codes)
+        output = self.buffers.accessor(values.astype(np.float32))
+        self.samplers.append({"input": input_, "output": output, "interpolation": "LINEAR"})
+        self.channels.append({"sampler": len(self.samplers) - 1, "target": {"node": node, "path": path}})
 
     @staticmethod
     def limit(pose: Pose, limit: float) -> None:
@@ -191,7 +311,11 @@ class _Builder:
                     self.track(index, path, pose.codes, values)
         if prim.IsA(UsdGeom.Gprim):
             shape = shape_of(prim, self.settings.segments)
-            if shape is not None:
+            morphed = self.morphed(prim, shape, index) if shape is not None and prim.IsA(UsdGeom.Mesh) else None
+            if morphed is not None:
+                held["mesh"] = morphed
+                self.result.drawn.append(str(prim.GetPath()))
+            elif shape is not None:
                 held["mesh"] = self.mesh(prim, shape)
                 self.result.drawn.append(str(prim.GetPath()))
             else:
@@ -251,8 +375,17 @@ def convert(stage: Any, settings: Settings, *, extras: dict[str, Any] | None = N
         document["meshes"] = built.meshes
     if built.materials:
         document["materials"] = built.materials
-    if built.channels:
-        document["animations"] = [{"name": ANIMATION, "samplers": built.samplers, "channels": built.channels}]
+    if built.channels or built.weights:
+        animations: list[dict[str, Any]] = []
+        for k, name in enumerate(built.fields or [""]):
+            samplers, channels = list(built.samplers), list(built.channels)
+            for node, times, outputs, default in built.weights:
+                samplers.append({"input": times, "output": outputs.get(name, default), "interpolation": "LINEAR"})
+                channels.append({"sampler": len(samplers) - 1, "target": {"node": node, "path": "weights"}})
+            animations.append({"name": ANIMATION if k == 0 else f"{ANIMATION}:{name}", "samplers": samplers,
+                               "channels": channels})
+        document["animations"] = animations
+        built.result.animations = [held["name"] for held in animations]
     built.result.glb = built.buffers.glb(document)
     return built.result
 
@@ -265,4 +398,4 @@ def up_turn(up: str) -> tuple[float, float, float, float]:
     return (0.0, 0.0, 0.0, 1.0)
 
 
-__all__ = ["ANIMATION", "PURPOSES", "Converted", "Settings", "convert", "shape_of", "up_turn"]
+__all__ = ["ANIMATION", "MORPH_TARGETS", "PURPOSES", "Converted", "Settings", "convert", "shape_of", "up_turn"]
