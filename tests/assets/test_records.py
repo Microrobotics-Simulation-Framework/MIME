@@ -15,6 +15,7 @@ import pytest
 from chain_cases import AR4_VISUALS
 
 from mime import assets
+from mime.assets import _manifest
 from mime.build import BuildRefused
 from mime.terms import CustomLicence
 
@@ -94,7 +95,7 @@ def test_the_ar4s_manifest_is_a_group_of_ordinary_records_each_referenced_by_its
 
 def test_a_manifest_round_trips_through_its_json():
     held = assets.read_manifest(AR4_VISUALS)
-    assert assets.read_manifest_data(held.to_json(), "again").to_json() == held.to_json()
+    assert _manifest.read_manifest_data(held.to_json(), "again").to_json() == held.to_json()
 
 
 def earlier_visual_set(tier: str) -> dict[str, object]:
@@ -109,7 +110,7 @@ def earlier_visual_set(tier: str) -> dict[str, object]:
 
 def test_the_earlier_visual_set_form_is_read_and_its_hand_written_tier_is_not_believed():
     for tier in ("no-redistribution", "open"):
-        held = assets.read_manifest_data(earlier_visual_set(tier), "an earlier set")
+        held = _manifest.read_manifest_data(earlier_visual_set(tier), "an earlier set")
         assert held.assets[0].tier == "referenced", tier
         assert held.file("meshes/a.STL") is not None
 
@@ -119,7 +120,7 @@ def test_the_earlier_visual_set_form_is_read_and_its_hand_written_tier_is_not_be
 def test_a_manifest_of_another_format_or_shape_is_refused_never_misread(change):
     data = copy.deepcopy(assets.read_manifest(AR4_VISUALS).to_json())
     data.update(change)
-    assert codes(lambda: assets.read_manifest_data(data, "planted")) == ["asset.manifest"]
+    assert codes(lambda: _manifest.read_manifest_data(data, "planted")) == ["asset.manifest"]
 
 
 def test_mime_ships_records_of_its_own_assets_only(tmp_path: Path):

@@ -71,8 +71,7 @@ def main(out: Path) -> None:
                        "MIME_ASSET_LOCATIONS": str(work / "locations.toml")})
     (work / "locations.toml").write_text("", encoding="utf-8")
 
-    from mime import assets
-    from mime.assets import AssetRef
+    from mime.assets import AssetRef, _fetch
     from mime.drives import Constant
     from mime.dynamics import Arm
     from mime.assets import asset
@@ -89,7 +88,7 @@ def main(out: Path) -> None:
                       citation="A. Lab, a vessel scan, 2026")
     (work / "cache").mkdir()
     (work / "cache" / record.sha256).write_bytes(data)
-    assets.fetch(record, accept_licences={licence.id})
+    _fetch.fetch(record, accept_licences={licence.id})
     described = work / "hub"
     described.mkdir()
     urdf = (Path(__file__).parents[1] / "descriptions" / "spin_joint.urdf").read_text(encoding="utf-8")

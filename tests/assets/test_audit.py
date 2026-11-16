@@ -73,7 +73,7 @@ def tree(root: Path, files: dict[str, bytes]) -> Path:
     return root
 
 
-def kinds(report: assets.AuditReport) -> list[tuple[str, str]]:
+def kinds(report: _audit.AuditReport) -> list[tuple[str, str]]:
     return sorted((finding.path, finding.kind) for finding in report.findings)
 
 
@@ -84,7 +84,7 @@ def test_a_referenced_copy_and_an_unrecorded_mesh_are_found_and_an_open_recorded
         "plugin/records/open.json": json.dumps(manifest("open", open_, "CC-BY-4.0")).encode(),
         "plugin/data/closed.stl": closed, "plugin/data/loose.stl": loose, "plugin/data/open.stl": open_,
         "plugin/__init__.py": b""})
-    report = assets.audit(root)
+    report = _audit.audit(root)
     assert kinds(report) == [("plugin/data/closed.stl", "referenced"), ("plugin/data/loose.stl", "unrecorded mesh")]
 
 
@@ -98,14 +98,14 @@ def test_a_wheel_and_a_tar_are_read_and_an_archive_inside_one_level_down(cache, 
         with zipfile.ZipFile(inner, "w") as nested:
             nested.writestr("x/closed.dat", closed)
         archive.writestr("plugin/bundle.mimebundle", inner.read_bytes())
-    assert kinds(assets.audit(wheel)) == [("plugin/bundle.mimebundle!x/closed.dat", "referenced")]
+    assert kinds(_audit.audit(wheel)) == [("plugin/bundle.mimebundle!x/closed.dat", "referenced")]
     sdist = tmp_path / "plugin-0.1.tar.gz"
     with tarfile.open(sdist, "w:gz") as archive:
         for name, data in (("plugin-0.1/records.json", held), ("plugin-0.1/meshes/c.stl", closed)):
             source = tmp_path / "member"
             source.write_bytes(data)
             archive.add(source, arcname=name)
-    assert kinds(assets.audit(sdist)) == [("plugin-0.1/meshes/c.stl", "referenced")]
+    assert kinds(_audit.audit(sdist)) == [("plugin-0.1/meshes/c.stl", "referenced")]
 
 
 def test_a_mesh_baked_into_the_local_cache_from_a_referenced_source_is_found_by_hash(cache, tmp_path):
@@ -116,12 +116,12 @@ def test_a_mesh_baked_into_the_local_cache_from_a_referenced_source_is_found_by_
                                                "output": {"sha256": hashlib.sha256(baked).hexdigest()},
                                                "tier": "referenced"}), encoding="utf-8")
     root = tree(tmp_path / "run", {"experiment/scene/copied.layer": baked})
-    assert kinds(assets.audit(root)) == [("experiment/scene/copied.layer", "derived")]
+    assert kinds(_audit.audit(root)) == [("experiment/scene/copied.layer", "derived")]
     record = json.loads((folder / "k.json").read_text(encoding="utf-8"))
     (folder / "k.json").write_text(json.dumps({**record, "format": "mime.baked_mesh/2", "tier": "no-redistribution"}),
                                    encoding="utf-8")
-    assert kinds(assets.audit(root)) == [("experiment/scene/copied.layer", "derived")], "an earlier MIME's bake"
-    assert assets.audit(root, cache=False).findings[0].kind == "unrecorded mesh", "a USD crate is a mesh format"
+    assert kinds(_audit.audit(root)) == [("experiment/scene/copied.layer", "derived")], "an earlier MIME's bake"
+    assert _audit.audit(root, cache=False).findings[0].kind == "unrecorded mesh", "a USD crate is a mesh format"
 
 
 def test_the_ar4s_records_name_its_meshes_and_a_made_copy_under_one_of_their_hashes_is_found(cache, tmp_path,
@@ -136,8 +136,8 @@ def test_the_ar4s_records_name_its_meshes_and_a_made_copy_under_one_of_their_has
     planted = tmp_path / "visuals.json"
     planted.write_text(json.dumps(held), encoding="utf-8")
     root = tree(tmp_path / "tree", {"pkg/thing.bin": made})
-    assert kinds(assets.audit(root)) == [("pkg/thing.bin", "unrecorded mesh")]
-    assert kinds(assets.audit(root, manifests=[planted])) == [("pkg/thing.bin", "referenced")]
+    assert kinds(_audit.audit(root)) == [("pkg/thing.bin", "unrecorded mesh")]
+    assert kinds(_audit.audit(root, manifests=[planted])) == [("pkg/thing.bin", "referenced")]
 
 
 def test_the_command_exits_one_on_a_finding_and_zero_on_none(cache, tmp_path, capsys):
@@ -167,12 +167,12 @@ def own_manifest_finds_its_copy(tmp_path: Path) -> None:
     closed = stl(8, 5)
     root = tree(tmp_path, {"r.json": json.dumps(manifest("closed", closed, "LicenseRef-Maker")).encode(),
                            "data/x.bin": closed})
-    assert kinds(assets.audit(root, cache=False)) == [("data/x.bin", "referenced")]
+    assert kinds(_audit.audit(root, cache=False)) == [("data/x.bin", "referenced")]
 
 
 def renamed_stl_is_found(tmp_path: Path) -> None:
     root = tree(tmp_path, {"data/renamed.bin": stl(6, 7)})
-    assert kinds(assets.audit(root, cache=False)) == [("data/renamed.bin", "unrecorded mesh")]
+    assert kinds(_audit.audit(root, cache=False)) == [("data/renamed.bin", "unrecorded mesh")]
 
 
 @pytest.mark.parametrize("scenario,plant", [(own_manifest_finds_its_copy, target_records_ignored),
@@ -198,7 +198,7 @@ def test_the_repository_tree_holds_no_file_that_may_not_be_redistributed(cache, 
     archive = tmp_path / "tree.tar"
     subprocess.run(["git", "archive", "--format=tar", "-o", str(archive), "HEAD"], cwd=root, check=True,
                    capture_output=True)
-    report = assets.audit(archive, cache=False)
+    report = _audit.audit(archive, cache=False)
     assert report.files > 500 and report.findings == ()
 
 
@@ -206,7 +206,7 @@ def test_a_target_that_is_not_there_is_refused(cache, tmp_path):
     from mime.build import BuildRefused
 
     with pytest.raises(BuildRefused) as refused:
-        assets.audit(tmp_path / "nothing.whl")
+        _audit.audit(tmp_path / "nothing.whl")
     assert refused.value.codes() == ["asset.audit"]
 
 
@@ -264,7 +264,7 @@ def test_a_mesh_or_scene_format_is_read_from_its_bytes_whatever_its_name(cache, 
     data = FORMATS[form](tmp_path)
     assert _audit.mesh_format("blob.bin", data) == form
     root = tree(tmp_path / "t", {"pkg/blob.bin": data, "pkg/notes.txt": b"no mesh here\n"})
-    assert kinds(assets.audit(root, cache=False)) == [("pkg/blob.bin", "unrecorded mesh")]
+    assert kinds(_audit.audit(root, cache=False)) == [("pkg/blob.bin", "unrecorded mesh")]
 
 
 def test_mimes_own_baked_layer_is_a_mesh_by_its_bytes(cache, tmp_path):
@@ -299,7 +299,7 @@ def test_a_compressed_copy_is_found_inside_its_stream(cache, tmp_path, kind):
     suffix = {"gzip": ".gz", "bzip2": ".bz2", "xz": ".xz"}[kind]
     root = closed_tree(tmp_path / "t", {f"pkg/closed.stl{suffix}": COMPRESSIONS[kind](CLOSED),
                                         "pkg/renamed.dat": COMPRESSIONS[kind](CLOSED)})
-    assert kinds(assets.audit(root, cache=False)) == [
+    assert kinds(_audit.audit(root, cache=False)) == [
         (f"pkg/closed.stl{suffix}!closed.stl", "referenced"), (f"pkg/renamed.dat!({kind} stream)", "referenced")]
 
 
@@ -327,12 +327,12 @@ def test_archives_one_inside_another_are_read_by_content_to_the_stated_depth(cac
                        "pkg/named.dat": zipped({"m.bin": CLOSED})})
     wheel = tmp_path / "plugin-0.1-py3-none-any.whl"
     wheel.write_bytes(in_wheel)
-    assert kinds(assets.audit(wheel, cache=False)) == [
+    assert kinds(_audit.audit(wheel, cache=False)) == [
         ("pkg/deep.tar.gz!inner/x.zip!m.stl", "referenced"), ("pkg/named.dat!m.bin", "referenced")]
     sdist = tmp_path / "plugin-0.1.tar.gz"
     sdist.write_bytes(tarred({"plugin-0.1/r.json": record, "plugin-0.1/data.zip": zipped({"t.tar": tarred(
         {"m.stl": CLOSED}, compress=False)})}))
-    assert kinds(assets.audit(sdist, cache=False)) == [("plugin-0.1/data.zip!t.tar!m.stl", "referenced")]
+    assert kinds(_audit.audit(sdist, cache=False)) == [("plugin-0.1/data.zip!t.tar!m.stl", "referenced")]
 
 
 def test_an_archive_deeper_than_the_stated_depth_is_refused(cache, tmp_path):
@@ -343,10 +343,10 @@ def test_an_archive_deeper_than_the_stated_depth_is_refused(cache, tmp_path):
         held = zipped({"inner": held})
     root = tree(tmp_path / "t", {"deep.zip": held})
     with pytest.raises(BuildRefused) as refused:
-        assets.audit(root, cache=False)
+        _audit.audit(root, cache=False)
     assert refused.value.codes() == ["asset.audit"] and "layers deep" in str(refused.value)
     shallower = tree(tmp_path / "s", {"deep.zip": zipped({"inner": CLOSED})})
-    assert kinds(assets.audit(shallower, cache=False)) == [("deep.zip!inner", "unrecorded mesh")]
+    assert kinds(_audit.audit(shallower, cache=False)) == [("deep.zip!inner", "unrecorded mesh")]
 
 
 def test_a_base64_block_in_a_text_file_is_read_at_the_stated_floor_and_over(cache, tmp_path):
@@ -358,7 +358,7 @@ def test_a_base64_block_in_a_text_file_is_read_at_the_stated_floor_and_over(cach
         "pkg/mail.txt": b"Content-Transfer-Encoding: base64\n\n" + wrapped + b"\n",
         "pkg/safe.json": json.dumps({"mesh": base64.urlsafe_b64encode(CLOSED).decode()}).encode(),
         "pkg/small.txt": small})
-    found = kinds(assets.audit(root, cache=False))
+    found = kinds(_audit.audit(root, cache=False))
     assert [path.partition("#")[0] for path, kind in found if kind == "referenced"] == [
         "pkg/closed.b64", "pkg/mail.txt", "pkg/page.html", "pkg/safe.json"]
     assert all("#base64@" in path for path, _ in found) and len(found) == 4, found
@@ -367,7 +367,7 @@ def test_a_base64_block_in_a_text_file_is_read_at_the_stated_floor_and_over(cach
 def test_no_directory_is_skipped_by_name_but_a_checkouts_own_git(cache, tmp_path):
     root = closed_tree(tmp_path / "checkout", {"sub/.git/objects/m.stl": CLOSED, ".git/objects/history.stl": CLOSED,
                                                 "pkg/vendored.zip": zipped({".git/m.stl": CLOSED})})
-    report = assets.audit(root, cache=False)
+    report = _audit.audit(root, cache=False)
     assert kinds(report) == [("pkg/vendored.zip!.git/m.stl", "referenced"), ("sub/.git/objects/m.stl", "referenced")]
     assert report.left_out == (_audit.GIT_LEFT_OUT,) and "left out: the checkout's own .git" in report.text()
 
@@ -438,7 +438,7 @@ def test_each_limit_refuses_rather_than_skips(cache, tmp_path, monkeypatch, limi
 
     monkeypatch.setattr(_audit, limit, value)
     with pytest.raises(BuildRefused) as refused:
-        assets.audit(tree(tmp_path / "t", files), cache=False)
+        _audit.audit(tree(tmp_path / "t", files), cache=False)
     assert refused.value.codes() == ["asset.audit"]
 
 
@@ -447,7 +447,7 @@ def test_a_large_file_of_no_container_kind_is_hashed_as_it_is_read_and_found(cac
     big = stl(40, 3)
     root = tree(tmp_path / "t", {"r.json": json.dumps(manifest("big", big, "LicenseRef-Maker")).encode(),
                                  "pkg/big.bin": big, "pkg/loose.bin": stl(41, 4)})
-    assert kinds(assets.audit(root, cache=False)) == [("pkg/big.bin", "referenced"),
+    assert kinds(_audit.audit(root, cache=False)) == [("pkg/big.bin", "referenced"),
                                                       ("pkg/loose.bin", "unrecorded mesh")]
 
 
@@ -470,7 +470,7 @@ def test_an_archive_or_a_stream_that_cannot_be_read_is_refused_with_its_code(cac
     data = unreadable(name)
     assert _audit.container_of(data) is not None
     with pytest.raises(BuildRefused) as refused:
-        assets.audit(tree(tmp_path / "t", {name: data}), cache=False)
+        _audit.audit(tree(tmp_path / "t", {name: data}), cache=False)
     assert refused.value.codes() == ["asset.audit"] and name in str(refused.value)
 
 
@@ -478,7 +478,7 @@ def test_a_link_in_a_tree_is_not_followed_and_is_counted(cache, tmp_path):
     root = tree(tmp_path / "t", {"a.txt": b"x"})
     (tmp_path / "outside.stl").write_bytes(CLOSED)
     (root / "linked.stl").symlink_to(tmp_path / "outside.stl")
-    report = assets.audit(root, cache=False)
+    report = _audit.audit(root, cache=False)
     assert report.findings == () and any("1 links, not followed" in each for each in report.left_out)
 
 
@@ -495,7 +495,7 @@ def test_a_directory_or_a_file_that_cannot_be_read_is_refused_never_skipped(cach
             if os.access(held, os.R_OK):
                 pytest.skip("this user reads what it cannot read (root)")
             with pytest.raises(BuildRefused) as refused:
-                assets.audit(root, cache=False)
+                _audit.audit(root, cache=False)
             assert refused.value.codes() == ["asset.audit"] and "cannot be read" in str(refused.value)
         finally:
             os.chmod(held, 0o700)

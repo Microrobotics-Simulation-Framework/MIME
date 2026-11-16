@@ -24,6 +24,7 @@ from pathlib import Path
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 from mime import assets  # noqa: E402
+from mime.assets import _derivation
 from mime.surrogates import generator  # noqa: E402
 
 
@@ -80,12 +81,12 @@ def data(arguments: argparse.Namespace) -> None:
     from mime.build import BuildRefused
     from mime.nodes.hydro.mrs._tube import UNIT_TUBE
 
-    commit, sources, dirty = assets.working_state(Path(__file__).resolve().parents[2], SOURCES)
+    commit, sources, dirty = _derivation.working_state(Path(__file__).resolve().parents[2], SOURCES)
     builder = generator.TrainingData()
     discretisation = generator.Discretisation(arguments.spacing)
     parameters = {"split": arguments.split, "discretisation": discretisation.as_json()}
     try:
-        content, record = assets.derive(f"{arguments.name}", builder, parameters,
+        content, record = _derivation.derive(f"{arguments.name}", builder, parameters,
                                         {"wall:tube": assets.reference(UNIT_TUBE)}, commit=commit,
                                         domain=generator.DOMAIN.as_json(), sources=sources, dirty=dirty)
     except BuildRefused as refused:

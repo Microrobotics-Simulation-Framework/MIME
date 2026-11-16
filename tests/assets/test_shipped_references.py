@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from mime import assets
+from mime.assets import _known
 from mime.build import BuildRefused
 
 REVISION = "1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6"
@@ -72,7 +73,7 @@ def mismatches(refs: dict[str, assets.AssetRef], manifest_by_path: dict[str, str
 
 def wall_tables() -> dict[str, assets.AssetRef]:
     """The eleven: every shipped reference pinned to their revision."""
-    return {name: ref for name, ref in assets.known().items() if ref.locations[0].startswith(RESOLVE)}
+    return {name: ref for name, ref in _known.known().items() if ref.locations[0].startswith(RESOLVE)}
 
 
 def changed(refs: dict[str, assets.AssetRef], name: str, **change: object) -> dict[str, assets.AssetRef]:

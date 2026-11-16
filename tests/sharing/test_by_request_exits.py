@@ -28,7 +28,7 @@ from terms_cases import mesh_bytes, same_reference_run
 from zenodo_records import FakeRecords
 
 from mime import assets, push
-from mime.assets import AssetRef, _acceptances, _cache
+from mime.assets import AssetRef, _acceptances, _cache, _fetch, _gates, _lock, _manifest
 from mime.build import BuildRefused
 from mime.push import _plan
 from mime.saved import LOCK_FILE, ByRequestWarning, LoadRefused, card_text, notice, pack, place_referenced, unpack
@@ -69,8 +69,8 @@ def placed(cache: Path, ref: AssetRef, data: bytes) -> None:
     """The file copied in by hand under its name, taken by a fetch, its licence accepted by the person who placed it."""
     cache.mkdir(parents=True, exist_ok=True)
     (cache / ref.name).write_bytes(data)
-    _acceptances.remember(assets.licences_of(ref))
-    assets.fetch(ref)
+    _acceptances.remember(_gates.licences_of(ref))
+    _fetch.fetch(ref)
 
 
 def saved_by_request(root: Path, data: bytes, *, request: str | None = REQUEST) -> Path:
@@ -292,25 +292,25 @@ def manifest_of(format_: str, ref: AssetRef) -> dict[str, object]:
 def test_a_manifest_file_before_the_third_format_holding_a_record_with_no_location_is_refused(data: bytes):
     for earlier in ("mime.asset_manifest/2", "mime.asset_manifest/1"):
         with pytest.raises(BuildRefused) as refused:
-            assets.read_manifest_data(manifest_of(earlier, scan(data, request=None)), "scans.json")
+            _manifest.read_manifest_data(manifest_of(earlier, scan(data, request=None)), "scans.json")
         assert refused.value.codes() == ["asset.manifest"] and "which mime.asset_manifest/3 added" in str(refused.value)
         located = AssetRef("vessel_scan.usda", scan(data).sha256, len(data), "CC-BY-4.0", ("https://example.org/s",))
-        assert [ref.sha256 for ref in assets.read_manifest_data(manifest_of(earlier, located), "scans.json").assets] \
+        assert [ref.sha256 for ref in _manifest.read_manifest_data(manifest_of(earlier, located), "scans.json").assets] \
             == [located.sha256], "the control: the same manifest with a located record is read"
-    held = assets.read_manifest_data(manifest_of("mime.asset_manifest/3", scan(data)), "scans.json")
+    held = _manifest.read_manifest_data(manifest_of("mime.asset_manifest/3", scan(data)), "scans.json")
     assert held.assets[0].by_request and held.to_json()["format"] == "mime.asset_manifest/3"
-    lock_form = assets.read_manifest_data(manifest_of("mime.asset_manifest/1", scan(data)), "the lock", lock=True)
+    lock_form = _manifest.read_manifest_data(manifest_of("mime.asset_manifest/1", scan(data)), "the lock", lock=True)
     assert lock_form.assets[0].request == REQUEST, "a lock's manifest holds what the lock's form allows"
 
 
 def test_a_lock_of_a_later_form_is_refused_before_its_records_are_read(folder: Path, tmp_path: Path):
     copy = Path(shutil.copytree(folder, tmp_path / "later"))
-    assert [ref.name for ref in assets.folder_assets(copy)] == ["vessel_scan.usda"], "the control: this form reads"
+    assert [ref.name for ref in _lock.folder_assets(copy)] == ["vessel_scan.usda"], "the control: this form reads"
     lock = json.loads((copy / LOCK_FILE).read_text(encoding="utf-8"))
     later = f"mime.lock/{CURRENT + 1}"
     lock["schema"] = later
     lock["assets"][0]["a_later_key"] = True
     (copy / LOCK_FILE).write_text(json.dumps(lock), encoding="utf-8")
     with pytest.raises(BuildRefused) as refused:
-        assets.folder_assets(copy)
+        _lock.folder_assets(copy)
     assert refused.value.codes() == ["load.newer-form"] and later in str(refused.value)

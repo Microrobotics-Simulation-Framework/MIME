@@ -48,7 +48,7 @@ from terms_cases import (
     write_mesh,
 )
 
-from mime.assets import known
+from mime.assets._known import known
 from mime.build import BuildRefused
 from mime.saved import LOCK_FILE, ByRequestWarning, _bundle, _record, _terms, pack, unpack
 from mime.terms import CustomLicence, Evidence, Permission, Scope, Terms

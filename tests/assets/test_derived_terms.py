@@ -17,7 +17,8 @@ from pathlib import Path
 import pytest
 
 from mime import assets, terms
-from mime.assets import DerivationInput, DerivationRecord
+from mime.assets import DerivationRecord, _audit, _derivation, _manifest
+from mime.assets._derivation import DerivationInput
 from mime.terms import Scope, derived_verdict, freest, licence_verdict, permission_verdict
 
 RUNS = 20
@@ -58,11 +59,11 @@ def test_a_derived_assets_terms_are_read_from_its_derivation_records_inputs_by_h
                                                            "not_permitted"),))
     known = {table.sha256: table, closed.sha256: closed}
     one = (DerivationInput("wall:tube", table.name, table.sha256),)
-    assert assets.derived_terms(record(one), known).tier == "open"
+    assert _derivation.derived_terms(record(one), known).tier == "open"
     two = (*one, DerivationInput("mesh", closed.name, closed.sha256))
-    assert assets.derived_terms(record(two), known).tier == "referenced"
+    assert _derivation.derived_terms(record(two), known).tier == "referenced"
     nameless = (*one, DerivationInput("mesh", "nobody", "34" * 32))
-    assert assets.derived_terms(record(nameless), known).tier == "referenced", "an input with no record never travels"
+    assert _derivation.derived_terms(record(nameless), known).tier == "referenced", "an input with no record never travels"
 
 
 def stl(triangles: int) -> bytes:
@@ -94,10 +95,10 @@ def baked_tier(tmp_path: Path, licence: str) -> str:
         if licence.startswith("LicenseRef-"):
             held["licences"] = {licence: {"title": "a maker's", "url": "https://example.org/l",
                                           "redistribution": "not_permitted"}}
-        (baked,) = bake(assets.read_manifest_data(held, "made"), say=lambda line: None, accept_licences={licence})
+        (baked,) = bake(_manifest.read_manifest_data(held, "made"), say=lambda line: None, accept_licences={licence})
         written = json.loads(baked.layer.with_suffix(".json").read_text(encoding="utf-8"))
         assert written["tier"] == baked.record["tier"]
-        findings = assets.audit(baked.layer).findings
+        findings = _audit.audit(baked.layer).findings
         if baked.record["tier"] == "referenced":
             assert [each.kind for each in findings] == ["derived"], "the guard finds the bake by hash"
         return str(baked.record["tier"])

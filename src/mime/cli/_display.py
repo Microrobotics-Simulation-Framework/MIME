@@ -63,7 +63,9 @@ if TYPE_CHECKING:
     from mime.control import Progress, StopRequest
     from mime.live import ServeState
 
-    from mime.assets import Acceptance, Licence, SourceView
+    from mime.assets import Acceptance
+    from mime.assets._availability import SourceView
+    from mime.assets._gates import Licence
     from mime.blocks._show import Shown
     from mime.build import MimeError, Refusal
     from mime.cli._summary import RunSummary
@@ -931,7 +933,7 @@ def show_sources(views: Sequence[SourceView], stream: IO[str]) -> None:
 
 
 def _size_text(size: int) -> str:
-    from mime.assets import size_text
+    from mime.assets._cache import size_text
 
     return size_text(size)
 
@@ -1407,7 +1409,7 @@ class TransferDisplay:
         from rich.spinner import Spinner
         from rich.table import Table
 
-        from mime.assets import size_text
+        from mime.assets._cache import size_text
 
         now = time.perf_counter()
         total, finished = len(self._expected), len(self._finished)

@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 
 from mime import assets
+from mime.assets import _adapters, _cache, _fetch
 from mime.credentials import _store
 from mime.assets import _adapters, _fetch
 from mime.build import BuildRefused
@@ -75,10 +76,10 @@ def test_a_server_signed_by_an_institutions_ca_is_refused_without_its_bundle_and
     with LoopbackStore("127.0.0.1", tls.server_context()) as server:
         server.files["/blob"] = PAYLOAD
         ref = ref_of(PAYLOAD, server.url("/blob", host="localhost"))
-        found, text = codes_and_text(lambda: assets.fetch(ref))
+        found, text = codes_and_text(lambda: _fetch.fetch(ref))
         assert found == ["asset.unreachable"] and "MIME_CA_BUNDLE" in text and "not trusted" in text
         monkeypatch.setenv("MIME_CA_BUNDLE", str(tls.ca))
-        assert assets.fetch(ref).read_bytes() == PAYLOAD
+        assert _fetch.fetch(ref).read_bytes() == PAYLOAD
 
 
 def test_the_proxy_variables_are_honoured_and_no_proxy_takes_the_proxy_away(cache, tls, monkeypatch):
@@ -93,12 +94,12 @@ def test_the_proxy_variables_are_honoured_and_no_proxy_takes_the_proxy_away(cach
             monkeypatch.setenv("no_proxy", "")
             # A name only the proxy resolves: the request can reach the server through it alone.
             ref = ref_of(PAYLOAD, f"https://assets.example.test:{server.port}/blob")
-            assert assets.fetch(ref).read_bytes() == PAYLOAD
+            assert _fetch.fetch(ref).read_bytes() == PAYLOAD
             assert proxy.asked == [f"assets.example.test:{server.port}"]
             other = ref_of(PAYLOAD + b"!", f"https://assets.example.test:{server.port}/blob", name="other")
             monkeypatch.setenv("NO_PROXY", "assets.example.test")
             monkeypatch.setenv("no_proxy", "assets.example.test")
-            found, _ = codes_and_text(lambda: assets.fetch(other))
+            found, _ = codes_and_text(lambda: _fetch.fetch(other))
             assert found == ["asset.unreachable"] and len(proxy.asked) == 1, "NO_PROXY sent it past the proxy"
         finally:
             proxy.close()
@@ -112,8 +113,8 @@ def labstore(url: str) -> str:
 
 
 def test_the_lab_stores_adapter_is_registered_by_its_entry_point():
-    assert "labstore" in assets.registered_schemes()
-    assert assets.adapter_package("labstore") == "mime-lab-fixture"
+    assert "labstore" in _adapters.registered_schemes()
+    assert _adapters.adapter_package("labstore") == "mime-lab-fixture"
 
 
 def test_the_machines_store_hands_the_token_to_its_own_host_and_never_across_a_redirect(cache):
@@ -121,15 +122,15 @@ def test_the_machines_store_hands_the_token_to_its_own_host_and_never_across_a_r
     with LoopbackStore() as store, LoopbackStore("localhost") as other:
         store.files["/private"] = PAYLOAD
         store.tokens["/private"] = HARNESS_TOKEN
-        assert assets.fetch(ref_of(PAYLOAD, labstore(store.url("/private")))).read_bytes() == PAYLOAD
+        assert _fetch.fetch(ref_of(PAYLOAD, labstore(store.url("/private")))).read_bytes() == PAYLOAD
         moved = PAYLOAD + b"moved"
         other.files["/moved"] = moved
         store.redirects["/hop"] = other.url("/moved")
-        assert assets.fetch(ref_of(moved, labstore(store.url("/hop")), name="moved")).read_bytes() == moved
+        assert _fetch.fetch(ref_of(moved, labstore(store.url("/hop")), name="moved")).read_bytes() == moved
         assert other.seen and not [seen for seen in other.seen if "Authorization" in seen.headers]
         store.tokens["/wrong"] = "another"
         store.files["/wrong"] = PAYLOAD + b"wrong"
-        found, text = codes_and_text(lambda: assets.fetch(ref_of(PAYLOAD + b"wrong", labstore(store.url("/wrong")),
+        found, text = codes_and_text(lambda: _fetch.fetch(ref_of(PAYLOAD + b"wrong", labstore(store.url("/wrong")),
                                                                  name="wrong")))
         assert found == ["asset.unreachable"] and "refused the login" in text and HARNESS_TOKEN not in text
 
@@ -180,7 +181,7 @@ def test_a_cut_stream_is_resumed_with_a_range_and_the_full_hash_checked(cache):
     with LoopbackStore() as server:
         server.files["/blob"] = PAYLOAD
         server.cuts["/blob"] = 20_000
-        assert assets.fetch(ref_of(PAYLOAD, server.url("/blob"))).read_bytes() == PAYLOAD
+        assert _fetch.fetch(ref_of(PAYLOAD, server.url("/blob"))).read_bytes() == PAYLOAD
         second = server.seen[1].headers
         assert second.get("Range") == "bytes=20000-" and second.get("If-Range", "").startswith('"')
 
@@ -190,7 +191,7 @@ def test_a_server_that_ignores_the_range_is_downloaded_afresh(cache):
         server.files["/blob"] = PAYLOAD
         server.cuts["/blob"] = 20_000
         server.ignore_range = True
-        assert assets.fetch(ref_of(PAYLOAD, server.url("/blob"))).read_bytes() == PAYLOAD
+        assert _fetch.fetch(ref_of(PAYLOAD, server.url("/blob"))).read_bytes() == PAYLOAD
         assert len(server.seen) == 2
 
 
@@ -209,7 +210,7 @@ def resumed(tmp_path: Path) -> None:
         with LoopbackStore() as server:
             server.files["/blob"] = PAYLOAD
             server.cuts["/blob"] = 20_000
-            assets.fetch(ref_of(PAYLOAD, server.url("/blob")))
+            _fetch.fetch(ref_of(PAYLOAD, server.url("/blob")))
             assert server.seen[1].headers.get("Range") == "bytes=20000-"
 
 
@@ -229,9 +230,9 @@ def test_a_503_is_asked_again_after_its_wait_and_a_404_is_not(cache):
     with LoopbackStore() as server:
         server.files["/blob"] = PAYLOAD
         server.statuses["/blob"] = [503, 503]
-        assert assets.fetch(ref_of(PAYLOAD, server.url("/blob"))).read_bytes() == PAYLOAD
+        assert _fetch.fetch(ref_of(PAYLOAD, server.url("/blob"))).read_bytes() == PAYLOAD
         assert len(server.seen) == 3
-        found, text = codes_and_text(lambda: assets.fetch(ref_of(b"gone", server.url("/gone"), name="gone")))
+        found, text = codes_and_text(lambda: _fetch.fetch(ref_of(b"gone", server.url("/gone"), name="gone")))
         assert found == ["asset.unreachable"] and "no file at that address" in text and len(server.seen) == 4
 
 
@@ -241,8 +242,8 @@ def test_a_503_is_asked_again_after_its_wait_and_a_404_is_not(cache):
 def test_a_package_location_reads_bytes_inside_a_package_that_declares_itself_a_source(cache):
     held = assets.reference("labx.marker.usda")
     assert held.locations == ("package:labx/marker.usda",)
-    assert hashlib.sha256(assets.fetch(held).read_bytes()).hexdigest() == held.sha256
-    found, text = codes_and_text(lambda: assets.fetch(ref_of(b"x", "package:os/x", name="x")))
+    assert hashlib.sha256(_fetch.fetch(held).read_bytes()).hexdigest() == held.sha256
+    found, text = codes_and_text(lambda: _fetch.fetch(ref_of(b"x", "package:os/x", name="x")))
     assert found == ["asset.unreachable"] and "no installed package declares the source 'os'" in text
 
 
@@ -251,15 +252,15 @@ def test_a_mirror_reads_a_regular_file_by_its_sha256_or_its_name_and_never_a_lin
     mirror.mkdir()
     ref = ref_of(PAYLOAD, mirror.as_uri() + "/", name="table.npz")
     (mirror / ref.sha256).write_bytes(PAYLOAD)
-    assert assets.fetch(ref).read_bytes() == PAYLOAD
+    assert _fetch.fetch(ref).read_bytes() == PAYLOAD
     named = ref_of(PAYLOAD + b"2", mirror.as_uri() + "/", name="named.npz")
     (mirror / "named.npz").write_bytes(PAYLOAD + b"2")
-    assert assets.fetch(named).read_bytes() == PAYLOAD + b"2"
+    assert _fetch.fetch(named).read_bytes() == PAYLOAD + b"2"
     outside = tmp_path / "outside.npz"
     outside.write_bytes(PAYLOAD + b"3")
     linked = ref_of(PAYLOAD + b"3", mirror.as_uri() + "/", name="linked.npz")
     os.symlink(outside, mirror / linked.sha256)
-    found, _ = codes_and_text(lambda: assets.fetch(linked))
+    found, _ = codes_and_text(lambda: _fetch.fetch(linked))
     assert found == ["asset.unreachable"]
 
 
@@ -283,10 +284,10 @@ def test_a_scheme_nothing_reads_is_refused_and_one_call_registers_a_scripts_adap
     found, _ = codes_and_text(lambda: ref_of(b"cba", "rev://abc"))
     assert found == ["asset.reference"]
     monkeypatch.setitem(_adapters._registered, "rev", _adapters._Registered(Reversed(), None))  # pyright: ignore
-    assert assets.fetch(ref_of(b"cba", "rev://abc")).read_bytes() == b"cba"
-    assert dict(assets.with_adapters(ref_of(b"cba", "rev://abc")).adapters) == {"rev": ""}
+    assert _fetch.fetch(ref_of(b"cba", "rev://abc")).read_bytes() == b"cba"
+    assert dict(_adapters.with_adapters(ref_of(b"cba", "rev://abc")).adapters) == {"rev": ""}
     labs = ref_of(b"x", "labstore://127.0.0.1:1/x")
-    assert dict(assets.with_adapters(labs).adapters) == {"labstore": "mime-lab-fixture"}
+    assert dict(_adapters.with_adapters(labs).adapters) == {"labstore": "mime-lab-fixture"}
     with pytest.raises(ValueError, match="MIME's own"):
         assets.register_adapter(type("Https", (), {"scheme": "https"})())  # type: ignore[arg-type]
 
@@ -313,8 +314,8 @@ def test_a_file_placed_by_its_hash_is_found_without_the_adapter_its_location_nee
     cache.mkdir(parents=True, exist_ok=True)
     (cache / ref.sha256).write_bytes(PAYLOAD)
     monkeypatch.setenv("MIME_OFFLINE", "1")
-    assert assets.fetch(ref).read_bytes() == PAYLOAD and assets.locate(ref).is_file()
+    assert _fetch.fetch(ref).read_bytes() == PAYLOAD and _cache.locate(ref).is_file()
     monkeypatch.delenv("MIME_OFFLINE")
     other = assets.AssetRef.from_record({**record, "sha256": hashlib.sha256(b"not here").hexdigest(), "size": 8})
-    found, text = codes_and_text(lambda: assets.fetch(other))
+    found, text = codes_and_text(lambda: _fetch.fetch(other))
     assert found == ["asset.unreachable"] and "no adapter reads the scheme 's3x' here" in text and "mime-storage" in text

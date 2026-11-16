@@ -31,7 +31,8 @@ import pytest
 import tube_asset
 
 from mime import assets
-from mime.assets import AssetRef, CheckResult, DerivationInput, DerivationRecord, Json, Produced
+from mime.assets import AssetRef, CheckResult, DerivationRecord, _derivation, _known
+from mime.assets._derivation import DerivationInput, Json, Produced
 from mime.build import BuildRefused
 from mime.assets import asset
 from mime.nodes.hydro.mrs._tube import UNIT_TUBE, table_provenance
@@ -60,7 +61,7 @@ class Doubling:
 
 
 def derived(builder: Doubling = Doubling()) -> tuple[bytes, DerivationRecord]:
-    return assets.derive("doubled", builder, {"text": "ab"}, {"wall:tube": TABLE}, commit="0000000",
+    return _derivation.derive("doubled", builder, {"text": "ab"}, {"wall:tube": TABLE}, commit="0000000",
                          domain={"text": "two letters"}, sources={"doubling.py": "0" * 64}, dirty=False)
 
 
@@ -103,23 +104,23 @@ def test_control_a_record_with_a_key_missing_added_or_moved_is_refused_when_read
 
 def test_an_input_is_stale_when_its_role_is_now_played_by_another_hash():
     record = derived()[1]
-    assert assets.stale_inputs(record, {"wall:tube": TABLE}) == []
-    assert assets.stale_inputs(record, {"wall:tube": TABLE, "training_data": SUPERSEDED}) == [], "a role it lacks"
+    assert _derivation.stale_inputs(record, {"wall:tube": TABLE}) == []
+    assert _derivation.stale_inputs(record, {"wall:tube": TABLE, "training_data": SUPERSEDED}) == [], "a role it lacks"
 
 
 def test_control_a_record_naming_another_hash_is_stale_and_names_both():
     record = derived()[1]
     planted = replace(record, inputs=(DerivationInput("wall:tube", SUPERSEDED.name, SUPERSEDED.sha256),))
-    found = assets.stale_inputs(planted, {"wall:tube": TABLE})
+    found = _derivation.stale_inputs(planted, {"wall:tube": TABLE})
     assert len(found) == 1 and SUPERSEDED.name in found[0] and UNIT_TUBE in found[0]
 
 
 def test_control_a_misspelled_role_with_a_wrong_hash_is_refused_by_name_not_found_fresh():
     planted = replace(derived()[1], inputs=(DerivationInput("wall:Tube", UNIT_TUBE, "0" * 64),))
     with pytest.raises(BuildRefused) as refused:
-        assets.stale_inputs(planted, current_inputs())
+        _derivation.stale_inputs(planted, current_inputs())
     assert refused.value.codes() == ["asset.unknown-role"] and "wall:Tube" in str(refused.value)
-    assert assets.stale_inputs(planted, current_inputs(), unjudged=("wall:Tube",)) == [], "declared, it is let by"
+    assert _derivation.stale_inputs(planted, current_inputs(), unjudged=("wall:Tube",)) == [], "declared, it is let by"
 
 
 def test_control_staleness_on_a_surrogate_refuses_a_misspelled_role_and_judges_the_right_one(monkeypatch):
@@ -129,7 +130,7 @@ def test_control_staleness_on_a_surrogate_refuses_a_misspelled_role_and_judges_t
     surrogate = replace(DEJONGH_MLP_V2, provenance=provenance)
     base = derived()[1]
     planted: dict[str, DerivationRecord] = {}
-    monkeypatch.setattr(assets, "derivation_of", lambda name: planted[name])
+    monkeypatch.setattr(_derivation, "derivation_of", lambda name: planted[name])
     planted["planted"] = replace(base, inputs=(DerivationInput("wall:Tube", UNIT_TUBE, "0" * 64),))
     with pytest.raises(BuildRefused) as refused:
         staleness(surrogate)
@@ -154,12 +155,12 @@ def _repository(root, files: dict[str, str]) -> None:
 
 def test_the_working_state_holds_the_commit_each_sources_hash_and_a_clean_tree_is_not_dirty(tmp_path):
     _repository(tmp_path, {"builder.py": "x = 1\n", "other.txt": "y\n"})
-    commit, sources, dirty = assets.working_state(tmp_path, ["builder.py"])
+    commit, sources, dirty = _derivation.working_state(tmp_path, ["builder.py"])
     head = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], check=True, capture_output=True,
                           text=True).stdout.strip()
     assert commit == head and sources == {"builder.py": hashlib.sha256(b"x = 1\n").hexdigest()} and dirty is False
     (tmp_path / "scratch.log").write_text("untracked and not a source\n")
-    assert assets.working_state(tmp_path, ["builder.py"])[2] is False
+    assert _derivation.working_state(tmp_path, ["builder.py"])[2] is False
 
 
 @pytest.mark.parametrize("change", ["source edited", "source untracked", "other tracked file edited"])
@@ -173,7 +174,7 @@ def test_control_a_build_from_an_uncommitted_change_is_recorded_dirty(tmp_path, 
         sources = ["builder.py", "new.py"]
     else:
         (tmp_path / "other.txt").write_text("changed\n")
-    commit, held, dirty = assets.working_state(tmp_path, sources)
+    commit, held, dirty = _derivation.working_state(tmp_path, sources)
     assert dirty is True
     assert held["builder.py"] == hashlib.sha256((tmp_path / "builder.py").read_bytes()).hexdigest()
 
@@ -186,7 +187,7 @@ def test_what_plays_the_tube_wall_role_now_is_the_shipped_table():
 
 
 def test_the_shipped_records_are_the_tables_and_the_surrogates_and_name_their_assets_hashes():
-    shipped = assets.shipped_derivations()
+    shipped = _derivation.shipped_derivations()
     assert set(shipped) == {UNIT_TUBE, "dejongh_mlp_v2", "sphere_plane_resistance"}
     assert shipped[UNIT_TUBE].sha256 == TABLE.sha256
     assert shipped["dejongh_mlp_v2"].sha256 == asset("dejongh_mlp_v2").sha256
@@ -204,7 +205,7 @@ def test_the_tables_record_is_what_its_provenance_arrays_say_and_points_at_the_c
     """The parameters, domain and anomaly are the arrays'. The builder and commit are not: the arrays name the commit
     the table was built at (in no branch's history) and the record names the committed builder and spec that reproduce
     its inputs (``tests/oracles/test_tube_provenance.py`` holds the spec to the arrays), with the sources' hashes."""
-    record = assets.derivation_of(UNIT_TUBE)
+    record = _derivation.derivation_of(UNIT_TUBE)
     found = table_provenance(str(tube_asset.path()))
     assert dict(record.parameters) == found["parameters"] and dict(record.domain) == found["domain"]
     assert record.inputs == (), "the table is built from the series alone"
@@ -222,7 +223,7 @@ def test_the_tables_record_is_what_its_provenance_arrays_say_and_points_at_the_c
 
 def test_the_specs_hash_in_the_record_is_the_committed_specs_and_a_changed_spec_is_found():
     """The spec is the table's declared build; a change to it must come with a new table and a new record."""
-    record = assets.derivation_of(UNIT_TUBE)
+    record = _derivation.derivation_of(UNIT_TUBE)
     committed = (ROOT / SPEC).read_bytes()
     assert record.sources[SPEC] == hashlib.sha256(committed).hexdigest()
     held = json.loads(committed)
@@ -231,16 +232,16 @@ def test_the_specs_hash_in_the_record_is_the_committed_specs_and_a_changed_spec_
 
 
 def test_control_the_tables_record_differs_from_a_planted_provenance():
-    record = assets.derivation_of(UNIT_TUBE)
+    record = _derivation.derivation_of(UNIT_TUBE)
     found = table_provenance(str(tube_asset.path()))
     found["parameters"]["single_truncation"]["modes"] = 1667
     assert dict(record.parameters) != found["parameters"]
 
 
 def test_the_surrogates_record_names_the_tables_its_training_read_and_its_weights():
-    record = assets.derivation_of("dejongh_mlp_v2")
+    record = _derivation.derivation_of("dejongh_mlp_v2")
     tables = [each for each in record.inputs if each.role == "wall:tube"]
-    shipped = assets.known()
+    shipped = _known.known()
     assert len(tables) == 6 and all(shipped[each.name].sha256 == each.sha256 for each in tables)
     assert all(each.name.startswith("cylinder_wall_r40_") for each in tables)
     assert record.parameters["patches"] == ["lateral"] and record.parameters["reference_point"] == "end"
@@ -266,6 +267,6 @@ def test_dejongh_mlp_v2_is_stale_through_the_2026_05_21_tables_and_says_why():
 def test_control_a_surrogate_held_fresh_against_a_record_naming_another_table_is_found_stale():
     """The hold for a surrogate trained through today's table, planted: its record's table hash changed to another's."""
     record = derived()[1]
-    assert assets.stale_inputs(record, current_inputs()) == []
+    assert _derivation.stale_inputs(record, current_inputs()) == []
     planted = replace(record, inputs=(DerivationInput("wall:tube", UNIT_TUBE, SUPERSEDED.sha256),))
-    assert assets.stale_inputs(planted, current_inputs())
+    assert _derivation.stale_inputs(planted, current_inputs())

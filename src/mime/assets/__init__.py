@@ -1,53 +1,30 @@
 """Files referenced by hash, wherever they are kept, fetched on request: the library knows how to fetch and check a
 file, never what or from where.
 
+**One way to declare a file:** :func:`asset`, its origin decided by its argument's type: a record's name (a string,
+dotted like an entry's: MIME's packaged files, a record an installed package ships, or one a package's
+:class:`Resolver` answers), a local file (a path), or a whole record (an :class:`AssetRef`). It always gives one
+:class:`Asset`, with the record behind it.
+
 An :class:`AssetRef` is one record type for every asset: its sha256, size, licence and locations, and, where they are
 known, its credit, role, kind (with a derived file's derivation record by hash), notice, custom licences, version,
 citation and the packages of the adapters its locations need. Its tier is the verdict of its licence. A
 :class:`Manifest` is a named group of records (a robot's meshes, beside its description). Records come from the
-experiment's pins (:func:`pinned`; a loaded lock), the manifest beside a description, installed packages' ``mime.assets``
-entry points and MIME's own data; :func:`reference` finds one by name, and refuses two shared sources that disagree.
+experiment's pins (a loaded lock), the manifest beside a description, installed packages' ``mime.assets`` entry points
+(a folder of records, or a resolver) and MIME's own data; :func:`reference` finds one by name, and refuses two shared
+sources that disagree.
 
 :func:`resolve` is the one lookup: the hash-keyed cache, then a file placed in the cache directory, then the
-locations, this machine's locations file's first (:func:`read_locations`), each opened by its :class:`Adapter`
-(``https``, ``doi:``, ``package:``, ``file://`` mirrors, and any a package or a script registers), the stream held to
-the record's size and hash, redirects followed with a credential bound to its host, retries and resuming the
-resolver's own. :func:`fetch` is its command's name; :func:`locate`, which a build calls, never downloads.
-:func:`retrieve` stores a file whose hash is not yet known (a bundle named by its DOI). :func:`probe` looks at a
-location without downloading (``mime assets sources``), and :func:`audit` finds files that may not be redistributed in
-an archive or a tree (``mime assets audit``). A derived asset's derivation record (:class:`DerivationRecord`) is
-written by :func:`derive`; :func:`stale_inputs` says which of its inputs have since changed, and
-:func:`derived_terms` its terms, the strictest of its inputs'. :func:`record_terms` is what every exit judges a record
-by: its licence, and for a derived record the strictest of that and its inputs', its derivation record read by hash
-(:func:`derivation_by_hash`), failing closed. See the README.
+locations, this machine's locations file's first, each opened by its :class:`Adapter` (``https``, ``doi:``,
+``package:``, ``file://`` mirrors, and any a package or a script registers, :func:`register_adapter`), the stream held
+to the record's size and hash, redirects followed with a credential bound to its host, retries and resuming the
+resolver's own; :func:`approved` asks a batch's questions once. :func:`retrieve` stores a file whose hash is not yet
+known (a bundle named by its DOI). :func:`check` re-hashes a cached file in full. A derived asset's derivation record
+is a :class:`DerivationRecord`. See the README.
 """
 
-from mime.assets._asset import Asset, asset
-from mime.assets._cache import (
-    ASSETS_DIR_VARIABLE,
-    OFFLINE_VARIABLE,
-    Cached,
-    cache_dir,
-    check,
-    file_path,
-    is_cached,
-    locate,
-    named_file,
-    named_path,
-    offline,
-    size_text,
-)
-from mime.assets._acceptances import (
-    ACCEPTANCES_VARIABLE,
-    Acceptance,
-    acceptances_path,
-    acceptances_text,
-    read_acceptances,
-    revoke,
-)
+from mime.assets._acceptances import Acceptance
 from mime.assets._adapters import (
-    ADAPTER_GROUP,
-    SOURCE_GROUP,
     Adapter,
     AdapterError,
     Credential,
@@ -57,219 +34,43 @@ from mime.assets._adapters import (
     Redirect,
     Request,
     Transient,
-    adapter_for,
-    adapter_package,
     register_adapter,
-    registered_schemes,
-    stored_credential,
-    with_adapters,
 )
-from mime.assets._audit import AuditReport, Finding, KnownBytes, audit, container_of, known_bytes, mesh_format
-from mime.assets._availability import SourceLocation, SourceView, assets_of, sources_text, sources_view
-from mime.assets._commands import AUDIT, CHECK, FETCH, GROUP, LICENCES, LIST, SOURCES
-from mime.assets._derivation import (
-    Builder,
-    CheckResult,
-    DerivationInput,
-    DerivationRecord,
-    Json,
-    Produced,
-    by_sha256,
-    derivation_by_hash,
-    derivation_of,
-    derive,
-    derived_terms,
-    derived_verdicts,
-    read_derivation,
-    record_terms,
-    shipped_derivations,
-    stale_inputs,
-    working_state,
-)
-from mime.assets._fetch import (
-    RETRIEVE_LIMIT_BYTES,
-    Probe,
-    announce_downloads,
-    credentials_from,
-    downloads_doing,
-    fetch,
-    probe,
-    resolve,
-    retrieve,
-    tried_locations,
-    under_test_prefix,
-    watching_downloads,
-)
-from mime.assets._gates import (
-    BAKE_OUTPUT_FACTOR,
-    CONFIRM_ABOVE_BYTES,
-    CONFIRM_ABOVE_FRACTION,
-    STOP_BELOW_BYTES,
-    STOP_BELOW_FRACTION,
-    Approval,
-    Asker,
-    Licence,
-    PlainAsker,
-    Plan,
-    approve,
-    approved,
-    asking,
-    bake_bytes,
-    bytes_text,
-    can_ask,
-    licences_named,
-    licences_of,
-    licences_read,
-    require_accepted,
-    require_licences,
-    stated_licence,
-)
-from mime.assets._known import known, reference
-from mime.assets._locations import CA_BUNDLE_VARIABLE, LOCATIONS_VARIABLE, Locations, locations_path, read_locations
-from mime.assets._lock import folder_assets
-from mime.assets._manifest import (
-    MANIFEST_FORMAT,
-    Manifest,
-    ManifestFile,
-    beside,
-    mesh_path,
-    read_manifest,
-    read_manifest_data,
-)
-from mime.assets._reference import KINDS, AssetRecord, AssetRef, Kind, location_problem
-from mime.assets._sources import Resolver, active_pins, conflicts, pinned, shared_manifests
+from mime.assets._asset import Asset, asset
+from mime.assets._cache import check
+from mime.assets._derivation import CheckResult, DerivationRecord
+from mime.assets._fetch import resolve, retrieve
+from mime.assets._gates import approved
+from mime.assets._known import reference
+from mime.assets._manifest import MANIFEST_FORMAT, Manifest, read_manifest
+from mime.assets._reference import AssetRecord, AssetRef
+from mime.assets._sources import Resolver
 
 __all__ = [
-    "ACCEPTANCES_VARIABLE",
-    "ADAPTER_GROUP",
-    "ASSETS_DIR_VARIABLE",
-    "AUDIT",
     "Acceptance",
     "Adapter",
     "AdapterError",
-    "Approval",
-    "Asker",
     "Asset",
     "AssetRecord",
     "AssetRef",
-    "AuditReport",
-    "BAKE_OUTPUT_FACTOR",
-    "Builder",
-    "CA_BUNDLE_VARIABLE",
-    "CHECK",
-    "CONFIRM_ABOVE_BYTES",
-    "CONFIRM_ABOVE_FRACTION",
-    "Cached",
     "CheckResult",
     "Credential",
-    "DerivationInput",
     "DerivationRecord",
-    "FETCH",
-    "Finding",
-    "GROUP",
-    "Json",
-    "KINDS",
-    "Kind",
-    "KnownBytes",
-    "LICENCES",
-    "LIST",
-    "LOCATIONS_VARIABLE",
-    "Licence",
-    "Locations",
     "LoginRefused",
     "MANIFEST_FORMAT",
     "Manifest",
-    "ManifestFile",
     "NotFound",
-    "OFFLINE_VARIABLE",
     "Opened",
-    "PlainAsker",
-    "Plan",
-    "Probe",
-    "Produced",
-    "RETRIEVE_LIMIT_BYTES",
     "Redirect",
     "Request",
     "Resolver",
-    "SOURCES",
-    "SourceLocation",
-    "SourceView",
-    "SOURCE_GROUP",
-    "STOP_BELOW_BYTES",
-    "STOP_BELOW_FRACTION",
     "Transient",
-    "acceptances_path",
-    "acceptances_text",
-    "active_pins",
-    "adapter_for",
-    "adapter_package",
-    "announce_downloads",
-    "approve",
     "approved",
-    "asking",
     "asset",
-    "assets_of",
-    "audit",
-    "bake_bytes",
-    "beside",
-    "by_sha256",
-    "bytes_text",
-    "cache_dir",
-    "can_ask",
     "check",
-    "conflicts",
-    "container_of",
-    "credentials_from",
-    "derivation_by_hash",
-    "derivation_of",
-    "derive",
-    "derived_terms",
-    "derived_verdicts",
-    "downloads_doing",
-    "fetch",
-    "file_path",
-    "folder_assets",
-    "is_cached",
-    "known",
-    "known_bytes",
-    "licences_named",
-    "licences_of",
-    "licences_read",
-    "locate",
-    "location_problem",
-    "locations_path",
-    "mesh_format",
-    "mesh_path",
-    "named_file",
-    "named_path",
-    "offline",
-    "pinned",
-    "probe",
-    "read_acceptances",
-    "read_derivation",
-    "read_locations",
     "read_manifest",
-    "read_manifest_data",
-    "record_terms",
     "reference",
     "register_adapter",
-    "registered_schemes",
-    "require_accepted",
-    "require_licences",
     "resolve",
     "retrieve",
-    "revoke",
-    "shared_manifests",
-    "shipped_derivations",
-    "size_text",
-    "sources_text",
-    "sources_view",
-    "stale_inputs",
-    "stated_licence",
-    "stored_credential",
-    "tried_locations",
-    "under_test_prefix",
-    "watching_downloads",
-    "with_adapters",
-    "working_state",
 ]

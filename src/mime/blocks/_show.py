@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from mime._terminal import plain
-from mime.assets import is_cached, size_text
+from mime.assets._cache import is_cached, size_text
 from mime.blocks._definition import CASES, FRAGMENT_FILE, Definition, definition_of
 from mime.blocks._fragment import read_fragment
 from mime.build import BuildRefused

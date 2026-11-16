@@ -40,8 +40,10 @@ from pathlib import Path
 from typing import Literal, cast
 
 from mime._lock_json import read_lock
-from mime.assets import AssetRef, is_cached, location_problem
-from mime.assets import file_path as cached_file
+from mime.assets import AssetRef
+from mime.assets._cache import is_cached
+from mime.assets._reference import location_problem
+from mime.assets._cache import file_path as cached_file
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.saved._schema import CustomLicenceDoc, ExperimentDocument, Lock, PermissionDoc, TermsDoc
 from mime.terms import (
@@ -571,7 +573,7 @@ class FolderTerms:
 def lock_records(lock: Lock | Mapping[str, object]) -> list[AssetRef]:
     """Every record a folder's lock holds: its ``assets``, and those of the manifests its stage draws (``visuals``);
     one that does not read is the load's to refuse, and is left out here."""
-    from mime.assets import read_manifest_data
+    from mime.assets._manifest import read_manifest_data
 
     held = cast(Mapping[str, object], lock)
     found: list[AssetRef] = []
@@ -625,7 +627,7 @@ def folder_terms(folder: Path, document: ExperimentDocument, lock: Lock, named: 
     lock says travels as a reference is marked with its asset's name. A file that a record in reach (the lock's, the
     shared sources') names with its derivation record takes the strictest terms of its inputs
     (``mime.assets.derived_verdicts``), whatever its own licence: so ``pack``, ``push`` and the card judge it alike."""
-    from mime.assets import derived_verdicts
+    from mime.assets._derivation import derived_verdicts
 
     referenced = lock.get("referenced_files", {})
     assets = {held["name"]: held for held in lock.get("assets", [])}
@@ -714,11 +716,11 @@ def _accepted_to_read(ref: AssetRef, accept_licences: Collection[str]) -> bool:
     """Whether the cached file of ``ref`` may be read now: its licence has no conditions, or they were accepted (recorded,
     or named in ``accept_licences``, or accepted by the batch in force). Never asks: placing a file is not where a
     question is put; ``mime assets fetch`` and ``mime pull`` ask for the whole folder, then place."""
-    from mime import assets
+    from mime.assets import _gates
 
-    with assets.asking(None):
+    with _gates.asking(None):
         try:
-            assets.require_accepted([ref], accept_licences=accept_licences)
+            _gates.require_accepted([ref], accept_licences=accept_licences)
         except BuildRefused:
             return False
     return True

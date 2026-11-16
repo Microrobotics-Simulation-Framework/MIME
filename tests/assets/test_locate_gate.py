@@ -24,7 +24,7 @@ import pytest
 from assets_rig import Rig
 
 from mime import assets
-from mime.assets import AssetRef, _sources
+from mime.assets import AssetRef, _acceptances, _cache, _gates, _sources
 from mime.assets._acceptances import remember
 from mime.assets._cache import locate_bundle_container
 from mime.assets._reference import BundleContainer
@@ -58,7 +58,7 @@ def placed(rig: Rig, ref: AssetRef, data: bytes = DATA) -> AssetRef:
     """``ref``'s bytes copied into the cache by hand, and the full verification recorded for them as a refused resolve
     leaves it (``assets.check`` writes the same record)."""
     (rig.cache / ref.sha256).write_bytes(data)
-    with assets.asking(None):
+    with _gates.asking(None):
         assert assets.check(ref) == "ok"
     return ref
 
@@ -84,7 +84,7 @@ class Yes:
 def test_locate_refuses_a_gated_record_no_gated_call_put_here(rig: Rig, route: str):
     ref = gated()
     (rig.cache / ref.sha256).write_bytes(DATA)
-    with assets.asking(None):
+    with _gates.asking(None):
         if route == "a refused resolve":
             with pytest.raises(BuildRefused) as refused:
                 assets.resolve(ref)
@@ -92,55 +92,55 @@ def test_locate_refuses_a_gated_record_no_gated_call_put_here(rig: Rig, route: s
         else:
             assert assets.check(ref) == "ok"
         with pytest.raises(BuildRefused) as located:
-            assets.locate(ref)
+            _cache.locate(ref)
     assert located.value.codes() == ["asset.licence-not-accepted"]
     assert LICENCE.id in located.value.refusals[0].action
 
 
 def test_a_build_with_nobody_to_ask_passes_where_the_acceptance_is_on_record_for_that_licence_only(rig: Rig):
     ref, other = placed(rig, gated()), placed(rig, gated(OTHER, "other.bin", b"another" * 50), b"another" * 50)
-    remember(list(assets.licences_of(ref)))
-    with assets.asking(None):
-        assert assets.locate(ref).read_bytes() == DATA
+    remember(list(_gates.licences_of(ref)))
+    with _gates.asking(None):
+        assert _cache.locate(ref).read_bytes() == DATA
         with pytest.raises(BuildRefused) as refused:
-            assets.locate(other)
+            _cache.locate(other)
     assert refused.value.codes() == ["asset.licence-not-accepted"] and OTHER.id in refused.value.refusals[0].action
 
 
 def test_a_licence_named_for_the_batch_is_accepted_for_the_builds_inside_it_and_nothing_after(rig: Rig):
     ref = placed(rig, gated())
-    with assets.asking(None):
+    with _gates.asking(None):
         with assets.approved([], accept_licences={LICENCE.id}):
-            assert assets.locate(ref).is_file()
+            assert _cache.locate(ref).is_file()
         with pytest.raises(BuildRefused):
-            assets.locate(ref)
-    assert assets.read_acceptances() == []
+            _cache.locate(ref)
+    assert _acceptances.read_acceptances() == []
 
 
 def test_a_person_at_a_terminal_is_asked_once_and_the_yes_is_remembered(rig: Rig):
     ref, asker = placed(rig, gated()), Yes()
-    with assets.asking(asker):  # type: ignore[arg-type]
-        assert assets.locate(ref).is_file()
-        assert assets.locate(ref).is_file()
+    with _gates.asking(asker):  # type: ignore[arg-type]
+        assert _cache.locate(ref).is_file()
+        assert _cache.locate(ref).is_file()
     assert asker.asked == 1
-    assert [each.licence.id for each in assets.read_acceptances()] == [LICENCE.id]
+    assert [each.licence.id for each in _acceptances.read_acceptances()] == [LICENCE.id]
 
 
 def test_a_no_at_the_terminal_returns_nothing(rig: Rig):
     ref, asker = placed(rig, gated()), Yes(False)
-    with assets.asking(asker), pytest.raises(BuildRefused) as refused:  # type: ignore[arg-type]
-        assets.locate(ref)
-    assert refused.value.codes() == ["asset.licence-declined"] and assets.read_acceptances() == []
+    with _gates.asking(asker), pytest.raises(BuildRefused) as refused:  # type: ignore[arg-type]
+        _cache.locate(ref)
+    assert refused.value.codes() == ["asset.licence-declined"] and _acceptances.read_acceptances() == []
 
 
 def test_an_open_licence_asks_nothing_and_a_missing_file_is_still_missing_first(rig: Rig):
     ref = AssetRef("open.bin", hashlib.sha256(DATA).hexdigest(), len(DATA), "CC0-1.0", ("https://example.org/open.bin",))
     placed(rig, ref)
     asker = Yes()
-    with assets.asking(asker):  # type: ignore[arg-type]
-        assert assets.locate(ref).is_file()
+    with _gates.asking(asker):  # type: ignore[arg-type]
+        assert _cache.locate(ref).is_file()
         with pytest.raises(BuildRefused) as absent:
-            assets.locate(gated(LICENCE, "absent.bin", b"nothing here"))
+            _cache.locate(gated(LICENCE, "absent.bin", b"nothing here"))
     assert asker.asked == 0 and absent.value.codes() == ["asset.missing"]
 
 
@@ -162,9 +162,9 @@ def test_the_refusal_from_a_build_names_the_routes_a_build_has_and_no_flag_its_c
     routes a build has: the command that asks, the acceptances file, and the Modal script. The refusal of a download
     (``resolve``, which ``mime assets fetch`` calls) still names the flag, which that command has."""
     ref = placed(rig, gated())
-    with assets.asking(None):
+    with _gates.asking(None):
         with pytest.raises(BuildRefused) as located:
-            assets.locate(ref)
+            _cache.locate(ref)
         with pytest.raises(BuildRefused) as downloaded:
             assets.resolve(ref)
     built = located.value.refusals[0]
@@ -187,7 +187,7 @@ def test_the_bundle_containers_function_gates_any_other_record(rig: Rig):
                      licences=(LICENCE,))
     placed(rig, gated())
     placed(rig, forged)
-    with assets.asking(None):
+    with _gates.asking(None):
         for ref in (gated(), named, forged):
             with pytest.raises(BuildRefused) as refused:
                 locate_bundle_container(ref)
@@ -203,11 +203,11 @@ def test_a_container_whose_bytes_are_a_known_gated_record_is_gated_as_that_recor
     container = BundleContainer("bundle", record.sha256, record.size, NO_ASSERTION, ("https://example.org/b",))
     real = _sources.shared()
     planted = _sources.Shared({**real.records, record.name: (_sources.Sourced(record, "labz"),)}, real.manifests)
-    with assets.asking(None):
+    with _gates.asking(None):
         assert locate_bundle_container(container).is_file()  # no known record with these bytes: the container's own
         monkeypatch.setattr(_sources, "shared", lambda: planted)
         with pytest.raises(BuildRefused) as refused:
             locate_bundle_container(container)
         assert refused.value.codes() == ["asset.licence-not-accepted"]
-        remember(list(assets.licences_of(record)))
+        remember(list(_gates.licences_of(record)))
         assert locate_bundle_container(container).is_file()

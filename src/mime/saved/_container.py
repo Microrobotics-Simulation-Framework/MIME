@@ -34,7 +34,7 @@ from typing import cast
 from typing_extensions import ReadOnly, TypedDict
 
 from mime._terminal import plain
-from mime.assets import size_text
+from mime.assets._cache import size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.saved._schema import shape_problems
 from mime.saved._versions import newer_form_refusal

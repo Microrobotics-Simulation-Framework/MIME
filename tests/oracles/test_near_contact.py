@@ -123,7 +123,7 @@ def test_the_tables_build_checks_hold():
     collocated, and the change with the series' length and the quadrature, as the build measured them: its derivation
     record's checks, each within its tolerance (the file holds the numbers the law reads, the checks the record and the
     build's log)."""
-    from mime.assets import shipped_derivations
+    from mime.assets._derivation import shipped_derivations
 
     record = shipped_derivations()[_sphere.TABLE]
     for check in record.checks:

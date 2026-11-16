@@ -29,8 +29,7 @@ from pathlib import Path
 import pytest
 
 from mime import Scene, assets
-from mime.assets import Asset, AssetRef, asset
-from mime.assets import _sources
+from mime.assets import Asset, AssetRef, asset, _known, _sources
 from mime.assets._asset import lock_source, packaged_path
 from mime.errors import MimeError
 from mime.saved._document import decode_setting, encode_setting
@@ -255,7 +254,7 @@ def test_a_resolver_answers_a_name_in_its_namespace_that_nothing_else_holds(inst
     ref = held.ref()
     assert held.origin == "named" and held.sha256 == ref.sha256 and ref.locations == ((installed / "mirror").as_uri() + "/",)
     assert "labr.scan.usda" in resolver.asked
-    assert "labr.scan.usda" not in assets.known(), "a resolver is asked, never listed"
+    assert "labr.scan.usda" not in _known.known(), "a resolver is asked, never listed"
     with assets.approved([ref]):
         stored = assets.resolve(ref)
     assert stored.read_bytes() == (installed / "mirror" / "labr.scan.usda").read_bytes()

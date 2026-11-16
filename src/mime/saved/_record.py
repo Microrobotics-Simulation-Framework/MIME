@@ -14,7 +14,10 @@ from typing import Any, cast
 
 import jax
 
-from mime.assets import Asset, AssetRef, Manifest, active_pins, derived_verdicts, reference, with_adapters
+from mime.assets import Asset, AssetRef, Manifest, reference
+from mime.assets._adapters import with_adapters
+from mime.assets._derivation import derived_verdicts
+from mime.assets._sources import active_pins
 from mime.assets._asset import lock_source
 from mime.build import LATENCY_RULE, BuildRefused, ControllerPlan, Declaration, Mode, PlanSet, Refusal, RefusalClass, \
     RunSettings

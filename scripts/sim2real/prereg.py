@@ -53,7 +53,7 @@ def main() -> None:
     op.require_float64()
 
     from mime import assets
-    from mime.assets import asset
+    from mime.assets import asset, _cache
 
     table = assets.reference("unit_tube_R0.997")
     weights = asset(op.DEFAULT_WEIGHTS)
@@ -65,7 +65,7 @@ def main() -> None:
         "tests_read_sha256": {name: op.sha256_file(op.ROOT / name) for name in
                               ("tests/script_a.py", "tests/differential/script_a_steady.py")},
         "table": {"name": "unit_tube_R0.997", "sha256_declared": table.sha256,
-                  "sha256_file": op.sha256_file(assets.locate(table))},
+                  "sha256_file": op.sha256_file(_cache.locate(table))},
         "weights": {"name": weights.name, "sha256": weights.sha256},
         "meshes": mesh_hashes(),
         "operating_point": {"frequency_hz": op.FREQUENCY_HZ, "margin_mm": op.MARGIN_MM, "dt_ms": op.DT_MS,

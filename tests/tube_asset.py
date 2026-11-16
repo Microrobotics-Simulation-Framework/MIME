@@ -6,6 +6,7 @@ import functools
 from pathlib import Path
 
 from mime import assets
+from mime.assets import _cache
 
 NAME = "unit_tube_R0.997"
 
@@ -13,4 +14,4 @@ NAME = "unit_tube_R0.997"
 @functools.cache
 def path() -> Path:
     """The cached file, or ``BuildRefused`` (``asset.missing``) naming the asset and the command that fetches it."""
-    return assets.locate(assets.reference(NAME))
+    return _cache.locate(assets.reference(NAME))

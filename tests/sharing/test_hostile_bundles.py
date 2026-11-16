@@ -25,7 +25,7 @@ from bundles import write_bundle
 from fake_zenodo import DOI, zenodo
 
 from mime import _terminal, assets
-from mime.assets import _fetch
+from mime.assets import _cache, _fetch
 from mime.build import BuildRefused
 from mime.cli import main
 from mime.saved import _bundle, _folder, _pull, pack, pull
@@ -376,7 +376,7 @@ def a_declared_size_is_enforced(rig: Rig) -> None:
         refused = outcome
         assert refused.codes() == ["asset.size-exceeded"], refused.codes()
         assert seen.most <= declared.size + SLACK, f"{seen.most} bytes were taken for a declared {declared.size}"
-        assert not assets.is_cached(declared), "something was stored"
+        assert not _cache.is_cached(declared), "something was stored"
         assert [each.name for each in rig.cache.iterdir() if not each.name.endswith(".lock")] == [], "something was left"
         return
     raise AssertionError("a download over the declared size was accepted")
@@ -384,7 +384,7 @@ def a_declared_size_is_enforced(rig: Rig) -> None:
 
 def _outcome(declared: assets.AssetRef) -> BuildRefused | Path:
     try:
-        return assets.fetch(declared)
+        return _fetch.fetch(declared)
     except BuildRefused as refused:
         return refused
 
@@ -396,7 +396,7 @@ def test_a_download_stops_once_it_passes_the_size_the_lock_declares(rig: Rig):
 def test_a_download_of_exactly_the_declared_size_is_accepted(rig: Rig):
     rig.server.files["/t/table.bin"] = TABLE
     declared = reference(TABLE, rig.server.url("/t/table.bin"), name="table")
-    assert assets.fetch(declared).read_bytes() == TABLE
+    assert _fetch.fetch(declared).read_bytes() == TABLE
 
 
 def test_a_pull_stops_a_download_over_a_declared_size_and_the_confirmation_counts_what_arrives(
@@ -421,7 +421,7 @@ def test_a_bundle_at_an_address_with_no_stated_size_is_held_to_a_named_cap(saved
     rig.server.files["/b/full_toy.mimebundle"] = bundle.read_bytes()
     address = rig.server.url("/b/full_toy.mimebundle")
     size = bundle.stat().st_size
-    assert assets.RETRIEVE_LIMIT_BYTES == 500_000_000
+    assert _fetch.RETRIEVE_LIMIT_BYTES == 500_000_000
     assert codes_of(lambda: pull(address, into=tmp_path / "out", max_bundle_bytes=size - 1)) == ["asset.size-exceeded"]
     assert not (tmp_path / "out").exists() and not list(rig.cache.glob("[0-9a-f]" * 64))
     assert main(["pull", address, "--into", str(tmp_path / "out"), "--no-assets", "--max-bundle-bytes", str(size - 1)]) == 2

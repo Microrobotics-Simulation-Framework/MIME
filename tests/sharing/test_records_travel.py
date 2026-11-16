@@ -20,7 +20,7 @@ from terms_cases import NO_REDISTRIBUTION, mesh_bytes, same_reference_run
 from zenodo_records import FakeRecords
 
 from mime import assets, push
-from mime.assets import AssetRef
+from mime.assets import AssetRef, _fetch, _gates
 from mime.assets._acceptances import remember
 from mime.build import BuildRefused
 from mime.push import _plan
@@ -46,8 +46,8 @@ def placed(cache: Path, data: bytes) -> None:
     cache.mkdir(parents=True, exist_ok=True)
     (cache / hashlib.sha256(data).hexdigest()).write_bytes(data)
     record = scan_record(data)
-    assets.fetch(record, accept_licences={each.id for each in assets.licences_of(record)})
-    remember(assets.licences_of(record))  # the person who placed it accepted: a build's read of it is gated
+    _fetch.fetch(record, accept_licences={each.id for each in _gates.licences_of(record)})
+    remember(_gates.licences_of(record))  # the person who placed it accepted: a build's read of it is gated
 
 
 def saved_with(record: AssetRef, where: Path) -> Path:
@@ -96,7 +96,7 @@ def test_the_lock_holds_the_declared_record_whole_and_never_this_machines_locati
     assert record == dict(scan_record(data).to_record())
     assert record["licences"][NO_REDISTRIBUTION.id]["redistribution"] == "not_permitted"
     assert LAB_MIRROR not in (folder / LOCK_FILE).read_text(encoding="utf-8")
-    assert assets.tried_locations(AssetRef.from_record(record))[0] == LAB_MIRROR, "this machine still tries it first"
+    assert _fetch.tried_locations(AssetRef.from_record(record))[0] == LAB_MIRROR, "this machine still tries it first"
 
 
 def test_the_bundle_carries_a_referenced_records_bytes_never_and_its_manifest_says_where_to_fetch_them(cache,

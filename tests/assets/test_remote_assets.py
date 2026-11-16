@@ -18,7 +18,7 @@ import pooch
 import pytest
 
 from mime import assets
-from mime.assets import _fetch, _known
+from mime.assets import _cache, _fetch, _known, _reference
 from mime.build import BuildRefused
 from assets_rig import Rig, dead_url, reference, run_with_rig
 
@@ -52,37 +52,37 @@ def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Rig]:
 def fetch_then_hit(rig: Rig) -> None:
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))
-    assert not assets.is_cached(ref)
-    path = assets.fetch(ref)
+    assert not _cache.is_cached(ref)
+    path = _fetch.fetch(ref)
     assert path == stored(rig, ref) and path.read_bytes() == PAYLOAD
-    assert rig.requests == 1 and assets.is_cached(ref) and assets.check(ref) == "ok"
-    assert assets.fetch(ref) == path and assets.locate(ref) == path
+    assert rig.requests == 1 and _cache.is_cached(ref) and assets.check(ref) == "ok"
+    assert _fetch.fetch(ref) == path and _cache.locate(ref) == path
     assert rig.requests == 1, "a verified cache hit made a request"
 
 
 def wrong_hash_is_refused(rig: Rig) -> None:
     rig.server.files["/blob"] = b"other bytes than the reference names" * 50
     ref = reference(PAYLOAD, rig.server.url("/blob"))
-    assert codes_of(lambda: assets.fetch(ref)) == ["asset.hash-mismatch"]
+    assert codes_of(lambda: _fetch.fetch(ref)) == ["asset.hash-mismatch"]
     assert rig.requests == 1
-    assert not stored(rig, ref).exists() and not assets.is_cached(ref), "a wrong file was kept"
+    assert not stored(rig, ref).exists() and not _cache.is_cached(ref), "a wrong file was kept"
 
 
 def dead_first_location_falls_through(rig: Rig, dead: str) -> None:
     rig.server.files["/good"] = PAYLOAD
     ref = reference(PAYLOAD, dead, rig.server.url("/good"))
-    assert assets.fetch(ref) == stored(rig, ref)
-    assert stored(rig, ref).read_bytes() == PAYLOAD and assets.is_cached(ref)
+    assert _fetch.fetch(ref) == stored(rig, ref)
+    assert stored(rig, ref).read_bytes() == PAYLOAD and _cache.is_cached(ref)
 
 
 def locate_never_downloads(rig: Rig) -> None:
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))
-    assert codes_of(lambda: assets.locate(ref)) == ["asset.missing"]
+    assert codes_of(lambda: _cache.locate(ref)) == ["asset.missing"]
     assert rig.requests == 0 and not stored(rig, ref).exists(), "locate downloaded"
-    assets.fetch(ref)
+    _fetch.fetch(ref)
     before = rig.requests
-    assert assets.locate(ref) == stored(rig, ref)
+    assert _cache.locate(ref) == stored(rig, ref)
     assert rig.requests == before
 
 
@@ -106,7 +106,7 @@ def test_a_wrong_first_location_falls_to_a_right_second(rig: Rig):
     rig.server.files["/wrong"] = b"stale mirror" * 100
     rig.server.files["/good"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/wrong"), rig.server.url("/good"))
-    assert assets.fetch(ref).read_bytes() == PAYLOAD
+    assert _fetch.fetch(ref).read_bytes() == PAYLOAD
     assert rig.server.requests == ["GET /wrong", "GET /good"]
 
 
@@ -114,7 +114,7 @@ def test_every_location_dead_is_refused_naming_each(rig: Rig):
     first, second = dead_url("/a"), rig.server.url("/missing")
     ref = reference(PAYLOAD, first, second)
     with pytest.raises(BuildRefused) as refused:
-        assets.fetch(ref)
+        _fetch.fetch(ref)
     assert refused.value.codes() == ["asset.unreachable"]
     assert first in str(refused.value) and second in str(refused.value)
 
@@ -127,19 +127,19 @@ def refusal_of(call):  # noqa: ANN001, ANN201
 
 def test_a_404_says_the_file_is_not_at_the_address_and_does_not_send_the_reader_to_the_network(rig: Rig):
     ref = reference(PAYLOAD, rig.server.url("/gone"))
-    refusal = refusal_of(lambda: assets.fetch(ref))
+    refusal = refusal_of(lambda: _fetch.fetch(ref))
     assert refusal.code == "asset.unreachable" and "is not at its location" in refusal.message
     assert "404" in refusal.message and rig.server.url("/gone") in refusal.message
     assert "network" not in refusal.action and "address is wrong" in refusal.action
     two = reference(PAYLOAD, rig.server.url("/gone"), rig.server.url("/also-gone"))
-    assert "is not at any of its locations" in refusal_of(lambda: assets.fetch(two)).message
+    assert "is not at any of its locations" in refusal_of(lambda: _fetch.fetch(two)).message
 
 
 def test_the_control_where_the_network_is_the_cause_the_words_are_the_networks(rig: Rig):
     """The same refusal for a connection refused, and for one location refused and another answering 404: not a
     claim that the file is missing, since one location was never reached."""
     for locations in ((dead_url(),), (dead_url(), rig.server.url("/gone"))):
-        refusal = refusal_of(lambda: assets.fetch(reference(PAYLOAD, *locations)))
+        refusal = refusal_of(lambda: _fetch.fetch(reference(PAYLOAD, *locations)))
         assert "could not be downloaded from any location" in refusal.message and "check the network" in refusal.action
 
 
@@ -154,8 +154,8 @@ def test_offline_refuses_and_makes_no_request(rig: Rig, monkeypatch: pytest.Monk
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))
     monkeypatch.setenv("MIME_OFFLINE", "1")
-    assert assets.offline()
-    assert codes_of(lambda: assets.fetch(ref)) == ["asset.offline"]
+    assert _cache.offline()
+    assert codes_of(lambda: _fetch.fetch(ref)) == ["asset.offline"]
     assert rig.requests == 0 and not stored(rig, ref).exists()
 
 
@@ -163,9 +163,9 @@ def test_offline_still_accepts_a_file_copied_into_the_cache(rig: Rig, monkeypatc
     ref = reference(PAYLOAD, rig.server.url("/blob"))
     rig.cache.mkdir()
     stored(rig, ref).write_bytes(PAYLOAD)
-    assert codes_of(lambda: assets.locate(ref)) == ["asset.missing"]
+    assert codes_of(lambda: _cache.locate(ref)) == ["asset.missing"]
     monkeypatch.setenv("MIME_OFFLINE", "1")
-    assert assets.fetch(ref) == stored(rig, ref) and assets.locate(ref) == stored(rig, ref)
+    assert _fetch.fetch(ref) == stored(rig, ref) and _cache.locate(ref) == stored(rig, ref)
     assert rig.requests == 0
 
 
@@ -201,13 +201,13 @@ def missing_line_is_exact(rig: Rig) -> None:
     """The refusal is one message and one copy-pasteable action, in the experiment's terms: the asset's name and size,
     never its hash or the cache's path; scoped to the experiment's folder where it is known."""
     ref = reference(PAYLOAD, rig.server.url("/blob"), name="wall_R2.500")
-    named = caught(lambda: assets.locate(ref))
+    named = caught(lambda: _cache.locate(ref))
     (refusal,) = named.refusals
     assert refusal.code == "asset.missing"
     assert refusal.message == "the experiment needs 'wall_R2.500' (26 kB), which isn't downloaded"
     assert refusal.action == ("run `mime assets fetch <folder>` for the saved folder, or `mime visuals fetch <description folder>` "
                              "for the description, that references it"), "a name nothing holds is not named as a command"
-    (scoped,) = caught(lambda: assets.locate(ref, folder="fl9_water")).refusals
+    (scoped,) = caught(lambda: _cache.locate(ref, folder="fl9_water")).refusals
     assert scoped.message == refusal.message
     assert scoped.action == "Run: mime assets fetch ./fl9_water/", scoped.action
     for text in (str(named), str(scoped)):
@@ -259,50 +259,50 @@ def test_a_doi_location_is_resolved_to_its_file_and_fetched_from_there(rig: Rig,
         monkeypatch.setattr(_adapters, "doi_file_url", resolved)
         location = "doi:10.5281/zenodo.1234567/cylinder_wall.npz"
         ref = reference(PAYLOAD, location)
-        assert assets.fetch(ref) == stored(rig, ref)
+        assert _fetch.fetch(ref) == stored(rig, ref)
         assert handed == [("10.5281/zenodo.1234567", "cylinder_wall.npz")]
         assert timeouts == [_fetch.TIMEOUT_SECONDS], "the DOI step is held to the resolver's timeout"
         assert [seen.path for seen in repository.seen] == ["/records/1234567/cylinder_wall.npz"]
     monkeypatch.setattr(_adapters, "doi_file_url", lambda doi, file, timeout: rig.server.url(f"/{file}"))
     rig.server.files["/other.npz"] = PAYLOAD + b"!"
     with pytest.raises(BuildRefused, match="plain http only on this machine"):
-        assets.fetch(reference(PAYLOAD + b"!", "doi:10.5281/zenodo.1234567/other.npz"))
+        _fetch.fetch(reference(PAYLOAD + b"!", "doi:10.5281/zenodo.1234567/other.npz"))
 
 
 def test_the_cheap_check_catches_a_changed_size_and_a_touched_file(rig: Rig):
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))
-    path = assets.fetch(ref)
+    path = _fetch.fetch(ref)
     path.write_bytes(PAYLOAD[:-1])
     with pytest.raises(BuildRefused, match="is downloaded, but the file has"):
-        assets.locate(ref)
+        _cache.locate(ref)
     path.write_bytes(PAYLOAD)
     with pytest.raises(BuildRefused, match="changed after its full check"):
-        assets.locate(ref)
+        _cache.locate(ref)
     before = rig.requests
-    assert assets.fetch(ref) == path and rig.requests == before, "the same bytes were not kept"
-    assert assets.locate(ref) == path
+    assert _fetch.fetch(ref) == path and rig.requests == before, "the same bytes were not kept"
+    assert _cache.locate(ref) == path
 
 
 def test_a_file_mime_downloaded_that_now_has_other_bytes_is_replaced_by_a_download(rig: Rig):
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))
-    path = assets.fetch(ref)
+    path = _fetch.fetch(ref)
     path.write_bytes(b"x" * len(PAYLOAD))
-    assert assets.fetch(ref).read_bytes() == PAYLOAD and rig.requests == 2
+    assert _fetch.fetch(ref).read_bytes() == PAYLOAD and rig.requests == 2
 
 
 def test_only_check_finds_a_flipped_byte_that_leaves_size_and_time_alone(rig: Rig):
     """The cheap check's limit, written as a test: locate trusts size and time, check re-hashes."""
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))
-    path = assets.fetch(ref)
+    path = _fetch.fetch(ref)
     seen = path.stat()
     flipped = bytearray(PAYLOAD)
     flipped[7] ^= 1
     path.write_bytes(bytes(flipped))
     os.utime(path, ns=(seen.st_atime_ns, seen.st_mtime_ns))
-    assert assets.locate(ref) == path
+    assert _cache.locate(ref) == path
     assert assets.check(ref) == "corrupt" and path.exists()
     assert assets.check(dataclasses.replace(ref, sha256="0" * 64)) == "not cached"
 
@@ -344,18 +344,18 @@ def test_a_missing_key_in_a_record_is_refused():
 
 
 def test_local_http_is_accepted_and_a_remote_one_is_not():
-    assert assets.location_problem("http://127.0.0.1:8000/blob") is None
-    assert assets.location_problem("http://localhost/blob") is None
-    assert assets.location_problem("http://example.org/blob") is not None
-    assert assets.location_problem("https://example.org/blob") is None
-    assert assets.location_problem("http://[::1]:8000/blob") is None
+    assert _reference.location_problem("http://127.0.0.1:8000/blob") is None
+    assert _reference.location_problem("http://localhost/blob") is None
+    assert _reference.location_problem("http://example.org/blob") is not None
+    assert _reference.location_problem("https://example.org/blob") is None
+    assert _reference.location_problem("http://[::1]:8000/blob") is None
 
 
 def test_the_cache_is_one_directory_the_variable_replaces_the_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setenv("MIME_ASSETS_DIR", str(tmp_path / "somewhere"))
-    assert assets.cache_dir() == tmp_path / "somewhere"
+    assert _cache.cache_dir() == tmp_path / "somewhere"
     monkeypatch.delenv("MIME_ASSETS_DIR")
-    assert assets.cache_dir() == Path(str(pooch.os_cache("mime"))) / "assets"
+    assert _cache.cache_dir() == Path(str(pooch.os_cache("mime"))) / "assets"
 
 
 # --- the commands ----------------------------------------------------------------------------------------------------
@@ -367,7 +367,7 @@ def commanded(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> assets.AssetRef:
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"), name="served_blob")
     held = {ref.name: ref}
-    monkeypatch.setattr(assets, "known", lambda: held)
+    monkeypatch.setattr(_known, "known", lambda: held)
     monkeypatch.setattr(_known, "known", lambda: held)
     return ref
 
@@ -423,31 +423,31 @@ def skipped_hash_check(ref: assets.AssetRef) -> Iterator[None]:
 @contextmanager
 def locate_that_downloads() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as patch:
-        honest = assets.locate
+        honest = _cache.locate
 
         def downloading(ref: assets.AssetRef) -> Path:
             try:
                 return honest(ref)
             except BuildRefused:
-                return assets.fetch(ref)
+                return _fetch.fetch(ref)
 
-        patch.setattr(assets, "locate", downloading)
+        patch.setattr(_cache, "locate", downloading)
         yield
 
 
 @contextmanager
 def fallback_disabled() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as patch:
-        honest = assets.fetch
-        patch.setattr(assets, "fetch", lambda ref: honest(dataclasses.replace(ref, locations=ref.locations[:1])))
+        honest = _fetch.fetch
+        patch.setattr(_fetch, "fetch", lambda ref: honest(dataclasses.replace(ref, locations=ref.locations[:1])))
         yield
 
 
 @contextmanager
 def folder_dropped() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as patch:
-        honest = assets.locate
-        patch.setattr(assets, "locate", lambda ref, *, folder=None: honest(ref))
+        honest = _cache.locate
+        patch.setattr(_cache, "locate", lambda ref, *, folder=None: honest(ref))
         yield
 
 
@@ -497,5 +497,5 @@ def test_the_hash_a_download_is_held_to_is_the_references(rig: Rig):
     rig.server.files["/blob"] = b"other bytes than the reference names" * 50
     ref = reference(PAYLOAD, rig.server.url("/blob"))
     with skipped_hash_check(ref):
-        path = assets.fetch(ref)
+        path = _fetch.fetch(ref)
     assert hashlib.sha256(path.read_bytes()).hexdigest() != ref.sha256

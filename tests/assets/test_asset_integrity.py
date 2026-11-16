@@ -19,7 +19,7 @@ import pooch
 import pytest
 
 from mime import assets
-from mime.assets import _cache, _fetch
+from mime.assets import _cache, _fetch, _known, _reference
 from mime.build import BuildRefused
 from assets_rig import Rig, Server, reference, run_with_rig
 
@@ -79,33 +79,33 @@ def every_run_passes(tmp_path: Path, scenario: Callable[[Rig], None]) -> None:
 def corrupt_file_is_found_refused_and_repaired(rig: Rig) -> None:
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))
-    path = assets.fetch(ref)
+    path = _fetch.fetch(ref)
     flip_a_byte_keeping_size_and_time(path)
-    assert assets.locate(ref) == path, "the cheap check is expected to pass: this is the case it cannot see"
+    assert _cache.locate(ref) == path, "the cheap check is expected to pass: this is the case it cannot see"
     assert assets.check(ref) == "corrupt"
-    refused = caught(lambda: assets.locate(ref, folder="run"))
+    refused = caught(lambda: _cache.locate(ref, folder="run"))
     (refusal,) = refused.refusals
     assert refusal.code == "asset.missing" and refusal.action == "Run: mime assets fetch ./run/"
-    assert not assets.is_cached(ref)
+    assert not _cache.is_cached(ref)
     assert rig.requests == 1
-    assert assets.fetch(ref) == path and path.read_bytes() == PAYLOAD and rig.requests == 2
-    assert assets.locate(ref) == path and assets.check(ref) == "ok"
+    assert _fetch.fetch(ref) == path and path.read_bytes() == PAYLOAD and rig.requests == 2
+    assert _cache.locate(ref) == path and assets.check(ref) == "ok"
 
 
 def fetch_hashes_a_cached_file_before_calling_it_verified(rig: Rig) -> None:
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))
-    path = assets.fetch(ref)
+    path = _fetch.fetch(ref)
     flip_a_byte_keeping_size_and_time(path)
-    assert assets.fetch(ref) == path
+    assert _fetch.fetch(ref) == path
     assert path.read_bytes() == PAYLOAD and rig.requests == 2, "fetch reported a file it had not hashed"
 
 
 def a_clean_fetch_of_a_cached_file_makes_no_second_request(rig: Rig) -> None:
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))
-    path = assets.fetch(ref)
-    assert assets.fetch(ref) == path and assets.fetch(ref) == path and rig.requests == 1
+    path = _fetch.fetch(ref)
+    assert _fetch.fetch(ref) == path and _fetch.fetch(ref) == path and rig.requests == 1
 
 
 @contextmanager
@@ -119,7 +119,7 @@ def check_that_leaves_no_mark() -> Iterator[None]:
 @contextmanager
 def fetch_that_trusts_the_cheap_check() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(assets, "fetch", lambda ref, *, report=None: _fetch.resolve(ref, report=report))
+        patch.setattr(_fetch, "fetch", lambda ref, *, report=None: _fetch.resolve(ref, report=report))
         yield
 
 
@@ -142,7 +142,7 @@ def test_the_command_says_hashed_in_full_only_when_it_was(rig: Rig, monkeypatch:
 
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"), name="served_blob")
-    monkeypatch.setattr(assets, "known", lambda: {ref.name: ref})
+    monkeypatch.setattr(_known, "known", lambda: {ref.name: ref})
     monkeypatch.setattr(_known, "known", lambda: {ref.name: ref})
     assert main(["assets", "fetch", "served_blob"]) == 0
     flip_a_byte_keeping_size_and_time(stored(rig, ref))
@@ -240,7 +240,7 @@ def placed_files_are_left_alone(rig: Rig) -> None:
             stored(rig, ref).write_bytes(contents)
             with pytest.MonkeyPatch.context() as patch:
                 patch.setenv("MIME_OFFLINE", offline)
-                refused = caught(lambda: assets.fetch(ref))
+                refused = caught(lambda: _fetch.fetch(ref))
             (refusal,) = refused.refusals
             assert refusal.code == "asset.placed-file", refusal.code
             assert stored(rig, ref).name in refusal.message and "does not match" in refusal.message
@@ -249,7 +249,7 @@ def placed_files_are_left_alone(rig: Rig) -> None:
             assert stored(rig, ref).read_bytes() == contents, "a file a person placed was changed or removed"
             assert rig.requests == 0, "the download started over a file a person placed"
             assert assets.check(ref) == "corrupt" and stored(rig, ref).read_bytes() == contents
-            assert caught(lambda: assets.locate(ref)).codes() == ["asset.missing"]
+            assert caught(lambda: _cache.locate(ref)).codes() == ["asset.missing"]
             assert stored(rig, ref).read_bytes() == contents
 
 
@@ -260,9 +260,9 @@ def a_placed_file_that_is_right_is_accepted_and_never_replaced(rig: Rig) -> None
     stored(rig, ref).write_bytes(PAYLOAD)
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("MIME_OFFLINE", "1")
-        assert assets.fetch(ref) == stored(rig, ref) and assets.locate(ref) == stored(rig, ref)
+        assert _fetch.fetch(ref) == stored(rig, ref) and _cache.locate(ref) == stored(rig, ref)
     stored(rig, ref).write_bytes(b"q" * len(PAYLOAD))
-    assert caught(lambda: assets.fetch(ref)).codes() == ["asset.placed-file"]
+    assert caught(lambda: _fetch.fetch(ref)).codes() == ["asset.placed-file"]
     assert stored(rig, ref).read_bytes() == b"q" * len(PAYLOAD) and rig.requests == 0
 
 
@@ -292,7 +292,7 @@ def test_a_file_that_appears_while_the_download_runs_is_not_overwritten(rig: Rig
         return arrived
 
     monkeypatch.setattr(_fetch, "_download", person_copies_meanwhile)
-    assert caught(lambda: assets.fetch(ref)).codes() == ["asset.placed-file"]
+    assert caught(lambda: _fetch.fetch(ref)).codes() == ["asset.placed-file"]
     assert stored(rig, ref).read_bytes() == b"half a copy"
 
 
@@ -309,11 +309,11 @@ def test_the_directory_is_one(rig: Rig, monkeypatch: pytest.MonkeyPatch, tmp_pat
     ref = reference(PAYLOAD, rig.server.url("/blob"))
     (default / "assets").mkdir(parents=True)
     (default / "assets" / ref.sha256).write_bytes(PAYLOAD)
-    assert not assets.is_cached(ref) and assets.cache_dir() == rig.cache
+    assert not _cache.is_cached(ref) and _cache.cache_dir() == rig.cache
     rig.cache.mkdir()
     stored(rig, ref).write_bytes(PAYLOAD)
     monkeypatch.setenv("MIME_OFFLINE", "1")
-    assert assets.fetch(ref) == stored(rig, ref) and rig.requests == 0
+    assert _fetch.fetch(ref) == stored(rig, ref) and rig.requests == 0
 
 
 # --- F4: the loopback-only http rule ---------------------------------------------------------------------------------
@@ -364,14 +364,14 @@ ACCEPTED_LOCATIONS = [
 
 @pytest.mark.parametrize("location", REFUSED_LOCATIONS)
 def test_a_location_the_two_parsers_could_read_differently_is_refused(location: str):
-    assert assets.location_problem(location) is not None, location
+    assert _reference.location_problem(location) is not None, location
     with pytest.raises(BuildRefused, match="asset.reference"):
         reference(PAYLOAD, location)
 
 
 @pytest.mark.parametrize("location", ACCEPTED_LOCATIONS)
 def test_the_loopback_and_https_forms_are_accepted(location: str):
-    assert assets.location_problem(location) is None, location
+    assert _reference.location_problem(location) is None, location
 
 
 def old_rule(location: str) -> str | None:
@@ -397,7 +397,7 @@ def the_review_string_is_never_contacted(rig: Rig) -> None:
         for field, value in (("name", ref.name), ("sha256", ref.sha256), ("size", ref.size), ("licence", ref.licence),
                              ("locations", (location,))):
             object.__setattr__(built_around, field, value)
-        refused = caught(lambda: assets.fetch(built_around))
+        refused = caught(lambda: _fetch.fetch(built_around))
         assert refused.codes() == ["asset.unreachable"] and "not used" in str(refused)
         assert other.requests == [] and rig.requests == 0, (other.requests, rig.requests)
     finally:
@@ -406,7 +406,7 @@ def the_review_string_is_never_contacted(rig: Rig) -> None:
 
 def the_old_rule_accepted_the_review_string() -> None:
     assert old_rule(REVIEW_STRING.format(port=8000)) is None
-    assert assets.location_problem(REVIEW_STRING.format(port=8000)) is not None
+    assert _reference.location_problem(REVIEW_STRING.format(port=8000)) is not None
 
 
 @contextmanager
@@ -441,13 +441,13 @@ def test_without_the_check_a_location_the_parsers_read_apart_does_reach_the_othe
     try:
         built_around = object.__new__(assets.AssetRef)
         location = f"http://127.0.0.%32:{other.server_address[1]}/blob"
-        assert assets.location_problem(location) is not None
+        assert _reference.location_problem(location) is not None
         for field, value in (("name", "blob"), ("sha256", hashlib.sha256(PAYLOAD).hexdigest()), ("size", len(PAYLOAD)),
                              ("licence", "CC0-1.0"), ("locations", (location,))):
             object.__setattr__(built_around, field, value)
         with the_check_before_contact_removed():
             with pytest.raises(BuildRefused):
-                assets.fetch(built_around)
+                _fetch.fetch(built_around)
         assert other.requests and rig.requests == 0, other.requests
     finally:
         other.close()
@@ -459,24 +459,24 @@ def test_without_the_check_a_location_the_parsers_read_apart_does_reach_the_othe
 @pytest.mark.parametrize("value", ["1", "true", "TRUE", "Yes", "yes", "on", "ON", " on "])
 def test_the_usual_true_spellings_close_the_network(monkeypatch: pytest.MonkeyPatch, value: str):
     monkeypatch.setenv("MIME_OFFLINE", value)
-    assert assets.offline()
+    assert _cache.offline()
 
 
 @pytest.mark.parametrize("value", ["", "0", "false", "False", "no", "off", "OFF"])
 def test_the_usual_false_spellings_and_unset_leave_it_open(monkeypatch: pytest.MonkeyPatch, value: str):
     monkeypatch.setenv("MIME_OFFLINE", value)
-    assert not assets.offline()
+    assert not _cache.offline()
     monkeypatch.delenv("MIME_OFFLINE")
-    assert not assets.offline()
+    assert not _cache.offline()
 
 
 @pytest.mark.parametrize("value", ["enabled", "y", "2", "t", "o n", "truee", "-1"])
 def test_an_unrecognised_value_is_refused_and_is_not_online(rig: Rig, monkeypatch: pytest.MonkeyPatch, value: str):
     monkeypatch.setenv("MIME_OFFLINE", value)
-    assert caught(assets.offline).codes() == ["asset.offline-setting"]
+    assert caught(_cache.offline).codes() == ["asset.offline-setting"]
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))
-    assert caught(lambda: assets.fetch(ref)).codes() == ["asset.offline-setting"]
+    assert caught(lambda: _fetch.fetch(ref)).codes() == ["asset.offline-setting"]
     assert rig.requests == 0 and not stored(rig, ref).exists()
 
 
@@ -486,7 +486,7 @@ def offline_spellings_never_reach_the_network(rig: Rig) -> None:
     for value, code in (("on", "asset.offline"), ("ON", "asset.offline"), ("enabled", "asset.offline-setting")):
         with pytest.MonkeyPatch.context() as patch:
             patch.setenv("MIME_OFFLINE", value)
-            assert caught(lambda: assets.fetch(ref)).codes() == [code]
+            assert caught(lambda: _fetch.fetch(ref)).codes() == [code]
     assert rig.requests == 0 and not stored(rig, ref).exists()
 
 
@@ -515,7 +515,7 @@ def served_by_redirect(rig: Rig) -> assets.AssetRef:
 
 def the_stream_check_refuses_the_redirected_body(rig: Rig) -> None:
     ref = served_by_redirect(rig)
-    refusal = caught(lambda: assets.fetch(ref))
+    refusal = caught(lambda: _fetch.fetch(ref))
     assert refusal.codes() == ["asset.hash-mismatch"]
     assert "stored other bytes" not in str(refusal) and "does not match" not in str(refusal)
     assert "other bytes than the reference names" in str(refusal), "the stream's own hash did not refuse it"
@@ -526,7 +526,7 @@ def the_second_layer_refuses_when_the_stream_is_not_hashed(rig: Rig) -> None:
     ref = served_by_redirect(rig)
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(_fetch, "_download", download_without_the_hash)
-        refusal = caught(lambda: assets.fetch(ref))
+        refusal = caught(lambda: _fetch.fetch(ref))
     assert refusal.codes() == ["asset.hash-mismatch"]
     assert "stored other bytes than the reference names" in str(refusal), "the re-hash did not refuse it"
     assert not stored(rig, ref).exists() and not list(rig.cache.glob("*.incoming-*"))
@@ -544,7 +544,7 @@ def the_stream_is_held_to_the_references_hash(rig: Rig) -> None:
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(_fetch, "_transfer", spy)
-        assets.fetch(ref)
+        _fetch.fetch(ref)
     assert checked == [True], checked
 
 

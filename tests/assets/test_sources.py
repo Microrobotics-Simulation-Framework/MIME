@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 from mime import assets
-from mime.assets import _fetch, _sources
+from mime.assets import _fetch, _known, _sources
 from mime.build import BuildRefused
 from mime.cli import main
 from mime.terms import CustomLicence
@@ -65,14 +65,14 @@ def test_an_installed_packages_records_arrive_through_its_entry_point_beside_mim
     sources = {each.source for held in _sources.shared().records.values() for each in held}
     assert {"mime", "labx"} <= sources
     assert assets.reference("labx.marker.usda").locations == ("package:labx/marker.usda",)
-    assert "unit_tube_R0.997" in assets.known()
+    assert "unit_tube_R0.997" in _known.known()
 
 
 def test_the_pin_wins_and_the_build_report_is_told(cache):
     old, new = ref_of(PAYLOAD, "https://example.org/old"), ref_of(PAYLOAD + b"v2", "https://example.org/new")
     with a_second_source(new):
         assert assets.reference("lab_table").sha256 == new.sha256
-        with assets.pinned([old]) as notes:
+        with _sources.pinned([old]) as notes:
             assert assets.reference("lab_table").sha256 == old.sha256
         assert len(notes) == 1 and "keeps its pin" in notes[0] and new.sha256 in notes[0] and "labz" in notes[0]
 
@@ -83,8 +83,8 @@ def test_two_shared_sources_that_disagree_with_no_pin_are_refused_and_a_pin_sett
         with pytest.raises(BuildRefused) as refused:
             assets.reference("lab_table")
         assert refused.value.codes() == ["asset.conflict"] and "laba" in str(refused.value)
-        assert "lab_table" not in assets.known()
-        with assets.pinned([two]):
+        assert "lab_table" not in _known.known()
+        with _sources.pinned([two]):
             assert assets.reference("lab_table").sha256 == two.sha256
 
 
@@ -110,13 +110,13 @@ def test_the_same_bytes_under_different_terms_in_two_sources_are_refused_whichev
     open_, closed = ref_of(PAYLOAD, "https://a.example.org/t"), closed_of(PAYLOAD, "https://z.example.org/t")
     first, second = (closed, open_) if closed_first else (open_, closed)
     with a_second_source(first, name="laba"), a_second_source(second, name="labb"):
-        assert "lab_table" not in assets.known() and "lab_table" in assets.conflicts()
+        assert "lab_table" not in _known.known() and "lab_table" in _sources.conflicts()
         with pytest.raises(BuildRefused) as refused:
             assets.reference("lab_table")
         text = str(refused.value)
         assert refused.value.codes() == ["asset.conflict"] and "the same file under different terms" in text
         assert "LicenseRef-Closed" in text and "CC0-1.0" in text
-        with assets.pinned([closed]) as notes:
+        with _sources.pinned([closed]) as notes:
             held = assets.reference("lab_table")
         assert held.tier == "referenced" and held.licence == CLOSED_LICENCE.id, "the pin settles it"
         assert any("other terms" in note for note in notes)
@@ -150,7 +150,7 @@ def pins_ignored() -> Iterator[None]:
 
 def pin_is_kept() -> None:
     old, new = ref_of(PAYLOAD, "https://example.org/old"), ref_of(PAYLOAD + b"v2", "https://example.org/new")
-    with a_second_source(new), assets.pinned([old]):
+    with a_second_source(new), _sources.pinned([old]):
         assert assets.reference("lab_table").sha256 == old.sha256
 
 
@@ -177,7 +177,7 @@ def test_the_locations_file_is_tried_before_the_records_own_by_sha256_name_and_m
         (tmp_path / "locations.toml").write_text(f'[assets]\n"{ref.sha256}" = ["{lab.url("/mirror/t.npz")}"]\n',
                                                  encoding="utf-8")
         assert _fetch.tried_locations(ref) == (lab.url("/mirror/t.npz"), upstream.url("/t.npz"))
-        assets.fetch(ref)
+        _fetch.fetch(ref)
         assert len(lab.seen) == 1 and upstream.seen == []
     mirror = tmp_path / "share"
     mirror.mkdir()
@@ -185,7 +185,7 @@ def test_the_locations_file_is_tried_before_the_records_own_by_sha256_name_and_m
     (tmp_path / "locations.toml").write_text(f'mirrors = ["{mirror.as_uri()}/"]\n', encoding="utf-8")
     other = replace(ref_of(PAYLOAD, "https://example.org/never"), name="lab_table")
     assert _fetch.tried_locations(other)[0] == mirror.as_uri() + "/"
-    assets.fetch(other, report=None)  # the cached copy, or the mirror: never example.org
+    _fetch.fetch(other, report=None)  # the cached copy, or the mirror: never example.org
 
 
 @pytest.mark.parametrize("text", ['mirrors = "file:///x/"', 'mirrors = ["ftp://example.org/"]', "colour = 1",
@@ -215,7 +215,7 @@ def lab_first(tmp_path: Path) -> None:
             ref = ref_of(PAYLOAD, upstream.url("/t"))
             (tmp_path / "locations.toml").write_text(f'mirrors = []\n[assets]\nlab_table = ["{lab.url("/t")}"]\n',
                                                      encoding="utf-8")
-            assets.fetch(ref)
+            _fetch.fetch(ref)
             assert upstream.seen == [], "the record's own location was asked before the lab's"
 
 

@@ -47,7 +47,9 @@ from typing_extensions import ReadOnly, TypedDict
 
 from mime._manifest_file import MANIFEST_FILE, OLD_FILE
 from mime._terminal import plain
-from mime.assets import folder_assets, known_bytes, size_text
+from mime.assets._audit import known_bytes
+from mime.assets._cache import size_text
+from mime.assets._lock import folder_assets
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials._store import held_tokens
 from mime.credentials import Token
@@ -470,7 +472,7 @@ def shipped_asset_problems(lock: Lock) -> list[Refusal]:
     the lock states otherwise than MIME ships it: the lock is outside the hashed record, so the licence a bundle's
     manifest repeats is re-derived from its source where MIME knows it. An asset that is neither MIME's nor a referenced
     file's (``referenced_members``) has no source MIME knows, and is not judged here."""
-    from mime.assets import known
+    from mime.assets._known import known
 
     shipped = {ref.sha256: ref for ref in known().values()}
     found: list[Refusal] = []

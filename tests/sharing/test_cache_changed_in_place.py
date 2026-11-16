@@ -223,9 +223,9 @@ def test_control_an_unchanged_file_with_no_caller_checksum_is_served_with_no_has
     payload = os.urandom(5000)
     rig.server.files["/t/blob.bin"] = payload
     ref = reference(payload, rig.server.url("/t/blob.bin"))
-    assets.fetch(ref)
+    _fetch.fetch(ref)
     requests, reads = rig.requests, counting_digests(monkeypatch)
-    assert assets.locate(ref) == rig.cache / ref.sha256
+    assert _cache.locate(ref) == rig.cache / ref.sha256
     assert rig.requests == requests and reads == []
 
 
@@ -235,29 +235,29 @@ def test_control_a_flipped_file_with_no_caller_checksum_is_served_as_the_entry_s
     payload = os.urandom(5000)
     rig.server.files["/t/blob.bin"] = payload
     ref = reference(payload, rig.server.url("/t/blob.bin"))
-    stored = assets.fetch(ref)
+    stored = _fetch.fetch(ref)
     flip_in_place(stored)
-    assert assets.locate(ref) == stored, "served: the shortcut does not guard the bytes"
+    assert _cache.locate(ref) == stored, "served: the shortcut does not guard the bytes"
     digits = hashlib.md5(payload).hexdigest()
     with pytest.raises(BuildRefused) as refused:
-        assets.locate(ref, checksum=f"md5:{digits}")
+        _cache.locate(ref, checksum=f"md5:{digits}")
     assert refused.value.codes() == ["asset.missing"]
     assert assets.check(ref) == "corrupt"
-    assets.fetch(ref)
-    assert assets.locate(ref, checksum=f"md5:{digits}") == stored and stored.read_bytes() == payload
+    _fetch.fetch(ref)
+    assert _cache.locate(ref, checksum=f"md5:{digits}") == stored and stored.read_bytes() == payload
 
 
 def test_control_a_checksum_of_an_algorithm_not_here_is_a_problem_never_a_pass(rig: Rig):
     payload = os.urandom(2000)
     rig.server.files["/t/blob.bin"] = payload
     ref = reference(payload, rig.server.url("/t/blob.bin"))
-    assets.fetch(ref)
+    _fetch.fetch(ref)
     with pytest.raises(BuildRefused):
-        assets.locate(ref, checksum="nosuchalgorithm:00")
+        _cache.locate(ref, checksum="nosuchalgorithm:00")
     with pytest.raises(BuildRefused):
-        assets.locate(ref, checksum="md5:" + "0" * 32)
+        _cache.locate(ref, checksum="md5:" + "0" * 32)
     with pytest.raises(BuildRefused):
-        assets.locate(ref, checksum="shake_128:" + "0" * 32)
+        _cache.locate(ref, checksum="shake_128:" + "0" * 32)
 
 
 def test_control_with_the_digest_comparison_planted_out_the_flipped_bundle_is_served(

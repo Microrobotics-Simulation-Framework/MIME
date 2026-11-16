@@ -23,7 +23,7 @@ from typing import Any, ClassVar
 import pytest
 
 from mime import assets
-from mime.assets import AssetRef
+from mime.assets import AssetRef, _cache, _gates
 from mime.build import BuildRefused, InternalError, Refusal, RefusalClass
 from mime.build._stage import stage_spec
 from mime import Experiment, Scene, Structure, cli
@@ -114,13 +114,13 @@ def nobody_to_ask(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MIME_OFFLINE", "1")
     monkeypatch.setenv("MIME_LICENCE_ACCEPTANCES", str(tmp_path / "licences.json"))
     (cache / GATED.sha256).write_bytes(DATA)
-    with assets.asking(None):
+    with _gates.asking(None):
         assert assets.check(GATED) == "ok"
         yield
 
 
 def locate_the_gated_file() -> None:
-    assets.locate(GATED)
+    _cache.locate(GATED)
 
 
 INTERNAL = Refusal("lag.unplanned", RefusalClass.INTERNAL, "a MIME check failed", "report it to MIME")

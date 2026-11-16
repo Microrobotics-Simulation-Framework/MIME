@@ -172,6 +172,15 @@ UNDECIDED = {
     "mime.validity._pending.Stamp": "results.Layout.stamp: plumbing of the results package, which waits for its own reduction",
     "mime.materials._values.ResolvedValue": "build.EntryPlan.values and ResolvedRegistration.values: plumbing of the build package, which waits for its reduction",
     "mime.materials._records.LoadedRecord": "saved.SavedRecord.records: plumbing of the saved package, which waits for its own reduction",
+    # mime.assets (DUPLICATES PR B with SURFACE-REDUCTION's assets step): types of names the triage keeps or defers.
+    "mime.assets._acceptances.Licence": "Acceptance.licence: Acceptance is kept by the triage while no public call hands one out; decided with it",
+    "mime.assets._reference.Kind": "AssetRef.kind: a record's vocabulary, decided with AssetRef's fields (deferred to DUPLICATES)",
+    "mime.assets._cache.Cached": "check's return: decided with check (deferred to DUPLICATES, the check family)",
+    "mime.assets._manifest.ManifestFile": "Manifest.files: decided with Manifest (deferred to DUPLICATES, the Manifest family)",
+    "mime.assets._derivation.DerivationInput": "DerivationRecord.inputs: decided with DerivationRecord, kept on changelog evidence alone",
+    "mime.assets._derivation.Json": "DerivationRecord's and CheckResult's JSON values: decided with DerivationRecord",
+    "mime.assets._fetch.Fetcher": "retrieve(fetcher): decided with retrieve, kept on changelog evidence alone",
+    "mime.assets._gates.Approval": "approved's return: approved is held public (the README and mime modal's script teach it); decided with it",
 }
 
 #: The paradigm packages' own, kept apart from the tooling list above. Each is judged by one line: would a user write
@@ -260,3 +269,21 @@ def test_the_walk_reads_the_paradigm_packages_and_counts_a_public_submodule_as_a
     found = private_types(exported(), {"planted": planted_private})
     assert found and any(f"names {package}." in found[0] for package in GUARDED), found
     assert not private_types(exported(), {"planted": planted_exported_by_a_submodule})
+
+
+def test_the_walk_reads_mime_assets_and_finds_a_private_type_of_it():
+    """The control for ``mime.assets`` (DUPLICATES PR B): a function returning its internal ``Plan`` (a download's plan,
+    exported by nothing) is found under the guarded packages, and one returning ``AssetRef`` is not."""
+    from mime.assets import AssetRef
+    from mime.assets._gates import Plan
+
+    def planted_private() -> Plan:
+        raise NotImplementedError
+
+    def planted_public() -> AssetRef:
+        raise NotImplementedError
+
+    found = private_types(exported(), {"planted": planted_private})
+    assert found and "names mime.assets._gates.Plan" in found[0] and any(
+        "names mime.assets." in found[0] for package in GUARDED if package == "mime.assets"), found
+    assert not private_types(exported(), {"planted": planted_public})

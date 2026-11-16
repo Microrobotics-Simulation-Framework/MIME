@@ -60,7 +60,7 @@ class Asset:
             object.__setattr__(self, "name", self.path.name)
 
     @property
-    def origin(self) -> Origin:
+    def origin(self) -> Literal["named", "file", "record"]:
         """``named`` (a record's name), ``file`` (a local file) or ``record`` (a whole record)."""
         if self.record is not None:
             return "record"
