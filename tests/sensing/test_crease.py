@@ -369,6 +369,34 @@ def test_g18_drawn_views_are_within_the_lines(dtype, group, within, roll, du, dv
     assert not failures(found), failures(found)
 
 
+#: The drawn views' tails, pinned after the draws (the seventh probe's 200 fresh views a dtype, run 43814057533;
+#: ``predictions_camera_pr5b.json``, ``outcomes.g18_drawn``): in each dtype the two views nearest the pixel line, then
+#: the two nearest the motion line, as (turn, roll, offset in pixels). The gate's three controls fail on each, every
+#: run, but where stated (``outcomes.tails``).
+TAILS: dict[str, tuple[tuple[float, float, tuple[float, float]], ...]] = {
+    "float32": (
+        (0.08318973443307898, 7.789569005130011, (0.6963921755975593, 0.09691402065594068)),
+        (4.167819566112463, 50.84929041749485, (0.343092926225011, 0.89152017722661)),
+        (2.0018660999306137, 87.20270246113799, (0.8755239964813695, 0.1304005230546309)),
+        (1.691199284926428, 52.80791933064757, (0.2071278397381736, 0.24822654209717077)),
+    ),
+    "float64": (
+        (0.08969212078949074, 40.233265026838254, (0.2574786643014014, 0.954961322547809)),
+        (3.638260898078464, 50.21308799258834, (0.765496009300265, 0.12864774877105367)),
+        (1.38492085197503, 82.77012271551312, (0.8824135620510877, 0.5311001664347395)),
+        (1.9035429443756058, 29.755977849879795, (0.27483079357254747, 0.47060691278067646)),
+    ),
+}
+
+
+@pytest.mark.parametrize("tail", range(4))
+def test_g18_the_drawn_tails_are_within_the_lines(dtype, tail, monkeypatch):
+    turn, roll, offset = TAILS[dtype][tail]
+    found = judged_view(turn, roll, offset, dtype, monkeypatch)
+    print(f"\ntail {tail} {dtype} (turn {turn}, roll {roll}, offset {offset}): {found}")
+    assert not failures(found), failures(found)
+
+
 def test_g18_route_one_and_route_two_each_hold_to_the_exact_image(dtype):
     """The swap: at one view the closed form (its gate's line, ``test_corners.LINE``) and the sampled route (this gate's)
     each within its line of the same exact image, and their motions within the sum of their motion's distances."""
