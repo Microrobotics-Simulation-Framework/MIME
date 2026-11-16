@@ -50,5 +50,10 @@
   "written": "2026-11-16, after CAMERA_PLANT=held-least ran (its outcome below), before CAMERA_PLANT=held-caps ran",
   "why": "held-least left G17's derivative bit-identical at all four views: the span's least's place reaches the image only where the span's line is the outline (a cap seen edge-on, turns near 0), and there the place's derivative in the body's motion is the axis's tilt in depth times the motion, about sin(turn): zero at turn 0, under 0.07 at turn 4; where the caps open, their outlines hide the span's. It cannot discriminate on the cylinder, so it is no control of this test",
   "g17_derivative_control": "CAMERA_PLANT=held-caps (the crease measure's pieces held: values without derivative) fails G17's derivative at turns 4 and 15, where the caps' outlines are the crease pixels' outline, by many times its line; at turns 0 and 2 (caps narrower than two sub-pixels) its outcome is stated per view"
+ },
+ "fourth_predictions": {
+  "written": "2026-11-16, after the first held-caps ran (its outcome below), before the second ran",
+  "why": "the first held-caps (stop_gradient on the measure's pieces) passed G17's derivative at every view (0.0029 to 0.98 of the line; the difference's own error alone 0.98 to 264): it held the caps' lines across the pixel too (their slopes along the ray table are the pieces' derivatives), so it changed the image, and the jvp and the central difference of that image agreed. It cannot discriminate either",
+  "g17_derivative_control": "CAMERA_PLANT=held-caps, now the measure read from a held pinhole (the caps' values and lines kept, only their derivative in the body's place gone): fails G17's derivative at turns 4 and 15 by many times its line; turns 0 and 2 stated per view"
  }
 }

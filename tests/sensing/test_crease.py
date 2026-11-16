@@ -28,7 +28,8 @@ the march's branches and their regions, each corner cell the exact share of that
   central difference of the same renderer, judged on the pixels about the caps' rims and on the rest apart; the line is
   the central difference's own error at its last step, stated by the step sweep (``derivative_line``), and the held
   march's own derivative error, camera PR 5a's committed band (``ENVELOPE_BAND``), never a round number of this file's.
-  **Control** (``CAMERA_PLANT=held-caps``): the crease measure's pieces held, their values with no derivative.""" 
+  **Control** (``CAMERA_PLANT=held-caps``): the crease measure read from a held pinhole, the caps' derivative in the
+  body's place gone."""
 
 from __future__ import annotations
 
@@ -241,15 +242,13 @@ def plant_scheme(monkeypatch) -> None:
 
         monkeypatch.setattr(Subject, "_place_sampled", unmeasured)
     if planted("held-caps"):
-        # The crease measure's pieces held: their values, with no derivative (the caps' outlines standing still in the
-        # jvp while the body moves).
+        # The crease measure read from a held pinhole: the caps' values and their lines across the pixel kept, their
+        # derivative in the body's place gone (the caps' outlines standing still in the jvp while the body moves).
         kind_cls = cylinder_kind()
         measured = kind_cls.crease_measure
 
         def held(self, parameters, o, d):
-            found = measured(self, parameters, o, d)
-            return CreaseMeasure(tuple(jax.lax.stop_gradient(piece) for piece in found.pieces), found.compose,
-                                 found.faces)
+            return measured(self, parameters, tuple(jax.lax.stop_gradient(c) for c in o), d)
 
         monkeypatch.setattr(kind_cls, "crease_measure", held)
 
@@ -381,8 +380,8 @@ def crease_mask(centre: np.ndarray, axis: np.ndarray) -> np.ndarray:
 def test_g17_the_creased_derivative_is_the_images(float64, turn, monkeypatch):
     """The jvp of the darkness's equivalent radius and centroid, on the pixels about the caps' rims and on the rest
     apart, in the body's x and z, against the central difference of the same renderer at the sweep's last step, within
-    ``derivative_line``. **Control** (``CAMERA_PLANT=held-caps``): the crease measure's pieces held, their values with no
-    derivative."""
+    ``derivative_line``. **Control** (``CAMERA_PLANT=held-caps``): the crease measure read from a held pinhole, the caps'
+    derivative in the body's place gone."""
     plant_scheme(monkeypatch)
     axis = axis_of(turn, 20.0)
     body = rod(axis)
