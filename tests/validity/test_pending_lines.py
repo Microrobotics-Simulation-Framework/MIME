@@ -15,7 +15,7 @@ from profile_cases import BARE_PENDING, settling_ball
 from mime.build import BuildRefused
 from mime.experiment import Experiment
 from mime.saved import DOCUMENT_FILE
-from mime.validity import PENDING_PYTHON, PENDING_YAML, also_line, document_fragment, pending_text, python_line
+from mime.validity._pending import PENDING_PYTHON, PENDING_YAML, also_line, document_fragment, pending_text, python_line
 
 #: The settling ball as a new user writes it, with a slot where each kind of item's line is pasted.
 SCRIPT = '''

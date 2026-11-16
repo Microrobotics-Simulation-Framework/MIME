@@ -96,15 +96,19 @@ def out_of_memory(error: BaseException) -> MimeError | None:
         where=place.text() if place is not None else None)])
 
 
+#: What a unit label's refusal tells a script to write, where the error states nothing of its own.
+LABEL_ACTION = ("write SI symbols with `N m`, `m/s`, `m/(s Pa)`, `kg m^2 s^-2` or 1; a prefixed unit (mm, kPa) is a "
+                "quantity, `mm(3.0)`, never a label")
+
+
 def unit_refusal(error: UnitError) -> Refusal:
     """The refusal a unit error holds: a unit label MIME cannot read (``units.label``), or a value given without its units,
     or in units of another dimension, where a call takes a quantity (``call.units``), with what to do as the error
     states it or, where it states none, the value written in its unit, and the script's line."""
     where = raised_at(error)
     if error.label:
-        return Refusal("units.label", RefusalClass.USER, str(error),
-                       "write SI symbols with `N m`, `m/s`, `m/(s Pa)`, `kg m^2 s^-2` or 1; a prefixed unit (mm, kPa) "
-                       "is a quantity, `mm(3.0)`, never a label", where=where)
+        label = Refusal("units.label", RefusalClass.USER, str(error), LABEL_ACTION, where=where)
+        return label if error.action is None else replace(label, action=error.action)
     held = Refusal(
         "call.units", RefusalClass.USER, first_lines(error, 2).removeprefix("UnitError: "),
         "write it as a quantity in its unit, from mime.units: `ms(2)`, `um(50)`, `mT(1.2)`",

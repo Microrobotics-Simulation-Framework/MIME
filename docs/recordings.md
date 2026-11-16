@@ -90,7 +90,7 @@ class GelBlock(Dynamics):
   holds the points each step (a point a vertex, metres; `None` for a surface that stands still while its fields
   change), and each field: its name, its unit, the node field that holds it (a value a vertex), the range a view colours it over (`None`: the
   recording's), and its reduction where the surface is decimated (`mean`, or `max` for a damage-like field, whose
-  front a mean would smear). `display="revolved"` or `"extruded"` marks a section shown as a surface; `on="<role>"`
+  front a mean would smear). `display="revolved"`, `"extruded"` or `"mirrored"` marks a section shown as a surface; `on="<role>"`
   draws a law's or an observation's surface below the thing its role binds. No remeshing: the triangles are the
   build's.
 - **The stage** holds the surface at rest below its thing's prim, a `UsdGeom.Mesh` of float32 points

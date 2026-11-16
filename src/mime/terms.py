@@ -505,9 +505,5 @@ def freest(verdicts: Sequence[Verdict]) -> Verdict:
     return min(verdicts, key=_rank)
 
 
-__all__ = ["CONDITIONAL", "CONDITION_LINE_LIMIT", "CUSTOM_PREFIX", "CUSTOM_STATUSES", "DERIVED_BY",
-           "DIFFERING_CONDITIONS_BY", "EVIDENCE_KINDS", "NON_COMMERCIAL", "NOTICE_TEXT_REQUIRED", "NO_ASSERTION", "NO_DERIVATIVES", "OPEN",
-           "ROLES", "SHARE_ALIKE", "CustomLicence", "Evidence", "EvidenceKind", "LicenceGiven", "Permission", "Role",
-           "Scope", "Status", "Terms", "Tier", "Verdict", "canonical", "derived_verdict", "expression_of", "freest",
-           "ids_of", "licence_problem", "licence_verdict", "packaging_version", "permission_problems",
-           "permission_verdict", "strictest", "unlisted_ids", "unlisted_words"]
+__all__ = ["CustomLicence", "Evidence", "EvidenceKind", "LicenceGiven", "Permission", "Role", "Scope", "Status", "Terms",
+           "Tier", "Verdict"]

@@ -29,7 +29,8 @@ from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._manifest import BUNDLE, MANIFEST_FILE, folder_kind, manifest_problems, read_toml
 from mime.push._sharing import LINES
-from mime.validity import Profile, profile_of
+from mime.validity import Profile
+from mime.validity._profiles import profile_of
 
 DEFECT, NEEDED, ASKED = "defect", "needed", "asked"
 FINDING, TO_DO, LISTED = "finding", "to do", "listed"

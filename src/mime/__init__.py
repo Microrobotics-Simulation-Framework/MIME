@@ -9,7 +9,7 @@ from mime import _import_guard  # noqa: E402
 _import_guard.guard()
 
 from mime import units  # noqa: E402
-from mime.errors import install as _install_errors  # noqa: E402
+from mime.errors._display import install as _install_errors  # noqa: E402
 from mime.experiment import Experiment  # noqa: E402
 from mime.study import Study  # noqa: E402
 from mime.scene import Scene, asset  # noqa: E402

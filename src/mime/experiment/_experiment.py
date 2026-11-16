@@ -63,7 +63,7 @@ from mime.build._maddening import (
     state_put_back,
     step_reads,
 )
-from mime.errors import public
+from mime.errors._boundary import public
 from mime.errors._frames import warn_at_script
 from mime.experiment._mermaid import Mermaid, mermaid_of
 from mime.experiment._redeclared import Taken, add as add_declaration, known_as, taken_of
@@ -129,7 +129,8 @@ from mime.things import (
     did_you_mean,
 )
 from mime.units import DIMENSIONLESS, TIME, Condition, Quantity, si
-from mime.validity import DEFAULT_PROFILE, Basis, Profile
+from mime.validity import Basis, Profile
+from mime.validity._profiles import DEFAULT_PROFILE
 from mime.vocabulary import JOINT_VELOCITIES
 
 if TYPE_CHECKING:
@@ -929,7 +930,7 @@ TOPOLOGY_FORMAT = "mime.topology/1"
 def report_summary(report: BuildReport, layout: Layout) -> dict[str, Any]:
     """:meth:`BuiltExperiment.report_summary` of ``report`` and the run layout's flags."""
     from mime.registry import DefaultKind
-    from mime.validity import basis_text
+    from mime.validity._bases import basis_text
 
     validity = [{"owner": owner, "kind": kind, "line": line}
                 for kind, held in (("declared", report.validity), ("computed", report.checked),

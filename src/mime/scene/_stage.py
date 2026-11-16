@@ -192,7 +192,7 @@ class MeshPrim:
     """A surface a node moves, as the stage holds it at rest: a mesh named ``name`` below its thing's prim, its points
     (``rest``, ``(V, 3)``, metres, the thing's frame) over fixed triangles (``faces``), the entry that declares it
     (``owner``), each field's name, units and declared range (``None``: the recording's), and how it is shown
-    (``display``: ``None``, ``revolved`` or ``extruded``, for a section shown as a surface alone)."""
+    (``display``: ``None``, ``revolved``, ``extruded`` or ``mirrored``, for a section shown as a surface alone)."""
 
     name: str
     rest: np.ndarray

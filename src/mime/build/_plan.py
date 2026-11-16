@@ -65,6 +65,20 @@ from mime.fields._solved import ExchangeFrame
 from mime.core.multibody import Inertial, MultibodyTree, Payload, RigidTransform
 from mime.core.multibody._tree import as_vector3, rotation_matrix
 from mime.core.multibody._urdf import ISSUES
+from mime.materials._read import OperatingCondition, ReadOutcome, operating_conditions
+from mime.materials._records import RECORDS, LoadedRecord, load_record, record_problems, record_store
+from mime.materials._resolver import PartPlan, Resolution, Resolver
+from mime.materials._values import (
+    PARTS,
+    Declared,
+    ResolvedValue,
+    ValuePath,
+    declaration_problems,
+    kind_of_path,
+    not_above_zero,
+    resolve_declared,
+    value_kind,
+)
 from mime.registry import (
     CapabilityRecord,
     ChainSegment,
@@ -159,7 +173,9 @@ from mime.things import (
 from mime.units import FREQUENCY, LENGTH, SAY_THE_ANGLE, TIME, Dimension, Magnitude, Quantity, UnitError, \
     rate_symbol, says_its_angle, si, unit_symbol
 from mime.registry._ranges import RangeChoice, planned_over, recording
-from mime.validity import DEFAULT_PROFILE, PENDING, Basis, is_pending, profile_of
+from mime.validity import Basis
+from mime.validity._bases import PENDING, is_pending
+from mime.validity._profiles import DEFAULT_PROFILE, profile_of
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_INERTIA, LINK_MOMENTUM, LINK_WRENCH, \
     RESOLVED_PARTNER, Capability, ReadKind, TargetKind
 
@@ -350,9 +366,9 @@ class MaterialsPlan:
     """The experiment's conditions, each record as read and pinned, every read the values used, each body's parts,
     and each medium's material by name, where it names a record."""
 
-    conditions: tuple[materials.OperatingCondition, ...] = ()
-    records: tuple[materials.LoadedRecord, ...] = ()
-    reads: tuple[materials.ReadOutcome, ...] = ()
+    conditions: tuple[OperatingCondition, ...] = ()
+    records: tuple[LoadedRecord, ...] = ()
+    reads: tuple[ReadOutcome, ...] = ()
     parts: tuple[PartLine, ...] = ()
     media: Mapping[str, str] = field(default_factory=dict[str, str])
 
@@ -406,7 +422,7 @@ class ResolvedRegistration:
     geometry: GeometryPlan | None = None
     #: The values the registering interaction reads, by label, as phase 1 resolves them (filled once they are, before
     #: any entry builds): what a dynamics holding the law builds it from (a porous region's permeability).
-    values: Mapping[str, materials.ResolvedValue] = field(default_factory=dict[str, "materials.ResolvedValue"])
+    values: Mapping[str, ResolvedValue] = field(default_factory=dict[str, "ResolvedValue"])
     #: Where the subject is a body: its hull (a resolved body's solid, which a flow holding it on its grid lifts).
     hull: Hull | None = None
 
@@ -452,7 +468,7 @@ class EntryPlan:
     initial: dict[str, Any] = field(default_factory=dict[str, Any])
     seeds: dict[str, int] = field(default_factory=dict[str, int])
     settings: dict[str, Magnitude] = field(default_factory=dict[str, Magnitude])
-    values: dict[str, materials.ResolvedValue] = field(default_factory=dict[str, materials.ResolvedValue])
+    values: dict[str, ResolvedValue] = field(default_factory=dict[str, ResolvedValue])
     confinements: list[ResolvedConfinement] = field(default_factory=list[ResolvedConfinement])
     command: ResolvedCommand | None = None
     regions: dict[str, Region] = field(default_factory=dict[str, Region])
@@ -712,7 +728,7 @@ class _Planner:
         self.drives: list[EntryPlan] = []
         self.geometries: dict[str, GeometryPlan] = {}
         self.fills: dict[str, str] = {}
-        self.values: dict[str, materials.Declared] = {}
+        self.values: dict[str, Declared] = {}
         #: The declared values refused as declared (a wrong unit, an unknown name): refused once, not again as undeclared.
         self.refused_values: set[str] = set()
         self.dt = 0.0
@@ -729,12 +745,12 @@ class _Planner:
         self.prims: dict[str, str] = {}
         self.bound: set[str] = set()
         self.magnets: list[ResolvedMagnet] = []
-        self.conditions: dict[str, materials.OperatingCondition] = {}
+        self.conditions: dict[str, OperatingCondition] = {}
         self.parts: dict[str, dict[str, PartLine]] = {}
         self.part_materials: dict[str, dict[str, materials.Record]] = {}
         self.materials: dict[str, materials.Record] = {}
-        self.records: dict[str, materials.LoadedRecord] = {}
-        self.resolver: materials.Resolver | None = None
+        self.records: dict[str, LoadedRecord] = {}
+        self.resolver: Resolver | None = None
         self.refused_problems: set[tuple[str, str, str]] = set()
         self.segments: dict[str, list[EntryPlan]] = {}
         self.apparatus_parts: dict[str, dict[str, ResolvedPart]] = {}
@@ -755,7 +771,7 @@ class _Planner:
         self.kicks: tuple[SpinnerKicks, ...] = ()
         self.models: dict[str, MultibodyTree] = {}
         #: The part values the mounted masses took, by path: a part's mass, or its density.
-        self.mass_values: dict[str, materials.ResolvedValue] = {}
+        self.mass_values: dict[str, ResolvedValue] = {}
         self.controller: EntryPlan | None = None
         self.mode: Mode | None = None
         self.latency = 0
@@ -790,7 +806,7 @@ class _Planner:
         """Refuse an entry's defect, at the entry's own line that raised ``error`` where it raised one. A refusal of
         the user's or the environment's class that MIME's own API raised inside the entry is that refusal, not the
         entry's defect (:func:`~mime.build._refusals.passed_through`)."""
-        from mime.errors import raised_at
+        from mime.errors._translate import raised_at
 
         passed = passed_through(error, cls, "planning") if error is not None else None
         if passed is not None:
@@ -1259,7 +1275,7 @@ class _Planner:
         if self.settings.gravity is CONVENTIONAL_GRAVITY:
             self.work.take_default(DefaultTaken("gravity", DefaultKind.CONVENTION, CONVENTIONAL_GRAVITY,
                                                 "standard gravity, along -up", "the experiment states no gravity"))
-        conditions, problems = materials.operating_conditions(self.settings.conditions)
+        conditions, problems = operating_conditions(self.settings.conditions)
         for code, message, action in problems:
             self.refuse(code, RefusalClass.USER, message, action)
         self.conditions = conditions
@@ -1831,7 +1847,7 @@ class _Planner:
                             f"{where}'s material is {material!r}, not a mime.materials.Record",
                             "name its record: Record(\"<name>\", packaged_record(...) or record_file(...))")
                 continue
-            for code, message, action in materials.record_problems(material):
+            for code, message, action in record_problems(material):
                 self.refuse(code, RefusalClass.USER, f"{where}: {message}", action)
             held = self.materials.get(material.name)
             if held is not None and held is not material:
@@ -1842,7 +1858,7 @@ class _Planner:
             self.materials[material.name] = material
         files: dict[str, str] = {}
         for material in self.materials.values():
-            loaded, problems = materials.load_record(material)
+            loaded, problems = load_record(material)
             for code, message, action in problems:
                 self.refuse(code, RefusalClass.USER, message, action)
             if loaded is None:
@@ -1850,24 +1866,24 @@ class _Planner:
             if files.get(loaded.file, loaded.sha256) != loaded.sha256:
                 self.refuse("material.file-name", RefusalClass.USER,
                             f"two different record files are both named {loaded.file}, and the saved form writes "
-                            f"each as {materials.RECORDS}/{loaded.file}", "give the record files distinct names, "
+                            f"each as {RECORDS}/{loaded.file}", "give the record files distinct names, "
                                                                           "Record(..., packaged_record(\"<file>\")) "
                                                                           "for each")
                 continue
             files[loaded.file] = loaded.sha256
             self.records[material.name] = loaded
-        store = materials.record_store(self.records.values()) if self.records else None
+        store = record_store(self.records.values()) if self.records else None
         media = {name: thing.material for name, thing in self.things.items()
                  if isinstance(thing, Medium) and isinstance(cast(object, thing.material), materials.Record)
                  and thing.material is not None}
         directions = {(m.body, m.key): (m.in_body, m.source) for m in self.magnets}
-        bodies = {name: {key: materials.PartPlan(
+        bodies = {name: {key: PartPlan(
             PartMass(key, line.registered.cls.label(), line.volume, line.centre, line.inertia_per_mass, line.inside,
                      line.reach),
             self.part_materials.get(name, {}).get(key), *directions.get((name, key), (None, "")))
             for key, line in planned.items()} for name, planned in self.parts.items()}
         kinds = {name: thing.kind for name, thing in self.things.items()}
-        self.resolver = materials.Resolver(kinds, self.values, self.directed(), self.conditions, media, bodies,
+        self.resolver = Resolver(kinds, self.values, self.directed(), self.conditions, media, bodies,
                                            self.records, store, self.work.judge, self.apparatus_materials,
                                            refused_parts=frozenset(self.refused_parts))
 
@@ -2353,7 +2369,7 @@ class _Planner:
         """An apparatus part's mass: declared, or its density (its material's or declared) times its volume; ``None``
         where it has neither, and so changes nothing, or where its material's record cannot give it (refused with the
         record's own reasons)."""
-        path = f"{part.apparatus}.{materials.PARTS}.{part.name}"
+        path = f"{part.apparatus}.{PARTS}.{part.name}"
         declared = self.resolution(f"{path}.mass")
         if declared.value is not None and isinstance(declared.value.value, float):
             self.mass_values[declared.value.path] = declared.value
@@ -3908,8 +3924,8 @@ class _Planner:
                 continue
             basis = declaration.reason if declaration.reason is not None else carried if carried is not None \
                 else PENDING
-            held = materials.Declared(path, declaration.value, cast(Basis, basis))
-            problems = materials.declaration_problems(held, kinds, self.directed(), parts)
+            held = Declared(path, declaration.value, cast(Basis, basis))
+            problems = declaration_problems(held, kinds, self.directed(), parts)
             for code, message, action in problems:
                 self.refuse(code, RefusalClass.USER, message, action)
             if problems:
@@ -3921,9 +3937,9 @@ class _Planner:
                                   declared_item(path, declaration.value, "declared in the experiment with its reason "
                                                                          "pending"))
             self.values[path] = held
-            kind = materials.kind_of_path(materials.ValuePath.parse(path), kinds)
-            resolved = materials.resolve_declared(held, kind) if kind is not None else None
-            below = materials.not_above_zero(path, kind, resolved.value, resolved.source) \
+            kind = kind_of_path(ValuePath.parse(path), kinds)
+            resolved = resolve_declared(held, kind) if kind is not None else None
+            below = not_above_zero(path, kind, resolved.value, resolved.source) \
                 if kind is not None and resolved is not None else None
             if below is not None:
                 self.refuse_problems([below])
@@ -3962,7 +3978,7 @@ class _Planner:
                 kinds = {name: thing.kind for name, thing in self.things.items()}
                 parts = {name: frozenset(thing.parts) for name, thing in self.things.items()
                          if isinstance(thing, (Body, Apparatus))}
-                unknown = materials.declaration_problems(materials.Declared(path, held.low, PENDING), kinds,
+                unknown = declaration_problems(Declared(path, held.low, PENDING), kinds,
                                                          self.directed(), parts)
                 if unknown:
                     self.refuse("range.path", RefusalClass.USER, f"the range of {path}: {unknown[0][1]}",
@@ -4008,9 +4024,9 @@ class _Planner:
                     f"instead")
         return True
 
-    def resolution(self, path: str) -> materials.Resolution:
+    def resolution(self, path: str) -> Resolution:
         if self.resolver is None:
-            return materials.Resolution(None, blocked=True)
+            return Resolution(None, blocked=True)
         return self.resolver.value(path)
 
     def declared_of(self, thing: str) -> dict[str, Magnitude]:
@@ -4041,7 +4057,7 @@ class _Planner:
         if held is None:
             return
         cls = plan.registered.cls
-        if materials.value_kind(held.kind, name) is None:
+        if value_kind(held.kind, name) is None:
             self.defect(cls, f"it reads the value {name!r} of {held.kind.value} {thing!r}, which a {held.kind.value} "
                              f"does not have")
             return
@@ -4064,7 +4080,7 @@ class _Planner:
                         f"declare it with its reason: exp.declare({path!r}, {quantity}, reason=\"...\")")
             return
         judged = path in self.values and found.value.value != 0.0  # at its declaration, but for a zero a reader judges
-        below = None if judged else materials.not_above_zero(
+        below = None if judged else not_above_zero(
             path, materials.VALUE_KINDS[held.kind][name], found.value.value, found.value.source,
             str(plan.registered.cls.name) if inertial else None)
         if below is not None:
@@ -4387,7 +4403,7 @@ class _Planner:
         """Every value an entry reads, with its readers; every value declared in the experiment that none reads; and
         every value of a part the part resolver took, read by that body's resolver."""
         readers: dict[str, list[str]] = {}
-        resolved: dict[str, materials.ResolvedValue] = {}
+        resolved: dict[str, ResolvedValue] = {}
         for plan in self.declared:
             for value in plan.values.values():
                 readers.setdefault(value.path, []).append(plan.owner)
@@ -4420,7 +4436,7 @@ class _Planner:
     def materials_plan(self, values: Sequence[ValueLine]) -> MaterialsPlan:
         """The conditions, the records read, the reads the listed values rest on, and every body's parts."""
         used = {value.path for value in values}
-        reads: dict[tuple[str, str], materials.ReadOutcome] = {}
+        reads: dict[tuple[str, str], ReadOutcome] = {}
         if self.resolver is not None:
             for path in sorted(used):
                 for outcome in self.resolver.value(path).reads:

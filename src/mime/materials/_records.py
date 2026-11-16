@@ -22,7 +22,8 @@ import materica
 
 from mime.data import AssetError, PACKAGED, asset, asset_bytes
 from mime.units import Quantity
-from mime.validity import Basis, basis_problem
+from mime.validity import Basis
+from mime.validity._bases import basis_problem
 
 if TYPE_CHECKING:
     from materica.core.record import RecordStore

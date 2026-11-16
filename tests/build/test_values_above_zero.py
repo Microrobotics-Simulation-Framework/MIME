@@ -74,7 +74,8 @@ def test_control_a_positive_mass_builds():
 def test_a_mass_of_zero_is_a_value_where_no_dynamics_reads_it_and_below_zero_is_never():
     """The rule is read from the kind and from who reads the value, not listed: the same zero is refused for a reader
     that divides by it and taken for one that does not. The control for each half is the other."""
-    from mime.materials import VALUE_KINDS, ZeroIs, not_above_zero
+    from mime.materials import VALUE_KINDS
+    from mime.materials._values import ZeroIs, not_above_zero
 
     kind = VALUE_KINDS[ThingKind.BODY]["mass"]
     assert kind.above_zero is not None and kind.above_zero.zero is ZeroIs.UNREAD

@@ -13,7 +13,7 @@ from numpy.typing import NDArray
 
 from mime.registry import OutputKind, Reduction
 from mime.units import Dimension, unit_symbol
-from mime.validity import Stamp
+from mime.validity._pending import Stamp
 
 
 @dataclass(frozen=True)

@@ -36,18 +36,11 @@ from mime.build._refusals import Explained, page_of, plain_possessive
 from mime.dynamics import RigidInertial
 from mime.gradients import GradientStatus
 from mime.registry import ControlLaw, Controller, GradientRecord, Signal, register_controller
-from mime.errors import (
-    DIRECTORY_VARIABLE,
-    KEPT,
-    TRACEBACK_VARIABLE,
-    crossed,
-    is_library,
-    public,
-    script_traceback,
-    short_text,
-    translated,
-    write_traceback,
-)
+from mime.errors import KEPT, write_traceback
+from mime.errors._boundary import crossed, public
+from mime.errors._display import DIRECTORY_VARIABLE, TRACEBACK_VARIABLE, short_text
+from mime.errors._frames import is_library, script_traceback
+from mime.errors._translate import translated
 from mime.errors import _display
 from mime.errors._translate import first_lines, out_of_memory, traced_value_error
 from mime.observations import SwimSpeed

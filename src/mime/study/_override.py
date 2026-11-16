@@ -32,7 +32,7 @@ from mime.study._axes import (
     value_text,
 )
 from mime.study._point import Point, build_point, checked_digests, same_run
-from mime.units import Quantity, UnitError, parse_unit, parse_value_unit, si, unit_symbol
+from mime.units import Quantity, UnitError, parse_unit, parse_value_unit, si, unit_symbol, unit_written
 
 if TYPE_CHECKING:
     from mime.experiment import BuiltExperiment
@@ -248,11 +248,11 @@ def refuse_unwritable(document: Any, overrides: Sequence[tuple[str, object]]) ->
     (``value.units``), each refused once with the refusals the build would give it. What only the build can judge (a
     value a law reads, a range) is left to it. A value's direction a magnet gives (``magnetic_moment``) is left too: a
     document alone does not say it."""
-    from mime import materials
     from mime.build import ThingDeclaration
     from mime.experiment import Experiment
     from mime.things import Apparatus, Body
     from mime.errors import MimeError
+    from mime.materials._values import Declared, declaration_problems
 
     _, declarations, _ = Experiment.from_document(document).declared_as()
     things = {d.thing.name: d.thing for d in declarations if isinstance(d, ThingDeclaration)}
@@ -267,36 +267,14 @@ def refuse_unwritable(document: Any, overrides: Sequence[tuple[str, object]]) ->
             continue
         if axis.kind is not AxisKind.VALUE or not isinstance(value, Quantity) or path.endswith(".magnetic_moment"):
             continue
-        held = materials.Declared(axis.path, value, OVERRIDE_REASON)
+        held = Declared(axis.path, value, OVERRIDE_REASON)
         refusals += [Refusal(code, RefusalClass.USER, message, action)
-                     for code, message, action in materials.declaration_problems(held, kinds, None, parts)]
+                     for code, message, action in declaration_problems(held, kinds, None, parts)]
     if refusals:
         raise BuildRefused(refusals)
 
 
 __all__ = ["Overridden", "base_point", "overridden", "refuse_unwritable", "replayed"]
-
-
-def _unit_written(text: str) -> Any | None:
-    """The unit of ``mime.units`` that ``text`` writes, or ``None`` where it writes none: a unit's Python name
-    (``mPa_s``, ``mm_per_s``), the symbol it prints with (``mPa s``, ``mm/s``, with or without spaces about its slash), or, in a token with no space in
-    it, that symbol with its spaces left out (``mPas``). A unit written with spaces is its symbol as printed, spaces and all: it
-    is never read with them removed, which would read ``m s`` as ``ms`` and ``2 m T`` as ``2 mT``; what is not a unit's
-    symbol is read by the label grammar (``m s`` is a product)."""
-    import re
-
-    import mime.units as units
-
-    named = units.units_by_name()
-    held = named.get(text)
-    if held is not None:
-        return held
-    by_symbol = {unit.symbol: unit for unit in named.values()}
-    if len(text.split()) > 1:
-        # a slash is written with or without spaces about it (``mm / s``, ``rad /s``): it joins no letters, so the
-        # symbol it spells is the same one
-        return by_symbol.get(" ".join(re.sub(r"\s*/\s*", "/", text).split()))
-    return by_symbol.get(text) or {unit.symbol.replace(" ", ""): unit for unit in named.values()}.get(text)
 
 
 _NUMBER = r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?"
@@ -323,9 +301,9 @@ def parse_value(text: str) -> Quantity | None:
     numbers = [float(n) for n in found[1].split(",")]
     magnitude = numbers[0] if len(numbers) == 1 else tuple(numbers)
     symbol = (found[2] or "1").strip()
-    unit = _unit_written(symbol)
+    unit = unit_written(symbol)
     if unit is not None:
-        return cast(Quantity, unit(magnitude))
+        return unit(magnitude)
     try:
         dimension, angle = parse_value_unit(symbol)
     except UnitError:
