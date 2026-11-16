@@ -393,3 +393,53 @@ class ToyRegionProbeNode(MimeNode):
         return node_fields(ToyRegionProbeState(distance=shape.signed_distance(region, position),
                                                normal=shape.outward_normal(region, position),
                                                nearest=nearest_point(shape, region, position)))
+
+
+type Points = Float[Array, "vertices 3"]  # noqa: F722 - jaxtyping's shape, not a forward reference
+type PerVertex = Float[Array, "vertices"]  # noqa: F821 - jaxtyping's shape, not a forward reference
+
+
+def sheet(side: float, count: int) -> tuple[np.ndarray, np.ndarray]:
+    """A square sheet of ``side`` centred on the origin in z = 0: ``count`` x ``count`` vertices and its triangles, two a
+    cell, counter-clockwise seen from +z."""
+    along = np.linspace(-side / 2.0, side / 2.0, count)
+    x, y = np.meshgrid(along, along, indexing="ij")
+    rest = np.stack([x.reshape(-1), y.reshape(-1), np.zeros(count * count)], axis=1)
+    index = np.arange(count * count).reshape(count, count)
+    a, b, c, d = index[:-1, :-1], index[1:, :-1], index[1:, 1:], index[:-1, 1:]
+    faces = np.concatenate([np.stack([a, b, c], axis=-1).reshape(-1, 3), np.stack([a, c, d], axis=-1).reshape(-1, 3)])
+    return rest, faces.astype(np.int64)
+
+
+class ToyIndentedSheetState(TypedDict, closed=True):
+    t: ReadOnly[Annotated[Scalar, Units("s")]]
+    points: ReadOnly[Annotated[Points, Units("m")]]
+    depth: ReadOnly[Annotated[PerVertex, Units("m")]]
+    rate: ReadOnly[Annotated[PerVertex, Units("m/s")]]
+
+
+class ToyIndentedSheetNode(ToyNode):
+    """The sheet of :func:`sheet` indented at its centre by a Gaussian dimple of standard deviation ``width``, whose
+    depth at the centre is ``speed * t``: its points, the depth at each vertex and the rate it deepens there."""
+
+    def __init__(self, name: str, timestep: float, side: float = 1e-3, count: int = 33, speed: float = 1e-3,
+                 width: float = 1.5e-4) -> None:
+        super().__init__(name, timestep, side=float(side), count=int(count), speed=float(speed), width=float(width))
+
+    def _at(self, t: Array, p: Mapping[str, Any]) -> NodeFields:
+        unit, _ = sheet(1.0, int(node_params(self)["count"]))
+        held = jnp.asarray(unit, dtype=t.dtype) * p["side"]
+        shape = jnp.exp(-(held[:, 0] ** 2 + held[:, 1] ** 2) / (2.0 * p["width"] * p["width"]))
+        depth = p["speed"] * t * shape
+        return node_fields(ToyIndentedSheetState(t=t, points=held.at[:, 2].add(-depth), depth=depth,
+                                                 rate=p["speed"] * shape))
+
+    @override
+    def initial_state(self) -> NodeFields:
+        return self._at(_float(0.0), node_params(self))
+
+    @override
+    def update(self, state: NodeFields, boundary_inputs: Mapping[str, Array], dt: float, *,
+               params: Mapping[str, Any] | None = None) -> NodeFields:
+        del boundary_inputs
+        return self._at(typed_view(ToyIndentedSheetState, state)["t"] + dt, node_params(self, params))

@@ -463,7 +463,7 @@ def _flat(shape: tuple[int, ...], indexer: tuple[int | slice, ...]) -> int:
 def default_rows(schema: FrameSchema, bound: Sequence[Mapping[str, Any]], flags: Sequence[FlagWatch]) -> list[Row]:
     """The table when nothing is asked for: each one-number field that is not a flag (an observation's per-step outputs),
     each flag, and the position, the first three numbers, of each body the stage binds. ``bound`` is the stage binding's
-    entries as ``hello`` gives them (``mime.binding/1``)."""
+    entries as ``hello`` gives them (``mime.binding/2``)."""
     flagged = {flag.path for flag in flags}
     fields = {each.path: each for each in schema.fields}
     rows = [_parse(each.path, schema) for each in schema.fields if not each.shape and each.path not in flagged]

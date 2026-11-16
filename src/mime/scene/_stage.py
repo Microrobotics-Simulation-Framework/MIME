@@ -128,6 +128,8 @@ class ThingPrim:
     extent: float | None = None
     attributes: Mapping[str, str] = field(default_factory=dict[str, str])
     parts: Mapping[str, KindPrim] = field(default_factory=dict[str, KindPrim])
+    #: The surfaces a node moves, below the thing's prim (:class:`MeshPrim`).
+    meshes: tuple[MeshPrim, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -183,6 +185,21 @@ class VectorPrim:
     unit: str
     name: str
     metres_per_unit: float
+
+
+@dataclass(frozen=True, eq=False)
+class MeshPrim:
+    """A surface a node moves, as the stage holds it at rest: a mesh named ``name`` below its thing's prim, its points
+    (``rest``, ``(V, 3)``, metres, the thing's frame) over fixed triangles (``faces``), the entry that declares it
+    (``owner``), each field's name, units and declared range (``None``: the recording's), and how it is shown
+    (``display``: ``None``, ``revolved`` or ``extruded``, for a section shown as a surface alone)."""
+
+    name: str
+    rest: np.ndarray
+    faces: np.ndarray
+    owner: str
+    fields: tuple[tuple[str, str, tuple[float, float] | None], ...] = ()
+    display: str | None = None
 
 
 #: The arrow's radius, as a fraction of its length: a presentation choice.
@@ -340,6 +357,48 @@ def _kind(stage: Any, path: str, held: KindPrim, scale: float, colour: tuple[flo
     return prim
 
 
+#: The attributes and primvars a surface's mesh carries: the entry that declares it, its fields' names in order, how it
+#: is shown, and each field's values (time-sampled in a recording) as a vertex primvar ``primvars:mime:<field>`` whose
+#: units and declared range are in its ``customData``.
+MESH_OWNER, MESH_FIELDS, MESH_DISPLAY = "mime:mesh:owner", "mime:mesh:fields", "mime:display"
+MESH_FIELD_PREFIX = "primvars:mime:"
+_MESH_COLOUR = (0.8, 0.78, 0.72)
+
+
+def mesh_field_attribute(name: str) -> str:
+    """The attribute a surface field's values are held in: ``primvars:mime:<name>``."""
+    return f"{MESH_FIELD_PREFIX}{name}"
+
+
+def _surface(stage: Any, path: str, held: MeshPrim, scale: float) -> None:
+    """A surface at rest: a mesh of triangles with no subdivision, its points in the thing's frame in the stage's units
+    (float32), its extent, a display colour, the entry that declares it, its fields' names, and one vertex primvar a
+    field with no value of its own (a recording gives it values), its units and range in its ``customData``."""
+    mesh = UsdGeom.Mesh.Define(stage, path)
+    points = (np.asarray(held.rest, dtype=np.float64) / scale).astype(np.float32)
+    faces = np.asarray(held.faces, dtype=np.int64)
+    mesh.CreatePointsAttr(Vt.Vec3fArray.FromNumpy(points))
+    mesh.CreateFaceVertexCountsAttr(Vt.IntArray([3] * len(faces)))
+    mesh.CreateFaceVertexIndicesAttr(Vt.IntArray([int(i) for i in faces.reshape(-1)]))
+    mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
+    mesh.CreateDoubleSidedAttr(True)
+    mesh.CreateExtentAttr(Vt.Vec3fArray.FromNumpy(np.stack([points.min(axis=0), points.max(axis=0)])))
+    _display(mesh, _MESH_COLOUR)
+    prim = mesh.GetPrim()
+    prim.CreateAttribute(MESH_OWNER, Sdf.ValueTypeNames.String).Set(held.owner)
+    prim.CreateAttribute(MESH_FIELDS, Sdf.ValueTypeNames.TokenArray).Set(
+        Vt.TokenArray([name for name, _, _ in held.fields]))
+    if held.display is not None:
+        prim.CreateAttribute(MESH_DISPLAY, Sdf.ValueTypeNames.Token).Set(held.display)
+    primvars = UsdGeom.PrimvarsAPI(prim)
+    for name, unit, declared in held.fields:
+        primvar = primvars.CreatePrimvar(f"mime:{name}", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex)
+        attribute = primvar.GetAttr()
+        attribute.SetCustomDataByKey("units", unit)
+        if declared is not None:
+            attribute.SetCustomDataByKey("range", Gf.Vec2d(float(declared[0]), float(declared[1])))
+
+
 def _thing(stage: Any, thing: ThingPrim, scale: float) -> None:
     if thing.bound:
         prim = stage.GetPrimAtPath(thing.path)
@@ -357,6 +416,8 @@ def _thing(stage: Any, thing: ThingPrim, scale: float) -> None:
     prim.CreateAttribute("mime:name", Sdf.ValueTypeNames.String).Set(thing.name)
     for name, value in sorted(thing.attributes.items()):
         prim.CreateAttribute(f"mime:{name}", Sdf.ValueTypeNames.String).Set(value)
+    for surface in sorted(thing.meshes, key=lambda held: held.name):
+        _surface(stage, f"{thing.path}/{surface.name}", surface, scale)
     if thing.bound:
         return
     for name, part in sorted(thing.parts.items()):
@@ -526,5 +587,5 @@ def check_stage(path: Path) -> list[StageFinding]:
 
 
 __all__ = ["ARROW", "DRAWING_SEGMENTS", "PROXY", "STAGE_WRITER", "STAGE_WRITERS", "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256", "KindPrim",
-           "MountedPrim", "RegionPrim", "StageFinding", "StageSpec", "ThingPrim", "VectorPrim", "VisualPrim", "check_stage",
-           "stage_text", "up_axis"]
+           "MountedPrim", "RegionPrim", "MESH_DISPLAY", "MESH_FIELDS", "MESH_FIELD_PREFIX", "MESH_OWNER", "StageFinding", "StageSpec", "MeshPrim", "ThingPrim", "VectorPrim", "VisualPrim", "check_stage",
+           "stage_text", "mesh_field_attribute", "up_axis"]

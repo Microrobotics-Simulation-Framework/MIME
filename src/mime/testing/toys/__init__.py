@@ -46,12 +46,15 @@ from mime.testing.toys._nodes import (
     ToyDragNode,
     ToyFieldNode,
     ToyHoldNode,
+    ToyIndentedSheetNode,
     ToyLiftNode,
     ToyMediumNode,
     ToyRecorderNode,
     ToyRegionProbeNode,
     ToySpringNode,
+    sheet,
 )
+from mime.testing.toys._surface import ToyIndentedSheet
 
 __all__ = [
     "COUPLED_BODY",
@@ -79,6 +82,8 @@ __all__ = [
     "ToyFieldNode",
     "ToyHold",
     "ToyHoldNode",
+    "ToyIndentedSheet",
+    "ToyIndentedSheetNode",
     "ToyLift",
     "ToyLiftNode",
     "ToyMediumNode",
@@ -95,5 +100,6 @@ __all__ = [
     "full_declarations",
     "full_toy",
     "resistance_rig",
+    "sheet",
     "toy_experiment",
 ]
