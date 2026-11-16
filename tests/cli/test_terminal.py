@@ -281,6 +281,26 @@ def test_a_damaged_cache_warning_gets_one_note_naming_the_command_that_clears_it
     assert text.index(message) < text.index("mime cache clear") < text.index("an unrelated warning")
 
 
+def test_serve_and_study_run_give_the_same_note_as_run_on_a_terminal(monkeypatch):
+    """``mime serve`` and ``mime study run`` keep the same cache as ``mime run``, so their damaged-entry warning gets the same
+    note: the context they run under (``mime.cli._xla_cache_and_its_note``) shows it, and, the control, not where it is
+    not entered."""
+    import argparse
+
+    import mime.cli
+
+    monkeypatch.setattr(warnings, "showwarning", write_warning)
+    message = "Error reading persistent compilation cache entry for 'jit_step': ValueError: bad entry"
+    with terminal(columns=200) as tty, warnings.catch_warnings():
+        warnings.simplefilter("always")
+        monkeypatch.setattr(sys, "stderr", tty.stream)
+        warnings.showwarning(UserWarning(message), UserWarning, "jax/_src/compiler.py", 806, tty.stream)
+        assert "mime cache clear" not in stripped(tty.transcript()), "the control: outside the context, no note"
+        with mime.cli._xla_cache_and_its_note(argparse.Namespace(no_xla_cache=True)):
+            warnings.showwarning(UserWarning(message), UserWarning, "jax/_src/compiler.py", 806, tty.stream)
+        assert stripped(tty.transcript()).count("mime cache clear") == 1
+
+
 def test_the_note_is_not_written_where_nothing_is_drawn(monkeypatch):
     """The control: a captured stream is not a terminal, so the warning is JAX's alone, as it always was."""
     import io
@@ -463,13 +483,15 @@ def refused_env_check(tmp_path) -> list[str]:
     """``mime env check``'s words for a check refused for many distributions in any lane: a lab's pins, at a version
     no lane installs, of every distribution MIME's own extras and groups add to the cpu variant's (the dev group's
     tools, about twenty). A checkout's own tools pass the check at the lock's pins, so the environment itself refuses
-    at most CI's lab fixture."""
+    at most CI's lab fixture. ``--strict``: without it a version inside the ranges the installed distributions
+    declare is a note, and only a handful of the pins would refuse (no longer many reasons for the grouping to
+    shorten)."""
     from mime.env import optional_pins, pins
 
     added = sorted({pin.name for pin in optional_pins()} - {pin.name for pin in pins("cpu")})
     lab = tmp_path / "lab_pins.txt"
     lab.write_text("".join(f"{name}==0.0.1\n" for name in added), encoding="utf-8")
-    return ["env", "check", "--variant", "cpu", "--lab", str(lab)]
+    return ["env", "check", "--variant", "cpu", "--strict", "--lab", str(lab)]
 
 
 def test_env_check_on_a_terminal_is_one_block_per_code_and_every_package_the_pipe_names_is_a_row(saved, tmp_path):

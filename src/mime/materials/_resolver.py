@@ -27,7 +27,7 @@ from mime.materials._values import (
 )
 from mime.things import DERIVED, Derived, PartMass, ThingKind, derive, magnetisation
 from mime.units import unit_symbol
-from mime.validity import Judge
+from mime.validity._profiles import Judge
 
 if TYPE_CHECKING:
     from materica.core.record import RecordStore
@@ -69,8 +69,12 @@ class Resolver:
                  conditions: Mapping[str, OperatingCondition], media: Mapping[str, Record],
                  bodies: Mapping[str, Mapping[str, PartPlan]], loaded: Mapping[str, LoadedRecord],
                  store: RecordStore | None, judge: Judge,
-                 apparatus: Mapping[str, Mapping[str, Record]] | None = None) -> None:
+                 apparatus: Mapping[str, Mapping[str, Record]] | None = None,
+                 refused_parts: frozenset[str] = frozenset()) -> None:
         self.things = things
+        #: The bodies with a part the build refused: what their parts would give is blocked, with no refusal of its
+        #: own, since the part's refusal is the problem.
+        self.refused_parts = refused_parts
         self.apparatus = apparatus or {}
         self.declared = declared
         self.directed = directed
@@ -124,6 +128,8 @@ class Resolver:
         if thing is ThingKind.MEDIUM and parsed.thing in self.media and kind.record is not None:
             return self._read(self.media[parsed.thing], kind.record, path, kind)
         if thing is ThingKind.BODY and parsed.thing in self.bodies and parsed.name in DERIVED:
+            if parsed.thing in self.refused_parts:
+                return Resolution(None, blocked=True)
             return self._from_parts(parsed, kind)
         return Resolution(None)
 

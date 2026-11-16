@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from types import TracebackType
+from typing import TYPE_CHECKING
 
-from mime.build._refusals import (
+from mime._refusals import (
     ISSUES,
-    ArgumentRefused,
     InternalError,
     MimeError,
     Refusal,
@@ -22,6 +23,10 @@ from mime.build._refusals import (
 )
 from mime.errors._frames import Place, raised_by_mime, script_places
 from mime.errors._missing import missing_dependency
+from mime.units import unit_name
+
+if TYPE_CHECKING:
+    from mime.units import UnitError
 
 #: The note JAX appends to an error whose frames it filtered: it names JAX's own switch, which MIME's short traceback
 #: replaces with its own.
@@ -91,42 +96,40 @@ def out_of_memory(error: BaseException) -> MimeError | None:
         where=place.text() if place is not None else None)])
 
 
-def _unit_function(dimension: object) -> str | None:
-    """The name of the SI unit of ``dimension`` in ``mime.units`` (``s`` for a time), where it has one."""
-    from mime import units
-
-    angle = getattr(dimension, "angle", None)
-    held = (name for name, value in vars(units).items() if isinstance(value, units.Unit) and value.factor == 1.0
-            and value.dimension == dimension and value.angle == angle and not name.startswith("_"))
-    return next(held, None)
+#: What a unit label's refusal tells a script to write, where the error states nothing of its own.
+LABEL_ACTION = ("write SI symbols with `N m`, `m/s`, `m/(s Pa)`, `kg m^2 s^-2` or 1; a prefixed unit (mm, kPa) is a "
+                "quantity, `mm(3.0)`, never a label")
 
 
-def unit_error(error: BaseException) -> MimeError | None:
-    """A value given without its units, or in units of another dimension, where a call takes a quantity: the user's,
-    with the value written in its unit."""
-    from mime.units import UnitError
-
-    if not isinstance(error, UnitError):
-        return None
-    dimension, given = getattr(error, "dimension", None), getattr(error, "given", None)
-    unit = _unit_function(dimension) if dimension is not None else None
+def unit_refusal(error: UnitError) -> Refusal:
+    """The refusal a unit error holds: a unit label MIME cannot read (``units.label``), or a value given without its units,
+    or in units of another dimension, where a call takes a quantity (``call.units``), with what to do as the error
+    states it or, where it states none, the value written in its unit, and the script's line."""
+    where = raised_at(error)
+    if error.label:
+        label = Refusal("units.label", RefusalClass.USER, str(error), LABEL_ACTION, where=where)
+        return label if error.action is None else replace(label, action=error.action)
+    held = Refusal(
+        "call.units", RefusalClass.USER, first_lines(error, 2).removeprefix("UnitError: "),
+        "write it as a quantity in its unit, from mime.units: `ms(2)`, `um(50)`, `mT(1.2)`",
+        why="MIME takes every value with its units and never assumes them", where=where)
+    if error.action is not None:
+        return replace(held, action=error.action)
+    dimension, given = error.dimension, error.given
+    unit = unit_name(dimension) if dimension is not None else None
     instead = error.instead(lambda quantity: quantity)
     if instead:
-        action = f"write it in the unit it counts, `from mime.units import Hz, rad_per_s`{instead}"
-    elif unit is not None and isinstance(given, (int, float)) and not isinstance(given, bool):
-        action = f"write it with its unit: {unit}({given!r}), with `from mime.units import {unit}`"
-    elif unit is not None:
-        action = f"write it as a quantity of {dimension}: {unit}(...), with `from mime.units import {unit}`"
-    else:
-        action = "write it as a quantity in its unit, from mime.units: ms(2), um(50), mT(1.2)"
-    return ArgumentRefused([Refusal(
-        "call.units", RefusalClass.USER, first_lines(error, 2).removeprefix("UnitError: "), action,
-        why="MIME takes every value with its units and never assumes them", where=raised_at(error))])
+        return replace(held, action=f"write it in the unit it counts, `from mime.units import Hz, rad_per_s`{instead}")
+    if unit is not None and isinstance(given, (int, float)) and not isinstance(given, bool):
+        return replace(held, action=f"write it with its unit: {unit}({given!r}), with `from mime.units import {unit}`")
+    if unit is not None:
+        return replace(held, action=f"write it as a quantity of {dimension}: {unit}(...), with `from mime.units import "
+                                    f"{unit}`")
+    return held
 
 
 #: The translations tried in order on an error from below; the first to answer gives the MIME error.
-TRANSLATIONS: Sequence[Callable[[BaseException], MimeError | None]] = (unit_error, out_of_memory,
-                                                                       missing_dependency)
+TRANSLATIONS: Sequence[Callable[[BaseException], MimeError | None]] = (out_of_memory, missing_dependency)
 
 #: The footer of an error MIME raised with no code: its message is MIME's own, and may say what to change.
 UNCODED = "MIME gave this error no code yet: report it"
@@ -158,4 +161,4 @@ def translated(error: BaseException) -> MimeError:
 
 
 __all__ = ["QUOTED_LINES", "TRANSLATIONS", "UNCODED", "first_lines", "out_of_memory", "place_of", "raised_at",
-           "script_place", "traced_value_error", "translated", "unit_error"]
+           "script_place", "traced_value_error", "translated", "unit_refusal"]

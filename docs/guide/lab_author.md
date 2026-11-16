@@ -88,7 +88,9 @@ and the entry declares what the build needs of it:
 - `name` and `version` key the entry. The saved document stores both, so a newer version is a different entry.
 - A setting is a dataclass field, and a dimensioned one declares its dimension in its annotation
   (`Annotated[Quantity, Force]`). Registration refuses a `Quantity` with no marker, a marker on a setting that is not a
-  `Quantity`, and a default of another dimension. A rate per second says what it counts: `Frequency` for one in Hz,
+  `Quantity`, and a default of another dimension. An angle is `Annotated[Quantity, Angle]`, written `deg(...)` or `rad(...)`. A
+  setting that holds a `Quantity` in a form registration does not read (a `|` or `Optional` around the `Annotated`, a `type`
+  alias, a container, metadata that is no dimension) is refused, never left out. A rate per second says what it counts: `Frequency` for one in Hz,
   `AngularVelocity` for one in rad/s; one that says neither is refused, as a setting, a command or an initial state,
   and so is a default of the other kind.
 - `setting_roles` says what each setting is for (a design choice, a physical value, a numerical choice) and the kind of its
@@ -115,7 +117,10 @@ print as the lab's, exactly the following; nothing else comes from MIME's tests.
   `GradientRecord`: a `piecewise_kink` or `piecewise_jump` entry names the switches its law evaluates (its own, or its
   shape's); a `fixed_key`, `unverified` or `cut` entry states where, why and a route to exact. A value an entry leaves out
   of its record is `NOT_ESTABLISHED`: the pages print it as such and `mime docs check` counts it for a lab, and does not
-  fail it, except for an `unverified` or `cut` entry, whose reason and route must be stated.
+  fail it, except for an `unverified` or `cut` entry, whose reason and route must be stated. The owner of each switch it
+  declares starts with the plugin's **package** name, not its namespace (`mime_acme.nudge.cap`, not `acme.nudge.cap`): an
+  owner must be unique among everything installed together, and a package's name is, where a namespace is only so
+  among the plugins that happen to be installed. `mime docs check` names an owner that does not and says what to write.
 - **Validity lines.** The build reports them as *declared, not yet checked*. They say where the model holds; they are not
   evidence that it does.
 - **Conformance to a family**, by running the family's suite in the lab's own CI:

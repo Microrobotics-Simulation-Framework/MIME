@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, ClassVar, cast, override
 
@@ -13,7 +14,9 @@ import jax.numpy
 import numpy as np
 from jax import Array
 from maddening.core.node import BoundaryInputSpec, SimulationNode
+from maddening.core.params import ParamSpec as MaddeningParamSpec
 
+from mime.core._labels import read_label
 from mime.core._symbols import Symbol
 
 if TYPE_CHECKING:
@@ -170,10 +173,33 @@ def node_input(units: str, shape: tuple[int, ...], *, additive: bool = False,
                description: str = "") -> BoundaryInputSpec:
     """An input declared the way every MIME node declares one: its shape, the run's dtype, a zero default, and its
     units as the vocabulary spells them. ``additive`` is documentation on MADDENING 0.4.x: what sums the deliveries is
-    each edge's own flag, which MIME's builders set from the target's kind."""
+    each edge's own flag, which MIME's builders set from the target's kind. The label is read here, so a typo is the
+    ``units.label`` refusal where the input is declared."""
+    read_label(units)
     return BoundaryInputSpec(shape=shape, dtype=run_dtype(), default=as_run_array(np.zeros(shape)),
                              coupling_type="additive" if additive else "replacive", expected_units=units,
                              description=description)
+
+
+if TYPE_CHECKING:
+    #: The type a node's ``param_specs()`` returns, as MADDENING declares it, so that a node's annotation is its base's.
+    ParamSpec = MaddeningParamSpec
+else:
+
+    @dataclass(frozen=True)
+    class ParamSpec(MaddeningParamSpec):
+        """MADDENING's ``ParamSpec`` with its units label read where the spec is made
+        (:func:`~mime.core._labels.read_label`, ``mime.units``'s reader) when the spec is made, which is when the node's
+        ``param_specs()`` runs (a fit, the docs pages), not at import; ``mime.build._maddening.node_param_specs`` reports
+        the typo there as the node's defect.
+        A spec with no units (the default) holds none to read. Every other argument, and every method, is
+        ``ParamSpec``'s. Type checkers see MADDENING's class: ``dict`` is invariant in its values, so a node that
+        returned the subclass would not match its base's ``param_specs``."""
+
+        def __post_init__(self) -> None:
+            if self.units != "":
+                read_label(self.units)
+            super().__post_init__()
 
 
 def _numeric(value: object) -> bool:

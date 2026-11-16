@@ -67,6 +67,7 @@ bundle.unscannable            user
 call.missing-setting          user
 call.polyline                 user
 call.renamed                  user
+call.rotation                 user
 call.tube_tree                user
 call.units                    user
 call.unknown-name             user
@@ -314,6 +315,9 @@ ledger.unmetered              user
 live.address-in-use           environment
 live.chunk                    user
 live.command                  user
+live.commands-not-loopback    user
+live.endpoint                 user
+live.frames-not-loopback      user
 live.input-mode               user
 live.input-unknown            user
 live.input-value              user
@@ -321,7 +325,6 @@ live.log                      user
 live.pace                     user
 live.protocol                 user
 live.record                   user
-live.remote-bind              user
 live.select                   user
 live.stage-writer             user
 live.state                    user
@@ -351,6 +354,7 @@ load.other-release            user
 load.record-changed           user
 load.reference                user
 load.reference-changed        user
+load.run-folder               user
 load.setting                  user
 load.setting-unknown          user
 load.stage-changed            user
@@ -395,6 +399,7 @@ material.not-a-record         user
 material.require              user
 medium.field-role             user
 medium.flow-twice             user
+modal.out-exists              user
 modal.study-base              user
 modal.study-shards            user
 modal.wheel                   environment
@@ -531,6 +536,7 @@ record.unit                   user
 record.unknown                user
 record.unreadable             user
 registration.not-accepted     user
+registry.unknown-entry        user
 remove.ambiguous              user
 remove.named                  user
 remove.unknown                user
@@ -629,6 +635,7 @@ study.not-a-member            user
 study.not-a-study-folder      user
 study.order                   user
 study.other-study             user
+study.port-undeclared         user
 study.precision               user
 study.protocol-command        user
 study.protocol-folder         user
@@ -671,6 +678,7 @@ two-builds.float32            user
 two-builds.leaf-shapes        user
 two-builds.not-movable        user
 two-builds.undetected         internal
+units.label                   user
 value.duplicate               user
 value.from-kind               user
 value.not-positive            user

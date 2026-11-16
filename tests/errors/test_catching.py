@@ -20,9 +20,11 @@ import pytest
 from control_cases import spun_magnet
 
 from mime import Body, Experiment, State
-from mime.build import ArgumentRefused, InternalError, MimeError, RefusalClass, UnrecognisedError
+from mime.build import ArgumentRefused, InternalError, MimeError, Refusal, RefusalClass, UnrecognisedError
 from mime.dynamics import RigidInertial
-from mime.errors import TRACEBACK_VARIABLE, public, short_text, translated
+from mime.errors._boundary import public
+from mime.errors._display import TRACEBACK_VARIABLE, short_text
+from mime.errors._translate import translated
 from mime.errors import _boundary
 from mime.errors._translate import UNCODED
 from mime.gradients import GradientStatus
@@ -135,11 +137,15 @@ def test_a_bare_number_where_a_time_is_wanted_is_the_users_refusal_and_still_a_v
     assert "s(0.002)" in _raised(bare_numbers(built)["a run's duration"]).refusals[0].action  # type: ignore[union-attr]
 
 
-def test_the_control_without_its_translation_a_bare_number_is_not_the_users(built, monkeypatch):
+def test_the_control_without_its_refusal_a_bare_number_is_not_the_users(built, monkeypatch):
+    """A unit error holds its refusal (``mime.errors._translate.unit_refusal``): with that made a bare code, the
+    action no longer names the unit to write, which is what the check above reads."""
     from mime.errors import _translate
 
-    monkeypatch.setattr(_translate, "TRANSLATIONS", tuple(t for t in _translate.TRANSLATIONS
-                                                          if t is not _translate.unit_error))
+    def bare(error):
+        return Refusal("call.units", RefusalClass.USER, str(error), "write it as a quantity")
+
+    monkeypatch.setattr(_translate, "unit_refusal", bare)
     for what, action in bare_numbers(built).items():
         assert not is_the_users_value_error(_raised(action)), what
 

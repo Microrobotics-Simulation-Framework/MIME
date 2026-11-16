@@ -9,7 +9,7 @@ under a permanent `MIME-ANO-` id.
 
 - **IDs are permanent.** An entry is never renumbered or deleted. A resolved anomaly stays, marked resolved.
 - An entry states its safety relevance, with the rationale.
-- A new anomaly also gets a line under "Known Anomalies" in `CHANGELOG.md`.
+- A new anomaly also gets a fragment `changes.d/<slug>.anomaly.md`, which is folded into "Known Anomalies" in `CHANGELOG.md`.
 
 ## Schema
 

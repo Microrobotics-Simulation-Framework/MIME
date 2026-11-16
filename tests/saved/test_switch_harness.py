@@ -67,6 +67,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+import _cache_ceiling
 import tube_asset
 from mrs_cases import mrs_free_space, mrs_plane, mrs_solids
 import multibody_cases
@@ -111,6 +112,26 @@ SHRUNK = RADIUS - EXTENT - MARGIN
 REFERENCE, OUTER = 1.56e-3, 1.33
 #: A body's outward speed where a row needs the hold to engage, m/s.
 OUTWARD = 1e-3
+
+
+#: How far above where a worker stands after giving its compiled programs back this file lets its resident memory
+#: grow before it gives them back again (tests/_cache_ceiling.py). Each row's test compiles its own graphs and none is
+#: called again by the next, so a worker that ran the rows one after another held 3 to 5 GB of programs, and three
+#: such workers beside a memory-heavy test lost CI's shard 16 its runner (a probe on a runner, 2026-11-16).
+HEADROOM_MIB = 1024
+LIMIT_MIB: list[float] = []  # one worker's limit: where it stood after the last give-back, plus the headroom
+
+
+@pytest.fixture(autouse=True)
+def programs_given_back():
+    """As ``test_lubrication.py``'s: give JAX's compiled programs back once a worker grows past its headroom."""
+    yield
+    now = _cache_ceiling.resident_mib()
+    if now is None:
+        return
+    if not LIMIT_MIB or now > LIMIT_MIB[0]:
+        _cache_ceiling.give_back_programs()
+        LIMIT_MIB[:] = [(_cache_ceiling.resident_mib() or now) + HEADROOM_MIB]
 
 
 @pytest.fixture(scope="module")
@@ -973,44 +994,32 @@ def all_rows(graph) -> dict[str, SwitchRow]:
     return {row.declaration.owner: row for row in rows}
 
 
-OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.closing", "contact.scale",
-                 "contact.project", "contact.rule", "contact.rule_outward", "contact.point", "contact.search",
-                 "contact.gap", "contact.impulse", "contact.push", "cylinder.axis", "cylinder.axis_norm",
-                 "cylinder.support", "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp",
-                 "drag.clamp_divisor",
-                 "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
-                 "sphere.centre", "capsule.segment", "capsule.end.low", "capsule.end.high", "slab.mid",
-                 "screw.seam", "screw.focus", "arm.limit.low", "arm.limit.high", "arm.stop.low", "arm.stop.high",
-                 "arm.friction.low", "arm.friction.high", "arm.stick",
-                 "arm_tracking.reach.low", "arm_tracking.reach.high", "arm_tracking.half_turn",
-                 "arm_tracking.small_turn", "arm_tracking.parallel", "arm_tracking.hemisphere",
-                 "tube.table", "tube.angle", "tube.axial", "tube.axis", "phase_lag.window", "phase_lag.mean",
-                 "exposure.norm", "exposure.maximum",
-                 "ramp.start", "ramp.end", "port.bound.low", "port.bound.high", "port.trip", "port.slew.low",
-                 "port.slew.high",
-                 "camera.edge.out_far", "camera.edge.out_near", "camera.edge.in_far", "camera.edge.in_near",
-                 "camera.edge.centre", "camera.pieces.least", "camera.pieces.greatest", "camera.corner",
-                 "camera.disc.series", "camera.disc.start", "camera.disc.end", "camera.disc.crossing",
-                 "camera.disc.enter.low", "camera.disc.enter.high", "camera.disc.exit.low", "camera.disc.exit.high",
-                 "camera.disc.full", "camera.disc.clear", "camera.disc.holds", "camera.ahead", "camera.cap_side",
-                 "camera.span.low", "camera.span.high", "camera.span.axial", "camera.interval.enter",
-                 "camera.interval.leave", "camera.interval.start", "camera.interval.stop", "camera.interval.chord",
-                 "camera.sampled.least", "camera.sampled.basin", "camera.sampled.second", "camera.sampled.branch",
-                 "camera.union.share.low", "camera.union.share.high", "camera.union.nested", "camera.union.apart",
-                 "camera.union.ends", "camera.union.chord_start", "camera.union.chord_end", "camera.union.chord_empty",
-                 "helix.end.low", "helix.end.high"])
+#: Every owner MIME declares, derived from the declarations themselves: the list that stood here (one line more for
+#: every owner a change added, which two changes adding one each conflicted on) said nothing the declarations do not.
+#: What it was for, that no owner is without a row, is the next test's and each owner's below.
+OWNERS = sorted(declarations())
 
 
-def test_every_owner_mime_declares_has_a_row():
-    assert sorted(declarations()) == OWNERS
+def owners_without_a_row(declared, rows) -> list[str]:
+    """The declared owners (``declared``) that no row (``rows``, by owner) measures."""
+    return sorted(set(declared) - set(rows))
+
+
+def test_the_owners_without_a_row_are_those_declared_and_not_among_the_rows():
+    assert owners_without_a_row(["a", "b", "c"], {"b": 1}) == ["a", "c"]
+    assert owners_without_a_row(["a"], {"a": 1, "z": 2}) == []
+    assert owners_without_a_row([], {}) == []
+    assert OWNERS and len(OWNERS) == len(set(OWNERS))
 
 
 @pytest.mark.parametrize("owner", OWNERS)
 def test_each_switch_measures_within_its_declared_order(graph, owner):
-    found = classify(all_rows(graph)[owner], KINK_LIMIT)
+    rows = all_rows(graph)
+    assert owners_without_a_row([owner], rows) == [], f"{owner} is declared and has no row: add one to its rows"
+    found = classify(rows[owner], KINK_LIMIT)
     print(f"\n{found.line()}; indicators {found.indicators}")
     assert found.problems == [], "\n".join(found.problems)
-    declared = all_rows(graph)[owner].declaration
+    declared = rows[owner].declaration
     jumps = {group for group, order in declared.orders.items() if order < 0 and found.measures[group].continuous}
     if jumps:
         print(f"{owner}: declared a jump in {sorted(jumps)}, measured continuous at this point")
@@ -1441,26 +1450,33 @@ def swim_at_twist(graph, twist):
     return node.fresh_update(state, {"twist": twist}, DT, params=leaves(graph, "swim_speed:umr", after=1.0))
 
 
-@pytest.mark.parametrize("where", ["the body at the origin, on the axis, free",
-                                   "the hull contact, its point on the tube's axis",
-                                   "the hull contact on FL-9 and an ellipsoid at the wall", "the drag on the axis",
-                                   "the swim speed before observing", "the solids' shapes on their sets",
-                                   "the screw on its focal set", "the dipole away from its centre",
-                                   "the coil array away from its sources",
-                                   "the MRS samples on the screw",
-                                   "A0's controller on its target's orientation",
-                                   "A0's controller turning its end effector",
-                                   "A0's controller, the body's z along the home pose's x",
-                                   "the exact allocation, a command with no effect",
-                                   "the exact allocation, rows of rank one"])
+@pytest.mark.parametrize("where", [
+    "A0's controller on its target's orientation",
+    "A0's controller turning its end effector",
+    "A0's controller, the body's z along the home pose's x",
+    "the MRS samples on the screw",
+    "the body at the origin, on the axis, free",
+    "the coil array away from its sources",
+    "the dipole away from its centre",
+    "the drag on the axis",
+    "the exact allocation, a command with no effect",
+    "the exact allocation, rows of rank one",
+    "the hull contact on FL-9 and an ellipsoid at the wall",
+    "the hull contact, its point on the tube's axis",
+    "the screw on its focal set",
+    "the solids' shapes on their sets",
+    "the swim speed before observing",
+])
 def test_replacing_every_fallback_changes_nothing_where_its_condition_is_false(graph, where):
     evaluate, derivative = guard_points(graph)[where]
     assert fallback_problems(evaluate, derivative, where).problems == []
 
 
-@pytest.mark.parametrize("where", ["the camera's exact disc over pixels some of which the ball does not touch",
-                                   "the camera's crossing test on a side of no length",
-                                   "the camera's sampled march along a ray whose distance only rises"])
+@pytest.mark.parametrize("where", [
+    "the camera's crossing test on a side of no length",
+    "the camera's exact disc over pixels some of which the ball does not touch",
+    "the camera's sampled march along a ray whose distance only rises",
+])
 def test_replacing_every_fallback_changes_nothing_at_the_cameras_points(where):
     """The camera's guard points as the test above judges the others, without the graph those build (``guard_points``
     builds every other point's graph and its warm-up, about forty-seven seconds a run of the first test in a file's

@@ -22,7 +22,7 @@ from hypothesis import strategies as st
 from push_cases import copy_of, saved_toy, with_token, write_manifest
 from zenodo_records import FakeRecords, FakeTransport
 
-from mime import push
+from mime.push import _draft, _owners, _publish
 from mime.build import BuildRefused
 from mime.push import _edits, _manifest, _toml
 
@@ -54,9 +54,9 @@ class Terminal:
         return self.answers.pop(0)
 
 
-def pushed(folder: Path, fake: FakeRecords, person: Terminal | None = None, **extra: object) -> push.Drafted:
+def pushed(folder: Path, fake: FakeRecords, person: Terminal | None = None, **extra: object) -> _draft.Drafted:
     held = person or Terminal()
-    return push.push(folder, fake.service(), confirm=held.ask if person else None, say=held.said.append,
+    return _draft.push(folder, fake.service(), confirm=held.ask if person else None, say=held.said.append,
                      transport=FakeTransport(fake), pause=0, **extra)  # type: ignore[arg-type]
 
 
@@ -227,7 +227,7 @@ def test_an_edit_on_the_site_is_settled_before_a_publish_publishes_it(toy: Path,
         events.append(f"typed {prompt}")
         return NUMBER
 
-    held = push.publish(folder, fake.service(), ask=answer, typed=typed, say=lambda line: events.append(line),
+    held = _publish.publish(folder, fake.service(), ask=answer, typed=typed, say=lambda line: events.append(line),
                         transport=FakeTransport(fake), pause=0)
     assert held is not None and fake.records[NUMBER].published
     assert metadata(fake)["title"] == "Edited on the site" and _manifest.read_record(folder).title == \
@@ -245,7 +245,7 @@ def test_an_edit_of_the_published_record_is_asked_about_in_its_next_version(toy:
     fake = FakeRecords(with_token(monkeypatch))
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake)
-    push.publish(folder, fake.service(), confirm=f"10.5072/zenodo.{NUMBER}", transport=FakeTransport(fake), pause=0)
+    _publish.publish(folder, fake.service(), confirm=f"10.5072/zenodo.{NUMBER}", transport=FakeTransport(fake), pause=0)
     metadata(fake)["title"] = "Corrected on the record's page"
     experiment = full_toy()
     experiment.licence("CC-BY-4.0")
@@ -310,4 +310,4 @@ def test_each_problem_of_the_metadata_is_refused_by_its_path(toy: Path, tmp_path
     ("custom_fields.journal:journal.title", "record"), ("custom_fields.meeting:meeting", "record"),
     ("metadata.version", "mime"), ("metadata.dates.0.type", "record")])
 def test_every_field_the_author_writes_is_theirs_when_the_service_refuses_it(field: str, owner: str):
-    assert push.field_owner(field) == owner
+    assert _owners.field_owner(field) == owner

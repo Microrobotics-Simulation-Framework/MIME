@@ -19,7 +19,8 @@ from mime.build import CONVENTIONAL_GRAVITY, Attachment, ControllerDeclaration, 
     ThingDeclaration, ValueDeclaration, binding_name, mode_of
 from mime.build._derived import sha256_of
 from mime.data import Asset
-from mime.materials import RECORDS, Acceptance, Extrapolation, Nominal, Record, load_record, record_file
+from mime.materials import Acceptance, Extrapolation, Nominal, Record, record_file
+from mime.materials._records import RECORDS, load_record
 from mime.registry import (
     Drive,
     Dynamics,
@@ -83,7 +84,8 @@ from mime.things import (
     prim_path_of,
 )
 from mime.units import Condition, Quantity, Unit, parse_unit, unit_symbol
-from mime.validity import PENDING, Basis, Chosen, Pending, basis_problem
+from mime.validity import Basis, Chosen, Pending
+from mime.validity._bases import PENDING, basis_problem
 
 #: Where the saved form writes the stage and the layers it references, below the document's folder.
 SCENE_FOLDER = "scene"

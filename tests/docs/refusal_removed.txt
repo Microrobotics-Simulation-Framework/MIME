@@ -1,0 +1,5 @@
+# The refusal codes removed from the table on purpose, one `<code>  # <reason>` line each, sorted by code. A code of
+# refusal_floor.txt that the table no longer holds fails unless it is logged here; a code logged here that the table
+# holds again fails (delete the line). A line stays after the change has merged, as the record of what was removed and
+# why. Empty: nothing has been removed.
+live.remote-bind  # renamed live.endpoint (CLI bundle 6, k): the code for an endpoint that is not tcp://, which says what is wrong with it, not that anything is remote

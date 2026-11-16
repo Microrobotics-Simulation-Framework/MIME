@@ -20,13 +20,13 @@ from mime.dynamics.apparatus._actuators import actuator
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import SWEEPS, DynamicArmNode, KinematicArmNode, kinematic_articulation
 from mime.registry import DESIGN, PHYSICAL, convention
-from mime.registry import BuildContext, CalibrationInstance, CalibrationType, CapabilityRecord, ChainSegment, \
+from mime.registry import BuildContext, CalibrationInstance, CalibrationType, CapabilityRecord, ChainSegment, CheckedByEntry, \
     Command, ForwardModel, GradientRecord, Port, Problem, RungGradient, Segment, SegmentVisual, Signal, \
     register_calibration_type, register_dynamics
 from mime.scene import Asset
 from mime.units import ANGULAR_VELOCITY, DIMENSIONLESS, FORCE, LENGTH, MASS, MOMENT_OF_INERTIA, TORQUE, Magnitude, \
     Quantity, unit_symbol
-from mime.validity import basis_text
+from mime.validity._bases import basis_text
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, JOINT_POSITIONS, JOINT_VELOCITIES, LINK_INERTIA, \
     LINK_MOMENTUM, LINK_WRENCH, Capability
 
@@ -225,8 +225,8 @@ class Arm(ChainSegment):
     initial_positions: Annotated[Quantity, DIMENSIONLESS]
     initial_velocities: Annotated[Quantity | None, ANGULAR_VELOCITY] = None
     acknowledged: tuple[tuple[str, str], ...] = ()
-    armature: Mapping[str, Quantity] | tuple[tuple[str, Quantity], ...] = ()
-    actuators: Mapping[str, Quantity | str] | tuple[tuple[str, Quantity | str], ...] = ()
+    armature: Annotated[Mapping[str, Quantity] | tuple[tuple[str, Quantity], ...], CheckedByEntry] = ()
+    actuators: Annotated[Mapping[str, Quantity | str] | tuple[tuple[str, Quantity | str], ...], CheckedByEntry] = ()
 
     def __post_init__(self) -> None:
         for name in ("armature", "actuators"):

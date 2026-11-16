@@ -81,6 +81,12 @@ Commanded = SettingKind("Commanded", "a quantity in the dimension of the command
 #: second), which phase 1 checks it against.
 CommandedRate = SettingKind("CommandedRate", "a quantity in the dimension of the command it drives, per second")
 
+#: A setting that holds quantities in a container (a mapping of a joint's name to its ``Quantity``, a tuple of pairs), which
+#: the registration reads no dimension from: the entry reads them itself and checks each one's dimension where it uses them.
+#: It is a declaration, not a check, and the one way such a setting is registered: a setting that holds a ``Quantity``
+#: in a form the registration does not read is refused, never left out.
+CheckedByEntry = SettingKind("CheckedByEntry", "quantities in a container, each checked by the entry itself")
+
 type DirectionLike = TypedPath | str | tuple[float, float, float]
 
 
@@ -920,6 +926,12 @@ class Entry:
         lock, its NOTICE and what ``mime assets fetch`` takes hold what the run reads and no more."""
         return self.assets
 
+    def surface_meshes(self, settings: Mapping[str, Magnitude]) -> tuple[SurfaceMesh, ...]:
+        """The surfaces this entry's nodes move (:class:`SurfaceMesh`), from its settings in SI: none by default. Each is
+        drawn in the stage at rest, below its thing's prim, and recorded with its fields."""
+        del settings
+        return ()
+
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
         """What makes settings whose dimensions are right wrong all the same (a radius below zero, a direction along
         an axis it must not lie on), given in SI, one line each: each is refused in phase 1."""
@@ -1407,6 +1419,96 @@ class Response(Entry):
         stage), over the base step ``dt``. It reads its numbers from ``settings`` alone, never from an instance: the
         stage, rebuilt from its saved form, holds the numbers and calls it on the class."""
         raise NotImplementedError
+
+
+#: How a surface is shown when it is not the solver's own: a two-dimensional or axisymmetric section turned or swept into a
+#: surface for display alone (``mime:display`` on its prim), or a symmetric part (a quarter, a half) solved in three
+#: dimensions and drawn with its reflections across its planes of symmetry. The entry draws each, as it computes the
+#: surface's rest and its points; the value says how, for the stage's readers, and the solve never sees the reflection.
+MESH_DISPLAYS = ("revolved", "extruded", "mirrored")
+#: How a field's values over a cluster of vertices become the one value of the vertex a decimated surface draws there
+#: (:data:`mime.build._surfaces.SURFACE_TRIANGLES`): their mean, or their maximum, for a damage-like field whose front a mean
+#: would smear.
+MESH_REDUCTIONS = ("mean", "max")
+#: How far a surface's rest may lie from its thing's origin: its centre (of its bounding box) within this many times
+#: its extent (the box's longest side). USD holds points as float32, whose spacing is 1.2e-7 of a point's distance from
+#: the origin; within a hundred extents a point is rounded by under 1.2e-5 of the surface's extent. A surface further
+#: out is not in its thing's frame, which is the contract.
+SURFACE_ORIGIN_EXTENTS = 100.0
+
+
+@dataclass(frozen=True)
+class MeshField:
+    """A value a surface carries at each of its vertices: its name (an identifier), its units as the vocabulary spells
+    them, the node field that holds it each step (``(V,)``), the range a view maps it over (``None``: the range the
+    recording holds), and how a decimated surface reduces it over a cluster of vertices (``reduction``, one of
+    :data:`MESH_REDUCTIONS`: the mean by default, the maximum for a damage-like field). It is a physics value; colour
+    is the view's."""
+
+    name: str
+    unit: str
+    port: Port
+    range: tuple[float, float] | None = None
+    reduction: str = "mean"
+
+
+@dataclass(frozen=True, eq=False)
+class SurfaceMesh:
+    """A surface an entry's node moves, declared when the experiment is built: fixed triangles (``faces``, ``(F, 3)``
+    vertex indices, counter-clockwise seen from the side shown) over ``V`` vertices, its rest shape (``rest``,
+    ``(V, 3)``, metres, in its thing's frame, its centre within :data:`SURFACE_ORIGIN_EXTENTS` of its extent from the
+    origin), the node field that holds its points each step (``points``, ``(V, 3)``, metres, the thing's frame) and its
+    fields. ``display`` is ``None`` for the solver's own surface, or one of :data:`MESH_DISPLAYS` for a section shown as
+    a surface. No remeshing: the triangles are the build's. A surface of more triangles than the stage's budget is
+    drawn decimated, by clusters of vertices fixed at rest (:data:`mime.build._surfaces.SURFACE_TRIANGLES`)."""
+
+    name: str
+    rest: np.ndarray
+    faces: np.ndarray
+    #: ``None`` for a surface that stands at rest and carries changing values (a wall's shear stress).
+    points: Port | None
+    fields: tuple[MeshField, ...] = ()
+    display: str | None = None
+    #: The role whose thing the surface is drawn below and whose frame its points are in, for a law or an observation
+    #: that binds several things; ``None``: the entry's own thing (a dynamics').
+    on: str | None = None
+
+    def problems(self) -> list[str]:
+        """What makes the declaration unusable, one line each."""
+        found: list[str] = []
+        rest, faces = np.asarray(self.rest), np.asarray(self.faces)
+        if rest.ndim != 2 or rest.shape[1] != 3 or not len(rest):
+            found.append(f"surface {self.name!r}: rest has shape {rest.shape}, not (V, 3)")
+        elif not np.all(np.isfinite(rest)):
+            found.append(f"surface {self.name!r}: rest holds a value that is not finite")
+        else:
+            low, high = rest.min(axis=0), rest.max(axis=0)
+            extent = float(np.max(high - low))
+            distance = float(np.linalg.norm((low + high) / 2.0))
+            if not extent > 0.0:
+                found.append(f"surface {self.name!r}: its rest points all coincide")
+            elif distance > SURFACE_ORIGIN_EXTENTS * extent:
+                found.append(f"surface {self.name!r}: its rest's centre lies {distance:.4g} m from its thing's origin, "
+                             f"{distance / extent:.4g} times its extent of {extent:.4g} m, beyond "
+                             f"{SURFACE_ORIGIN_EXTENTS:g}: its points are in its thing's frame, near its origin, since "
+                             f"USD holds them as float32")
+        for held in self.fields:
+            if held.reduction not in MESH_REDUCTIONS:
+                found.append(f"surface {self.name!r}: field {held.name!r} has reduction {held.reduction!r}, not one "
+                             f"of {MESH_REDUCTIONS}")
+        if faces.ndim != 2 or faces.shape[1] != 3 or not len(faces) or faces.dtype.kind not in "iu":
+            found.append(f"surface {self.name!r}: faces has shape {faces.shape} of {faces.dtype}, not (F, 3) integers")
+        elif rest.ndim == 2 and (faces.min() < 0 or faces.max() >= len(rest)):
+            found.append(f"surface {self.name!r}: a face names a vertex outside 0..{len(rest) - 1}")
+        names = [held.name for held in self.fields]
+        if len(set(names)) != len(names):
+            found.append(f"surface {self.name!r}: a field is named twice ({names})")
+        if self.display is not None and self.display not in MESH_DISPLAYS:
+            found.append(f"surface {self.name!r}: display {self.display!r} is not one of {MESH_DISPLAYS}")
+        for held in self.fields:
+            if held.range is not None and not held.range[0] < held.range[1]:
+                found.append(f"surface {self.name!r}: field {held.name!r} has range {held.range}, low not below high")
+        return found
 
 
 @dataclass(frozen=True)

@@ -22,7 +22,8 @@ from _terminal_support import run_on_terminal, stripped
 from mime import __version__
 from mime.build import BuildRefused, InternalError, MimeError
 from mime.env import pins
-from mime.errors import public, translated
+from mime.errors._boundary import public
+from mime.errors._translate import translated
 from mime.errors import _missing
 from mime.errors._missing import declared_requirements, declaring, missing_dependency, reinstall_command
 

@@ -3,7 +3,7 @@ fake behind a server on this machine: a round trip of ``--init``, the push, the 
 a site edit written over and one kept, ``--discard``, ``--publish --confirm <DOI>``, ``pull --from`` and a push with
 nothing changed since publishing; an upload cut part way that is sent again whole, and the refusals in 7l-b's shape (the command named
 on the first line, each reason as ``[class] code: what happened`` with ``do:`` and ``see:``, exit 2). The fake is
-injected through Python (the service's entry in ``mime.push.SERVICES``), never through the environment.
+injected through Python (the service's entry in ``mime.push._service.SERVICES``), never through the environment.
 
 This file runs on macOS and Windows too (``tests/platforms.txt``): a push's one cheap round trip, there."""
 
@@ -15,7 +15,7 @@ import pytest
 from push_cases import copy_of, saved_toy, with_token, write_manifest
 from zenodo_records import FakeRecords, served
 
-from mime import push
+from mime.push import _service, _state
 from mime.cli import main
 
 
@@ -33,7 +33,7 @@ def fake(monkeypatch: pytest.MonkeyPatch):  # noqa: ANN201
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
     with served(token) as held:
-        monkeypatch.setitem(push.SERVICES, "zenodo-sandbox", held.service())  # type: ignore[index]
+        monkeypatch.setitem(_service.SERVICES, "zenodo-sandbox", held.service())  # type: ignore[index]
         yield held
 
 
@@ -56,10 +56,10 @@ def test_a_round_trip_through_the_real_transport(toy: Path, fake: FakeRecords, t
     record = fake.records["629525"]
     assert set(record.files) == {"full_toy.mimebundle", "NOTICE.txt"}
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--full-plan")
-    held = push.read_state(fake.service(), "full_toy")
+    held = _state.read_state(fake.service(), "full_toy")
     assert held is not None and code == 0
     assert out.splitlines() == [f"'full_toy' is unchanged (a script publishes it with `--confirm "
-                                f"{push.confirmation(held)}`): the draft 629525 on zenodo-sandbox holds it as it is, and "
+                                f"{_state.confirmation(held)}`): the draft 629525 on zenodo-sandbox holds it as it is, and "
                                 f"nothing was sent: {page}"]
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--status")
     assert code == 0 and "reserved DOI: 10.5072/zenodo.629525" in out and "as push uploaded and verified it" in out
@@ -95,7 +95,7 @@ def test_an_upload_cut_part_way_through_the_real_transport_is_sent_again_whole(t
     fake.plant("cut", lambda method, path: method == "PUT" and path.endswith(".mimebundle/content"))
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--yes")
     assert code == 0 and "its connection dropped" in out
-    staged = push.state_directory(push.SERVICES["zenodo-sandbox"], "full_toy") / "staged" / "full_toy.mimebundle"
+    staged = _state.state_directory(_service.SERVICES["zenodo-sandbox"], "full_toy") / "staged" / "full_toy.mimebundle"
     assert fake.records["629525"].files["full_toy.mimebundle"].data == staged.read_bytes()
 
 
@@ -126,3 +126,26 @@ def test_without_a_terminal_a_draft_is_made_and_a_publish_is_not(toy: Path, fake
     code, out, err = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--publish", "--yes")
     assert code == 2 and "[user] push.unconfirmed" in err and not fake.records["629525"].published
     assert "--confirm 10.5072/zenodo.629525" in err
+
+
+def test_dry_run_shows_the_plan_and_sends_nothing(toy: Path, fake: FakeRecords, tmp_path: Path,
+                                                  capsys: pytest.CaptureFixture[str],
+                                                  monkeypatch: pytest.MonkeyPatch):
+    """``mime push`` had no ``--dry-run`` (the tour's step 93, an unrecognised argument): the plan it shows before its
+    first request, then nothing sent, with no token read and no request made (both planted to fail)."""
+    from mime.push import _client, _draft
+
+    folder = copy_of(toy, tmp_path)
+    assert run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--init")[0] == 0
+    write_manifest(folder)
+    monkeypatch.setattr(_draft, "token_of", lambda service: (_ for _ in ()).throw(AssertionError("read a token")))
+    monkeypatch.setattr(_client.Client, "request", lambda *a, **k: (_ for _ in ()).throw(AssertionError("sent")),
+                        raising=False)
+    code, out, err = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--dry-run")
+    assert code == 0, err
+    assert "Pushing 'full_toy'" in out and "  up: " in out, "the plan is shown"
+    assert "dry run: nothing was sent" in out and "made the draft" not in out
+    assert fake.drafts() == [] and _state.read_state(fake.service(), "full_toy") is None
+    with pytest.raises(SystemExit):
+        main(["push", str(folder), "--to", "zenodo-sandbox", "--dry-run", "--publish"])
+    assert "not allowed with argument" in capsys.readouterr().err, "a mode of its own"

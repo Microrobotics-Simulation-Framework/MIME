@@ -22,7 +22,7 @@ from mime._lineage import Origin
 from mime._npz import StoredNpz
 from mime._terminal import plain
 from mime.build._refusals import ArgumentRefused, ArgumentTypeRefused, MimeError, Refusal, RefusalClass
-from mime.errors import public
+from mime.errors._boundary import public
 from mime.registry import OutputKind, Reduction
 from mime.results._containment import ContainmentRead
 from mime.results._energy import EnergyAccount
@@ -54,7 +54,7 @@ if TYPE_CHECKING:
 
     from mime.results._figure import FigureRecipe
     from mime.experiment import Experiment
-from mime.validity import Stamp
+from mime.validity._pending import Stamp
 
 type Arrays = Mapping[str, Mapping[str, NDArray[Any]]]
 
@@ -777,9 +777,10 @@ class RunResult:
                 "again with this one: `mime run <folder> ...`")])
         try:
             return cls._shaped(manifest, npz)
-        except MimeError:
-            raise
-        except (KeyError, TypeError, ValueError, AttributeError, IndexError, OverflowError, RecursionError) as error:
+        except (MimeError, KeyError, TypeError, ValueError, AttributeError, IndexError, OverflowError,
+                RecursionError) as error:
+            if isinstance(error, MimeError) and error.kept_when_wrapped:
+                raise
             raise ArgumentRefused([Refusal(
                 "result.format", RefusalClass.USER,
                 f"the manifest is not shaped as {MANIFEST_FORMAT!r} version {manifest.get('version')!r} is written, or "

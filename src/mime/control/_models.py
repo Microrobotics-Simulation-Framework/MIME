@@ -31,7 +31,7 @@ from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.control._allocation import EXACT_COMMANDS, exact_allocation
 from mime.core import as_run_array
 from mime.nodes.control import UNBOUNDED
-from mime.nodes.control._controller import BELIEVED_NAME, believed_name
+from mime.nodes.control._controller import BELIEVED_NAME, PORT_NAME, believed_name, port_name
 from mime.registry import ChainSegment, FieldProvider, ForwardModel
 from mime.units import Quantity, UnitError, parse_unit, si
 
@@ -45,6 +45,8 @@ jnp: Any = jax.numpy
 #: The prefix of a belief's number among the names a controller's law is made again from inside the compiled step:
 #: ``believed:<key>:<parameter>`` (:func:`leaf_name`, and ``mime.nodes.control.split_believed_name`` its inverse).
 BELIEVED = BELIEVED_NAME
+#: The prefix of a port's number among the names a controller's law is made again from: ``port:<apparatus>.<command>:<number>``.
+PORT = PORT_NAME
 #: What an allocation regularises towards: zero (least effort) or the last command (smooth).
 TOWARDS = ("zero", "last")
 
@@ -305,6 +307,26 @@ class ControlModels:
         """Each number of the models of ``keys`` at its declared value, by the name the law is made again under."""
         return {leaf_name(key, name): np.asarray(value) for key in keys for name, value in self.model(key).theta.items()}
 
+    def port_leaves(self) -> dict[str, Any]:
+        """Each number a command port declares that an allocation reads (its bounds, its slew), at its declared value
+        in SI, by the name the law is made again under (``port:<apparatus>.<command>:<number>``): the numbers a port's
+        axis writes, so that the controller reads, inside the compiled step, the value the stage reads. A receiver's
+        stated bounds, which a port does not declare, are no axis and stay the law's constants."""
+        found: dict[str, Any] = {}
+        for port in self._plans.command_ports:
+            if port.bounds_declared and port.low is not None and port.high is not None:
+                found[port_name(port.apparatus, port.command, "low")] = np.asarray(port.low)
+                found[port_name(port.apparatus, port.command, "high")] = np.asarray(port.high)
+            if port.slew is not None:
+                found[port_name(port.apparatus, port.command, "slew")] = np.asarray(port.slew)
+        return found
+
+    def _port_number(self, port: CommandPortPlan, number: str) -> Any:
+        """A port's ``low``, ``high`` or ``slew`` as the law reads it: the controller's leaf where it is made again
+        inside the compiled step, else the declared value."""
+        given = self._given.get(port_name(port.apparatus, port.command, number))
+        return given if given is not None else np.asarray(getattr(port, number))
+
     def allocator(self, apparatus: str, *, commands: Sequence[str], objective: Mapping[str, Quantity], owner: str,
                   effort: Quantity | Mapping[str, Quantity] | None = None, toward: str = "zero") -> Allocator:
         held = tuple(str(c) for c in commands)
@@ -405,7 +427,7 @@ class ControlModels:
         for path, command in zip(written, local, strict=True):
             port = ports.get(path)
             if port is not None and port.bounded != UNBOUNDED and port.low is not None and port.high is not None:
-                low[command], high[command] = np.asarray(port.low), np.asarray(port.high)
+                low[command], high[command] = (self._port_number(port, side) for side in ("low", "high"))
             else:
                 stated = self._stated(apparatus, path, command)
                 if stated is None:
@@ -414,9 +436,10 @@ class ControlModels:
                 low[command], high[command] = np.asarray(stated[0]), np.asarray(stated[1])
             if port is not None and port.slew is not None:
                 steps = _slew_steps(period, port.period)
-                box[command] = np.asarray(port.slew) * self._plans.dt * steps
-                self.slewed.append(f"    {path}: last +/- {np.asarray(box[command]).tolist()} per write ({steps:g} base "
-                                   f"steps of the port's slew; the stage taken to stand at the last command)")
+                box[command] = self._port_number(port, "slew") * self._plans.dt * steps
+                self.slewed.append(f"    {path}: last +/- {(np.asarray(port.slew) * self._plans.dt * steps).tolist()} "
+                                   f"per write ({steps:g} base steps of the port's slew; the stage taken to stand at the "
+                                   f"last command)")
         if missing:
             raise _refuse("allocation.bounds", RefusalClass.USER,
                           f"{where}: {', '.join(missing)} has no bounds: its port declares none and its receiver "
@@ -458,5 +481,5 @@ class ControlModels:
         return found
 
 
-__all__ = ["BELIEVED", "TOWARDS", "AllocationReport", "Allocator", "CameraModel", "ControlModels", "camera_model",
+__all__ = ["BELIEVED", "PORT", "TOWARDS", "AllocationReport", "Allocator", "CameraModel", "ControlModels", "camera_model",
            "leaf_name"]

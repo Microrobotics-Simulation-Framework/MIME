@@ -183,7 +183,7 @@ def pack_block(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | 
     published. The same folder makes the same bytes."""
     from mime.blocks._check import case_refusals
     from mime.blocks._fragment import read_fragment
-    from mime.credentials import held_tokens
+    from mime.credentials._store import held_tokens
     from mime.experiment import Experiment
     from mime.saved import _bundle
     from mime.saved._bundle import referenced_members, shipped_asset_problems

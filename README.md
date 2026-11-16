@@ -72,6 +72,10 @@ print(result.text())                             # every output, its flags, the 
 built.save("settling_ball")
 ```
 
+A run continues from where the last one ended: run a build twice and the second result covers the steps after the
+first's. A run from the start is a build made again, `exp.build()`, so a notebook cell that runs again is best a cell
+that builds too.
+
 The build took standard gravity by convention, the drag's wall kind from the medium (it fills no region, so free
 space), and the MRS drag's `spacing`, `blob` and `quadrature_refinement` from their numerical defaults, each a stated
 rule and never a converged value. Stokes's law gives 1.493 mm/s for this ball at standard gravity (9.80665 m/s^2, the convention

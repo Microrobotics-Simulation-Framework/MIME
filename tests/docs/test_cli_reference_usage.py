@@ -67,7 +67,7 @@ def test_the_commands_the_review_found_misprinted_are_printed_as_argparse_takes_
     assert check.startswith("mime env check --variant VARIANT [--gpu TYPE]") and check.endswith(" [folder]")
     assert usage(("pull",), held.choices["pull"]).endswith(" [source]")
     push = usage(("push",), held.choices["push"])
-    assert push.endswith(" [folder]") and "[--init | --setup | --defaults | --status | --discard | --publish]" in push
+    assert push.endswith(" [folder]") and "[--init | --setup | --defaults | --status | --discard | --publish | --dry-run]" in push
     credentials = _subparsers_of(held.choices["credentials"])
     assert credentials is not None
     assert usage(("credentials", "status"), credentials.choices["status"]).endswith(" [{zenodo,zenodo-sandbox}]")

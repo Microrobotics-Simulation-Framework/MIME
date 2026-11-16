@@ -2,8 +2,9 @@
 replaced the files of a run's own names in it (``outputs.json``, ``run.json``, ``experiment/``'s saved form) with nothing
 said: a user's folder with an ``outputs.json`` of its own lost it. A run never changes a file that is not its own now.
 
-- ``out`` that is new, empty or MIME's own run folder (``run.json``, and only files of the names a run writes) is
-  written into, as before: a re-run into its own folder is the notebook's and the script's habit;
+- ``out`` that is new or empty is written into; MIME's own run folder (``run.json``, and only files of the names a run
+  writes) is too from Python (``BuiltExperiment.run_to``: a re-run into its own folder is the script's habit), but
+  ``mime run`` refuses it like any other, and runs into it with ``--force`` (bundle 6: no silent overwrite anywhere);
 - any other folder is refused **before the run starts** (``run.out-not-empty``), before the saved experiment is even
   loaded, and is left byte for byte, modification times included, as it was: UX-1's case (a folder holding
   ``experiment/notes.txt`` and an ``outputs.json`` of the user's), a folder with a file of its own and a folder that
@@ -98,14 +99,20 @@ def own_folder_with_a_stranger(saved: Path, root: Path) -> Path:
 # -- what a run is written into without a flag ------------------------------------------------------------------------
 
 
-def test_a_new_folder_an_empty_one_and_mimes_own_run_folder_are_written_into(saved, tmp_path, capsys):
+def test_a_new_folder_and_an_empty_one_are_written_into_and_a_second_run_over_the_first_needs_force(saved, tmp_path,
+                                                                                                  capsys):
     assert run(saved, tmp_path / "new") == 0
     empty = tmp_path / "empty"
     empty.mkdir()
     assert run(saved, empty) == 0
-    assert run(saved, empty, steps=5) == 0, "a second run into its own folder, as a script re-run does"
-    assert RunResult.read(empty).steps == 5
     assert "warning" not in capsys.readouterr().err
+    with untouched(empty):
+        assert run(saved, empty, steps=5) == 2, "mime run never replaces a run silently (his rule, item 81)"
+    err = capsys.readouterr().err
+    assert CODE in err and "a MIME run folder already" in err and "--force" in err
+    assert run(saved, empty, "--force", steps=5) == 0
+    assert RunResult.read(empty).steps == 5
+    assert "warning: --force" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("make", [ux1_folder, thesis_folder, own_folder_with_a_stranger],
@@ -117,7 +124,8 @@ def test_any_other_folder_is_refused_before_the_run_and_left_as_it_was(saved, tm
     with untouched(out):
         assert run(saved, out) == 2
     err = capsys.readouterr().err
-    assert CODE in err and "not an empty folder or a MIME run folder" in err and "--force" in err
+    assert CODE in err and "not an empty folder" in err and "or a MIME run folder" not in err
+    assert "--force" in err
     assert "Ctrl+C cancels the run until writing begins" in err and "amber notice" in err
     assert files(out) == before
 
@@ -168,9 +176,11 @@ def test_force_runs_into_the_folder_warns_first_says_when_it_writes_and_keeps_ev
     assert RunResult.read(out).steps == 4 and after[RUN_MANIFEST] != b'{"mine": true}\n', "a run's own name is replaced"
 
 
-def test_force_into_an_empty_or_own_folder_says_nothing(saved, tmp_path, capfd):
-    assert run(saved, tmp_path / "new", "--force") == 0 and run(saved, tmp_path / "new", "--force") == 0
+def test_force_into_a_new_or_empty_folder_says_nothing_and_over_a_run_it_warns(saved, tmp_path, capfd):
+    assert run(saved, tmp_path / "new", "--force") == 0
     assert "warning" not in capfd.readouterr().err
+    assert run(saved, tmp_path / "new", "--force") == 0
+    assert "warning: --force" in capfd.readouterr().err, "a second run replaces the first: said"
 
 
 def test_force_is_a_flag_of_run_and_listed_in_its_help(capsys):
@@ -386,9 +396,10 @@ def test_a_run_folder_whose_file_of_a_runs_name_is_not_what_a_run_writes_is_not_
     assert CODE in capsys.readouterr().err
 
 
-def test_control_a_genuine_run_folder_is_run_into_again_whatever_it_holds_of_a_runs_own(saved, tmp_path):
+def test_control_a_genuine_run_folder_is_run_into_again_with_force_whatever_it_holds_of_a_runs_own(saved, tmp_path):
     out = run_folder(saved, tmp_path)
-    assert run(saved, out) == 0 and run(saved, out, "--history") == 0 and RunResult.read(out).steps == 4
+    assert run(saved, out, "--force") == 0 and run(saved, out, "--history", "--force") == 0
+    assert RunResult.read(out).steps == 4
 
 
 # -- links ------------------------------------------------------------------------------------------------------------

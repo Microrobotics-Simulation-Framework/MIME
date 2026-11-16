@@ -26,7 +26,9 @@ from maddening.core.static_data import StaticArray
 from numpy.typing import NDArray
 
 from mime.core import MimeNode, differentiated_nodes, one_ulp_up_leaf, run_constants_made
+from mime._refusals import InternalError, entry_defect
 from mime.core._node import run_constants_for_derivative
+from mime.units import UnitError
 
 type NodeFields = dict[str, dict[str, Array]]
 
@@ -142,8 +144,31 @@ def parameter_leaves(graph: GraphManager) -> dict[str, dict[str, Any]]:
     return cast(dict[str, dict[str, Any]], _held(graph).params.get("nodes", {}))
 
 
+def node_param_specs(node: SimulationNode) -> Mapping[str, Any]:
+    """``node.param_specs()``, where a unit label MIME cannot read in a ``ParamSpec`` it builds is reported as the node's
+    defect (``entry.defect``, an internal refusal naming the node and the label's own refusal), not as the ``units.label``
+    refusal of a user's label: a node's author wrote it. A label is read when the specs are, never at import, so every
+    place that reads the specs of a node reads them through this (a fit or gradient study, the docs pages, the trainable
+    helper)."""
+    try:
+        return cast(Mapping[str, Any], node.param_specs())
+    except UnitError as error:
+        cls = type(node)
+        raise InternalError([entry_defect(
+            cls, f"param_specs() declares a ParamSpec whose units label cannot be read: {error}",
+            label=cls.__name__)]) from error
+
+
 def parameter_specs(graph: GraphManager) -> dict[str, dict[str, ParamSpec]]:
-    return cast(dict[str, dict[str, ParamSpec]], _held(graph).param_specs().get("nodes", {}))
+    """Every node's ``ParamSpec`` by key. A node whose spec cannot be made (a unit label MIME cannot read) is that node's
+    defect, ``entry.defect`` naming it (:func:`~mime.core._node.node_param_specs`), not a user's ``units.label``."""
+    try:
+        return cast(dict[str, dict[str, ParamSpec]], _held(graph).param_specs().get("nodes", {}))
+    except UnitError:
+        for held in _held(graph)._nodes.values():
+            if held.accepts_params:
+                node_param_specs(held.node)
+        raise
 
 
 type Fed = Mapping[str, Mapping[str, Any]]
@@ -207,12 +232,16 @@ def with_run_constants(graph: GraphManager, params: Mapping[str, Any]) -> dict[s
                        if key not in own or tuple(_held(value).shape) != tuple(_held(own[key]).shape)
                        or _held(value).dtype != _held(own[key]).dtype)
         if wrong:
-            from mime.build._refusals import MIME_DEFECT, InternalError, Refusal, RefusalClass
+            from mime.build._refusals import InternalError, Refusal, RefusalClass, entry_defect
 
+            node = graph.get_node(name)
+            defect = entry_defect(
+                type(node), f"its run-constants {wrong} are not leaves of its own, of their shapes and dtypes",
+                label=f"node {name} ({type(node).__name__})",
+                fix="make each key run_constants() returns a key of the node's own parameters, with that leaf's shape "
+                    "and dtype")
             raise InternalError([Refusal(
-                "run.run-constant", RefusalClass.INTERNAL,
-                f"node {name}'s run-constants {wrong} are not leaves of its own, of their shapes and dtypes",
-                MIME_DEFECT,
+                "run.run-constant", RefusalClass.INTERNAL, defect.message, defect.action, owner=defect.owner,
                 why="a run-constant takes the place of a leaf the step reads, so that the compiled step is the same "
                     "program with or without it")])
         nodes[name] = {**own, **made}

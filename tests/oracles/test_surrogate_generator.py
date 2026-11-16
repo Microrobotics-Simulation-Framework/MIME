@@ -38,7 +38,7 @@ from mime.build import BuildRefused
 from mime.nodes.hydro.mrs._tube import UNIT_TUBE, shipped_unit_tube
 import mime.scene
 from mime.scene import KEPT, Screw
-from mime.surrogates import current_inputs
+from mime.surrogates._type import current_inputs
 from mime.surrogates import generator as g
 from mime.units import dimensionless, m
 

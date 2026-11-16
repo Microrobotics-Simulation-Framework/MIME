@@ -1,0 +1,4 @@
+# The MIME entries removed on purpose, one `<kind> <name> <version>  # <reason>` line each, sorted. An entry of
+# entries_floor.txt that the registry no longer holds fails unless it is logged here; a logged entry the registry holds
+# again fails (delete the line). A line stays after the change has merged, as the record of what was removed and why.
+# Empty: nothing has been removed.

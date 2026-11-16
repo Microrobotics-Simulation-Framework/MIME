@@ -68,6 +68,70 @@ the first writer (before every chain frame, visual and vector was drawn, and eve
 by the first writer when it loads, held to its lock byte for byte, and verifies as it did; saving it again writes the
 current writer's stage.
 
+## Surfaces that deform and carry fields
+
+An entry whose node moves a surface (a gel's face under a needle, a wall carrying its shear stress) declares it when
+the experiment is built, from its settings, and the stage, the recording and the page draw it with its fields:
+
+<!-- mime-fragment: an entry's method in a plugin's module, shown and not run here; tests/build/test_surface_meshes.py and tests/viz/test_surfaces.py hold its behaviour on the toy that declares one -->
+```python
+from mime.registry import MeshField, Port, SurfaceMesh
+
+class GelBlock(Dynamics):
+    ...
+    def surface_meshes(self, settings):
+        rest, faces = self.section(settings)          # (V, 3) metres in the gel's frame, (F, 3) vertex indices
+        return (SurfaceMesh("face", rest, faces, Port("points"),
+                            (MeshField("damage", "1", Port("damage"), range=(0.0, 1.0), reduction="max"),),
+                            display="revolved"),)
+```
+
+- **The declaration.** Fixed triangles over its vertices, the rest shape in the thing's frame, the node field that
+  holds the points each step (a point a vertex, metres; `None` for a surface that stands still while its fields
+  change), and each field: its name, its unit, the node field that holds it (a value a vertex), the range a view colours it over (`None`: the
+  recording's), and its reduction where the surface is decimated (`mean`, or `max` for a damage-like field, whose
+  front a mean would smear). `display="revolved"`, `"extruded"` or `"mirrored"` marks a section shown as a surface; `on="<role>"`
+  draws a law's or an observation's surface below the thing its role binds. No remeshing: the triangles are the
+  build's.
+- **The stage** holds the surface at rest below its thing's prim, a `UsdGeom.Mesh` of float32 points
+  ([the `mime:` schema](reference/mime_usd.md): `mime:mesh:owner`, `mime:mesh:fields`, `mime:display`, and a vertex
+  primvar `primvars:mime:<field>` per field). A surface whose rest's centre lies more than a hundred times its extent
+  from its thing's origin is refused at build (`SURFACE_ORIGIN_EXTENTS`): its points are in its thing's frame. An
+  experiment whose entries declare no surface writes the same stage, recording, GLB and page as before surfaces
+  existed, byte for byte.
+- **A triangle budget.** A surface of more triangles than the budget (`mime.build._surfaces.SURFACE_TRIANGLES`) is
+  drawn decimated: vertex clustering at rest, the finest cubes that keep it within the budget, fixed when the experiment is
+  built. Each sample's drawn points are their clusters' means, and each field's value their mean or maximum, as the
+  field declares; the stage binding carries the clusters (`clusters`, the drawn vertex of each of the node's), so a
+  client that reads the node's own values maps them the same way. A cluster's point is its members' mean in every
+  sample, so a deformation smooth over a few cubes moves the drawn surface as the declared one: a test holds that no
+  drawn triangle folds against the declared surface's normals under a crater up to ten times deeper than wide. A
+  feature thinner than a cube is not resolved (at a crater whose mouth closed under a cube, a few drawn triangles
+  leaned against the wall there: `tests/viz/predictions_usd_surfaces.json`).
+- **The recording** gives the mesh's `points` (float32, in the stage's units, with its `extent`) and each field's
+  primvar a time sample at each sample: physics values, never colours, on the recording's one time base. Each is the
+  node's value at that step to the bit.
+- **The page** draws a time-sampled surface with morph targets, one for each drawn sample of each field, the colours
+  of each field through viridis over its range, and one animation for each field: a legend states the field, its unit
+  and its range (declared, or the recording's), and with several fields a picker switches between them, keeping the
+  time and whether it plays. A view holds at most `MORPH_TARGETS` shapes of a surface (`mime.viz._gltf`, the array
+  layers WebGL guarantees): a recording with more samples is drawn at that many, evenly chosen, and the notes say so;
+  the recording keeps every sample.
+- **Its size.** The page states its size and its surfaces' vertex-frames (vertices drawn times samples drawn), and
+  the bound, measured by spike USD-DEFORM on a laptop (the GLB's bytes a vertex-frame for one and two
+  moving fields, and its pages' sizes):
+  **a page of about 15 MB holds about 3.5e5 vertex-frames of one moving field**.
+  The GLB holds about 28.5 bytes a vertex-frame of one moving field, about 44 of two.
+  A page is the inlined viewer, about 1.44 MB (none with `cdn=True`, as `display` has by default), and the GLB in base64.
+  So it holds about 8,700 vertices at 41 samples, or 1,360 at 256.
+  Measured pages (vertices, samples, page): 1,089 x 41, 3.2 MB; 4,225 x 161, 27.3 MB; 16,641 x 41, 27.8 MB.
+  Record more coarsely (`stage_every=`) for a smaller page.
+- **Live sessions** leave a surface out of their frames unless `select=` names its fields (by default a large surface
+  would be most of every frame); `record` records it as `run_to` does. The stage binding's format's second version
+  adds the kinds `points` and `field` ([live sessions](live.md#the-stage-binding)).
+- **A ghosted comparison** of a study's members refuses members whose surfaces differ in vertex count
+  (`compare.scene`): a ghost moves the reference's mesh, so another mesh's points would be drawn on its triangles.
+
 ## Visuals MIME does not ship
 
 Some descriptions' meshes cannot be redistributed. The AR4's are Annin Robotics' design files, under its

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections.abc
 import dataclasses
 import functools
 import inspect
@@ -7,7 +8,7 @@ import math
 import re
 import types
 import typing
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Annotated, Any, cast
@@ -18,6 +19,7 @@ from numpy.typing import NDArray
 from mime.core import shape_named, shape_names
 from mime.gradients import GradientStatus
 from mime.registry._entries import (
+    CheckedByEntry,
     Commanded,
     CommandedRate,
     Controller,
@@ -53,6 +55,7 @@ from mime.things import ThingKind
 from mime.units import SAY_THE_ANGLE, TIME, Dimension, Quantity, UnitError, says_its_angle, si
 from mime.vocabulary import MIME_NAMESPACE, Capability, EnergyClass, ReadKind, namespace_of, port_kind
 from mime.vocabulary import lookup as interface_named
+from mime.vocabulary._versions import parsed, version_order, version_problem
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 #: A controller's read or write label.
@@ -133,6 +136,75 @@ def _groups_of(hint: object) -> list[type[SettingGroup]]:
     return [m for m in _members(hint) if isinstance(m, type) and issubclass(m, SettingGroup)]
 
 
+def _parts(hint: object, seen: frozenset[int] = frozenset()) -> Iterator[object]:
+    """Every type an annotation is made of, as the reader's scan sees it: the annotation, what it takes as arguments
+    (a union's members, a container's items, an ``Annotated``'s held type and its metadata), the value of a ``type``
+    statement's alias, a ``NewType``'s supertype and a type variable's bound and constraints, which the reader itself
+    never reads."""
+    yield hint
+    if isinstance(hint, typing.TypeAliasType):
+        if id(hint) not in seen:
+            yield from _parts(hint.__value__, seen | {id(hint)})
+        return
+    if isinstance(hint, typing.NewType):
+        yield from _parts(hint.__supertype__, seen)
+        return
+    if isinstance(hint, typing.TypeVar):
+        for held in (hint.__bound__, *hint.__constraints__):
+            if held is not None:
+                yield from _parts(held, seen)
+        return
+    for argument in typing.get_args(hint):
+        for item in cast("tuple[object, ...]", argument) if isinstance(argument, (list, tuple)) else (argument,):
+            yield from _parts(item, seen)
+
+
+#: The container types whose items an entry may hold quantities in and check itself (:data:`CheckedByEntry`).
+_CONTAINERS = (collections.abc.Mapping, collections.abc.Sequence, collections.abc.Set)
+
+
+def _is_container_of_quantities(hint: object) -> bool:
+    """Whether ``hint`` is a container of quantities, or a union of such (``Mapping[str, Quantity] | tuple[tuple[str,
+    Quantity], ...]``): each member a generic mapping, sequence or set whose items hold a :class:`Quantity`. A bare
+    ``Quantity``, a ``float``, ``Quantity | None`` and a string are not."""
+    members = _members(hint)
+    return all(isinstance(origin := typing.get_origin(member), type) and issubclass(origin, _CONTAINERS)
+               and not issubclass(origin, (str, bytes)) and any(part is Quantity for part in _parts(member))
+               for member in members)
+
+
+def _unread(name: str, hint: object, inner: object) -> str | None:
+    """Why a setting that no marker was read from is not understood, or ``None`` where it needs none: its annotation holds
+    a :class:`Quantity`, a setting group or a dimension marker in a form the reader does not read (a ``|`` or an
+    ``Optional`` around the ``Annotated``, a ``type`` alias, a ``NewType``, a type variable, a container of quantities,
+    metadata that is no dimension). ``inner`` is the annotation less its outermost ``Annotated``, whose markers the
+    caller has read. Every such setting is refused at registration; one left out would plan, and go to the entry as a
+    number nothing checked."""
+    parts = list(_parts(inner))
+    nested = any(typing.get_origin(part) is Annotated and any(isinstance(m, (Dimension, SettingKind))
+                                                              for m in typing.get_args(part)[1:]) for part in parts)
+    quantity = any(part is Quantity for part in parts)
+    group = any(isinstance(part, type) and issubclass(part, SettingGroup) for part in parts)
+    variable = any(isinstance(part, typing.TypeVar) and part.__bound__ is None and not part.__constraints__
+                   for part in parts)
+    if not (nested or quantity or group or variable):
+        return None
+    holds = "a dimension marker" if nested else "a Quantity" if quantity else "a setting group" if group else \
+        "a type variable, which may be a Quantity"
+    if nested or quantity or variable:
+        write = "write the Annotated outermost, Annotated[Quantity | None, Length] where it may be None"
+        if quantity and not nested and any(typing.get_origin(part) is not None and isinstance(typing.get_origin(part), type)
+                                           and issubclass(cast(type, typing.get_origin(part)), _CONTAINERS)
+                                           for part in parts):
+            write += (f"; for quantities in a container the entry checks itself, Annotated[<the container>, "
+                      f"{CheckedByEntry!r}]")
+    else:
+        write = "a setting holds a group alone, or with None (Group | None), or one of several groups (A | B)"
+    return (f"setting {name!r} holds {holds} in an annotation the reader does not read, {hint!r}: {write}; a union or "
+            f"Optional around the Annotated, a type alias, a NewType, a type variable, a container and metadata that is "
+            f"no dimension are not read")
+
+
 def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list[str]]:
     """The dimension each setting of ``cls`` declares in its annotation, and every problem with those declarations:
     a marker on a setting that does not hold a :class:`Quantity`, a :class:`Quantity` with no marker, a default of
@@ -172,7 +244,14 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
             if kinds:
                 if len(kinds) > 1 or any(isinstance(m, Dimension) for m in metadata):
                     problems.append(f"setting {setting.name!r} is annotated {hint!r}: one marker, a dimension or "
-                                    f"one of {Direction!r}, {Commanded!r} and {CommandedRate!r}")
+                                    f"one of {Direction!r}, {Commanded!r}, {CommandedRate!r} and {CheckedByEntry!r}")
+                elif kinds[0] is CheckedByEntry:
+                    if not _is_container_of_quantities(held):
+                        problems.append(f"setting {setting.name!r} is marked {CheckedByEntry!r} and is not a container of "
+                                        f"quantities ({held!r}): the marker is for a mapping, sequence or set whose items "
+                                        f"are Quantity, which the entry checks itself; give a Quantity a dimension marker "
+                                        f"from mime.units, Annotated[Quantity, Length], which phase 1 checks")
+                    # else the entry reads these quantities and checks their dimensions itself: none is recorded
                 elif kinds[0] in (Commanded, CommandedRate) and Quantity not in _members(held):
                     problems.append(f"setting {setting.name!r} is marked {kinds[0]!r} and holds no Quantity")
                 else:
@@ -181,6 +260,8 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
                 continue
             markers = [m for m in metadata if isinstance(m, Dimension)]
             if not markers:
+                if setting.name != _RATE and (unread := _unread(setting.name, hint, held)) is not None:
+                    problems.append(unread)
                 continue
             members = set(_members(held))
             if len(markers) > 1 or Quantity not in members or not members <= {Quantity, type(None)}:
@@ -202,6 +283,8 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
         elif setting.name != _RATE and Quantity in _members(hint):
             problems.append(f"setting {setting.name!r} holds a Quantity and declares no dimension: annotate it with "
                             f"its marker from mime.units, as {setting.name}: Annotated[Quantity, Length]")
+        elif setting.name != _RATE and (unread := _unread(setting.name, hint, hint)) is not None:
+            problems.append(unread)
     return found, problems
 
 
@@ -486,8 +569,8 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
     elif namespace_of(name) == MIME_NAMESPACE and not cls.__module__.split(".")[0] == "mime":
         found.append(f"name {name!r} is in MIME's namespace; register your own with "
                      f"mime.vocabulary.register_namespace and prefix the name with it")
-    if not (isinstance(version, str) and version):
-        found.append(f"version {version!r}: a non-empty string")
+    if (problem := version_problem(version)) is not None:
+        found.append(problem)
     if not isinstance(getattr(held, "differentiability", None), GradientStatus):
         found.append("differentiability: declare a mime.gradients.GradientStatus")
     else:
@@ -771,6 +854,12 @@ def _register[E: type[Entry]](kind: EntryKind, cls: E) -> E:
         if held.defined_in != f"{cls.__module__}.{cls.__qualname__}":
             raise ValueError(f"{kind.value} {cls.name} {cls.version} is already registered by {held.defined_in}")
         del _by_class[held.cls]
+    for other in versions_of(kind, cls.name):
+        same = other != cls.version and parsed(other) == parsed(cls.version)
+        if same and _by_key[(kind, cls.name, other)].defined_in != f"{cls.__module__}.{cls.__qualname__}":
+            raise ValueError(f"{kind.value} {cls.name} {cls.version} is the version {other} of "
+                             f"{_by_key[(kind, cls.name, other)].defined_in} in another spelling: one version has one "
+                             f"spelling, so write {other}")
     record = Registered(kind, cls.name, cls.version, cls, settings, declared_roles(cls))
     _by_key[key] = record
     _by_class[cls] = record
@@ -863,9 +952,9 @@ def lookup(kind: EntryKind, name: str, version: str) -> Registered | None:
 
 
 def versions_of(kind: EntryKind, name: str) -> list[str]:
-    return sorted(v for (k, n, v) in _by_key if k is kind and n == name)
+    return sorted((v for (k, n, v) in _by_key if k is kind and n == name), key=version_order)
 
 
 def registered(kind: EntryKind | None = None) -> list[Registered]:
     return sorted((r for r in _by_key.values() if kind is None or r.kind is kind),
-                  key=lambda r: (r.kind.value, r.name, r.version))
+                  key=lambda r: (r.kind.value, r.name, version_order(r.version)))

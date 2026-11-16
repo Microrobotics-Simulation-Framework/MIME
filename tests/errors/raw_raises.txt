@@ -1,4 +1,4 @@
-# The raw raises in src/mime: each `raise` of a builtin exception class (or of UnitError, TableRefused,
+# The raw raises in src/mime: each `raise` of a builtin exception class (or of TableRefused,
 # DescriptionRefused, ClosedChainRefused, UncataloguedRefusal) that carries no refusal code, by file, function and
 # class, with how many there are and why each is not coded. tests/errors/test_raw_raises.py holds this list to the
 # source: a new raw raise, or one more in a function, fails it until it is coded or listed here with its reason.
@@ -17,15 +17,16 @@ blocks/_use.py::BlockHandle.__getattr__ AttributeError 1  # protocol: the class 
 build/_construct.py::assemble ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 build/_derived.py::plain TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 build/_lags.py::latency_in_steps ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
-build/_refusals.py::Refusal.__post_init__ UncataloguedRefusal 1  # invariant: a refusal constructed with a code its table lacks; the refusal table's test holds every code
-build/_refusals.py::read_table ValueError 1  # invariant: the packaged refusal table's own form, read at import
-build/_refusals.py::Subject.__post_init__ ValueError 1  # invariant: a subject holds a cell for each column, built by MIME's own refusal sites, which a test holds
+_refusals.py::Refusal.__post_init__ UncataloguedRefusal 1  # invariant: a refusal constructed with a code its table lacks; the refusal table's test holds every code
+_refusals.py::read_table ValueError 1  # invariant: the packaged refusal table's own form, read at import
+_refusals.py::Subject.__post_init__ ValueError 1  # invariant: a subject holds a cell for each column, built by MIME's own refusal sites, which a test holds
 build/_regions.py::HandedRegion.manifest_region ValueError 1  # OpenMaterica's region hand-off, a helper outside a script's public call
 cli/__init__.py::_credentials AssertionError 1  # invariant: argparse requires the service first
 cli/__main__.py::<module> SystemExit 1  # the command's exit code
 control/_arm_tracking.py::ArmTracking.read ValueError 2  # caught where it is raised and refused with its code (the controller's law, an entry.defect naming it)
 core/_geometry.py::register_shape ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 core/_geometry.py::shape_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+core/_labels.py::_installed RuntimeError 1  # construction: a label made before `mime.units` was imported, which `import mime` never allows (it imports units first); fails closed instead of passing a label unread
 core/_node.py::MimeNode.__init__ TypeError 2  # a node's constructor given a ledger it cannot take (not a sequence of strings, or a node that writes no step identity), which only the build gives and only to a metered receiver: reached, it is error.uncoded
 core/_node.py::MimeNode.energy NotImplementedError 1  # the hook a potential law's node overrides; reached on another node, it is error.uncoded, keeping its class
 core/_node.py::MimeNode.identity_terms NotImplementedError 1  # the hook a metered receiver overrides; reached on another node, it is error.uncoded, keeping its class
@@ -78,7 +79,7 @@ live/_protocol.py::FrameSchema.encode ValueError 1  # a frame whose field has an
 live/_protocol.py::FrameSchema.from_record ValueError 1  # a schema whose id is not its fields' hash, received by a client: the client's own check of what a server sent
 live/_protocol.py::frame_from_json ValueError 1  # a JSON frame of another protocol or schema, received by a client: the client's own check
 live/_zmtp.py::Client._fill ConnectionError 1  # the server closed a client's connection: the socket's own error class, which a client catches as one
-live/_zmtp.py::parse_endpoint ValueError 1  # an endpoint that is not tcp://: mime serve refuses it first, coded (live.remote-bind); a client's own call raises it raw
+live/_zmtp.py::parse_endpoint ValueError 1  # an endpoint that is not tcp://: mime serve refuses it first, coded (live.endpoint); a client's own call raises it raw
 mappings/_gaussian.py::GaussianMAC.__init__ ValueError 1  # construction: an exchange edge's mode, direction or component outside its kind's, which only the stokes rung's build gives (and a saved graph's spec, which that build wrote); reached, it is error.uncoded
 materials/_records.py::RecordFile.read OSError 1  # invariant: a record file constructed with neither a path nor a packaged record, which its constructor refuses
 nodes/actuation/_chain.py::KinematicMotorNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
@@ -124,7 +125,7 @@ registry/_entries.py::_vector TypeError 1  # invariant: MIME's own check, which 
 registry/_entries.py::implements KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 registry/_ranges.py::choose_over TypeError 1  # an entry's defect: a choice over a declared range that declares no rule, raised inside the entry's plan or build, which the planner refuses as entry.defect naming the entry
 registry/_registry.py::_register TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
-registry/_registry.py::_register ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+registry/_registry.py::_register ValueError 2  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 registry/_registry.py::register_setting_group TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 registry/_registry.py::register_setting_group ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 registry/_registry.py::setting_group_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
@@ -229,17 +230,11 @@ units.py::Quantity.__hash__ TypeError 1  # construction: raised where the script
 units.py::Quantity.__mul__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity.__rtruediv__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity.__truediv__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
-units.py::Quantity._same_dimension UnitError 2  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity._sum TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity._scalars TypeError 2  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity.to TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
-units.py::Quantity.to UnitError 3  # a value's own reading (quantity.to(unit)); at the boundary call.units, keeping its class
 units.py::_magnitude TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
-units.py::_product_angle UnitError 1  # construction: raised where the script makes the value or the entry, outside every public call
-units.py::_sum_angle UnitError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::degC TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
-units.py::parse_unit UnitError 2  # construction: raised where the script makes the value or the entry, outside every public call
-units.py::si UnitError 3  # coded at the boundary as call.units, keeping its class
 validity/_profiles.py::FindingClasses.read ValueError 3  # invariant: the packaged profile tables' own form, read at import, which their tests hold
 validity/_profiles.py::ProfileRules.read ValueError 2  # invariant: the packaged profile tables' own form, read at import, which their tests hold
 viz/_gltf/_writer.py::Buffers.accessor ValueError 1  # invariant: the converter hands the container float32 and unsigned integer arrays only, which the container tests hold
@@ -251,13 +246,12 @@ viz/_recording.py::write_recording OSError 1  # usd-core could not write the rec
 viz/_compare.py::write_compare OSError 1  # usd-core could not write the overlay into the study folder: the file system's own error class, as the recording's
 viz/_web.py::viewer_bytes ValueError 1  # invariant: the packaged viewer's bytes against their pinned sha256, which the packaging and viewer tests hold
 vocabulary/_ports.py::PortKind.__post_init__ ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
-vocabulary/_ports.py::_dimension ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_ports.py::_paired_dimensions ValueError 2  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_ports.py::register_port_kind ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::Interface.__post_init__ TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::Interface.__post_init__ ValueError 5  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::define ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
-vocabulary/_vocabulary.py::register_namespace ValueError 3  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+vocabulary/_vocabulary.py::register_namespace ValueError 4  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 nodes/flow/fvm/_band.py::band_named ValueError 1  # internal: the fvm entry refuses an unregistered band when planned (flow.band), so a script reaches this only by constructing the node itself
 nodes/flow/fvm/_band.py::interior_depth ValueError 1  # internal: the fvm entry refuses an unoffered interior depth when planned (flow.interior), so a script reaches this only by constructing the node itself
 nodes/flow/fvm/_box.py::periodic_tube_layout ValueError 2  # internal: the layout of a tube the plan has already checked (flow.region, flow.box-axis): a radius or period not positive, or an axis off the box's lattice, reaches it only from a direct call

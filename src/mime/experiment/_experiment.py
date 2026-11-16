@@ -63,7 +63,7 @@ from mime.build._maddening import (
     state_put_back,
     step_reads,
 )
-from mime.errors import public
+from mime.errors._boundary import public
 from mime.errors._frames import warn_at_script
 from mime.experiment._mermaid import Mermaid, mermaid_of
 from mime.experiment._redeclared import Taken, add as add_declaration, known_as, taken_of
@@ -129,7 +129,8 @@ from mime.things import (
     did_you_mean,
 )
 from mime.units import DIMENSIONLESS, TIME, Condition, Quantity, si
-from mime.validity import DEFAULT_PROFILE, Basis, Profile
+from mime.validity import Basis, Profile
+from mime.validity._profiles import DEFAULT_PROFILE
 from mime.vocabulary import JOINT_VELOCITIES
 
 if TYPE_CHECKING:
@@ -929,7 +930,7 @@ TOPOLOGY_FORMAT = "mime.topology/1"
 def report_summary(report: BuildReport, layout: Layout) -> dict[str, Any]:
     """:meth:`BuiltExperiment.report_summary` of ``report`` and the run layout's flags."""
     from mime.registry import DefaultKind
-    from mime.validity import basis_text
+    from mime.validity._bases import basis_text
 
     validity = [{"owner": owner, "kind": kind, "line": line}
                 for kind, held in (("declared", report.validity), ("computed", report.checked),
@@ -1041,10 +1042,13 @@ def own_run_folder(out: Path) -> bool:
     return RUN_RECORD in names and all(_is_what_it_is_named(out / name) for name in names)
 
 
-def foreign_entries(out: Path) -> tuple[str, ...]:
+def foreign_entries(out: Path, *, own_too: bool = False) -> tuple[str, ...]:
     """What keeps ``out`` from being a folder a run may be written into without ``force``: its entries, sorted (a folder
     ends in ``/``), when it holds anything and is not MIME's own run folder (:func:`own_run_folder`), and ``()`` when it
-    is not there, is empty, or is MIME's own. A file at ``out``, or a link that leads nowhere, is named."""
+    is not there, is empty, or is MIME's own. A file at ``out``, or a link that leads nowhere, is named. With
+    ``own_too`` (``mime run``'s rule: no silent overwrite anywhere) MIME's own run folder is named too, since a run
+    replaces the run in it; the folder the runner's environment check alone is in is still free, as a run is about to
+    be written into it."""
     if out.is_symlink() and not out.exists():
         return (f"{out.name} (a link to nowhere)",)
     if not out.exists():
@@ -1052,7 +1056,9 @@ def foreign_entries(out: Path) -> tuple[str, ...]:
     if not out.is_dir():
         return (out.name,)
     held = sorted(child.name + ("/" if child.is_dir() else "") for child in out.iterdir())
-    return () if not held or own_run_folder(out) else tuple(held)
+    if not held or held == [ENV_CHECK_FILE] and own_run_folder(out):
+        return ()
+    return tuple(held) if own_too or not own_run_folder(out) else ()
 
 
 def not_a_folder(out: Path) -> bool:
@@ -1060,23 +1066,28 @@ def not_a_folder(out: Path) -> bool:
     return (out.is_symlink() and not out.exists()) or (out.exists() and not out.is_dir())
 
 
-def refuse_out_not_own(out: Path, force: bool, *, meanwhile: bool = False) -> None:
-    """Refuse, before a run starts, a folder that is neither new, empty nor MIME's own run folder (:func:`own_run_folder`):
-    the run replaces the files of its own names in it (``outputs.json``, ``run.json``, ``experiment/``'s saved form), and
+def refuse_out_not_own(out: Path, force: bool, *, meanwhile: bool = False, own_too: bool = False) -> None:
+    """Refuse, before a run starts, a folder that is neither new, empty nor MIME's own run folder (:func:`own_run_folder`;
+    with ``own_too``, one that is not new or empty, MIME's own included): the run replaces the files of its own names in it (``outputs.json``, ``run.json``, ``experiment/``'s saved form), and
     a file of yours of one of those names is lost, with nothing said. ``force`` runs into it all the same, but not into
     what is no folder (a file, a link to nowhere): there is nothing to run into. ``meanwhile`` says the folder was
     judged once already and has changed since, while the run computed (:meth:`BuiltExperiment.run_to` judges it again
-    where writing begins)."""
-    held = foreign_entries(Path(out))
+    where writing begins). ``own_too`` refuses MIME's own run folder as well (``mime run``'s rule, his: a run never
+    replaces another run without being asked to), which :meth:`BuiltExperiment.run_to` does not, so that a script that
+    runs again into its own folder keeps working."""
+    held = foreign_entries(Path(out), own_too=own_too)
     if not held or (force and not not_a_folder(Path(out))):
         return
     shown = ", ".join(held[:5]) + (", ..." if len(held) > 5 else "")
     what = ("a link to nowhere" if Path(out).is_symlink() else "a file") if not_a_folder(Path(out)) else None
     changed = f"{out} changed while the run computed, and " if meanwhile else ""
+    ours = what is None and own_run_folder(Path(out))
     raise ArgumentRefused([Refusal(
         "run.out-not-empty", RefusalClass.USER,
-        f"{changed}the run would be written into {out}, which holds {shown} and is not an empty folder or a MIME run "
-        "folder" if what is None else f"{changed}the run would be written into {out}, which is {what}, not a folder",
+        f"{changed}the run would be written into {out}, which holds {shown} and is "
+        + ("a MIME run folder already: the run would replace that run" if ours else
+           ("not an empty folder" if own_too else "not an empty folder or a MIME run folder")) if what is None else
+        f"{changed}the run would be written into {out}, which is {what}, not a folder",
         "write it to a new folder or an empty one: --out <a new folder> (or out=); or run into this one with --force "
         "(or force=True): it warns at the start of what the folder holds, Ctrl+C cancels the run until writing begins "
         "(nothing is touched), an amber notice says when writing begins, and only the files a run writes are replaced"
@@ -1472,6 +1483,14 @@ class BuiltExperiment:
         seconds = si(duration, TIME, what="the run's duration")
         dt = self._plans.dt
         steps = whole_steps(seconds, dt)
+        if steps is None and isinstance(seconds, float) and seconds / dt < 1.0:
+            what = ("a run of zero steps" if seconds == 0.0 else "a negative length of time" if seconds < 0.0 else
+                    "less than one base step")
+            raise ArgumentRefused([Refusal(
+                "run.duration", RefusalClass.USER,
+                f"a run of {seconds!r} s is {what}: a run is at least one base step, {dt!r} s here",
+                f"run at least one step: run(s({dt!r})), or a whole number of them",
+                why="a run steps the graph by whole base steps, and MIME does not round a duration")])
         if steps is None:
             lower, upper = whole_runs_either_side(seconds, dt)
             raise ArgumentRefused([Refusal(
@@ -1563,7 +1582,8 @@ class BuiltExperiment:
         chunks of ``chunk``. A run asked for neither is split into about 64 chunks of one length, a divisor of its
         steps where one lies near; the chunks change nothing it computes, bit for bit. A run with a hook or a
         controller is a whole number of chunks. After a ``KeyboardInterrupt`` the built experiment is not run on:
-        build it again.
+        build it again. A run continues from where the last one ended: calling ``run`` twice on one build gives a second
+        result of the steps after the first's, and a run from the start is a build made again.
 
         ``stop`` is called after every chunk but the last and returns ``None`` to go on, or a reason to end the run
         there: the result then holds the steps reached, and its ``stopped`` says why and how many were asked for
@@ -1651,6 +1671,7 @@ class BuiltExperiment:
                 "pass chunk=, a whole number of base steps: run(..., hook=hook, chunk=ms(10))")])
         start = self._runs.steps
         self._refuse_past_nodes_reach(start + steps)
+        self._warn_windows_past_end(start + steps)
         if self._runs.callback is not None:  # a run starts from the declared inputs: none a live session set
             self._runs.callback.live.clear()
         kept = history or bool(recorded)
@@ -1684,6 +1705,20 @@ class BuiltExperiment:
         if stopped:
             raise RunFailed(stopped, result)
         return result
+
+    def _warn_windows_past_end(self, end: int) -> None:
+        """A warning, before the run spends its steps, for each observation whose window starts at or after the end
+        this run reaches (``end``, in base steps from the graph's start): its outputs at the end would read as
+        nothing observed (``run.window-past-end``, raised only when one is read). Never a refusal: a run may want only
+        the series."""
+        reached = end * self._plans.dt
+        for held in self.layout.observations:
+            starts = sorted({output.after for output in held.outputs if output.after is not None})
+            if starts and not reached > starts[0]:
+                warn_at_script(
+                    f"{held.id}'s window starts at {starts[0]:.6g} s, at or after the end of this run at {reached:.6g} "
+                    f"s: its outputs at the end will read as nothing observed. Run longer than {starts[0]:.6g} s from "
+                    f"the graph's start, or start the window earlier (the observation's after=)", UserWarning)
 
     def _refuse_past_nodes_reach(self, end: int) -> None:
         """Refuse, before it runs, a run that would take a node past the steps it was built to keep a record of
