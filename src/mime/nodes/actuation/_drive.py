@@ -34,8 +34,8 @@ class ConstantNode(MimeNode):
                      "or of anything the run computes",),
     )
     symbols = (
-        Symbol(r"\mathbf{u}", SymbolKind.STATE, "value", "the command's own", _ADVANCE),
-        Symbol(r"\mathbf{c}", SymbolKind.PARAMETER, "value", "the command's own", _ADVANCE),
+        Symbol(r"\mathbf{u}", SymbolKind.STATE, "value", "the command's own", _ADVANCE, prose_units=True),
+        Symbol(r"\mathbf{c}", SymbolKind.PARAMETER, "value", "the command's own", _ADVANCE, prose_units=True),
     )
 
     def __init__(self, name: str, timestep: float, *, value: float | Sequence[float]) -> None:
@@ -87,9 +87,9 @@ class RampNode(MimeNode):
                      "the step: they differ by at most the rate times an eighth of a step",),
     )
     symbols = (
-        Symbol("u_{n}", SymbolKind.STATE, "value", "the command's own", _RAMP),
-        Symbol("u_{0}", SymbolKind.PARAMETER, "start", "the command's own", _RAMP),
-        Symbol("r", SymbolKind.PARAMETER, "rate", "the command's own per second", _RAMP),
+        Symbol("u_{n}", SymbolKind.STATE, "value", "the command's own", _RAMP, prose_units=True),
+        Symbol("u_{0}", SymbolKind.PARAMETER, "start", "the command's own", _RAMP, prose_units=True),
+        Symbol("r", SymbolKind.PARAMETER, "rate", "the command's own per second", _RAMP, prose_units=True),
         Symbol("T", SymbolKind.PARAMETER, "duration", "s", _RAMP),
         Symbol("t_{h}", SymbolKind.PARAMETER, "hold", "s", _RAMP),
         Symbol("n", SymbolKind.STATE, "steps", "1", _RAMP),

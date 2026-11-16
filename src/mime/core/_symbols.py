@@ -31,3 +31,13 @@ class Symbol:
     name: str
     units: str
     implemented_by: str
+    #: ``units`` is text and no unit label (a drive's value, in whatever units its command is declared in). Every other
+    #: row's units are read where the row is defined (:func:`mime.units.parse_label`), so a typo is the ``units.label``
+    #: refusal at import, never a row nothing compares.
+    prose_units: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.prose_units:
+            from mime.units import parse_label
+
+            parse_label(self.units)

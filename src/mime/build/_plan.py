@@ -1905,10 +1905,11 @@ class _Planner:
             return []
         try:
             problems = list(entry.setting_problems(settings))
-        except MimeError as refused:  # a refusal its settings meet below it (an asset gate's) keeps its own code
-            self.refusals.extend(refused.refusals)
-            return ["refused"]
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+            if isinstance(error, MimeError) and error.kept_when_wrapped:
+                # a refusal its settings meet below it (an asset gate's) keeps its own code
+                self.refusals.extend(error.refusals)
+                return ["refused"]
             self.defect(type(entry), f"setting_problems() raised {error!r}", error)
             return ["defect"]
         for problem in problems:

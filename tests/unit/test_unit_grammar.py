@@ -56,10 +56,18 @@ EQUAL = [
     ("m^2/s^2", LENGTH**2 / TIME**2), ("N m^2", FORCE * LENGTH**2), ("N A^-2", FORCE / CURRENT**2),
     ("T m^3/A", MAGNETIC_FLUX_DENSITY * LENGTH**3 / CURRENT), ("kg s^-3 A^-1", MASS / (TIME**3 * CURRENT)),
     ("m^-1 kg s^-2 A^-1", MASS / (LENGTH * TIME**2 * CURRENT)), ("1", DIMENSIONLESS), ("rad", DIMENSIONLESS),
-    ("1/s", FREQUENCY), ("Hz", FREQUENCY), ("rad/s", FREQUENCY), ("(m s)^2", LENGTH**2 * TIME**2),
+    ("1/s", DIMENSIONLESS / TIME), ("Hz", FREQUENCY), ("rad/s", ANGULAR_VELOCITY), ("(m s)^2", LENGTH**2 * TIME**2),
     ("(m/s)^2", LENGTH**2 / TIME**2), ("(m s^-1)^-1", TIME / LENGTH), ("m / s", LENGTH / TIME), ("m  s", LENGTH * TIME),
     ("1/(m s)", DIMENSIONLESS / (LENGTH * TIME)), ("kg m^2/s^2", ENERGY), ("(kg m^2)/(s^2)", ENERGY),
     ("m^2 kg s^-1", LENGTH**2 * MASS / TIME), ("mol/cd", Dimension.of((0, 0, 0, 0, 0, 1, -1))),
+    ("m\ts", LENGTH * TIME), ("N\tm", ENERGY), ("m\t/\ts", LENGTH / TIME),
+]
+
+#: The rates, each with what it counts: the full dimension, which equality of exponents alone does not compare.
+RATES = [
+    ("Hz", FREQUENCY), ("(Hz)", FREQUENCY), ("rad/s", ANGULAR_VELOCITY), ("rad s^-1", ANGULAR_VELOCITY),
+    ("s^-1 rad", ANGULAR_VELOCITY), ("rad / s", ANGULAR_VELOCITY), ("rad/(s)", ANGULAR_VELOCITY),
+    ("rad m/(m s)", ANGULAR_VELOCITY), ("Hz m s/(s m)", FREQUENCY), ("(rad/s)^1", ANGULAR_VELOCITY),
 ]
 
 #: Labels that must be refused, each with the code, and a part of what is said.
@@ -72,6 +80,12 @@ REFUSED = [
     ("J/mol K", "more than one term"), ("m/s s", "more than one term"), ("N,m", "not a unit symbol"),
     ("rad Hz", "turns (Hz) and radians"), ("Hz/rad", "turns (Hz) and radians"), ("m; s", "not a unit symbol"),
     ("deg/s", "no unit symbol"), ("the command's own", "no unit symbol"),
+    # a factor never runs into the next one: 'm1' is not 'm'
+    ("m1", "separated by spaces"), ("kg1", "separated by spaces"), ("m(s)", "separated by spaces"),
+    ("m^2s", "separated by spaces"),
+    # a rate per second counts its angle once: these were read as rad/s or Hz
+    ("1/(rad s)", "counts -1 of radians"), ("rad^2/s", "counts 2 of radians"), ("s^-1/rad", "counts -1 of radians"),
+    ("1/(Hz s^2)", "counts -1 of turns"), ("Hz^2 s", "counts 2 of turns"), ("rad^-1 s^-1", "counts -1 of radians"),
 ]
 
 
@@ -127,8 +141,22 @@ def test_the_writer_writes_what_it_always_wrote():
 
 # -- the properties --------------------------------------------------------------------------------------------------
 
+
+def same(a: Dimension, b: Dimension) -> bool:
+    """Whether two dimensions are one in full: their exponents and what a rate per second counts (turns, radians, or
+    neither). ``Dimension`` equality compares the exponents alone, so ``FREQUENCY == ANGULAR_VELOCITY``; a property that
+    used it would not see a Hz and a rad/s swapped."""
+    return a == b and a.angle == b.angle and type(a) is type(b)
+
+
 #: Exponents beyond any MIME label's largest (3), drawn whole.
 exponents = st.tuples(*[st.integers(-6, 6)] * 7)
+
+#: The dimensions the writer has a symbol for (``m/s^2``, ``Pa s/m^3``, ``m^3/Pa``: its quotients), read from its own
+#: table, never a list kept here. A drawn exponent vector is a writer's symbol about once in 10^7 draws, so these are
+#: drawn from the table, with real weight.
+WRITTEN = sorted(units._SYMBOLS, key=lambda d: d.exponents)  # noqa: SLF001
+RATE_DIMENSIONS = [FREQUENCY, ANGULAR_VELOCITY]
 
 
 def term(symbol: str, power: int) -> str:
@@ -142,12 +170,16 @@ def product(pairs: list[tuple[str, int]], space: str) -> str:
 @st.composite
 def spelled(draw: st.DrawFn) -> tuple[Dimension, str]:
     """A dimension and one spelling of it: a flat product, a quotient with its negative exponents in a denominator (in
-    parentheses where more than one), or a parenthesised group raised to a whole power, in a drawn order and spacing.
-    A group is built, not found: its inside and its power are drawn and the dimension is their product, so a draw
-    reaches a group raised to 2, 3 or a negative power (a random exponent vector is rarely a whole multiple) in every
-    third draw."""
-    style = draw(st.sampled_from(["flat", "quotient", "grouped"]))
-    space = draw(st.sampled_from([" ", "  "]))
+    parentheses where more than one), or a parenthesised group raised to a whole power, in a drawn order and spacing; or
+    a rate per second, which counts turns or radians, in one of the spellings of it. A group is built, not found: its
+    inside and its power are drawn and the dimension is their product, so a draw reaches a group raised to 2, 3 or a
+    negative power (a random exponent vector is rarely a whole multiple) in every fourth draw, and a rate in every
+    fourth."""
+    style = draw(st.sampled_from(["flat", "quotient", "grouped", "rate"]))
+    space = draw(st.sampled_from([" ", "  ", "\t"]))
+    if style == "rate":
+        text, held = draw(st.sampled_from(RATES))
+        return held, text.replace(" ", space)
     if style == "grouped":
         inside = draw(st.tuples(*[st.integers(-2, 2)] * 7))
         k = draw(st.sampled_from([-3, -2, -1, 1, 2, 3, 2, 3, -2, -3]))
@@ -165,16 +197,35 @@ def spelled(draw: st.DrawFn) -> tuple[Dimension, str]:
                                        if under else "")
 
 
-@given(held=exponents)
-def test_the_parser_reads_what_the_writer_writes(held):
-    written = Dimension.of(held)
-    assert parse_unit(unit_symbol(written)) == written
+#: A dimension the writer writes: one of its own symbols (a quarter of the draws), a rate, a product of two symbols, or
+#: any exponents.
+written_dimensions = st.one_of(
+    st.sampled_from(WRITTEN), st.sampled_from(RATE_DIMENSIONS),
+    st.builds(lambda a, b: a * b, st.sampled_from(WRITTEN), st.sampled_from(WRITTEN)),
+    exponents.map(Dimension.of))
+
+
+@given(written=written_dimensions)
+def test_the_parser_reads_what_the_writer_writes(written):
+    assert same(parse_unit(rate_symbol(written)), written), rate_symbol(written)
 
 
 @given(case=spelled())
 def test_every_spelling_of_a_dimension_reads_as_it(case):
     held, text = case
-    assert parse_unit(text) == held, text
+    assert same(parse_unit(text), held), text
+
+
+def test_the_property_compares_what_a_rate_counts():
+    assert FREQUENCY == ANGULAR_VELOCITY and not same(FREQUENCY, ANGULAR_VELOCITY)
+    assert same(parse_unit("Hz"), FREQUENCY) and same(parse_unit("rad/s"), ANGULAR_VELOCITY)
+    assert not same(parse_unit("Hz"), ANGULAR_VELOCITY)
+
+
+def test_the_writers_own_symbols_are_most_of_what_the_round_trip_draws():
+    """The table the round trip draws from holds the writer's quotients, so that a dimension written ``m/s^2`` is drawn
+    at the weight of its branch and not once in 10^7."""
+    assert {"m/s^2", "Pa s/m^3", "m^3/Pa"} <= {units._SYMBOLS[d] for d in WRITTEN}  # noqa: SLF001
 
 
 # -- the controls ----------------------------------------------------------------------------------------------------
@@ -183,7 +234,7 @@ def test_every_spelling_of_a_dimension_reads_as_it(case):
 def _over_by_one_term(a, b, label):
     first = next((i for i, e in enumerate(b.exponents) if e), None)
     exponents_ = tuple(-e if i == first else 0 for i, e in enumerate(b.exponents))
-    return units._times(a, units._Term(exponents_, b.angle), label)  # noqa: SLF001
+    return units._times(a, units._Term(exponents_, b.angle, -b.counted), label)  # noqa: SLF001
 
 
 def _over_adding(a, b, label):
@@ -193,7 +244,11 @@ def _over_adding(a, b, label):
 def _raised_first_term_only(term_, power):
     first = next((i for i, e in enumerate(term_.exponents) if e), None)
     return units._Term(tuple(e * power if i == first else e for i, e in enumerate(term_.exponents)),  # noqa: SLF001
-                       term_.angle)
+                       term_.angle, term_.counted * power)
+
+
+def _rate_swapped(angle):
+    return ANGULAR_VELOCITY if angle == "turn" else FREQUENCY
 
 
 #: The planted bugs: the reader's function each replaces, and the faulty one.
@@ -201,6 +256,7 @@ PLANTS: dict[str, tuple[str, Callable[..., object]]] = {
     "quotient-one-term": ("_over", _over_by_one_term),
     "quotient-multiplies": ("_over", _over_adding),
     "power-first-term-only": ("_raised", _raised_first_term_only),
+    "rate-swapped": ("_rate_counting", _rate_swapped),
 }
 
 
@@ -229,7 +285,7 @@ def the_plant_a_run_names() -> Iterator[None]:
 
 def table_fails() -> bool:
     try:
-        return any(parse_unit(label) != want for label, want in EQUAL)
+        return any(not same(parse_unit(label), want) for label, want in [*EQUAL, *RATES])
     except UnitError:
         return True
 
@@ -249,3 +305,10 @@ def test_the_spellings_property_fails_under_each_planted_bug(name):
         pytest.skip("a run with a plant set measures the properties' rate")
     with planted(name), pytest.raises(AssertionError):
         test_every_spelling_of_a_dimension_reads_as_it()  # type: ignore[call-arg]  # a @given test: it draws its own
+
+
+def test_the_round_trip_property_fails_under_the_swapped_rates():
+    if os.environ.get("MIME_PLANT_UNIT_GRAMMAR"):
+        pytest.skip("a run with a plant set measures the properties' rate")
+    with planted("rate-swapped"), pytest.raises(AssertionError):
+        test_the_parser_reads_what_the_writer_writes()  # type: ignore[call-arg]

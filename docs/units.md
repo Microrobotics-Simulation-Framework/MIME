@@ -26,9 +26,11 @@ a run's speeds); an array quantity is a result and never a declaration.
   written as a float is the same). A fractional power is refused, because a dimension's exponents are whole numbers: read the
   magnitude in a unit with `.to(unit)`, take its root, and write the result in its own unit. `abs` of a quantity is its
   absolute value in the same dimension, elementwise for a series; a vector quantity has no one absolute value and is
-  refused. `sum` of quantities works: it starts at the int zero, which a quantity accepts on the left of a `+` and returns
-  itself. **Any other bare number is refused on either side of a `+`**, a float zero and `False` included, and so is a
-  quantity plus an int zero: the start is an integer zero and nothing else, so no bare number is added to a quantity.
+  refused. `sum` of quantities works because Python's `sum` starts at the `int` zero, and a quantity accepts that on the
+  left of a `+` and returns itself. **Exactly the Python `int` zero is accepted there, and nothing else**: a float zero,
+  `False`, a NumPy zero (a scalar or a zero-dimensional array) and an array of zeros are refused as any bare number is, and so
+  is a quantity plus the int zero. An array of numbers plus a quantity is that refusal too, not an array of one quantity per
+  number. The start is the one bare number accepted so that `sum` works, and it opens no hole in `+`.
 - **`==` with a bare number is `False`, not an error.** A quantity compared for equality with a bare number is `False` (and
   `!=` is `True`), where an order (`<`) with a bare number is refused. Python's equality must not raise without breaking
   containers and dataclass comparison, which ask `==` of what they hold, so MIME leaves it. Write the comparison in a unit,
@@ -43,6 +45,8 @@ a run's speeds); an array quantity is a result and never a declaration.
 m(2.0) ** 2            # 4.0 m^2: an integer power
 abs(m(-2.0))           # 2.0 m
 sum([m(1.0), m(2.0)])  # 3.0 m: sum starts at the int 0
+0 + m(1.0)             # 1.0 m: the int zero, and only it
+m(1.0) + 0             # refused, as is 0.0 + m(1.0), False + m(1.0) and np.zeros(3) + m(1.0)
 m(1.0) == 1.0          # False, silently: compare in a unit instead
 ```
 
@@ -73,7 +77,8 @@ The grammar:
 
 - **names**: the SI base symbols and the named units, `m kg s A K mol cd` and `N Pa J W T Hz rad`;
 - the number **one** for a dimensionless value;
-- a **product** by spaces;
+- a **product** by spaces (any whitespace; a factor never runs into the next, so `m1` and `m(s)` are refused, and `ms` is
+  no name here: it is the millisecond, a prefixed unit);
 - one **quotient** by `/` and a single factor after it. More than one term in the denominator is written in parentheses, so
   a label is never read two ways;
 - **integer powers** by `^`, written right after what they raise and never zero;
@@ -89,6 +94,11 @@ m/(s Pa)      a parenthesised denominator
 J/mol K       refused: more than one term after the /, write J/(mol K)
 m; 1          a composite: a pose is a length and a dimensionless part
 N s/m; N s; N m s   a composite: a wrench's operator, its blocks in order
+1/(rad s)     refused: it counts its radian minus one time, and is no rad/s
+rad^2/s       refused: it counts its radian twice
+s^-1/rad      refused: minus one time
+1/(Hz s^2)    refused: minus one time
+m1            refused: a factor never runs into the next, write m 1 or m
 ```
 
 A label with a semicolon is a composite, its parts separated (a pose, a wrench's operator: the examples below).
@@ -98,7 +108,8 @@ to one, the name it is close to.
 
 **A turn and a radian stay apart.** `Hz` reads as `FREQUENCY` and `rad/s` as `ANGULAR_VELOCITY`: equal as dimensions, and
 different in what they count, as the quantities and the sites that take them keep them. `rad` alone is dimensionless, as the
-unit `rad` holds it. A label that counts both turns and radians is refused.
+unit `rad` holds it. A label that counts both turns and radians is refused, and so is a rate per second that counts its
+angle other than once (the examples below): such a label is never read as `rad/s` or `Hz`.
 
 ### Labels from dimension markers
 
@@ -117,10 +128,12 @@ unit_label(Length, DIMENSIONLESS)
 
 ### Where a label is checked
 
-A label is read **where it is defined**: an interface of the vocabulary when it is made, at import, and a state's `Units(...)`
-when the annotation holding it is evaluated, which for a module that postpones its annotations is when the node's typed
-state is first read (a build, a save, or the tests that read every node's). A typo is the refusal `units.label` and not a
-silent label that nothing parses. A registration's interface carries no values, so its units may be empty. A test collects
+A label is read **where it is defined**: an interface of the vocabulary when it is made, at import; a symbol-table row
+(`Symbol(...)`, at import, unless it says its units are prose, `prose_units=True`); a node's `node_input(...)` and
+`param_spec(...)` where the node declares them; and a state's `Units(...)` when the annotation holding it is evaluated, which
+for a module that postpones its annotations is when the node's typed state is first read (a build, a save, or the tests that
+read every node's). A typo, or a value that is not text (a number given to `Units`), is the refusal `units.label` and not a silent label
+that nothing parses. A registration's interface carries no values, so its units may be empty. A test collects
 every label MIME writes from the registry, the node classes, the vocabulary and the source, and parses them all.
 
 ## Errors
@@ -128,13 +141,24 @@ every label MIME writes from the registry, the node classes, the vocabulary and 
 A unit error is a MIME error with a code and what to do, and still a `ValueError`: reading a length in a time, `speed.to(s)`,
 is refused with the code `call.units` and the line that says to read it in a unit of length, and `except ValueError`,
 `except UnitError` and `except MimeError` all catch it. Its message, `str(error)`, is the plain sentence the sites that quote
-it have always read; a traceback prints the whole refusal beneath it.
+it have always read. The refusal's lines are the error's notes, made when it is raised, which Python prints under the
+message; they are the exception's own notes, so `add_note` keeps working, and so does what Hypothesis adds to a failing
+example.
+
+**Where it is raised decides the refusal it is.** Raised from a script's own expression, a unit error reaches the script
+with its own code. Raised in code MIME is checking or reading, it is that code's failure and takes the code a plain
+`ValueError` from there takes: in an entry's own methods (`setting_problems`, `build`, `plan`, a stage's) it is the entry's
+defect, `entry.defect`; in a controller's `law()` the same; in a results manifest it is `result.format`. A unit bug inside a
+lab's entry never reads as the user's mistake.
 
 ## On the command line
 
 `mime run --override path=value` and a study's spec file read the same value text: numbers separated by commas and a unit,
 written as the unit's **name** in `mime.units`, its **symbol** or SI base units. A bare number is a dimensionless value, and
-a setting that needs a unit refuses it.
+a setting that needs a unit refuses it. The unit's spaces are kept, so a unit written with them is a product (the first
+three lines below, each judged against the setting's dimension), and never the prefixed unit that its letters would spell
+without them. A unit written without a space is read as written, and one with spaces that is a unit's symbol as printed
+is that unit.
 
 <!-- mime-fragment: examples of what is written, not a run -->
 ```text
@@ -143,4 +167,10 @@ a setting that needs a unit refuses it.
 --override umr.initial.position=0,0,-1mm        components
 --override water.viscosity="2 mPa s"            a unit's symbol
 --override water.viscosity="1e-3 kg m^-1 s^-1"  SI base units
+--override x="3 m s"      metre seconds, never 3 ms
+--override x="3 m m"      square metres, never 3 mm
+--override x="2 m T"      tesla metres, never 2 mT
+--override x=3ms          no space: the millisecond, as written
+--override x=2mPas        no space: the symbol of the unit mPa s with its space left out
+--override x="3 N m"      a unit's symbol as printed
 ```

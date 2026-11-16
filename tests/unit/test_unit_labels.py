@@ -1,8 +1,8 @@
 """Every unit label MIME writes parses, collected from where MIME writes them and never from a list kept by hand.
 
 The sources: the symbol table and the typed-state ``Units`` of every node class a registered entry builds; the units of
-every interface of the vocabulary; and every ``units=``, ``expected_units=``, ``output_units=`` keyword and ``Units(...)``
-call with a string in ``src/mime`` (a node's ``ParamSpec`` and input and output specs). The test prints how many labels
+every interface of the vocabulary; and every ``units=``, ``expected_units=``, ``output_units=`` keyword, ``Units(...)`` and
+``node_input(...)`` call with a string in ``src/mime`` (a node's ``ParamSpec`` and input and output specs). The test prints how many labels
 each source gave and how many distinct strings there are (run with ``-s`` to see them), and holds each count to the floor
 it was first measured at, so that a source that quietly stops finding labels fails.
 
@@ -28,6 +28,8 @@ from mime.vocabulary import lookup, names
 
 PACKAGE = Path(mime.__file__).parent
 SPEC_KEYWORDS = frozenset({"units", "expected_units", "output_units"})
+#: The calls whose first positional argument is a unit label: a state field's ``Units`` and a node's ``node_input``.
+POSITIONAL_LABEL = frozenset({"Units", "node_input"})
 
 #: Strings a symbol row holds as its units that are no unit label, each with why. A row's units are read by
 #: ``mime.docs`` as a label where they parse and as text where they do not (``_same_units``).
@@ -40,7 +42,7 @@ NOT_A_UNIT = {
 #: What each source gave when this test was written (the first run of the collection, 2026-11-15; ``typed state`` counts
 #: a TypedDict once for every node class that reads it, so it is the largest). A count that falls is a source that
 #: stopped finding labels, or labels that were removed: lower the floor with the reason where it is.
-FLOORS = {"symbol rows": 240, "typed state": 1377, "vocabulary": 31, "source": 372, "distinct": 48}
+FLOORS = {"symbol rows": 240, "typed state": 1377, "vocabulary": 31, "source": 417, "distinct": 48}
 
 
 def rows_and_typed() -> tuple[list[str], list[str]]:
@@ -65,7 +67,7 @@ def of_the_source() -> list[str]:
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if not isinstance(node, ast.Call):
                 continue
-            named = isinstance(node.func, ast.Name) and node.func.id == "Units" and node.args
+            named = isinstance(node.func, ast.Name) and node.func.id in POSITIONAL_LABEL and node.args
             held = [node.args[0]] if named else []
             held += [kw.value for kw in node.keywords if kw.arg in SPEC_KEYWORDS]
             found += [each.value for each in held if isinstance(each, ast.Constant) and isinstance(each.value, str)]

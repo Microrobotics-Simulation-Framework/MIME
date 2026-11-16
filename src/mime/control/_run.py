@@ -202,9 +202,9 @@ def law_and_models(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusa
     models = cast(ReadModels, context.models)
     try:
         law = plan.entry.law(context)
-    except MimeError as refused:
-        return None, list(refused.refusals), tuple(sorted(models.read))
     except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+        if isinstance(error, MimeError) and error.kept_when_wrapped:
+            return None, list(error.refusals), tuple(sorted(models.read))
         return None, [f"law() raised {error!r}"], tuple(sorted(models.read))
     if not isinstance(cast(object, law), ControlLaw):
         return None, [f"law() returned {law!r}, not a mime.registry.ControlLaw"], tuple(sorted(models.read))

@@ -13,7 +13,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from importlib.resources import files
 from types import FunctionType, MappingProxyType
-from typing import TYPE_CHECKING, Any, cast, override
+from typing import TYPE_CHECKING, Any, ClassVar, cast, override
 
 if TYPE_CHECKING:
     from mime.build._report import BuildReport
@@ -246,6 +246,13 @@ class MimeError(Exception):
 
     headline = "the call is refused"
 
+    #: Whether a check that runs code on MIME's behalf (an entry's methods, a controller's law, a reader of a saved form)
+    #: passes this error on with its own refusals. False for :class:`~mime.units.UnitError`, which a call's argument
+    #: raises wherever it is read: raised in code that is being checked or read, it is that code's defect (or the
+    #: file's format), and the check gives it the code it gives any other error from there; raised from a script's own
+    #: expression it reaches the script with its own code.
+    kept_when_wrapped: ClassVar[bool] = True
+
     def __init__(self, refusals: Sequence[Refusal]) -> None:
         self.refusals = tuple(refusals)
         #: The error from below that this one translates, when it does.
@@ -336,10 +343,17 @@ def entry_defect(cls: type, problem: str, *, label: str | None = None, context: 
                    f"MIME: {MIME_DEFECT}", where=where, owner=package)
 
 
+def kept_when_wrapped(error: BaseException) -> bool:
+    """Whether a check that runs code on MIME's behalf passes ``error`` on as the MIME error it is: a MIME error whose
+    class says so (:attr:`MimeError.kept_when_wrapped`). A unit error raised there is an error like any other from the
+    code under check (an entry's defect, a file's bad format), as it was before it became a MIME error."""
+    return isinstance(error, MimeError) and error.kept_when_wrapped
+
+
 def described(error: BaseException) -> str:
     """``error`` as an entry's defect shows it: its ``repr``, except a MIME error, whose refusals (code, words, docs
     link) are shown as the plain lines they are, indented under the headline, never as an escaped ``repr``."""
-    if isinstance(error, MimeError) and error.refusals:
+    if kept_when_wrapped(error) and isinstance(error, MimeError) and error.refusals:
         lines = "\n".join(str(r) for r in error.refusals).replace("\n", "\n    ")
         return f"{type(error).__name__}, whose refusals are:\n    {lines}"
     return repr(error)
@@ -352,7 +366,7 @@ def passed_through(error: BaseException, cls: type, doing: str, label: str | Non
     entry named as where it was met (``(while <doing> <entry>)``), never as the culprit. ``None`` for anything else:
     a plain exception, a MIME error with no refusals, and one with any internal refusal (MIME's own defect, which the
     entry is reported beside as ``entry.defect``)."""
-    if not isinstance(error, MimeError) or not error.refusals:
+    if not kept_when_wrapped(error) or not isinstance(error, MimeError) or not error.refusals:
         return None
     if any(r.category not in (RefusalClass.USER, RefusalClass.ENVIRONMENT) for r in error.refusals):
         return None

@@ -13,8 +13,10 @@ import jax.numpy
 import numpy as np
 from jax import Array
 from maddening.core.node import BoundaryInputSpec, SimulationNode
+from maddening.core.params import ParamSpec
 
 from mime.core._symbols import Symbol
+from mime.units import parse_label
 
 if TYPE_CHECKING:
     from mime.core.ledger import LedgerFlag
@@ -170,10 +172,19 @@ def node_input(units: str, shape: tuple[int, ...], *, additive: bool = False,
                description: str = "") -> BoundaryInputSpec:
     """An input declared the way every MIME node declares one: its shape, the run's dtype, a zero default, and its
     units as the vocabulary spells them. ``additive`` is documentation on MADDENING 0.4.x: what sums the deliveries is
-    each edge's own flag, which MIME's builders set from the target's kind."""
+    each edge's own flag, which MIME's builders set from the target's kind. The label is read here, so a typo is the
+    ``units.label`` refusal where the input is declared."""
+    parse_label(units)
     return BoundaryInputSpec(shape=shape, dtype=run_dtype(), default=as_run_array(np.zeros(shape)),
                              coupling_type="additive" if additive else "replacive", expected_units=units,
                              description=description)
+
+
+def param_spec(*, units: str, **given: Any) -> ParamSpec:
+    """MADDENING's ``ParamSpec`` with its units read where it is declared (:func:`~mime.units.parse_label`): a typo is
+    the ``units.label`` refusal there, not a label a reader finds later. The other arguments are ``ParamSpec``'s."""
+    parse_label(units)
+    return ParamSpec(units=units, **given)
 
 
 def _numeric(value: object) -> bool:

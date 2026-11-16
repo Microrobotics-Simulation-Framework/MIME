@@ -244,13 +244,22 @@ def _no_effect(axis: Axis, value: object, own: object | None) -> Refusal:
 __all__ = ["Overridden", "base_point", "overridden", "replayed"]
 
 
-def _units() -> dict[str, Any]:
-    """The units a value's text may name: each by the Python name ``mime.units`` exports it as (``mPa_s``, ``mm_per_s``)
-    and by the symbol it prints with, spaces left out (``mPas``, ``mm/s``)."""
+def _unit_written(text: str) -> Any | None:
+    """The unit of ``mime.units`` that ``text`` writes, or ``None`` where it writes none: a unit's Python name
+    (``mPa_s``, ``mm_per_s``), the symbol it prints with (``mPa s``, ``mm/s``), or, in a token with no space in it, that
+    symbol with its spaces left out (``mPas``). A unit written with spaces is its symbol as printed, spaces and all: it
+    is never read with them removed, which would read ``m s`` as ``ms`` and ``2 m T`` as ``2 mT``; what is not a unit's
+    symbol is read by the label grammar (``m s`` is a product)."""
     import mime.units as units
 
-    by_symbol = {held.symbol.replace(" ", ""): held for held in units.units_by_name().values()}
-    return {**by_symbol, **units.units_by_name()}
+    named = units.units_by_name()
+    held = named.get(text)
+    if held is not None:
+        return held
+    by_symbol = {unit.symbol: unit for unit in named.values()}
+    if len(text.split()) > 1:
+        return by_symbol.get(" ".join(text.split()))
+    return by_symbol.get(text) or {unit.symbol.replace(" ", ""): unit for unit in named.values()}.get(text)
 
 
 _NUMBER = r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?"
@@ -265,16 +274,17 @@ def parse_value(text: str) -> Quantity | None:
     """A value as ``--override`` and a spec file write it: a number or numbers split by commas, with a unit, or a bare
     number for a dimensionless value; ``None`` for text that is not one. A unit is a name ``mime.units`` exports
     (``20Hz``, ``2mPa_s``, ``1.5mm_per_s``), the symbol a unit prints with (``1.2 mT``, ``2 mPa s``, ``1.5 mm/s``), or
-    a label of SI base units (``m^2 kg s^-1``)."""
+    a label of SI base units (``m^2 kg s^-1``), which :func:`~mime.units.parse_unit` reads with its spaces kept: ``3 m s``
+    is 3 metre seconds, never 3 ms, and ``2 m T`` is tesla metres, never 2 mT."""
     import re
 
-    found = re.fullmatch(rf"\s*\(?\s*((?:{_NUMBER})(?:\s*,\s*{_NUMBER})*)\s*\)?\s*([A-Za-z][A-Za-z0-9_/^ -]*)?\s*", text)
+    found = re.fullmatch(rf"\s*\(?\s*((?:{_NUMBER})(?:\s*,\s*{_NUMBER})*)\s*\)?\s*([A-Za-z][A-Za-z0-9_/^()\s-]*)?\s*", text)
     if found is None:
         return None
     numbers = [float(n) for n in found[1].split(",")]
     magnitude = numbers[0] if len(numbers) == 1 else tuple(numbers)
     symbol = (found[2] or "1").strip()
-    unit = _units().get(symbol.replace(" ", ""))
+    unit = _unit_written(symbol)
     if unit is not None:
         return cast(Quantity, unit(magnitude))
     try:
