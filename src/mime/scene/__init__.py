@@ -42,6 +42,7 @@ from mime.scene._frame import (
 )
 from mime.scene._geometry import Axis, Plane, Tube, X, Y, Z
 from mime.scene._plug import Plug
+from mime.scene._rotation import rotation
 from mime.scene._previous import KEPT
 from mime.scene._sampling import (
     QUADRATURE,
@@ -131,6 +132,6 @@ __all__ = [
     "check_stage", "compose", "derived_findings", "geometry_schema_problems", "kind_frame", "length_of", "manifest_beside", "mesh_path",
     "mesh_source", "meters_per_unit", "pinned_visuals", "placed", "quadrature", "quadrature_counts", "quadrature_owners", "quasi_uniform",
     "read_kind", "register_shape", "sampled_points", "sampled_reach", "scene_up", "sha256_hex", "shape_settings",
-    "stage_derived_findings", "stage_edits", "stage_text", "unit_vector", "up_axis", "up_axis_problem",
+    "rotation", "stage_derived_findings", "stage_edits", "stage_text", "unit_vector", "up_axis", "up_axis_problem",
     "valid_part_path", "valid_prim_path", "visual_sets", "within", "world_frame",
 ]

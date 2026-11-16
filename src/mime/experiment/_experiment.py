@@ -1472,6 +1472,14 @@ class BuiltExperiment:
         seconds = si(duration, TIME, what="the run's duration")
         dt = self._plans.dt
         steps = whole_steps(seconds, dt)
+        if steps is None and isinstance(seconds, float) and seconds / dt < 1.0:
+            what = ("a run of zero steps" if seconds == 0.0 else "a negative length of time" if seconds < 0.0 else
+                    "less than one base step")
+            raise ArgumentRefused([Refusal(
+                "run.duration", RefusalClass.USER,
+                f"a run of {seconds!r} s is {what}: a run is at least one base step, {dt!r} s here",
+                f"run at least one step: run(s({dt!r})), or a whole number of them",
+                why="a run steps the graph by whole base steps, and MIME does not round a duration")])
         if steps is None:
             lower, upper = whole_runs_either_side(seconds, dt)
             raise ArgumentRefused([Refusal(
@@ -1563,7 +1571,8 @@ class BuiltExperiment:
         chunks of ``chunk``. A run asked for neither is split into about 64 chunks of one length, a divisor of its
         steps where one lies near; the chunks change nothing it computes, bit for bit. A run with a hook or a
         controller is a whole number of chunks. After a ``KeyboardInterrupt`` the built experiment is not run on:
-        build it again.
+        build it again. A run continues from where the last one ended: calling ``run`` twice on one build gives a second
+        result of the steps after the first's, and a run from the start is a build made again.
 
         ``stop`` is called after every chunk but the last and returns ``None`` to go on, or a reason to end the run
         there: the result then holds the steps reached, and its ``stopped`` says why and how many were asked for
@@ -1651,6 +1660,7 @@ class BuiltExperiment:
                 "pass chunk=, a whole number of base steps: run(..., hook=hook, chunk=ms(10))")])
         start = self._runs.steps
         self._refuse_past_nodes_reach(start + steps)
+        self._warn_windows_past_end(start + steps)
         if self._runs.callback is not None:  # a run starts from the declared inputs: none a live session set
             self._runs.callback.live.clear()
         kept = history or bool(recorded)
@@ -1684,6 +1694,20 @@ class BuiltExperiment:
         if stopped:
             raise RunFailed(stopped, result)
         return result
+
+    def _warn_windows_past_end(self, end: int) -> None:
+        """A warning, before the run spends its steps, for each observation whose window starts at or after the end
+        this run reaches (``end``, in base steps from the graph's start): its outputs at the end would read as
+        nothing observed (``run.window-past-end``, raised only when one is read). Never a refusal: a run may want only
+        the series."""
+        reached = end * self._plans.dt
+        for held in self.layout.observations:
+            starts = sorted({output.after for output in held.outputs if output.after is not None})
+            if starts and not reached > starts[0]:
+                warn_at_script(
+                    f"{held.id}'s window starts at {starts[0]:.6g} s, at or after the end of this run at {reached:.6g} "
+                    f"s: its outputs at the end will read as nothing observed. Run longer than {starts[0]:.6g} s from "
+                    f"the graph's start, or start the window earlier (the observation's after=)", UserWarning)
 
     def _refuse_past_nodes_reach(self, end: int) -> None:
         """Refuse, before it runs, a run that would take a node past the steps it was built to keep a record of

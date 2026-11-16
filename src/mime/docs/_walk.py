@@ -33,6 +33,7 @@ from mime.docs._symbols import meta_of, rows_of
 from mime.registry import EntryKind, Registered
 from mime.testing import family_named
 from mime.vocabulary import MIME_NAMESPACE, TargetKind
+from mime.vocabulary._versions import version_order
 
 LEDGER = "unpaged.txt"
 #: The namespace whose entries are made up for MIME's own tests, and so need no hand-written source.
@@ -249,7 +250,7 @@ def _counts(required: Sequence[Required]) -> str:
 
 def version_problems(path: Path, text: str, records: list[Registered]) -> list[str]:
     described = _described(text)
-    versions = sorted(record.version for record in records)
+    versions = sorted((record.version for record in records), key=version_order)
     name = records[0].name
     if described is None:
         return [f"{path}: names no version it describes; start it with front matter, '---', 'describes: "

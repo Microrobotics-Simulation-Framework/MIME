@@ -67,6 +67,7 @@ bundle.unscannable            user
 call.missing-setting          user
 call.polyline                 user
 call.renamed                  user
+call.rotation                 user
 call.tube_tree                user
 call.units                    user
 call.unknown-name             user
@@ -531,6 +532,7 @@ record.unit                   user
 record.unknown                user
 record.unreadable             user
 registration.not-accepted     user
+registry.unknown-entry        user
 remove.ambiguous              user
 remove.named                  user
 remove.unknown                user
