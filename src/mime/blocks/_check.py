@@ -19,8 +19,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
-from mime._terminal import plain
 from mime._manifest_file import MANIFEST_FILE
+from mime._terminal import plain
 from mime.blocks._definition import CASES, Definition, read_definition
 from mime.blocks._fragment import read_fragment
 from mime.build import BuildRefused, Refusal, RefusalClass

@@ -1,7 +1,8 @@
 """``mime.toml``'s names (its file, its format, its family, the file it replaced, a block's tables) are defined once, in
 ``mime._manifest_file``; ``mime.push``, ``mime.blocks``, ``mime.results`` and ``mime.saved`` read them from there. The
-control: the scan finds each kind of copy planted in a module, and the template a block folder is scaffolded from states the
-format the constant holds."""
+scan reads exact string constants and tuples: it does not catch a concatenation, a list or a path suffix. The control: the
+scan finds each kind of copy planted in a module, and the template a block folder is scaffolded from states the format the
+constant holds."""
 
 from __future__ import annotations
 

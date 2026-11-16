@@ -35,7 +35,7 @@ names its generated page. How to read one, and how to reach its full traceback:
   IPython and Jupyter through the shell's handler of MIME's errors, in the CLI by the command itself (with no frames,
   and the exit code [`docs/reading_errors.md`](../../../docs/reading_errors.md) lists). The full chain is written to a file under
   `$MIME_TRACEBACK_DIR` or `tracebacks` in MIME's cache directory when it is shown, readable by its user alone and named
-  `mime-<stamp>-<pid>-<code>.txt`; only the newest `TRACEBACK_FILES_RETAINED` of that name are kept, and no other file is touched. A
+  `mime-<stamp>-<pid>-<code>.txt`; only a fixed number of the newest of that name are kept, and no other file is touched. A
   hook set before MIME's is handed a MIME error after its short form, unless it is Python's own.
 
 The classes themselves (`MimeError`, `BuildRefused`, `RunFailed`, ...) and `Refusal` live in

@@ -36,7 +36,8 @@ from mime.build._refusals import Explained, page_of, plain_possessive
 from mime.dynamics import RigidInertial
 from mime.gradients import GradientStatus
 from mime.registry import ControlLaw, Controller, GradientRecord, Signal, register_controller
-from mime.errors import TRACEBACK_FILES_RETAINED, write_traceback
+from mime.errors import write_traceback
+from mime.errors._display import TRACEBACK_FILES_RETAINED
 from mime.errors._boundary import crossed, public
 from mime.errors._display import DIRECTORY_VARIABLE, TRACEBACK_VARIABLE, short_text
 from mime.errors._frames import is_library, script_traceback

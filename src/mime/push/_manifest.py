@@ -351,6 +351,6 @@ def record_lines(held: Mapping[str, object], name: str) -> list[str]:
     return lines
 
 
-__all__ = ["BLOCK", "BUNDLE", "KINDS", "STUDY", "Manifest",
-           "folder_kind", "kind_of", "manifest_path", "manifest_problems", "manifest_text", "old_values", "present",
-           "read_manifest", "read_record", "read_toml", "record_lines", "toml_holdable", "toml_problems", "toml_shaped"]
+__all__ = ["BLOCK", "BUNDLE", "KINDS", "STUDY", "Manifest", "folder_kind", "kind_of", "manifest_path", "manifest_problems",
+           "manifest_text", "old_values", "present", "read_manifest", "read_record", "read_toml", "record_lines",
+           "toml_holdable", "toml_problems", "toml_shaped"]

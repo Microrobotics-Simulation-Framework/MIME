@@ -242,6 +242,6 @@ def _install_in_ipython() -> None:
     shell.set_custom_exc((MimeError,), handler)
 
 
-__all__ = ["DIRECTORY_VARIABLE", "FULL", "NAME", "PREFIX", "TRACEBACK_FILES_RETAINED", "TRACEBACK_VARIABLE",
+__all__ = ["DIRECTORY_VARIABLE", "FULL", "NAME", "PREFIX", "TRACEBACK_VARIABLE",
            "footer_lines", "full_mode", "install", "report_text", "short_text", "traceback_directory",
            "write_traceback"]

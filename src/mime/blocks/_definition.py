@@ -466,5 +466,6 @@ def definition_of(folder: str | os.PathLike[str]) -> Definition:
 
 
 __all__ = ["ASSETS", "CASES", "CONTENT_RECIPE", "DESCRIPTIONS", "FRAGMENT_FILE", "FRAME_KIND", "FRAME_ROUTE",
-           "MIME_DISTRIBUTION", "RECORDS", "RESERVED_SOCKETS", "SOCKET_KINDS", "Definition", "Tier", "Validity", "content_files", "content_hash", "definition_of",
-           "id_problem", "is_block_folder", "read_definition", "version_problem"]
+           "MIME_DISTRIBUTION", "RECORDS", "RESERVED_SOCKETS", "SOCKET_KINDS", "Definition", "Tier", "Validity",
+           "content_files", "content_hash", "definition_of", "id_problem", "is_block_folder", "read_definition",
+           "version_problem"]
