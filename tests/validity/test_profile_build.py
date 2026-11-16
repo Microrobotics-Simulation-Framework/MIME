@@ -61,6 +61,19 @@ def test_a_pending_reason_is_refused_by_name_and_a_text_that_is_only_a_placehold
     settling_ball(replace(SEALED, density="steel, from the supplier's datasheet")).plan()
 
 
+@pytest.mark.parametrize("text", ["TODO: fill in", "todo - ask", "TBD: the supplier's sheet", "pending: vendor",
+                                  "  FIXME\u2014later", "Pending-vendor"])
+def test_a_reason_that_starts_as_a_placeholder_label_is_refused_as_one(text):
+    assert "value.reason" in codes(replace(SEALED, density=text))
+    assert "value.reason" in codes(replace(SEALED, density=chosen(text)))
+
+
+@pytest.mark.parametrize("text", ["pending the vendor's datasheet", "todo items are tracked in the log",
+                                  "tbdisbury steel, from the datasheet", "steel, pending: no it is from a sheet"])
+def test_control_prose_that_merely_begins_with_the_word_is_still_a_reason(text):
+    settling_ball(replace(SEALED, density=text)).plan()
+
+
 def test_an_acceptance_with_a_pending_reason_is_stamped_in_exploratory_and_refused_in_research():
     plans = settling_ball(Paperwork(acceptance=pending())).plan()
     kinds = {item.target: item.kind for item in plans.profile.pending}

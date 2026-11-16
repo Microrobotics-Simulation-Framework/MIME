@@ -53,7 +53,7 @@ from mime.things import ThingKind
 from mime.units import SAY_THE_ANGLE, TIME, Dimension, Quantity, UnitError, says_its_angle, si
 from mime.vocabulary import MIME_NAMESPACE, Capability, EnergyClass, ReadKind, namespace_of, port_kind
 from mime.vocabulary import lookup as interface_named
-from mime.vocabulary._versions import version_order, version_problem
+from mime.vocabulary._versions import parsed, version_order, version_problem
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 #: A controller's read or write label.
@@ -772,6 +772,12 @@ def _register[E: type[Entry]](kind: EntryKind, cls: E) -> E:
         if held.defined_in != f"{cls.__module__}.{cls.__qualname__}":
             raise ValueError(f"{kind.value} {cls.name} {cls.version} is already registered by {held.defined_in}")
         del _by_class[held.cls]
+    for other in versions_of(kind, cls.name):
+        same = other != cls.version and parsed(other) == parsed(cls.version)
+        if same and _by_key[(kind, cls.name, other)].defined_in != f"{cls.__module__}.{cls.__qualname__}":
+            raise ValueError(f"{kind.value} {cls.name} {cls.version} is the version {other} of "
+                             f"{_by_key[(kind, cls.name, other)].defined_in} in another spelling: one version has one "
+                             f"spelling, so write {other}")
     record = Registered(kind, cls.name, cls.version, cls, settings, declared_roles(cls))
     _by_key[key] = record
     _by_class[cls] = record

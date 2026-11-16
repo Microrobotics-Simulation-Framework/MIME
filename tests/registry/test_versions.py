@@ -52,6 +52,27 @@ def test_an_entry_whose_version_is_not_a_version_is_refused_at_registration(vers
     assert "a version is numbers joined by dots" in str(error.value)
 
 
+@pytest.mark.parametrize("version", [" 0.1.0", "0.1.0\n", "0.1.0 ", "\t0.1.0"])
+def test_a_version_with_whitespace_around_it_is_refused_not_registered_beside_the_clean_one(version):
+    """``packaging`` strips the whitespace, so ' 0.1.0' would parse as 0.1.0 and register as a second key of it."""
+    register_interaction(entry("versionorder.spaced", "0.1.0"))
+    with pytest.raises(TypeError) as error:
+        register_interaction(entry("versionorder.spaced", version))
+    assert "no space or newline around it" in str(error.value)
+    assert versions_of(EntryKind.INTERACTION, "versionorder.spaced") == ["0.1.0"]
+    with pytest.raises(ValueError, match="no space or newline around it"):
+        register_namespace("versionspaced", version)
+
+
+def test_one_version_is_one_key_a_second_spelling_of_a_registered_version_is_refused():
+    register_interaction(entry("versionorder.spelt", "0.1.0"))
+    other = entry("versionorder.spelt", "0.1")
+    other.__module__ = "versions_test_other"
+    with pytest.raises(ValueError, match="the version 0.1.0 of .* in another spelling: .* write 0.1.0"):
+        register_interaction(other)
+    assert versions_of(EntryKind.INTERACTION, "versionorder.spelt") == ["0.1.0"]
+
+
 @pytest.mark.parametrize("version", ["1", "v0.1.0", "0.2.0rc1", "1.0.0.post1", "2026.11.16"])
 def test_control_the_spellings_of_a_version_that_are_versions_still_register(version):
     register_interaction(entry(f"versionorder.good_{version.replace('.', '_').replace('-', '_')}", version))

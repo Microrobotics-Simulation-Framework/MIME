@@ -777,8 +777,9 @@ def _study(arguments: argparse.Namespace) -> int:
 
 
 def _named_entries(exported: str, entry: str | None) -> str:
-    """The export with only the entries called ``entry`` (every version and kind of the name), as JSON, or whole where
-    none is asked for; the name no entry has is refused (``registry.unknown-entry``) with the nearest names."""
+    """The export with only the entries called ``entry`` (every version and kind of the name) and the namespaces they
+    are in, as JSON (``not_loaded`` stays whole: a package that failed to import is why an entry may be missing), or
+    whole where none is asked for; the name no entry has is refused (``registry.unknown-entry``) with the nearest names."""
     if entry is None:
         return exported
     from mime.things._handles import did_you_mean
@@ -791,6 +792,8 @@ def _named_entries(exported: str, entry: str | None) -> str:
             f"name one `mime registry` lists, in its own spelling (a lab's is prefixed with its namespace, "
             f"`labx.slender_tail`). {did_you_mean(entry, names)}")])
     found["entries"] = [held for held in found["entries"] if held["name"] == entry]
+    held_by = {held["namespace"] for held in found["entries"]}
+    found["namespaces"] = {name: version for name, version in found["namespaces"].items() if name in held_by}
     return json.dumps(found, indent=2, sort_keys=True)
 
 

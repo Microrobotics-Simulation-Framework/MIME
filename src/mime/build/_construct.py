@@ -372,7 +372,7 @@ def _nodes_in(issue: str, graph: GraphManager) -> list[str]:
     return [name for name in graph.node_names if f"'{name}'" in issue]
 
 
-#: What the author of an entry changes for each kind of issue MADDENING's ``validate()`` stops a compile for.
+#: What the author of a node class changes for each kind of issue MADDENING's ``validate()`` stops a compile for.
 _AUTHOR_FIXES = {
     "maddening.shape": "make the shape of the node's state field, and of the receiving input's BoundaryInputSpec, the "
                        "shape the vocabulary gives the interface the edge carries",
@@ -380,11 +380,22 @@ _AUTHOR_FIXES = {
                        "build runs in",
     "maddening.units": "give the receiving input's BoundaryInputSpec the units the vocabulary spells for the "
                        "interface the edge carries",
-    "maddening.error": "hold the field the entry reads or publishes in the node's state, spelt as the entry names it",
 }
+#: The one ``ERROR`` of ``validate()`` whose cause is the node's class: an edge reads a field its source node's state
+#: does not hold. MADDENING's other errors (a coupling group of mixed kinds, a loop of non-float state, a cycle, a
+#: missing node) are about the graph's wiring, which this class of node does not decide, and stay MIME's.
+_MISSING_FIELD = "not in state of node"
+_MISSING_FIELD_FIX = "hold the field the edge reads in the node's state, spelt as the entry names it"
 
 
-def _validate(graph: GraphManager, plans: PlanSet) -> tuple[list[ReportedWarning], list[Refusal], list[str]]:
+def _author_fix(code: str, issue: str) -> str | None:
+    """What the author of the node's class changes for ``issue``, or ``None`` where the issue is not the class's."""
+    if code == "maddening.error":
+        return _MISSING_FIELD_FIX if _MISSING_FIELD in issue else None
+    return _AUTHOR_FIXES[code]
+
+
+def _validate(graph: GraphManager) -> tuple[list[ReportedWarning], list[Refusal], list[str]]:
     """MADDENING's own checks of the graph: each issue that would stop ``compile()`` is a refusal, a units warning
     among them (MIME labels every edge from the vocabulary, so one means a node and the vocabulary disagree); every
     other warning is reported. Its ``INFO`` lines describe the schedule: the report lists it from MIME's own lag
@@ -395,14 +406,15 @@ def _validate(graph: GraphManager, plans: PlanSet) -> tuple[list[ReportedWarning
     for issue in issues:
         code = next((code for prefix, code in _REFUSED_ISSUES.items() if issue.startswith(prefix)), None)
         if code is not None:
-            refusals += refuse_by_author(code, plans, _nodes_in(issue, graph), f"MADDENING's validate(): {issue}",
-                                         _AUTHOR_FIXES[code])
+            message, fix = f"MADDENING's validate(): {issue}", _author_fix(code, issue)
+            refusals += (refuse_by_author(code, graph, _nodes_in(issue, graph), message, fix) if fix is not None
+                         else [Refusal(code, RefusalClass.INTERNAL, message, MIME_DEFECT)])
         elif issue.startswith("WARNING"):
             reported.append(ReportedWarning("MADDENING GraphManager.validate()", issue))
     return reported, refusals, [issue for issue in issues if issue.startswith("INFO")]
 
 
-def _compile(graph: GraphManager, reported: list[ReportedWarning], plans: PlanSet) -> list[Refusal]:
+def _compile(graph: GraphManager, reported: list[ReportedWarning]) -> list[Refusal]:
     """``compile()``, with what it warns caught into the report rather than left on stderr: a
     ``UnitMismatchWarning`` is a refusal, and any other warning is reported with its class, once."""
     seen = {w.message for w in reported}
@@ -417,7 +429,7 @@ def _compile(graph: GraphManager, reported: list[ReportedWarning], plans: PlanSe
     for warning in caught:
         message = str(warning.message)
         if issubclass(warning.category, UnitMismatchWarning):
-            refusals += refuse_by_author("maddening.units", plans, _nodes_in(message, graph),
+            refusals += refuse_by_author("maddening.units", graph, _nodes_in(message, graph),
                                          f"MADDENING's compile(): {message}", _AUTHOR_FIXES["maddening.units"])
         elif message not in seen:
             seen.add(message)
@@ -601,11 +613,11 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
     if _testing.refusing_unplanned_loops():
         refusals += unplanned_refusals(lags, dict(owners))
     refusals += order_refusals(plans.controller, lags, physics_lags)
-    reported, refused_by_maddening, schedule_lines = _validate(graph, plans)
+    reported, refused_by_maddening, schedule_lines = _validate(graph)
     refusals += refused_by_maddening
     if refusals:
         raise BuildRefused(refusals, report_of(plans, order, refusals, external, reported, lags=lags))
-    refusals = _compile(graph, reported, plans)
+    refusals = _compile(graph, reported)
     if not refusals and not math.isclose(graph.timestep, plans.dt, rel_tol=1e-12):
         refusals = [Refusal("post-build.base-step", RefusalClass.INTERNAL,
                             f"MADDENING's base step is {graph.timestep!r} s, not dt = {plans.dt!r} s", MIME_DEFECT)]

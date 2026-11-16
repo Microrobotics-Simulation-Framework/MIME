@@ -11,6 +11,7 @@ This module imports nothing of MIME's, so that :mod:`mime.units` can carry a bas
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import cast, override
 
@@ -19,7 +20,7 @@ from typing import cast, override
 class Pending:
     """A reason left for later (:func:`pending`). Exploratory records it and stamps every output with it; research
     refuses it by name. It is the one placeholder MIME writes: a text that is only a placeholder word (``"TODO"``,
-    ``"pending"``) is refused with "did you mean ``pending()``"; any other text passes, until a1's named bases and
+    ``"pending"``) (or one that starts as a label, ``"TODO: fill in"``) is refused with "did you mean ``pending()``"; any other text passes, until a1's named bases and
     strict's evidence judge what a reason says."""
 
     @override
@@ -60,13 +61,17 @@ def chosen(text: str) -> Chosen:
 
 #: The words a text is refused for being: a placeholder where a reason goes, which ``pending()`` says honestly.
 PLACEHOLDER_WORDS = frozenset({"pending", "todo", "tbd", "fixme"})
+#: A text that starts as a placeholder is labelled: the word, then a colon or a dash (``"TODO: fill in"``, ``"TBD - ask"``).
+_LABELLED = re.compile(r"\s*(?:" + "|".join(sorted(PLACEHOLDER_WORDS)) + r")\s*[:\-\u2013\u2014]", re.IGNORECASE)
 
 
 def _placeholder(text: str) -> str | None:
-    """The refusal of a text that is only a placeholder word (``"TODO"``, ``"pending"``), with the call it meant."""
+    """The refusal of a text that is a placeholder and not a reason, with the call it meant: the placeholder word alone
+    (``"TODO"``, ``"pending"``) or labelled (``"TODO: fill in"``, ``"pending - ask the vendor"``). Prose that merely begins
+    with the word (``"pending the vendor's datasheet"``) says something and passes."""
     word = text.strip().rstrip(".!:;").strip().lower()
     return (f"the reason is the text {text.strip()!r}, a placeholder and not a reason: did you mean `pending()`, "
-            f"without the quotes?") if word in PLACEHOLDER_WORDS else None
+            f"without the quotes?") if word in PLACEHOLDER_WORDS or _LABELLED.match(text) else None
 
 
 def basis_problem(value: object) -> str | None:

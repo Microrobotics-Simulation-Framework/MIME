@@ -7,8 +7,10 @@ from packaging.version import InvalidVersion, Version
 
 
 def parsed(version: object) -> Version | None:
-    """``version`` as a version, or ``None`` where it is not a text of one."""
-    if not isinstance(version, str):
+    """``version`` as a version, or ``None`` where it is not a text of one. A text with whitespace around it is none:
+    :class:`~packaging.version.Version` strips it, which would make ``' 0.1.0'`` and ``'0.1.0'`` two keys of one
+    version."""
+    if not isinstance(version, str) or version != version.strip():
         return None
     try:
         return Version(version)
@@ -18,10 +20,10 @@ def parsed(version: object) -> Version | None:
 
 def version_problem(version: object) -> str | None:
     """Why ``version`` is not a version a registration takes, or ``None``: numbers joined by dots, as a release's
-    (``0.1.0``), which orders correctly (``0.10.0`` after ``0.9.0``)."""
+    (``0.1.0``), with no whitespace around it, which orders correctly (``0.10.0`` after ``0.9.0``)."""
     return None if parsed(version) is not None else (
-        f"version {version!r}: a version is numbers joined by dots, such as '0.1.0' (PEP 440), so that it orders "
-        f"as a version: '0.10.0' after '0.9.0'")
+        f"version {version!r}: a version is numbers joined by dots, such as '0.1.0' (PEP 440), with no space or newline "
+        f"around it, so that it orders as a version: '0.10.0' after '0.9.0'")
 
 
 def version_order(version: str) -> tuple[bool, Version, str]:

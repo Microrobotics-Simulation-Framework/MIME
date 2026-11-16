@@ -31,15 +31,19 @@ def test_the_registry_json_filtered_by_entry_holds_that_name_s_entries_of_every_
     assert {entry["name"] for entry in held["entries"]} == {"drag"}
     expected = [entry for entry in everything["entries"] if entry["name"] == "drag"]
     assert len(expected) >= 2 and held["entries"] == expected, "every version and kind of the name, as the export has them"
-    assert held["namespaces"] == everything["namespaces"] and held["not_loaded"] == everything["not_loaded"]
+    assert held["namespaces"] == {"mime": everything["namespaces"]["mime"]}, "the namespace of the entries kept alone"
+    assert len(everything["namespaces"]) > 1, "the control: the unfiltered export holds the other namespaces"
+    assert held["not_loaded"] == everything["not_loaded"]
     assert len(everything["entries"]) > 3 * len(held["entries"]), "the control: the unfiltered export holds the rest"
 
 
 def test_a_plugin_entry_is_found_by_its_prefixed_name(capsys):
     code, out, err = run(capsys, "registry", "--json", "--entry", "labx.height")
     assert code == 0, err
-    (entry,) = json.loads(out)["entries"]
+    held = json.loads(out)
+    (entry,) = held["entries"]
     assert entry["name"] == "labx.height" and entry["kind"] == "observation"
+    assert list(held["namespaces"]) == ["labx"]
 
 
 def test_the_plain_listing_is_filtered_the_same_way(capsys):
