@@ -132,9 +132,20 @@ def clear_user_xla_cache(root: Path | None = None) -> int:
     return held
 
 
+def _one_zlib_stream(entry: bytes) -> bytes:
+    """What JAX's ``zlib.decompress`` gives, but refusing an entry that is not exactly one complete stream: JAX reads a
+    stream followed by other bytes without complaint, which is the shape two writers of one entry leave, and that file is
+    not an entry either writer wrote."""
+    reader = zlib.decompressobj()
+    held = reader.decompress(entry)
+    if not reader.eof or reader.unused_data:
+        raise ValueError("not exactly one zlib stream")
+    return held
+
+
 def _decompressor() -> Callable[[bytes], bytes]:
     """The call JAX's reader decompresses an entry with: ``compression.zstd`` (Python 3.14), else ``zstandard`` if
-    installed, else ``zlib``."""
+    installed, else ``zlib`` (made strict by :func:`_one_zlib_stream`)."""
     try:
         from compression import zstd  # pyright: ignore[reportMissingImports, reportUnknownVariableType]
     except ImportError:
@@ -144,13 +155,14 @@ def _decompressor() -> Callable[[bytes], bytes]:
     try:
         return cast(Any, importlib.import_module("zstandard")).ZstdDecompressor().decompress
     except ImportError:
-        return zlib.decompress
+        return _one_zlib_stream
 
 
 def _reads_whole(entry: bytes) -> bool:
-    """Whether JAX's own reader takes the entry. A complete zstd frame followed by other bytes, which is what two
-    processes writing one entry leave, is refused by the zstd readers; zlib reads it, so on a Python that compresses with
-    zlib that damage costs nothing and is not found."""
+    """Whether the entry is one complete compressed stream, read the way JAX reads it. A complete zstd frame followed by
+    other bytes, which is what two processes writing one entry leave, is refused by the zstd readers; zlib's would read
+    it, so that reader is made strict here: on Python before 3.14 the file costs a run nothing, and is deleted all the
+    same, for it is not what either writer wrote."""
     try:
         _decompressor()(entry)
     except Exception:  # noqa: BLE001 - every kind of refusal is damage: the decompressor's, not ours

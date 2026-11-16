@@ -1863,9 +1863,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`mime run`, `mime serve`, `mime study run`). JAX writes an entry in place with no lock, so two processes that compile
   one program together can leave a complete zstd frame plus the longer writer's tail; JAX never rewrites it, so each run
   that reads it printed `UserWarning: Error reading persistent compilation cache entry ... Unknown frame descriptor` and
-  compiled again (Python 3.14, which compresses with zstd; zlib reads that damage without complaint). **Measured** (Python 3.14): two
+  compiled again (Python 3.14, which compresses with zstd; zlib, before 3.14, reads that damage without complaint, and the repair removes it too). **Measured**: two
   children through `user_xla_cache` held in step left 3 to 13 damaged entries of 152 in 12 of 13 trials before, none in 8 of 8
-  after. At its end each command now deletes the entries written during it that JAX's own decompressor refuses, and says
+  after, on Python 3.14; on 3.12, 1 to 13 in 9 of 10 first trials before, none in 10 of 10 after. At its end each command now deletes the entries written during it that JAX's own decompressor refuses, and says
   how many; JAX's own warning is untouched. It does not reach an entry already damaged on disk (`mime cache clear`
   removes the cache: `mime serve` and `mime study run` now print that beside the warning on a terminal, as `mime run`
   did) nor a command killed before it ends. JAX's own locking path needs the `filelock` package, which MIME does not

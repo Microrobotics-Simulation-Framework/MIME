@@ -17,9 +17,10 @@ it is tried up to ``CONTROL_TRIES`` times because a trial left 3 to 13 damaged e
 none, so a single trial would fail the control about one run in thirteen; six in a row would at about one in 10^6). The fixed arm is one trial and must leave none: the process that ends last looks
 at every entry after both are done writing.
 
-On a Python that compresses with zlib (before 3.14, without ``zstandard``) a frame followed by other bytes is read
-without complaint, so the race leaves nothing JAX refuses and the race tests have nothing to discriminate: they skip, and
-the lanes on 3.14 run them."""
+On a Python that compresses with zlib (before 3.14, without ``zstandard``) JAX reads a stream followed by other bytes
+without complaint, so the damage costs a run nothing there; the repair still deletes such a file (it is not what either
+writer wrote), and the test counts it with a zlib object that must reach its end with nothing left over. Both lanes run
+the race, since the default lane allows no skipped test."""
 
 import os
 import subprocess
@@ -33,6 +34,8 @@ import pytest
 
 from mime.env import _xla_cache
 from mime.env._xla_cache import point_xla_cache, remove_damaged_entries, user_xla_cache
+
+import zlib
 
 try:
     from compression import zstd  # Python 3.14+, which JAX compresses with
@@ -77,15 +80,24 @@ def entries_under(root: Path) -> list[Path]:
     return [path for path in root.rglob("*-cache") if path.is_file()]
 
 
-def refused_by_jax(root: Path) -> int:
-    """Entries JAX's reader (the interpreter's zstd decompressor) refuses, by the test's own call."""
-    count = 0
-    for path in entries_under(root):
-        try:
-            zstd.decompress(path.read_bytes())
-        except Exception:  # noqa: BLE001 - any refusal
-            count += 1
-    return count
+def not_one_stream(data: bytes) -> bool:
+    """Whether a file is not exactly one compressed stream, by the test's own call: the interpreter's zstd decompressor
+    (which refuses a frame followed by other bytes, as JAX's reader does) or, where JAX compresses with zlib, a zlib
+    object that must reach its end with nothing left over (JAX's own read takes the leftover and says nothing)."""
+    try:
+        if zstd is not None:
+            zstd.decompress(data)
+        else:
+            reader = zlib.decompressobj()
+            reader.decompress(data)
+            return not reader.eof or bool(reader.unused_data)
+    except Exception:  # noqa: BLE001 - any refusal
+        return True
+    return False
+
+
+def damaged_entries(root: Path) -> int:
+    return sum(not_one_stream(path.read_bytes()) for path in entries_under(root))
 
 
 def race(tmp_path: Path, name: str, repair: str) -> Path:
@@ -105,28 +117,22 @@ def race(tmp_path: Path, name: str, repair: str) -> Path:
     return root
 
 
-needs_zstd = pytest.mark.skipif(zstd is None, reason="JAX compresses with zlib here, which reads a frame followed by "
-                                                     "other bytes: the race leaves nothing it refuses")
-
-
-@needs_zstd
-def test_control_without_the_repair_two_commands_writing_one_program_leave_an_entry_jax_refuses(tmp_path):
+def test_control_without_the_repair_two_commands_writing_one_program_leave_a_damaged_entry(tmp_path):
     """The harness can fail: it left damage in 12 of the 13 trials measured, 3 to 13 entries of 152."""
     found = []
     for attempt in range(CONTROL_TRIES):
-        found.append(refused_by_jax(race(tmp_path, f"base{attempt}", "off")))
+        found.append(damaged_entries(race(tmp_path, f"base{attempt}", "off")))
         if found[-1]:
             break
     print(f"damaged entries by trial, repair off: {found} of {len(entries_under(tmp_path / f'base{len(found) - 1}'))}")
     assert found[-1] > 0, f"no damage in {CONTROL_TRIES} trials ({found}): the race is not being reached"
 
 
-@needs_zstd
-def test_two_commands_writing_one_program_into_the_users_cache_leave_no_entry_jax_refuses(tmp_path):
+def test_two_commands_writing_one_program_into_the_users_cache_leave_no_damaged_entry(tmp_path):
     root = race(tmp_path, "fixed", "on")
     kept = entries_under(root)
     print(f"entries kept {len(kept)} of {PROGRAMS + 2}")
-    assert refused_by_jax(root) == 0
+    assert damaged_entries(root) == 0
     assert len(kept) >= PROGRAMS // 2, "the repair deleted what it should have left"
 
 
@@ -145,8 +151,6 @@ def jax_cache_unset():
 
 def whole_and_damaged(root: Path) -> dict[str, bytes]:
     """Compressed entries as JAX writes them, by the decompressor of this interpreter, and the damage of each kind."""
-    import zlib
-
     payload = bytes(range(256)) * 40
     frame = zstd.compress(payload) if zstd else zlib.compress(payload)
     return {"whole": frame, "cut": frame[: len(frame) // 2], "empty": b"", "tail": frame + b"\x07\x91"}
@@ -160,7 +164,7 @@ def test_remove_damaged_entries_deletes_what_jax_cannot_read_and_only_what_was_w
         (tmp_path / f"old_{name}-cache").write_bytes(content)
         os.utime(tmp_path / f"old_{name}-cache", (since - 1000, since - 1000))
     (tmp_path / "keep.txt").write_bytes(b"not an entry")
-    unreadable = {"cut", "empty"} | ({"tail"} if zstd else set())  # zlib reads a frame followed by other bytes
+    unreadable = {"cut", "empty", "tail"}
     removed = remove_damaged_entries(tmp_path, since - 10)
     left = {path.name for path in tmp_path.iterdir()}
     assert removed == len(unreadable)

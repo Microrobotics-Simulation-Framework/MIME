@@ -27,9 +27,9 @@ The numbers a run gives are the same with it and without it; what changes is the
   differ in length the file ends as a complete frame plus the longer one's tail. Each of those commands, as it ends,
   deletes the entries written during it that JAX cannot read back (and says how many, once on standard error), so the
   next run compiles the program again and writes it whole. A command killed before it ends (a second Ctrl+C) does not
-  get to do that. The check is the decompressor JAX itself reads with: on Python 3.14 a frame followed by other bytes
-  is refused and is removed; before 3.14 JAX compresses with zlib, which reads it, so that damage costs nothing and is
-  not looked for. Two commands that are both still running can see each other's half-written entry, which one of them
+  get to do that. The check is the decompressor JAX itself reads with: on Python 3.14 a frame followed by other bytes is refused and
+  removed. Before 3.14 JAX compresses with zlib, which reads such a file without complaint, so it costs a run nothing,
+  but it is not what either writer wrote and is removed all the same. Two commands that are both still running can see each other's half-written entry, which one of them
   then deletes: the program costs that command one more compile, and nothing is damaged.
 - **What it cannot do.** It holds compiled programs, not tracing: a second run still traces and lowers each program,
   and the first run of an experiment, or of a changed one, pays in full. A process killed mid-write (a second
