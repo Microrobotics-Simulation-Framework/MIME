@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, ClassVar, cast, override
 
@@ -13,7 +14,7 @@ import jax.numpy
 import numpy as np
 from jax import Array
 from maddening.core.node import BoundaryInputSpec, SimulationNode
-from maddening.core.params import ParamSpec
+from maddening.core.params import ParamSpec as MaddeningParamSpec
 
 from mime.core._symbols import Symbol
 from mime.units import parse_label
@@ -180,11 +181,23 @@ def node_input(units: str, shape: tuple[int, ...], *, additive: bool = False,
                              description=description)
 
 
-def param_spec(*, units: str, **given: Any) -> ParamSpec:
-    """MADDENING's ``ParamSpec`` with its units read where it is declared (:func:`~mime.units.parse_label`): a typo is
-    the ``units.label`` refusal there, not a label a reader finds later. The other arguments are ``ParamSpec``'s."""
-    parse_label(units)
-    return ParamSpec(units=units, **given)
+if TYPE_CHECKING:
+    #: The type a node's ``param_specs()`` returns, as MADDENING declares it, so that a node's annotation is its base's.
+    ParamSpec = MaddeningParamSpec
+else:
+
+    @dataclass(frozen=True)
+    class ParamSpec(MaddeningParamSpec):
+        """MADDENING's ``ParamSpec`` with its units label read where the spec is made
+        (:func:`~mime.units.parse_label`): a typo is the ``units.label`` refusal there, not a label a reader finds later.
+        A spec with no units (the default) holds none to read. Every other argument, and every method, is
+        ``ParamSpec``'s. Type checkers see MADDENING's class: ``dict`` is invariant in its values, so a node that
+        returned the subclass would not match its base's ``param_specs``."""
+
+        def __post_init__(self) -> None:
+            if self.units != "":
+                parse_label(self.units)
+            super().__post_init__()
 
 
 def _numeric(value: object) -> bool:

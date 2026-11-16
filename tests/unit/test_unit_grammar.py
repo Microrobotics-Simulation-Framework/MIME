@@ -18,7 +18,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 import mime.units as units
@@ -168,18 +168,38 @@ def product(pairs: list[tuple[str, int]], space: str) -> str:
 
 
 @st.composite
+def rate_spellings(draw: st.DrawFn, space: str) -> tuple[Dimension, str]:
+    """A rate per second and one spelling of it, built from its parts: a turn counted once (``Hz``) or a radian counted
+    once over a second (``rad`` and ``s^-1``), with up to two base units that cancel (``m m^-1``), as a flat product in a
+    drawn order, as a quotient (the angle and the cancelled units over the seconds and their partners, in parentheses
+    where more than one), or either in parentheses; in a drawn spacing, with or without spaces about the slash."""
+    held = draw(st.sampled_from(RATE_DIMENSIONS))
+    pairs = [("Hz" if held.angle == "turn" else "rad", 1)] + ([("s", -1)] if held.angle == "radian" else [])
+    for base in draw(st.lists(st.sampled_from(BASES), unique=True, max_size=2)):
+        pairs += [(base, 1), (base, -1)]
+    pairs = draw(st.permutations(pairs))
+    if draw(st.booleans()):
+        text = product(pairs, space)
+    else:
+        top = [(s, e) for s, e in pairs if e > 0]
+        under = [(s, -e) for s, e in pairs if e < 0]
+        slash = draw(st.sampled_from(["/", " / ", " /", "/ "]))
+        text = product(top, space) + (slash + (term(*under[0]) if len(under) == 1 else f"({product(under, space)})")
+                                      if under else "")
+    return held, f"({text})" if draw(st.booleans()) else text
+
+
+@st.composite
 def spelled(draw: st.DrawFn) -> tuple[Dimension, str]:
     """A dimension and one spelling of it: a flat product, a quotient with its negative exponents in a denominator (in
     parentheses where more than one), or a parenthesised group raised to a whole power, in a drawn order and spacing; or
-    a rate per second, which counts turns or radians, in one of the spellings of it. A group is built, not found: its
-    inside and its power are drawn and the dimension is their product, so a draw reaches a group raised to 2, 3 or a
-    negative power (a random exponent vector is rarely a whole multiple) in every fourth draw, and a rate in every
-    fourth."""
-    style = draw(st.sampled_from(["flat", "quotient", "grouped", "rate"]))
+    a rate per second, which counts turns or radians (:func:`rate_spellings`), in one draw of three. A group is built, not
+    found: its inside and its power are drawn and the dimension is their product, so a draw reaches a group raised to 2, 3
+    or a negative power (a random exponent vector is rarely a whole multiple) in two draws of nine."""
+    style = draw(st.sampled_from(["flat", "flat", "quotient", "quotient", "grouped", "grouped", "rate", "rate", "rate"]))
     space = draw(st.sampled_from([" ", "  ", "\t"]))
     if style == "rate":
-        text, held = draw(st.sampled_from(RATES))
-        return held, text.replace(" ", space)
+        return draw(rate_spellings(space))
     if style == "grouped":
         inside = draw(st.tuples(*[st.integers(-2, 2)] * 7))
         k = draw(st.sampled_from([-3, -2, -1, 1, 2, 3, 2, 3, -2, -3]))
@@ -205,15 +225,43 @@ written_dimensions = st.one_of(
     exponents.map(Dimension.of))
 
 
+def as_the_writer_has_it(written: Dimension) -> Dimension:
+    """The dimension the writer's text stands for. A rate per second that says neither what it counts (a plain ``1/s``,
+    which a product of two symbols reaches: ``Hz * 1``) is written ``Hz``, as the saved form always wrote it, and reads
+    back as a frequency: a convention of the writer, held by its own test below, not a round trip that loses something."""
+    return FREQUENCY if written.exponents == FREQUENCY.exponents and written.angle is None else written
+
+
 @given(written=written_dimensions)
 def test_the_parser_reads_what_the_writer_writes(written):
-    assert same(parse_unit(rate_symbol(written)), written), rate_symbol(written)
+    assert same(parse_unit(rate_symbol(written)), as_the_writer_has_it(written)), rate_symbol(written)
+
+
+def test_a_rate_that_says_neither_is_written_hz_and_read_as_a_frequency():
+    plain = Dimension.of((0, 0, -1, 0, 0, 0, 0))
+    assert plain.angle is None and rate_symbol(plain) == unit_symbol(plain) == "Hz"
+    assert same(parse_unit("Hz"), FREQUENCY) and not same(parse_unit("Hz"), plain)
+    assert parse_unit("s^-1").angle is None, "written another way, it is read as it says"
 
 
 @given(case=spelled())
 def test_every_spelling_of_a_dimension_reads_as_it(case):
     held, text = case
     assert same(parse_unit(text), held), text
+
+
+def test_a_rate_is_about_a_third_of_what_the_spellings_property_draws():
+    """The strategy's weight on rates, counted over a run of it: a quotient that drops the angle can only be caught on a
+    draw that is a rate. Hypothesis's default 100 examples; the floor is a third of the weight, far below any draw."""
+    drawn: list[bool] = []
+
+    @settings(database=None)  # this meta-test function only: its examples are counted, never replayed
+    @given(case=spelled())
+    def counting(case: tuple[Dimension, str]) -> None:
+        drawn.append(case[0].angle is not None)
+
+    counting()
+    assert len(drawn) >= 100 and sum(drawn) / len(drawn) >= 0.10, (sum(drawn), len(drawn))
 
 
 def test_the_property_compares_what_a_rate_counts():
@@ -247,6 +295,11 @@ def _raised_first_term_only(term_, power):
                        term_.angle, term_.counted * power)
 
 
+def _over_forgets_angle(a, b, label):
+    held = units._times(a, units._Term(tuple(-e for e in b.exponents), b.angle, -b.counted), label)  # noqa: SLF001
+    return units._Term(held.exponents)  # noqa: SLF001 - the quotient counts no angle: rad/s is s^-1, Hz/1 is 1
+
+
 def _rate_swapped(angle):
     return ANGULAR_VELOCITY if angle == "turn" else FREQUENCY
 
@@ -257,6 +310,7 @@ PLANTS: dict[str, tuple[str, Callable[..., object]]] = {
     "quotient-multiplies": ("_over", _over_adding),
     "power-first-term-only": ("_raised", _raised_first_term_only),
     "rate-swapped": ("_rate_counting", _rate_swapped),
+    "quotient-forgets-angle": ("_over", _over_forgets_angle),
 }
 
 

@@ -109,3 +109,31 @@ def test_the_control_a_typo_among_the_collected_labels_is_named(collected):
     for typo in ("m/s^", "kPa", "N s/m s", "m)"):
         said = unreadable({*collected["distinct"], typo})
         assert list(said) == [typo], (typo, said)
+
+
+def of_the_prose_rows() -> list[tuple[str, str]]:
+    """Each ``Symbol(...)`` of ``src/mime`` that says its units are prose (``prose_units=True``), as ``path:line`` and the
+    units it holds, read from the source where the escape is written."""
+    found: list[tuple[str, str]] = []
+    for path in sorted(PACKAGE.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Symbol"
+                    and any(kw.arg == "prose_units" and isinstance(kw.value, ast.Constant) and kw.value.value is True
+                            for kw in node.keywords)):
+                units = node.args[3] if len(node.args) > 3 else next(kw.value for kw in node.keywords if kw.arg == "units")
+                assert isinstance(units, ast.Constant) and isinstance(units.value, str), (path, node.lineno)
+                found.append((f"{path.relative_to(PACKAGE)}:{node.lineno}", units.value))
+    return found
+
+
+def test_the_prose_escape_is_held_to_the_declared_exemptions_and_each_is_no_unit():
+    """``prose_units=True`` skips a row's check where it is defined, so this holds the escape: every row that uses it
+    holds a string ``NOT_A_UNIT`` declares with its reason, and no declared string reads as a unit (an escape on a real
+    label would be one that hides a typo from the definition check; the collection above still reads every other row)."""
+    rows = of_the_prose_rows()
+    print("\nprose rows: " + "; ".join(f"{where} {units!r}" for where, units in rows))
+    assert len(rows) >= 5, "the five rows of the drive nodes: a scan that finds fewer has stopped reading them"
+    assert [(where, units) for where, units in rows if units not in NOT_A_UNIT] == []
+    for units in NOT_A_UNIT.keys() - {""}:
+        with pytest.raises(UnitError):
+            parse_label(units)

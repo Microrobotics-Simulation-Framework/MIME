@@ -53,11 +53,10 @@ from jax import lax as _lax
 from jaxtyping import Float
 from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
-from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
-    param_spec, run_constants_given
+from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, \
+    node_input, run_constants_given
 from mime.core.ledger import IDENTITY_ULPS
 from mime.nodes.flow.fvm._exchange import HISTORY_MODES, JUDGED_PLACES, KernelSpectrum, box_side, faxen, \
     held_spectrum, image_mode, own_advance, own_box, own_kernels, own_read, self_history, steady_response, step_response
@@ -256,17 +255,17 @@ class PointDragNode(MimeNode):
         structural = "a structural setting: the exchange edges' kernel was built with it"
         made = "a run-constant the node makes from its leaves once a chunk (run_constants); the value held is a stand-in"
         specs = {**super().param_specs(),
-                 "radius": param_spec(units="m", bounds=(0.0, None), description="the sphere's radius"),
-                 "viscosity": param_spec(units="Pa s", bounds=(0.0, None)),
-                 "density": param_spec(units="kg/m^3", bounds=(0.0, None), description="the fluid's density"),
-                 "spacing": param_spec(trainable=False, units="m", description=structural),
-                 "width_cells": param_spec(trainable=False, units="1", description=structural),
-                 "initial_points": param_spec(trainable=False, units="m",
+                 "radius": ParamSpec(units="m", bounds=(0.0, None), description="the sphere's radius"),
+                 "viscosity": ParamSpec(units="Pa s", bounds=(0.0, None)),
+                 "density": ParamSpec(units="kg/m^3", bounds=(0.0, None), description="the fluid's density"),
+                 "spacing": ParamSpec(trainable=False, units="m", description=structural),
+                 "width_cells": ParamSpec(trainable=False, units="1", description=structural),
+                 "initial_points": ParamSpec(trainable=False, units="m",
                                              description="where the body starts, the exchange edges' first points: an "
                                                          "initial condition, which reaches the run through the state"),
-                 "self_responses": param_spec(trainable=False, units="1", description=made)}
+                 "self_responses": ParamSpec(trainable=False, units="1", description=made)}
         if self.route == "modes":
-            specs.update({key: param_spec(trainable=False, units="1", description=made)
+            specs.update({key: ParamSpec(trainable=False, units="1", description=made)
                           for key in ("history_amplitude", "history_decay", "history_fit")})
         return specs
 

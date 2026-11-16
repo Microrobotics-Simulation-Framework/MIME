@@ -193,8 +193,9 @@ def make_law(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusal]]:
 def law_and_models(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusal], tuple[str, ...]]:
     """:func:`make_law`, and the segments whose built trees (``ctx.models``) the law read while it was made, in
     order. A refusal the law meets while it is made (``ctx.allocator``'s, ``ctx.believed``'s, or any MIME refusal it
-    raises) is a problem with its own code; any other error it raises is the entry's defect. A law that read believed
-    models is a :class:`_MadeLaw` naming them."""
+    raises, except a unit error: it is a bug in the law's own arithmetic, :attr:`MimeError.kept_when_wrapped`) is a
+    problem with its own code; any other error it raises, a unit error included, is the entry's defect. A law that read
+    believed models is a :class:`_MadeLaw` naming them."""
     plan = plans.controller
     if plan is None:
         return None, [], ()

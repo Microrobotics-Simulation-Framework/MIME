@@ -56,6 +56,11 @@ from mime._refusals import ArgumentRefused, Refusal
 from mime.validity._bases import Basis
 
 _BASE_SYMBOLS = ("m", "kg", "s", "A", "K", "mol", "cd")
+#: The operator a NumPy ufunc with a quantity on its right stands for, as the method Python would have called on the
+#: quantity (``numpy_scalar * quantity`` is ``quantity.__rmul__(numpy_scalar)``), by the ufunc's name.
+_REFLECTED = {"add": "__radd__", "subtract": "__rsub__", "multiply": "__rmul__", "divide": "__rtruediv__",
+              "less": "__gt__", "less_equal": "__ge__", "greater": "__lt__", "greater_equal": "__le__",
+              "equal": "__eq__", "not_equal": "__ne__"}
 #: What an angular rate counts: turns (Hz) or radians (rad/s).
 type Angle = Literal["turn", "radian"]
 _ANGLE_UNIT: dict[Angle, str] = {"turn": "Hz", "radian": "rad/s"}
@@ -348,9 +353,26 @@ class Quantity:
     #: The number a script's arithmetic multiplied the quantity by since its unit made it (``Hz(5.0) * (2 * pi)`` holds
     #: 2 pi), so that a refusal tells a frequency multiplied by 2 pi, which stays in Hz, from one written as it is.
     scale: float = field(default=1.0, compare=False, repr=False)
-    #: Tells NumPy to leave a quantity to its own operators, so that ``numbers_array + quantity`` is :meth:`__radd__`'s
-    #: refusal and not an array of one quantity per number.
-    __array_ufunc__: ClassVar[None] = None
+
+    def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: object, **kwargs: object) -> object:
+        """NumPy's ufuncs leave a quantity to its own operators: ``numbers_array + quantity`` is :meth:`__radd__`'s
+        refusal and not an array of one quantity per number, and ``numpy_scalar * quantity`` is :meth:`__mul__`'s (the
+        operator the ufunc stands for, with the quantity on the right, as Python would have called it). Any other call
+        (``np.abs(q)``, ``np.sqrt(q)``) is a coded refusal that says what to write: ``__array_ufunc__ = None`` would
+        have made it NumPy's own ``TypeError``, which has no code and names nothing to do."""
+        reflected = _REFLECTED.get(ufunc.__name__)
+        if (method == "__call__" and not kwargs and len(inputs) == 2 and inputs[1] is self
+                and not isinstance(inputs[0], Quantity) and hasattr(self, reflected or "")):
+            held = getattr(self, cast(str, reflected))(inputs[0])
+            if held is not NotImplemented:
+                return held
+            if ufunc.__name__ in ("equal", "not_equal"):  # as Python answers ``a == b`` when neither knows the other
+                return ufunc.__name__ == "not_equal"
+        raise UnitError(f"NumPy's {ufunc.__name__} cannot be applied to a quantity ({self}): a quantity is not an array of "
+                        f"numbers, and a function of NumPy would drop its unit or make an array of quantities",
+                        action="use the quantity's own operations: abs(q) for the absolute value, q ** 2 for a power, "
+                               "q.to(unit) for its number in a unit (q.value is the number in SI), and np functions on "
+                               "those numbers")
 
     @classmethod
     def of(cls, values: object, dimension: Dimension) -> Quantity:
@@ -805,6 +827,11 @@ def parse_unit(symbol: str) -> Dimension:
     A turn and a radian stay apart: ``Hz`` is :data:`FREQUENCY` and ``rad/s`` :data:`ANGULAR_VELOCITY`, which are equal
     as dimensions and differ in what they count (:attr:`Dimension.angle`); ``rad`` alone is dimensionless, as
     ``Unit`` holds it. A prefixed unit (``mm``) has a scale, which a label does not hold: it is refused."""
+    return _read(symbol)[0]
+
+
+def _read(symbol: str) -> tuple[Dimension, _Term]:
+    """A label's dimension and its term, which holds what the label counts."""
     if not isinstance(cast(object, symbol), str):
         raise _label_error(symbol, f"a unit label is text, such as 'N m', not a {type(symbol).__name__}")
     reader = _Label(symbol)
@@ -816,8 +843,20 @@ def parse_unit(symbol: str) -> Dimension:
             raise _label_error(symbol, f"it is a rate per second that counts {term.counted} of "
                                        f"{'turns (Hz)' if term.angle == 'turn' else 'radians (rad)'}, not one: a rate "
                                        f"counts turns or radians once, 'Hz' or 'rad/s'")
-        return _rate_counting(cast(Angle, term.angle))
-    return Dimension.of(term.exponents)
+        return _rate_counting(cast(Angle, term.angle)), term
+    return Dimension.of(term.exponents), term
+
+
+def parse_value_unit(symbol: str) -> tuple[Dimension, Angle | None]:
+    """The unit a value is written in, as :func:`parse_unit` reads it and with what it counts: the dimension and the
+    quantity's :attr:`Quantity.angle`, so that ``10 rad s^-1`` is an angular velocity and ``2 Hz s`` is two turns, which
+    a site that takes the other refuses and never reads as the number. A value counts an angle once or not at all: a
+    label that counts it twice (``rad^2``) is not a value's unit."""
+    dimension, term = _read(symbol)
+    if term.counted not in (0, 1):
+        raise _label_error(symbol, f"it counts {'turns (Hz)' if term.angle == 'turn' else 'radians (rad)'} {term.counted} "
+                                   f"times over, and a value counts an angle once or not at all")
+    return dimension, term.angle if term.counted else None
 
 
 def parse_label(label: str) -> tuple[Dimension, ...]:
@@ -1111,7 +1150,7 @@ __all__ = [
     "FieldRate",
     "Force", "Frequency", "Length", "MagneticFluxDensity", "MagneticMoment", "Mass", "MomentOfInertia",
     "RotationalDamping", "Temperature", "Time", "Torque", "Velocity", "Volume", "Condition", "Dimension", "Quantity",
-    "Unit", "UnitError", "VACUUM_PERMEABILITY", "Values", "ZERO_CELSIUS", "parse_unit", "si", "unit_symbol", "A",
+    "Unit", "UnitError", "VACUUM_PERMEABILITY", "Values", "ZERO_CELSIUS", "parse_unit", "parse_value_unit", "si", "unit_symbol", "A",
     "A_m2", "Hz", "K", "N", "N_m", "N_m_s", "Pa_s", "T", "T_per_m", "T_per_s", "cm", "deg", "degC", "dimensionless", "g", "kHz",
     "kg", "kg_m2", "kg_per_m3", "m", "m2", "m3", "m_per_s", "m_per_s2", "mPa_s", "mT", "mT_per_m", "mm", "mm3", "mm_per_s",
     "ms", "rad", "rad_per_s", "s", "standard_gravity", "uT", "um", "um2", "um_per_s", "us",

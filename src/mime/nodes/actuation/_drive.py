@@ -8,10 +8,10 @@ from typing import Any, override
 from jax import Array
 from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta
-from maddening.core.params import ParamSpec
 from typing_extensions import ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, switch, typed_view
+from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, as_run_array, jnp, node_fields, switch, \
+    typed_view
 
 EQUATIONS = r"\mathbf{u}_{n} = \mathbf{c}"
 

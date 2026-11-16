@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     name. A test collects every label MIME writes (the registry's node classes' symbol tables and typed states, the
     vocabulary, every `units=`/`Units(...)` literal of the source) and parses each, printing the counts.
   - **G1: a label is checked where it is defined.** `Interface(units=...)`, `Units(...)`, `node_input(...)`, a symbol-table
-    row (`Symbol(...)`, unless it says its units are prose with `prose_units=True`) and the new `mime.core.param_spec(...)`
-    (MADDENING's `ParamSpec` with its units read) read their label when it is made; a typo, or a value that is not text
+    row (`Symbol(...)`, unless it says its units are prose with `prose_units=True`) and `mime.core.ParamSpec(...)`
+    (MADDENING's `ParamSpec` with its units read, which every node of MIME declares its parameters with) read their label when it is made; a typo, or a value that is not text
     (`Units(3)`), is `units.label` and not a label nothing parses. A module that postpones its annotations makes `Units(...)`
     when the typed state's hints are read, which the typed state now refuses on a bad one instead of reading the state as
     untyped. A registration's interface (it carries no values) may still have empty units.
@@ -53,7 +53,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     it read (`2 mPa s`, `1.5mm/s`), on the same parser a study's spec file uses; its refusal shows each form, and a test holds
     each to the parser. A bare number is still a dimensionless value, which a setting that needs a unit refuses. The unit's
     spaces are kept (they were removed before the lookup, so `3 m s` read as 3 ms, `3 m m` as 3 mm and `2 m T` as 2 mT):
-    `3 m s` is a product, judged against the setting's dimension.
+    `3 m s` is a product, judged against the setting's dimension. **A value carries the whole of its unit, what a rate counts
+    included**: `10 rad / s`, `10 rad s^-1`, `10 s^-1 rad` and `10 rad/(s)` count radians, and are refused where a setting takes
+    Hz (`setting.units`, with both conversions) and never read as 10 Hz (a fix round's first reader dropped the angle and ran
+    them as 10 Hz); a slash with spaces about it reads as before (`mm / s`).
+  - **The re-check's minors.** A `UnitError` raised in `mime.sensing`'s route lookup is the entry's defect (`entry.defect`), not
+    the camera's refusal of a kind or a drawn tube built unseen. `mime.core.ParamSpec` is MADDENING's `ParamSpec` with its units
+    label read where the spec is made, and every node of MIME declares its parameters with it (it replaces the one-off
+    `param_spec` helper that only one node used). A NumPy function on a quantity (`np.abs(q)`) is a coded refusal that says
+    what to write, not NumPy's own `TypeError`; the operators it hands to the quantity are as they were.
 
 - **The camera's sampled route: any kind with a cheap sign function** (`mime.sensing`, route 2; `Geometry.sign_function`,
   `SignValue`, `sign_zone`; `Geometry.crease_measure`, `CreaseMeasure`; dev2, camera PR 5a). A kind whose geometry declares a
