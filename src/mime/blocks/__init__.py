@@ -13,7 +13,7 @@ document that uses it, any other referenced.
 check`` read one offline; :func:`fragment_from` writes a fragment from a saved experiment, the named things its
 sockets."""
 
-from mime.blocks._definition import MANIFEST_FILE
+from mime._manifest_file import MANIFEST_FILE
 from mime.blocks._from import Drafted, fragment_from
 from mime.blocks._use import BlockHandle
 

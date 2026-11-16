@@ -49,8 +49,12 @@ rung that uses boundary elements; the others are for review.
 2. **No word the namespace already carries.** `mime.fields.UniformRotating`, not `UniformRotatingField`; a family's
    rung is `Drag.Surrogate`, not `SurrogateDrag`. Implementation classes keep their type's suffix (`...Node`,
    `...State`), because there the suffix says which layer a class belongs to.
-3. **One concept, one stem, across layers:** the scene body, the core shape, the node, its state, its registry name
-   and its switch owners share one stem (`Screw`, `SCREW`, `screw`, `screw.seam`).
+3. **One concept, one stem, across layers; one name, one concept:** the scene body, the core shape, the node, its
+   state, its registry name and its switch owners share one stem (`Screw`, `SCREW`, `screw`, `screw.seam`), and
+   one name never stands for two things in two layers. Where one layer's class would take another layer's whole name for
+   a different thing, the layer's role is its suffix (rule 2): core's `Cylinder` is unbounded and the scene's is a
+   cylinder cut by a slab, so a later change names core's `CylinderShape` and the scene's keeps `Cylinder`. A name met in one script
+   means one thing.
 4. **No qualifier that is always true** in its context (`Robot` in a robotics library; `Solid` where every scene body
    is solid).
 5. **A generic name only for the general concept.** A specific variant is a setting or a qualified name, and a
@@ -60,6 +64,10 @@ rung that uses boundary elements; the others are for review.
    different layers are imported from their own module.
 7. **Spelling:** classes `CapWords`; singletons and constants `UPPER_SNAKE`; registry names `lower_snake` equal to
    the class stem; switch owners `<registry name>.<switch>`.
+8. **An error's suffix says whose fault it is.** `*Refused`: MIME declined an input, with a code the user can fix
+   (`BuildRefused`, `LoadRefused`, `FitRefused`). `*Error`: something failed that is not the user's input (`MimeError`,
+   `InternalError`). A plugin's errors follow the same two suffixes, and a warning is `*Warning`. Users catch
+   `MimeError` or `BuildRefused`, never a suffix.
 
 ## Commit Message Convention
 

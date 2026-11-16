@@ -200,7 +200,7 @@ tables: report it.
 
 The profile tables hold a row no site can apply: a rule that generates or accepts something a waiver does not cover,
 one that lists what only a declaration or a fix covers, or one for a class with no code. This is a defect of the
-tables a build reads (MIME's, or those `mime.validity.using_tables` holds): report it.
+tables a build reads (MIME's tables, or others a test substitutes): report it.
 
 ### `material.nominal-pending`
 

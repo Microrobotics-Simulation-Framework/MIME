@@ -1453,7 +1453,8 @@ def _push(arguments: argparse.Namespace) -> int:
     from mime import push
     from mime.push import _defaults, _draft, _publish, _service, _setup
     from mime.push._defaults import read_all
-    from mime.push._manifest import BUNDLE, OLD_FILE, folder_kind
+    from mime._manifest_file import OLD_FILE
+    from mime.push._manifest import BUNDLE, folder_kind
     from mime.push._sharing import DEFAULT_LICENCE
 
     _push_arguments(arguments)
@@ -2269,7 +2270,7 @@ def _folder_must_exist(arguments: argparse.Namespace) -> None:
         folder = arguments.path
     if folder is not None and not folder.exists():
         from mime.env._check import LOCK_FILE, missing_folder
-        from mime.push._manifest import MANIFEST_FILE
+        from mime._manifest_file import MANIFEST_FILE
         from mime.results._study_folder import STUDY_FILE
 
         raise missing_folder(folder, holding=(LOCK_FILE, MANIFEST_FILE, STUDY_FILE))

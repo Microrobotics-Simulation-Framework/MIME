@@ -24,10 +24,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from mime._manifest_file import MANIFEST_FILE
 from mime._shell import shown
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.push._manifest import BUNDLE, MANIFEST_FILE, folder_kind, manifest_problems, read_toml
+from mime.push._manifest import BUNDLE, folder_kind, manifest_problems, read_toml
 from mime.push._sharing import LINES
 from mime.validity import Profile
 from mime.validity._profiles import profile_of

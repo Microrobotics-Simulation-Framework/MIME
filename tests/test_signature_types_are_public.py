@@ -166,12 +166,9 @@ def signatures(name: str, thing: object) -> Iterator[tuple[str, object, types.Mo
 #: exported or no signature names it: the test fails on a line that no longer applies, so the list only shrinks.
 UNDECIDED = {
     "mime.push._sharing.Sharing": "decided with Manifest in the DUPLICATES work (rule 4)",
-    "mime.validity._profiles.Judge": "decide() is named in one docs page's prose and no script calls it: its types follow its decision",
-    "mime.validity._profiles.Finding": "as Judge: decide()'s parameter",
-    "mime.validity._profiles.Action": "as Judge: decide()'s parameter",
-    "mime.validity._profiles.Decision": "as Judge: decide()'s return",
-    "mime.validity._profiles.FindingClasses": "using_tables() is named in one docs page's prose and no script calls it",
-    "mime.validity._profiles.ProfileRules": "as FindingClasses: using_tables()'s parameter",
+    # `mime.validity.decide` and `using_tables` went private (F0 record item 108), and the six types they made undecided
+    # (Judge, Finding, Action, Decision, FindingClasses, ProfileRules) left this list with them. Maintainer's note,
+    # for the SURFACE-REDUCTION ratchet's seed: both names are "open to go public again if we find a need later".
     "mime.validity._pending.Stamp": "results.Layout.stamp: plumbing of the results package, which waits for its own reduction",
     "mime.materials._values.ResolvedValue": "build.EntryPlan.values and ResolvedRegistration.values: plumbing of the build package, which waits for its reduction",
     "mime.materials._records.LoadedRecord": "saved.SavedRecord.records: plumbing of the saved package, which waits for its own reduction",
@@ -183,7 +180,6 @@ UNDECIDED = {
 UNDECIDED_PARADIGM = {
     "mime.fields._solved.ExchangeFrame": "plumbing of the flow seam (BuildContext.exchanges, FVM.exchange_frame): decided with the registry and the flow's reduction",
     "mime.fields._solved.SolvedField": "plumbing of the flow seam (FVM.field_for, Womersley.field): decided with the registry and the flow's reduction",
-    "mime.things._handles._Names": "what ApparatusHandle.commands and BodyHandle.initial hand back, underscore-named by design: the maintainer decides whether a user annotates the namespace of typed paths",
 }
 
 

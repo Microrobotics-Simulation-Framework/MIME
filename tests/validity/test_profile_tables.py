@@ -14,7 +14,8 @@ from profile_cases import Paperwork, settling_ball
 
 from mime.build import BuildRefused
 from mime.materials import Extrapolation
-from mime.validity import Profile, using_tables
+from mime.validity import Profile
+from mime.validity._profiles import using_tables
 from mime.validity._profiles import (
     FINDING_CLASSES,
     PROFILE_RULES,

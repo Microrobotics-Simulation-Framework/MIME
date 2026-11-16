@@ -16,7 +16,8 @@ into the folder, so ``mime pack <folder>`` makes the published bundle again. A c
 version under the same concept DOI. See the README.
 """
 
+from mime._manifest_file import MANIFEST_FILE, MANIFEST_FORMAT
 from mime.push._check import Checked, Item, check
-from mime.push._manifest import MANIFEST_FILE, MANIFEST_FORMAT, Manifest, read_manifest
+from mime.push._manifest import Manifest, read_manifest
 
 __all__ = ["MANIFEST_FILE", "MANIFEST_FORMAT", "Checked", "Item", "Manifest", "check", "read_manifest"]
