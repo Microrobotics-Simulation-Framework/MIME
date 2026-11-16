@@ -122,7 +122,8 @@ def registry_entries_of_a_child(tmp_path) -> dict[str, object]:
 def old_registry_text(found: dict[str, object] | None = None) -> str:
     """What ``mime registry`` printed before the table, from the registry's export (this process's, unless ``found``)."""
     held = found if found is not None else json.loads(export_json())
-    return "".join(f"{e['kind']}  {e['name']}  {e['version']}\n" for e in held["entries"]) + "".join(
+    return "kind  name  version  from\n" + "".join(
+        f"{e['kind']}  {e['name']}  {e['version']}  {e['namespace']}\n" for e in held["entries"]) + "".join(
         f"not loaded: {name} ({reason})\n" for name, reason in held["not_loaded"].items())
 
 
@@ -441,7 +442,7 @@ def test_registry_on_a_terminal_is_one_table_grouped_by_kind_with_every_entry_a_
     raw, code = in_child_on_a_terminal(tmp_path, "registry")
     text = stripped(raw)
     assert code == 0, text
-    kinds = list(dict.fromkeys(line.split("  ")[0] for line in old.splitlines() if not line.startswith("not loaded:")))
+    kinds = list(dict.fromkeys(line.split("  ")[0] for line in old.splitlines()[1:] if not line.startswith("not loaded:")))
     once = "".join(line.split("  ", 1)[1] + "\n" if not line.startswith("not loaded:") else line + "\n"
                    for line in old.splitlines()) + "\n".join(kinds)
     assert holds_every_word_of(once, text), "every word, the kind once for its group and not again for each entry"
@@ -449,7 +450,7 @@ def test_registry_on_a_terminal_is_one_table_grouped_by_kind_with_every_entry_a_
         if line.startswith("not loaded:"):
             assert line in text
     drawn: list[list[str]] = []
-    for kind, name, version, declares in parsed_table(text, "kind", "name", "version", "declares"):
+    for kind, name, version, _source, declares in parsed_table(text, "kind", "name", "version", "from", "declares"):
         if not name and drawn:  # a cell that wrapped: the rest of the row above
             drawn[-1][3] += declares
         else:
@@ -458,7 +459,7 @@ def test_registry_on_a_terminal_is_one_table_grouped_by_kind_with_every_entry_a_
                 for e in held["entries"]]
     assert [[*row[:3], "".join(row[3].split())] for row in drawn] == expected, \
         "every entry is a row of its kind, name, version and what it declares, in the order the plain output prints"
-    first_cells = [row[0] for row in parsed_table(text, "kind", "name", "version", "declares")]
+    first_cells = [row[0] for row in parsed_table(text, "kind", "name", "version", "from", "declares")]
     for kind in kinds:
         assert first_cells.count(kind) == 1, f"{kind} is named once, for its group"
     assert any(e["settings"] for e in held["entries"]), "the control: some entry declares settings, so that cell is read"
@@ -466,20 +467,20 @@ def test_registry_on_a_terminal_is_one_table_grouped_by_kind_with_every_entry_a_
 
 @needs_pty
 def test_the_registry_table_puts_each_cell_in_its_column():
-    entries = [("geometry", "screw", "0.3.0", "pitch, radius"), ("geometry", "tube", "0.4.1", ""),
-               ("dynamics", "rigid_body", "1.2.0", "mass")]
+    entries = [("geometry", "screw", "0.3.0", "mime", "pitch, radius"), ("geometry", "tube", "0.4.1", "labx", ""),
+               ("dynamics", "rigid_body", "1.2.0", "mime", "mass")]
     with terminal(columns=COLUMNS) as tty:
         show_registry(entries, {}, tty.stream)
-        rows = parsed_table(stripped(tty.transcript()), "kind", "name", "version", "declares")
-    assert rows == [["geometry", "screw", "0.3.0", "pitch, radius"], ["", "tube", "0.4.1", "-"],
-                    ["dynamics", "rigid_body", "1.2.0", "mass"]]
+        rows = parsed_table(stripped(tty.transcript()), "kind", "name", "version", "from", "declares")
+    assert rows == [["geometry", "screw", "0.3.0", "mime", "pitch, radius"], ["", "tube", "0.4.1", "labx", "-"],
+                    ["dynamics", "rigid_body", "1.2.0", "mime", "mass"]]
 
 
 @needs_pty
 def test_a_long_cell_wraps_and_is_never_cut():
     declares = f"{'a' * 30}, {'b' * 30}"
     with terminal(columns=40) as tty:
-        show_registry([("geometry", "screw", "0.3.0", declares)], {"labx": "needs the verify extra"}, tty.stream)
+        show_registry([("geometry", "screw", "0.3.0", "mime", declares)], {"labx": "needs the verify extra"}, tty.stream)
         text = stripped(tty.transcript())
     lines = text.splitlines()
     rule = next(i for i, line in enumerate(lines) if "──" in line)

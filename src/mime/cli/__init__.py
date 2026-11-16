@@ -26,7 +26,7 @@ from mime.cli import _completion, _durations, _guide
 from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
 from mime.cli._display import AMBER, amber_line, set_plain, styled
 from mime.cli._durations import FORMS, is_bare_number, seconds, unit_examples
-from mime.cli._shell import quoted
+from mime.cli._shell import quoted, shown
 from mime.errors import TRACEBACK_VARIABLE, crossed, full_mode, short_text
 from mime.experiment import Experiment
 from mime.validity import Profile
@@ -876,12 +876,14 @@ def _registry(as_json: bool, entry: str | None = None) -> int:
     def draw() -> None:
         from mime.cli._display import show_registry
 
-        show_registry([(e["kind"], e["name"], e["version"], ", ".join(e["settings"])) for e in found["entries"]],
+        show_registry([(e["kind"], e["name"], e["version"], e["namespace"], ", ".join(e["settings"]))
+                       for e in found["entries"]],
                       found["not_loaded"], sys.stdout)
 
     if not _drawn(draw):
+        print("kind  name  version  from")
         for held in found["entries"]:
-            print(f"{held['kind']}  {held['name']}  {held['version']}")
+            print(f"{held['kind']}  {held['name']}  {held['version']}  {held['namespace']}")
         for name, reason in found["not_loaded"].items():
             print(f"not loaded: {name} ({reason})")
     if refused:
@@ -1037,7 +1039,7 @@ def _pack(folder: Path, out: Path | None) -> int:
     referenced = referenced_of(manifest)
     form = saved.read_folder(folder)
     licence = form.document.get("licence")
-    print(for_terminal(f"packed {folder} into {path} ({assets.size_text(path.stat().st_size)})"))
+    print(for_terminal(f"packed {folder} into {shown(path)} ({assets.size_text(path.stat().st_size)})"))
     print(f"sha256 {digest}")
     print(for_terminal(f"carried: {len(manifest['files'])} files and the NOTICE; referenced, never carried: "
                        f"{len(referenced)}" + "".join(f"\n  {each} (the asset {held['name']})"
@@ -1063,7 +1065,7 @@ def _pack_block(folder: Path, out: Path | None) -> int:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     with zipfile.ZipFile(path) as archive:
         manifest = json.loads(archive.read(MANIFEST_MEMBER))
-    print(for_terminal(f"packed the block {manifest['id']} {manifest['version']} into {path} "
+    print(for_terminal(f"packed the block {manifest['id']} {manifest['version']} into {shown(path)} "
                        f"({assets.size_text(path.stat().st_size)})"))
     print(f"sha256 {digest}")
     print(f"content {manifest['content']}")
@@ -1086,7 +1088,7 @@ def _pack_studies(folder: Path, out: Path | None) -> int:
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
         with zipfile.ZipFile(path) as archive:
             manifest = json.loads(archive.read(MANIFEST_MEMBER))
-        print(for_terminal(f"packed the study {manifest['name']} into {path} ({assets.size_text(path.stat().st_size)})"))
+        print(for_terminal(f"packed the study {manifest['name']} into {shown(path)} ({assets.size_text(path.stat().st_size)})"))
         print(f"sha256 {digest}")
         print(for_terminal(f"carried: {len(manifest['files'])} files and the NOTICE; referenced, never carried: "
                            f"{len(manifest['referenced'])}"))

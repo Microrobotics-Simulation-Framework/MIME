@@ -311,3 +311,45 @@ def test_the_top_of_the_help_lists_the_codes_every_command_may_give(capsys):
         mime_main(["--help"])
     out = capsys.readouterr().out
     assert "2 refused; 3 a MIME defect; 130 Ctrl+C; 141 the reader of a pipe closed it" in out
+
+
+# -- (ad) paths below the current directory are written relative to it ----------------------------------------------------
+
+
+def test_check_and_pack_name_a_path_below_the_current_directory_relative_to_it(saved, tmp_path, monkeypatch, capsys):
+    import shutil
+
+    shutil.copytree(saved, tmp_path / "ball")
+    monkeypatch.chdir(tmp_path)
+    assert mime_main(["push", "ball", "--init"]) == 0
+    capsys.readouterr()
+    assert mime_main(["check", "ball"]) in (0, 1)
+    first = capsys.readouterr().out.splitlines()[0]
+    assert first.startswith("ball/mime.toml, a bundle's manifest"), first
+    assert mime_main(["pack", "ball"]) == 0
+    out = capsys.readouterr().out
+    assert "packed ball into ball.mimebundle (" in out and str(tmp_path) not in out
+
+
+def test_control_a_path_outside_the_current_directory_is_written_in_full(saved, tmp_path, monkeypatch):
+    from mime._shell import shown
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert shown(tmp_path / "ball" / "mime.toml") == str(tmp_path / "ball" / "mime.toml")
+    assert shown(elsewhere / "ball" / "mime.toml") == "ball/mime.toml"
+
+
+# -- (ae) mime registry has a header row and says where each entry comes from ----------------------------------------------
+
+
+def test_registry_has_a_header_row_and_names_the_namespace_each_entry_comes_from(saved, capsys):
+    """``saved`` registered the toy entries, a namespace of its own beside MIME's."""
+    assert mime_main(["registry"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "kind  name  version  from"
+    rows = [line.split("  ") for line in lines[1:] if not line.startswith("not loaded:")]
+    assert rows and all(len(row) == 4 for row in rows)
+    assert {"mime", "toy"} <= {row[3] for row in rows}
+    assert all(row[1].startswith("toy.") for row in rows if row[3] == "toy")
