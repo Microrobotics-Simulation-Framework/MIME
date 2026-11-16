@@ -16,7 +16,10 @@
     "case": "tests/sensing/test_mesh_bvh.py::test_the_tree_finds_every_crossing_brute_force_finds, 1500 examples [float32] and [float64]",
     "prediction": {
       "value": "0 failures in 3000",
-      "band": [null, null],
+      "band": [
+        null,
+        null
+      ],
       "unit": "",
       "basis": "estimated: one failure in several hundred CI draws on a coincidence the strategy reaches by shrinking to the origin; the other causes in CLAUDE.md's list are excluded by the draws' scales",
       "why": "the tree's slab test is widened by 2 gamma_3 and the watertight test claims each crossing once"
@@ -29,7 +32,10 @@
     "case": "the same long run, counted over its draws",
     "prediction": {
       "value": 0.0,
-      "band": [0.0, 0.001],
+      "band": [
+        0.0,
+        0.001
+      ],
       "unit": "fraction of rays",
       "basis": "derived",
       "why": "a tie needs the origin within about 3 eps of a triangle's plane and inside it: a set of measure near zero for an origin drawn within 5 mm"
@@ -41,7 +47,10 @@
     "case": "tests/sensing/test_mesh_bvh.py::test_the_tree_finds_every_crossing_brute_force_finds with CAMERA_PLANT = dropped-leaf, flipped-winding, shrunk-box, by .github/probe/detection_rate.py",
     "prediction": {
       "value": "30/30 each in each dtype; clean 0/30",
-      "band": [null, null],
+      "band": [
+        null,
+        null
+      ],
       "unit": "",
       "basis": "estimated for shrunk-box (new: a box shrunk to a tenth of its extent loses the crossings of the triangle's aimed rays that do not pass its core); measured-before for the other two (30/30)",
       "why": "every plant is far above rounding"
@@ -54,5 +63,12 @@
     "basis": "derived: no source changed",
     "if_wrong": "a file under src/ in the diff"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-16, after the controls (laptop, heavy slot) and the long run (GitHub run 43800913511 on probe/bvh-origin-tie-long at 24169197, branch deleted after the download); the predictions above are unchanged",
+    "long_run": "held: 1500 examples in each dtype, 0 failures (float32 57.7 s, float64 42.2 s on the runner)",
+    "tied_fraction": "missed in float64: float32 185 of 288 000 rays tied (6.4e-4, inside the band), float64 384 of 288 000 (1.3e-3, over the band's 1e-3). 384 is exactly two examples of 192 rays: the tied rays are whole draws that Hypothesis shrinks towards, an origin on a surface (a boundary draw), not scattered ordinary rays; the prediction treated them as measure zero. The rays left out for the barycentric margin were 335 and 378",
+    "controls": "held: dropped-leaf, flipped-winding and shrunk-box each caught 30/30 in float32 and in float64 (95 % lower bound 0.905), the clean arm flagged 0/30 in each dtype; the new shrunk-box plant was caught every run",
+    "memory_check": "the probe arms both failed the estimator's memory check, an underestimate of the raw-program route: measured peak 0.583 GiB (float32) and 0.575 GiB (float64) against an estimate of 0.36 GiB, bound 0.40 GiB (ratio 1.6); the tests' own process is not what a factory of the traversal alone sizes. The results above are from the artifacts, which were uploaded",
+    "bits": "held: the diff holds no file under src/"
+  }
 }
