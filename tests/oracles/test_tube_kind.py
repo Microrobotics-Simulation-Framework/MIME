@@ -162,21 +162,20 @@ def radius_derivative(built) -> tuple[float, float]:
     pose = jnp.asarray(node_state(built.graph, "ball")["pose"], dtype=jnp.float64)
     weights = jnp.asarray(np.random.default_rng(5).uniform(0.5, 1.5, (6, 6)))
 
-    def loss(radius):
+    def loss(radius, held):
         return jnp.sum(weights * node.update(state, {"pose": pose}, 1e-3,
-                                             params={**params, "shape_radius": radius})["resistance"])
+                                             params={**held, "shape_radius": radius})["resistance"])
 
     radius = params["shape_radius"]
     step = 1e-6 * float(radius)
     value = jax.jit(loss)
-    central = (float(value(radius + step)) - float(value(radius - step))) / (2.0 * step)
-    return float(jax.jit(jax.grad(loss))(radius)), central
+    central = (float(value(radius + step, params)) - float(value(radius - step, params))) / (2.0 * step)
+    return float(jax.jit(jax.grad(loss))(radius, params)), central
 
 
 CONFINED = {"sphere": Sphere(radius=mm(0.5)), "capsule": Capsule(radius=mm(0.3), height=mm(1.0), axis=(0.0, 1.0, 0.0))}
 
 
-@pytest.mark.memory_heavy
 @pytest.mark.parametrize("body", sorted(CONFINED))
 def test_the_confined_matrix_stays_conditioned_and_its_radius_derivative_is_right_on_the_current_sampling(body):
     built = off_axis(CONFINED[body], mm(0.1))

@@ -1,0 +1,75 @@
+{
+  "written": "2026-11-16, committed before the controls and the long run of the second G22 fix are measured on a runner (the commit that adds this file is the timestamp)",
+  "phase": "camera 6a, G22's judged set, round 2: the barycentric rounding of a far, grazing triangle (CI red, maddening-main shard 26 of PR 341)",
+  "labels": "the fix round agent's predictions. Seen before: the failing draw fails float32 and not float64, on the released MADDENING and its main; the f32 crossing test returns not-crossed for both triangles of a fold the oracle crosses at 1.2e-4 and 3.1e-4 barycentric, with the f32 barycentrics off by 1.3e-4 and 3.4e-4; the derived bound 4 eps (S/L) shape / cos held on 70 000 near-edge pairs at 0.13 (float32) and 0.32 (float64) of itself and is 8.0e-3 and 2.1e-2 on the failing ray; with the fix the draw passes in both dtypes on both MADDENING versions; without it the pinned example fails float32",
+  "operating_point": {
+    "dtype": [
+      "float32",
+      "float64"
+    ],
+    "platform": "CPU; GitHub runner, 4 vCPU, probe branch, one arm a job",
+    "sizes_and_parameters": "G22 as written: 40 examples a dtype in the controls, 1500 examples a dtype in the long run, one to three closed meshes 25 um to 1 mm, 192 rays, origins within 5 mm"
+  },
+  "gate_long_run": {
+    "claim": "no draw fails with the derived barycentric band: the long run of 1500 examples in each dtype passes",
+    "kind": "equality",
+    "case": "tests/sensing/test_mesh_bvh.py::test_the_tree_finds_every_crossing_brute_force_finds, 1500 examples [float32] and [float64] (arms long-float32, long-float64)",
+    "prediction": {
+      "value": "0 failures in 3000",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "",
+      "basis": "estimated: round 1's long run (1500 a dtype) did not reach this draw, whose rate is about one in 1500 to 3000 draws on the CI's evidence; the band is a derived upper bound measured at 0.13 to 0.32 of itself",
+      "why": "a failure left would be a rounding larger than the bound, a miss of the tree, or a third class"
+    },
+    "if_wrong": "a failure is classified before anything changes: a rounding above the bound refutes the derivation; a fewer-crossings ray whose triangles are not within the band is a real miss"
+  },
+  "gate_tied_fraction": {
+    "claim": "the derived band leaves out few rays: the fraction of rays tied in the long run's draws",
+    "kind": "estimates",
+    "case": "the long run's counts (tied, and the rays the old margin left out)",
+    "prediction": {
+      "value": 0.01,
+      "band": [
+        0.0005,
+        0.05
+      ],
+      "unit": "fraction of rays",
+      "basis": "estimated: a ray is within the band of an edge of some triangle in front with probability about (number of triangles in front, a few to tens) times the band (1e-5 to 1e-2); round 1 measured 6e-4 and 1.3e-3 for the origin ties alone",
+      "why": "the band is wide only for far, thin, grazing triangles, which a ray meets rarely"
+    },
+    "if_wrong": "above 0.05 the gate has lost its power: the controls say whether it still catches the plants"
+  },
+  "gate_controls": {
+    "claim": "each planted error is caught every run in each dtype, with the derived band in the judged set, and no clean run is flagged",
+    "kind": "rate",
+    "case": "test_the_tree_finds_every_crossing_brute_force_finds with CAMERA_PLANT = dropped-leaf, flipped-winding, shrunk-box, by .github/probe/detection_rate.py, 30 runs a dtype (arms plant-dropped-leaf, plant-flipped-winding, plant-shrunk-box), the clean arm 30 runs a dtype in the shrunk-box arm",
+    "prediction": {
+      "value": "30/30 each in each dtype; clean 0/30",
+      "band": [
+        null,
+        null
+      ],
+      "unit": "",
+      "basis": "measured-before: round 1's controls, 30/30 each in each dtype and clean 0/30, with the t-tie band; the derived band only leaves out more rays near edges",
+      "why": "each plant is a whole crossing or 2t on the chord, above rounding, on rays aimed at the interior of triangles at barycentric weights of at least 0.05"
+    },
+    "if_wrong": "a plant missed on a run: the tied set took its only judged rays; the plant is aimed at the triangle the judged rays cross most, and the test asserts one does"
+  },
+  "gate_bits": {
+    "claim": "no program of 6a changes: the diff holds no file under src/",
+    "kind": "equality",
+    "basis": "derived: no source changed",
+    "if_wrong": "a file under src/ in the diff"
+  },
+  "outcomes": {
+    "written": "2026-11-16, after the probe run (GitHub run 43845389438 on probe/bvh-grazing-controls at e9e3e65e, branch deleted after the download); the predictions above are unchanged",
+    "long_run": "held: 1500 examples (1502 counting the two pinned ones) in each dtype, 0 failures (float32 61.6 s, float64 49.7 s)",
+    "tied_fraction": "held, inside the band: float32 836 of 288 384 rays tied (2.9e-3; with the old margin's 724, 1033 left out in all, 3.6e-3), float64 192 of 288 384 (6.7e-4; 192 left out in all). The derived band added about 1e-3 of the rays in float32 to what the fixed margin left out",
+    "controls": "held: dropped-leaf, flipped-winding and shrunk-box each caught 30/30 in float32 and in float64 (95 % lower bound 0.905), the clean arm flagged 0/30 in each dtype",
+    "memory_check": "the two long arms again failed the estimator's check as an underestimate of the raw-program route (peak 0.596 and 0.584 GiB against 0.505 and 0.51 estimated; the factory compiled and ran the traversal at 30 shapes and imported the test's modules, 0.53 GiB resident); the three plant arms were inside their bound. The results are from the uploaded artifacts",
+    "bits": "held: the diff holds no file under src/"
+  }
+}
