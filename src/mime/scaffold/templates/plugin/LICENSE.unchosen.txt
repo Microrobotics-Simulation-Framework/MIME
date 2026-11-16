@@ -1,0 +1,4 @@
+No licence has been chosen for this plugin's code, and none is granted: `mime scaffold` never chooses one for you.
+
+Choose yours (an SPDX identifier or expression, such as MIT or Apache-2.0), write it as `license` in pyproject.toml and
+CITATION.cff, and replace this file with its full text before you publish. The texts are at https://spdx.org/licenses/.

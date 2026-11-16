@@ -36,6 +36,7 @@ from mime.scaffold._values import (
     mime_range,
     person_name,
 )
+from mime.terms import PLACEHOLDER_LICENCE
 
 #: The licence whose full text ships with the template; any other gets a file that names it and says to put its text there.
 SHIPPED_LICENCE = "Apache-2.0"
@@ -154,10 +155,13 @@ def plugin_files(held: Mapping[str, Held], defaults: Defaults) -> tuple[dict[str
     files[f"{records}/records.json"] = fill("plugin", "records.json.txt", values)
     notes[f"{records}/records.json"] = "the example record: its sha256 is the data's, filled in"
     files[f"{records}/data/example.json"] = data
+    chosen = licence != PLACEHOLDER_LICENCE
     files["LICENSE"] = (template("plugin", "LICENSE.Apache-2.0.txt") if licence == SHIPPED_LICENCE else
-                        fill("plugin", "LICENSE.other.txt", {"licence_id": licence}))
+                        fill("plugin", "LICENSE.other.txt", {"licence_id": licence}) if chosen else
+                        template("plugin", "LICENSE.unchosen.txt"))
     notes["LICENSE"] = (f"the text of {licence}" if licence == SHIPPED_LICENCE else
-                        f"names {licence}: put its text here before you publish")
+                        f"names {licence}: put its text here before you publish" if chosen else
+                        "no licence chosen: --set plugin.licence=<yours> or write one before you publish")
     files["benchmarks/mime.toml"] = manifest_text(
         BUNDLE, f"{distribution}: the example benchmark", content,
         {**defaults.values, "licence": content})

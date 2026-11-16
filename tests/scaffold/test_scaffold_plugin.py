@@ -140,7 +140,9 @@ def test_no_file_holds_a_machine_path(tmp_path: Path):
 def test_a_licence_mime_does_not_ship_gets_a_file_that_says_so(tmp_path: Path):
     held = files_of(scaffolded(tmp_path, "plugin.licence=MIT"))
     assert held["LICENSE"].startswith("This plugin's code is licensed under MIT") and "full text" in held["LICENSE"]
-    assert files_of(scaffolded(tmp_path / "a"))["LICENSE"].lstrip().startswith("Apache License")
+    assert files_of(scaffolded(tmp_path / "a", "plugin.licence=Apache-2.0"))["LICENSE"].lstrip().startswith("Apache License")
+    assert files_of(scaffolded(tmp_path / "b"))["LICENSE"].startswith("No licence has been chosen"), \
+        "scaffold chooses no licence for the plugin's code"
 
 
 def test_the_ci_names_the_lanes_and_a_label_gates_the_slow_one(tmp_path: Path):
