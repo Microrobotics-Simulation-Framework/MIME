@@ -1919,16 +1919,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Two commands writing one program into the user's XLA cache no longer leave an entry that warns on every later run**
-  (`mime run`, `mime serve`, `mime study run`). JAX writes an entry in place with no lock, so two processes that compile
-  one program together can leave a complete zstd frame plus the longer writer's tail; JAX never rewrites it, so each run
-  that reads it printed `UserWarning: Error reading persistent compilation cache entry ... Unknown frame descriptor` and
-  compiled again (Python 3.14, which compresses with zstd; zlib, before 3.14, reads that damage without complaint, and the repair removes it too). **Measured**: two
-  children through `user_xla_cache` held in step left 3 to 13 damaged entries of 152 in 12 of 13 trials before, none in 8 of 8
-  after, on Python 3.14; on 3.12, 1 to 13 in 9 of 10 first trials before, none in 10 of 10 after. At its end each command now deletes the entries written during it that JAX's own decompressor refuses, and says
-  how many; JAX's own warning is untouched. It does not reach an entry already damaged on disk (`mime cache clear`
-  removes the cache: `mime serve` and `mime study run` now print that beside the warning on a terminal, as `mime run`
-  did) nor a command killed before it ends. JAX's own locking path needs the `filelock` package, which MIME does not
-  depend on. See [XLA's compilation cache](docs/compilation_cache.md).
+  (`mime run`, `mime serve`, `mime study run`). JAX writes an entry in place with no lock unless it is given a cache size
+  limit, so two processes that compile one program together could leave a complete frame plus the longer writer's tail;
+  JAX never rewrites it, so each run that read it printed `UserWarning: Error reading persistent compilation cache entry
+  ... Unknown frame descriptor` (Python 3.14, zstd) and compiled again. `user_xla_cache` now gives JAX the 2 GB cap as that
+  limit (`jax_compilation_cache_max_size`), so JAX takes a file lock around each read and write of an entry and evicts the
+  least recently used when it adds one; this needs the **`filelock` package, a new dependency** (`filelock>=3.12`, locked at
+  4.2.10). MIME's own pruning at the start of a command now keeps only what JAX's limit cannot reach, the directories of
+  other jaxlib releases, platforms and CPUs, to 2 GB together (so the cache can hold up to twice 2 GB). **Measured** (two
+  children through `user_xla_cache`, 150 programs, 13 trials of 152 entries): with the limit unset 121 damaged entries in
+  13 of 13 trials on Python 3.14 and 16 in 9 of 13 on 3.12 (where JAX reads such a file without complaint); with it set,
+  none in 13 of 13 on each. The lock costs 0.3 to 1 ms per entry read: 20 ms of a 2.8 s warm `mime run` of the toy (0.7 %).
+  Also fixed: two commands starting at once shared one write-probe file, so the second one's delete failed and it ran without
+  its cache. It does not reach an entry already damaged on disk (`mime cache clear` removes the cache: `mime serve` and
+  `mime study run` now print that beside the warning on a terminal, as `mime run` did) nor a command killed mid-write. See
+  [XLA's compilation cache](docs/compilation_cache.md).
 
 - **SECURITY: a hostile folder could make MIME allocate gigabytes from an NPZ of a few kilobytes** (`mime verify`, any
   load of a saved folder, `RunResult.read`). NumPy allocates the array an entry's header names before it reads a byte of

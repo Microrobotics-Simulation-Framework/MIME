@@ -1,41 +1,42 @@
-"""Two commands writing one program into the user's XLA cache at once leave no entry that JAX cannot read.
+"""Two commands writing one program into the user's XLA cache at once do not leave a damaged entry, because MIME's cache
+goes through JAX's own locked path.
 
-JAX's ``LRUCache.put`` (eviction off, as MIME keeps it) checks that the entry is absent and then writes it in place, with no
-lock, so two processes that compile one program together both write it, and when their frames differ in length the file is
-the shorter frame followed by the longer one's tail: a complete zstd frame and more bytes, which JAX refuses on Python 3.14
-(``Unknown frame descriptor``) and never rewrites, so every later run that reads it warns. ``user_xla_cache`` now deletes, at
-the end of its block, the entries written during it that JAX could not read back (``remove_damaged_entries``).
+JAX's ``LRUCache.put`` writes an entry in place, with no lock, unless a size limit is set (``jax_compilation_cache_max_size``):
+then every read and write of an entry takes a file lock (``<directory>/.lockfile``, through the ``filelock`` package) and
+the least recently used entry goes when one is added. Without the lock, two processes that compile one program at once
+both write its entry, and when their frames differ in length the file is the shorter frame followed by the longer one's tail,
+which JAX never rewrites and which reads back as ``Unknown frame descriptor`` (Python 3.14, zstd) on every later run.
+``user_xla_cache`` therefore gives JAX its cap as that limit.
 
-The race: two children, started at one moment through MIME's own ``user_xla_cache``, compile the same programs into one
-fresh directory, held in step by a file barrier before each program so that their writes overlap. A program is a chain of
-small matrix products: its executable's compressed length differs from one compile to the next (a tiny program's
-rarely does, and equal lengths leave no damage). The damage is read by a decompressor of the test's own, not by the code
-under test.
+The gate, and its control, are deterministic: a child compiles one program in ``user_xla_cache`` while the test holds the
+directory's lock. With MIME's configuration the child's first read waits for the lock (it has not finished after the test has
+held it for a time, and finishes once it is released); with MIME's setting reverted (JAX's limit unset, the child's own
+arm ``base``) the child compiles and finishes while the lock is held. A change that stops MIME's cache going through
+JAX's locked path fails the first, and the second shows the first can fail.
 
-The control is the same two children with the repair turned off (what the code did before it): it must leave damage, and
-it is tried up to ``CONTROL_TRIES`` times because a trial left 3 to 13 damaged entries of 152 in 12 of 13 measured (one left
-none, so a single trial would fail the control about one run in thirteen; six in a row would at about one in 10^6). The fixed arm is one trial and must leave none: the process that ends last looks
-at every entry after both are done writing.
-
-On a Python that compresses with zlib (before 3.14, without ``zstandard``) JAX reads a stream followed by other bytes
-without complaint, so the damage costs a run nothing there; the repair still deletes such a file (it is not what either
-writer wrote), and the test counts it with a zlib object that must reach its end with nothing left over. Both lanes run
-the race, since the default lane allows no skipped test."""
+The race test is a statistical check, not a gate: two children, started at one moment through MIME's own
+``user_xla_cache``, compile 150 programs into one fresh directory, held in step by a file barrier before each program so that
+their writes overlap, and the damage is counted by a decompressor of the test's own. Measured, with JAX's limit unset (the
+base before this change): Python 3.14, 13 trials of 152 entries, 121 damaged entries, damage in 13 of 13 trials; Python 3.12
+(zlib, where JAX reads a stream followed by other bytes without complaint and the test counts one as damage), 16 damaged
+entries, damage in 9 of 13 trials; and on one CI runner on Python 3.12 six trials of the same harness found none (the race
+was not reached there). With the limit set, as MIME sets it: none in 13 of 13 trials on each of the two Pythons. So the race
+test can pass where the race is not reached; it fails if the lock stops protecting what it protected when measured."""
 
 import os
 import subprocess
 import sys
 import textwrap
 import time
+import zlib
 from pathlib import Path
 
+import filelock
 import jax
 import pytest
 
 from mime.env import _xla_cache
-from mime.env._xla_cache import point_xla_cache, remove_damaged_entries, user_xla_cache
-
-import zlib
+from mime.env._xla_cache import USER_CACHE_CAP_BYTES, point_xla_cache, prune_to_cap, user_xla_cache
 
 try:
     from compression import zstd  # Python 3.14+, which JAX compresses with
@@ -44,17 +45,14 @@ except ImportError:
 
 PROGRAMS = 150
 DEPTH = 8
-CONTROL_TRIES = 6
 
 CHILD = textwrap.dedent('''
     import sys, time
     from pathlib import Path
-    root, start_at, programs, depth, me, gate, repair = sys.argv[1:]
+    root, start_at, programs, depth, me, gate = sys.argv[1:]
     other = "b" if me == "a" else "a"
     import jax, jax.numpy as jnp
     from mime.env import _xla_cache
-    if repair == "off":
-        _xla_cache.remove_damaged_entries = lambda *_: 0
 
     def program(i):
         def chain(x):
@@ -74,6 +72,35 @@ CHILD = textwrap.dedent('''
                 pass
             program(i)(x).block_until_ready()
 ''')
+
+#: One compile under the user's cache that says where its directory is, waits to be told to go, says it is about to
+#: compile, and says it is done. ``base`` reverts MIME's limit as the first thing in the block.
+LOCKED_CHILD = textwrap.dedent('''
+    import sys, time
+    from pathlib import Path
+    root, arm, folder = sys.argv[1:]
+    folder = Path(folder)
+    import jax, jax.numpy as jnp
+    from mime.env import _xla_cache
+
+    with _xla_cache.user_xla_cache(root=Path(root)) as held:
+        assert held is not None
+        if arm == "base":
+            jax.config.update("jax_compilation_cache_max_size", -1)
+            _xla_cache.point_xla_cache(str(held))
+        (folder / "directory").write_text(str(held))
+        while not (folder / "go").exists():
+            time.sleep(0.01)
+        (folder / "reached").touch()
+        jax.jit(lambda x: jnp.sin(x) + 3.5)(jnp.ones(5)).block_until_ready()
+        (folder / "done").touch()
+''')
+
+
+def child_environment() -> dict[str, str]:
+    held = {key: value for key, value in os.environ.items()
+            if not key.startswith(("JAX_", "PYTEST_", "XDG_CACHE", "XLA_FLAGS", "MIME_TEST"))}
+    return {**held, "JAX_PLATFORMS": "cpu"}
 
 
 def entries_under(root: Path) -> list[Path]:
@@ -100,47 +127,12 @@ def damaged_entries(root: Path) -> int:
     return sum(not_one_stream(path.read_bytes()) for path in entries_under(root))
 
 
-def race(tmp_path: Path, name: str, repair: str) -> Path:
-    root, gate = tmp_path / name, tmp_path / f"{name}-gate"
-    gate.mkdir()
-    script = tmp_path / "child.py"
-    script.write_text(CHILD)
-    environment = {key: value for key, value in os.environ.items()
-                   if not key.startswith(("JAX_", "PYTEST_", "XDG_CACHE", "XLA_FLAGS", "MIME_TEST"))}
-    environment["JAX_PLATFORMS"] = "cpu"
-    begin = str(time.time() + 8)
-    children = [subprocess.Popen([sys.executable, str(script), str(root), begin, str(PROGRAMS), str(DEPTH), who, str(gate),
-                                  repair], env=environment, stderr=subprocess.PIPE, text=True) for who in "ab"]
-    for child in children:
-        _, error = child.communicate(timeout=600)
-        assert child.returncode == 0, error
-    return root
-
-
-def test_control_without_the_repair_two_commands_writing_one_program_leave_a_damaged_entry(tmp_path):
-    """The harness can fail: it left damage in 12 of the 13 trials measured, 3 to 13 entries of 152."""
-    found = []
-    for attempt in range(CONTROL_TRIES):
-        found.append(damaged_entries(race(tmp_path, f"base{attempt}", "off")))
-        if found[-1]:
-            break
-    print(f"damaged entries by trial, repair off: {found} of {len(entries_under(tmp_path / f'base{len(found) - 1}'))}")
-    assert found[-1] > 0, f"no damage in {CONTROL_TRIES} trials ({found}): the race is not being reached"
-
-
-def test_two_commands_writing_one_program_into_the_users_cache_leave_no_damaged_entry(tmp_path):
-    root = race(tmp_path, "fixed", "on")
-    kept = entries_under(root)
-    print(f"entries kept {len(kept)} of {PROGRAMS + 2}")
-    assert damaged_entries(root) == 0
-    assert len(kept) >= PROGRAMS // 2, "the repair deleted what it should have left"
-
-
 @pytest.fixture
 def jax_cache_unset():
-    """JAX's own cache setting off for the test (CI sets it for its lanes, and ``user_xla_cache`` leaves a set one alone),
-    and put back."""
-    names = ("jax_persistent_cache_min_compile_time_secs", "jax_persistent_cache_min_entry_size_bytes")
+    """JAX's own cache settings off for the test (CI sets them for its lanes, and ``user_xla_cache`` leaves a set directory
+    alone), and put back."""
+    names = ("jax_persistent_cache_min_compile_time_secs", "jax_persistent_cache_min_entry_size_bytes",
+             "jax_compilation_cache_max_size")
     held_dir, held = jax.config.jax_compilation_cache_dir, {name: getattr(jax.config, name) for name in names}
     point_xla_cache(None)
     yield
@@ -149,57 +141,107 @@ def jax_cache_unset():
     point_xla_cache(held_dir)
 
 
-def whole_and_damaged(root: Path) -> dict[str, bytes]:
-    """Compressed entries as JAX writes them, by the decompressor of this interpreter, and the damage of each kind."""
-    payload = bytes(range(256)) * 40
-    frame = zstd.compress(payload) if zstd else zlib.compress(payload)
-    return {"whole": frame, "cut": frame[: len(frame) // 2], "empty": b"", "tail": frame + b"\x07\x91"}
+def wait_for(path: Path, seconds: float) -> bool:
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        if path.exists():
+            return True
+        time.sleep(0.02)
+    return path.exists()
 
 
-def test_remove_damaged_entries_deletes_what_jax_cannot_read_and_only_what_was_written_since(tmp_path):
-    entries = whole_and_damaged(tmp_path)
-    since = time.time()
-    for name, content in entries.items():
-        (tmp_path / f"new_{name}-cache").write_bytes(content)
-        (tmp_path / f"old_{name}-cache").write_bytes(content)
-        os.utime(tmp_path / f"old_{name}-cache", (since - 1000, since - 1000))
-    (tmp_path / "keep.txt").write_bytes(b"not an entry")
-    unreadable = {"cut", "empty", "tail"}
-    removed = remove_damaged_entries(tmp_path, since - 10)
-    left = {path.name for path in tmp_path.iterdir()}
-    assert removed == len(unreadable)
-    assert {f"new_{name}-cache" for name in entries} - left == {f"new_{name}-cache" for name in unreadable}
-    assert {f"old_{name}-cache" for name in entries} <= left, "an entry from before the block is not this block's to judge"
-    assert "keep.txt" in left
+def locked_child(tmp_path: Path, arm: str) -> tuple[subprocess.Popen[str], Path, Path]:
+    folder = tmp_path / f"signals-{arm}"
+    folder.mkdir()
+    script = tmp_path / "locked_child.py"
+    script.write_text(LOCKED_CHILD)
+    child = subprocess.Popen([sys.executable, str(script), str(tmp_path / f"root-{arm}"), arm, str(folder)],
+                             env=child_environment(), stderr=subprocess.PIPE, text=True)
+    assert wait_for(folder / "directory", 240), "the child did not reach its cache directory"
+    return child, folder, Path((folder / "directory").read_text())
 
 
-def test_a_block_that_leaves_a_damaged_entry_removes_it_and_says_so_once(jax_cache_unset, tmp_path):
-    messages: list[str] = []
-    entries = whole_and_damaged(tmp_path)
-    with user_xla_cache(root=tmp_path / "root", say=messages.append) as held:
-        assert held is not None
-        (held / "a-cache").write_bytes(entries["cut"])
-        (held / "b-cache").write_bytes(entries["empty"])
-        (held / "c-cache").write_bytes(entries["whole"])
-    assert sorted(path.name for path in held.iterdir() if path.name.endswith("-cache")) == ["c-cache"]
-    assert len(messages) == 1 and "removed 2 damaged entries" in messages[0]
+def test_a_write_under_the_users_cache_waits_for_jaxs_lock_on_the_directory(tmp_path):
+    """The gate: held from outside, the directory's lock stops the child's first read until it is let go."""
+    child, folder, directory = locked_child(tmp_path, "mime")
+    with filelock.FileLock(directory / ".lockfile"):
+        (folder / "go").touch()
+        assert wait_for(folder / "reached", 60)
+        time.sleep(3)  # JAX waits up to 10 s for the lock; a compile of this program takes well under one second
+        assert not (folder / "done").exists(), "the child compiled and wrote while the lock was held"
+    assert wait_for(folder / "done", 120), "the child did not finish once the lock was released"
+    assert child.wait(timeout=60) == 0, child.stderr.read() if child.stderr else ""
+    assert entries_under(directory), "the child wrote no entry"
 
 
-def test_a_block_with_nothing_damaged_says_nothing(jax_cache_unset, tmp_path):
-    messages: list[str] = []
-    with user_xla_cache(root=tmp_path / "root", say=messages.append) as held:
-        assert held is not None
-        (held / "c-cache").write_bytes(whole_and_damaged(tmp_path)["whole"])
-    assert messages == [] and (held / "c-cache").exists()
+def test_control_with_the_limit_reverted_the_child_writes_while_the_lock_is_held(tmp_path):
+    """The gate above can fail, on every run: with JAX's limit unset, as before this change, the same child does not look at
+    the lock at all and finishes while the test holds it."""
+    child, folder, directory = locked_child(tmp_path, "base")
+    with filelock.FileLock(directory / ".lockfile"):
+        (folder / "go").touch()
+        assert wait_for(folder / "done", 120), "with the limit unset the child still waited for the lock"
+    assert child.wait(timeout=60) == 0, child.stderr.read() if child.stderr else ""
 
 
-def test_the_repair_is_what_user_xla_cache_calls(jax_cache_unset, monkeypatch, tmp_path):
-    """The control for the two tests above: where the block's end does not call it, a damaged entry stays."""
-    monkeypatch.setattr(_xla_cache, "remove_damaged_entries", lambda *_: 0)
+def test_the_users_cache_is_given_to_jax_as_its_size_limit_and_the_setting_comes_back(jax_cache_unset, tmp_path):
+    before = jax.config.jax_compilation_cache_max_size
     with user_xla_cache(root=tmp_path / "root", say=lambda _: None) as held:
         assert held is not None
-        (held / "a-cache").write_bytes(b"")
-    assert (held / "a-cache").exists()
+        assert jax.config.jax_compilation_cache_max_size == USER_CACHE_CAP_BYTES
+    assert jax.config.jax_compilation_cache_max_size == before
+
+
+def test_two_commands_writing_one_program_into_the_users_cache_leave_no_damaged_entry(tmp_path):
+    """The statistical check (see the module's text for its measured rates): it can pass where the race is not reached, and
+    its control is the lock test above."""
+    root, gate = tmp_path / "root", tmp_path / "gate"
+    gate.mkdir()
+    script = tmp_path / "child.py"
+    script.write_text(CHILD)
+    begin = str(time.time() + 8)
+    children = [subprocess.Popen([sys.executable, str(script), str(root), begin, str(PROGRAMS), str(DEPTH), who, str(gate)],
+                                 env=child_environment(), stderr=subprocess.PIPE, text=True) for who in "ab"]
+    for child in children:
+        _, error = child.communicate(timeout=600)
+        assert child.returncode == 0, error
+    kept = entries_under(root)
+    print(f"entries {len(kept)} of {PROGRAMS + 2}, damaged {damaged_entries(root)}")
+    assert damaged_entries(root) == 0
+    assert len(kept) >= PROGRAMS, "an entry went missing"
+
+
+def test_pruning_with_a_directory_to_keep_counts_and_deletes_only_the_others(tmp_path):
+    current = tmp_path / "jaxlib-1" / "cpu" / "now"
+    other = tmp_path / "jaxlib-0" / "cpu" / "then"
+    current.mkdir(parents=True)
+    other.mkdir(parents=True)
+    kept = [current / "a-cache", current / "b-cache"]
+    for index, path in enumerate(kept):
+        path.write_bytes(b"x" * 900)
+        os.utime(path, (1_000_000 + index, 1_000_000 + index))
+    old, new = other / "c-cache", other / "d-cache"
+    for index, path in enumerate((old, new)):
+        path.write_bytes(b"x" * 400)
+        os.utime(path, (2_000_000 + index, 2_000_000 + index))
+    assert prune_to_cap(tmp_path, 500, keep=current) == 400
+    assert not old.exists() and new.exists() and all(path.exists() for path in kept), \
+        "the kept directory's entries are JAX's to evict, however old"
+    assert prune_to_cap(tmp_path, 500) > 0 and not any(path.exists() for path in kept), \
+        "without keep every directory is pruned together, as before"
+
+
+def test_a_command_prunes_other_directories_to_the_cap_and_leaves_its_own_to_jax(jax_cache_unset, tmp_path):
+    other = tmp_path / "root" / "jaxlib-0" / "cpu" / "elsewhere"
+    other.mkdir(parents=True)
+    for index in range(3):
+        path = other / f"k{index}-cache"
+        path.write_bytes(b"x" * 400)
+        os.utime(path, (1_000_000 + index, 1_000_000 + index))
+    with user_xla_cache(root=tmp_path / "root", cap=700, say=lambda _: None) as held:
+        assert held is not None and not held.is_relative_to(other)
+        survivors = sorted(path.name for path in other.iterdir())
+    assert survivors == ["k2-cache"], "the oldest files of the other directories go until they fit the cap"
 
 
 def test_two_commands_starting_at_once_do_not_share_the_file_that_proves_the_directory_writable(

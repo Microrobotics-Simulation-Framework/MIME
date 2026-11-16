@@ -9,7 +9,7 @@ own key still decides whether an entry is a hit, so a directory shared by two de
 the entries of one kind are hits for the other is JAX's, and was not measured.
 
 ``mime run`` and ``mime serve`` keep the cache in the user's cache directory (:func:`user_xla_cache`), capped in size and
-cleared of the damaged entries the block's own writes may have left with another process's (:func:`remove_damaged_entries`);
+written under JAX's own lock (below);
 ``mime env check --xla-cache`` and the Modal script name their own directory."""
 
 from __future__ import annotations
@@ -20,8 +20,6 @@ import os
 import re
 import shutil
 import sys
-import time
-import zlib
 from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any, cast
@@ -55,11 +53,16 @@ def xla_cache_dir(root: str | Path, *, jaxlib: str, platform: str, device_kind: 
     return Path(root) / f"jaxlib-{_segment(jaxlib)}" / _segment(platform) / _segment(device)
 
 
+def _this_process_dir(root: str | Path) -> Path:
+    """The directory under ``root`` this process's jaxlib, platform and CPU or GPU use (:func:`xla_cache_dir`)."""
+    platform, kind = devices()[0]
+    return xla_cache_dir(root, jaxlib=importlib.metadata.version("jaxlib"), platform=platform, device_kind=kind,
+                         cpu_flags_sha256=cpu_record()["flags_sha256"], compute_capability=capability_of_jax())
+
+
 def use_xla_cache(root: str | Path) -> Path:
     """Point JAX's persistent compilation cache at this process's directory under ``root``, creating it."""
-    platform, kind = devices()[0]
-    held = xla_cache_dir(root, jaxlib=importlib.metadata.version("jaxlib"), platform=platform, device_kind=kind,
-                         cpu_flags_sha256=cpu_record()["flags_sha256"], compute_capability=capability_of_jax())
+    held = _this_process_dir(root)
     held.mkdir(parents=True, exist_ok=True)
     point_xla_cache(str(held))
     return held
@@ -74,15 +77,14 @@ def point_xla_cache(directory: str | None) -> None:
     compilation_cache.reset_cache()
 
 
-#: What the user's cache may hold, in bytes, before the oldest entries go at the start of the next command.
+#: What the user's cache may hold, in bytes: JAX keeps this process's directory to it (``jax_compilation_cache_max_size``,
+#: evicting the least recently used entry when one is added), and MIME keeps the directories of other jaxlib releases,
+#: platforms and CPUs to it together, oldest file first, at the start of a command.
 USER_CACHE_CAP_BYTES = 2 * 1024**3
 #: The thresholds the cache is written with (CI's): every program is stored, however quick to compile or small.
 _MIN_COMPILE_SECONDS, _MIN_ENTRY_BYTES = 0, -1
-#: How far before a block's start an entry's modification time may fall and still count as written during it (a coarse
-#: filesystem clock).
-_CLOCK_SLACK_SECONDS = 2.0
 _SETTINGS = ("jax_compilation_cache_dir", "jax_persistent_cache_min_compile_time_secs",
-             "jax_persistent_cache_min_entry_size_bytes")
+             "jax_persistent_cache_min_entry_size_bytes", "jax_compilation_cache_max_size")
 
 
 def user_xla_cache_root() -> Path:
@@ -104,10 +106,11 @@ def _files(root: Path) -> list[tuple[float, int, Path]]:
     return found
 
 
-def prune_to_cap(root: Path, cap: int = USER_CACHE_CAP_BYTES) -> int:
+def prune_to_cap(root: Path, cap: int = USER_CACHE_CAP_BYTES, *, keep: Path | None = None) -> int:
     """Delete the oldest files under ``root`` (by when they were written; a read does not touch an entry) until what
-    is left is at most ``cap`` bytes; the bytes deleted. A file another process deleted first costs nothing."""
-    found = sorted(_files(root))
+    is left is at most ``cap`` bytes; the bytes deleted. Files under ``keep`` are neither counted nor deleted (the
+    directory JAX is keeping to its own cap). A file another process deleted first costs nothing."""
+    found = sorted(item for item in _files(root) if keep is None or not item[2].is_relative_to(keep))
     total = sum(size for _, size, _ in found)
     freed = 0
     for _, size, path in found:
@@ -132,64 +135,6 @@ def clear_user_xla_cache(root: Path | None = None) -> int:
     return held
 
 
-def _one_zlib_stream(entry: bytes) -> bytes:
-    """What JAX's ``zlib.decompress`` gives, but refusing an entry that is not exactly one complete stream: JAX reads a
-    stream followed by other bytes without complaint, which is the shape two writers of one entry leave, and that file is
-    not an entry either writer wrote."""
-    reader = zlib.decompressobj()
-    held = reader.decompress(entry)
-    if not reader.eof or reader.unused_data:
-        raise ValueError("not exactly one zlib stream")
-    return held
-
-
-def _decompressor() -> Callable[[bytes], bytes]:
-    """The call JAX's reader decompresses an entry with: ``compression.zstd`` (Python 3.14), else ``zstandard`` if
-    installed, else ``zlib`` (made strict by :func:`_one_zlib_stream`)."""
-    try:
-        from compression import zstd  # pyright: ignore[reportMissingImports, reportUnknownVariableType]
-    except ImportError:
-        pass
-    else:
-        return cast(Any, zstd).decompress
-    try:
-        return cast(Any, importlib.import_module("zstandard")).ZstdDecompressor().decompress
-    except ImportError:
-        return _one_zlib_stream
-
-
-def _reads_whole(entry: bytes) -> bool:
-    """Whether the entry is one complete compressed stream, read the way JAX reads it. A complete zstd frame followed by
-    other bytes, which is what two processes writing one entry leave, is refused by the zstd readers; zlib's would read
-    it, so that reader is made strict here: on Python before 3.14 the file costs a run nothing, and is deleted all the
-    same, for it is not what either writer wrote."""
-    try:
-        _decompressor()(entry)
-    except Exception:  # noqa: BLE001 - every kind of refusal is damage: the decompressor's, not ours
-        return False
-    return True
-
-
-def remove_damaged_entries(directory: Path, since: float) -> int:
-    """Delete the entries under ``directory`` written at or after ``since`` (seconds since the epoch) that JAX could not
-    read back, and say how many. JAX writes an entry in place, with no temporary file and no lock, so two processes
-    that compile one program at once can leave a complete frame and the longer writer's tail; JAX never rewrites an
-    existing entry, so every later run that read it would warn and compile again. Deleted, the next run writes it
-    whole. An entry another process is still writing reads as cut, and is deleted too: its writer finishes into a file
-    no longer there, which costs that program one compile and damages nothing. Run by each process at its end, the last
-    of the processes that wrote an entry looks at it after both are done."""
-    removed = 0
-    for path in directory.glob("*-cache"):
-        try:
-            if path.stat().st_mtime < since or _reads_whole(path.read_bytes()):
-                continue
-            path.unlink()
-            removed += 1
-        except OSError:  # gone (pruned, or deleted by another process doing this), or unreadable: nothing to repair
-            continue
-    return removed
-
-
 def _restore(held: dict[str, Any]) -> None:
     for name, value in held.items():
         if name != "jax_compilation_cache_dir":
@@ -205,8 +150,12 @@ def _to_stderr(line: str) -> None:
 def user_xla_cache(*, root: Path | None = None, cap: int = USER_CACHE_CAP_BYTES,
                    say: Callable[[str], None] = _to_stderr) -> Generator[Path | None]:
     """XLA's persistent compilation cache in the user's cache directory for the length of the block, with the
-    thresholds CI uses, and JAX's settings as they were afterwards. The oldest entries are deleted first if the cache
-    holds more than ``cap`` bytes. Yields the directory in use, or ``None`` when nothing was changed: JAX's cache
+    thresholds CI uses, and JAX's settings as they were afterwards. JAX is given ``cap`` as its own cache size
+    (``jax_compilation_cache_max_size``): with a limit set, it takes a file lock on every read and write of an entry and
+    evicts the least recently used when one is added, which is what keeps two commands that compile one program at once
+    from leaving an entry written by both in one file (without it, JAX writes in place, with no lock). At the start,
+    the directories of other jaxlib releases, platforms and CPUs, which JAX's cap does not reach, are held to ``cap``
+    together, oldest file first; so the cache can hold up to twice ``cap``. Yields the directory in use, or ``None`` when nothing was changed: JAX's cache
     directory was already set (the user's, or CI's, is not overridden), or the cache cannot be written (a read-only
     home, a full disk), which ``say`` is told once and which costs the block only the cache."""
     config = cast(Any, jax.config)
@@ -216,12 +165,12 @@ def user_xla_cache(*, root: Path | None = None, cap: int = USER_CACHE_CAP_BYTES,
     held = {name: getattr(config, name) for name in _SETTINGS}
     base = user_xla_cache_root() if root is None else root
     chosen: Path | None
-    started = time.time() - _CLOCK_SLACK_SECONDS
     try:
         if base.exists():
-            prune_to_cap(base, cap)
+            prune_to_cap(base, cap, keep=_this_process_dir(base))
         config.update("jax_persistent_cache_min_compile_time_secs", _MIN_COMPILE_SECONDS)
         config.update("jax_persistent_cache_min_entry_size_bytes", _MIN_ENTRY_BYTES)
+        config.update("jax_compilation_cache_max_size", cap)
         chosen = use_xla_cache(base)
         probe = chosen / f".mime-write-probe-{os.getpid()}"  # one per process: two commands start at once
         probe.write_bytes(b"")
@@ -235,11 +184,7 @@ def user_xla_cache(*, root: Path | None = None, cap: int = USER_CACHE_CAP_BYTES,
         yield chosen
     finally:
         if chosen is not None:
-            removed = remove_damaged_entries(chosen, started)
             _restore(held)
-            if removed:
-                say(f"mime: removed {removed} damaged {'entry' if removed == 1 else 'entries'} of XLA's compilation "
-                    f"cache that two commands had written at once; the next run compiles them again")
 
 
 __all__ = ["USER_CACHE_CAP_BYTES", "clear_user_xla_cache", "point_xla_cache", "prune_to_cap", "use_xla_cache",

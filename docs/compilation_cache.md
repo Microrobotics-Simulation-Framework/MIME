@@ -16,24 +16,29 @@ The numbers a run gives are the same with it and without it; what changes is the
 - **`--no-xla-cache`** on `mime run` or `mime serve` keeps no cache for that command.
 - **A cache JAX was already given is left alone.** With `JAX_COMPILATION_CACHE_DIR` set (or the setting made before
   the command), MIME changes nothing: it is the user's choice.
-- **The cache is capped at 2 GB.** At the start of a command, if the directory holds more, the oldest entries (by when
-  they were written; reading one does not renew it) are deleted until it fits. A run can add to a cache at the cap, so
-  the directory can pass it by one run's worth until the next command. An entry deleted costs one recompile.
+- **The cache is capped at 2 GB, in two parts.** MIME gives JAX the cap as its own cache size limit
+  (`jax_compilation_cache_max_size`) for the directory the command uses: JAX then evicts the least recently used entry
+  (reading one renews it) when it adds another. At the start of a command, MIME holds the directories of other jaxlib
+  releases, platforms and CPUs, which JAX's limit does not reach, to 2 GB together, deleting the oldest files first. So
+  the cache can hold up to twice 2 GB, in the worst case, and a run can add to a directory at its limit by one entry's
+  worth until JAX evicts. An entry deleted costs one recompile.
+- **JAX's limit also puts a file lock around every read and write of an entry**, which is the reason it is set (below);
+  it needs the `filelock` package, which MIME depends on. The lock costs about 0.3 to 1 ms on each read of an entry:
+  about 20 ms of a 2.8 s warm `mime run` of the toy experiment (measured, 20 reads), 0.7 %.
 - **`mime cache clear`** deletes the directory and says how much it held.
 - **A cache that cannot be written** (a read-only home, a full disk) does not stop the run: the command says so once on
   standard error and compiles without it.
-- **Two commands at once.** JAX writes an entry in place, with no lock, so two `mime run`s (or a `mime serve`, or the
-  shards of a study run at once) that compile one program together can both write its entry, and when their frames
-  differ in length the file ends as a complete frame plus the longer one's tail. Each of those commands, as it ends,
-  deletes the entries written during it that JAX cannot read back (and says how many, once on standard error), so the
-  next run compiles the program again and writes it whole. A command killed before it ends (a second Ctrl+C) does not
-  get to do that. The check is the decompressor JAX itself reads with: on Python 3.14 a frame followed by other bytes is refused and
-  removed. Before 3.14 JAX compresses with zlib, which reads such a file without complaint, so it costs a run nothing,
-  but it is not what either writer wrote and is removed all the same. Two commands that are both still running can see each other's half-written entry, which one of them
-  then deletes: the program costs that command one more compile, and nothing is damaged.
+- **Two commands at once are safe.** Without a limit JAX writes an entry in place, with no lock, so two `mime run`s (or a
+  `mime serve`, or the shards of a study run at once) that compile one program together can both write its entry, and when
+  their frames differ in length the file ends as a complete frame plus the longer one's tail, which JAX never rewrites. With
+  the limit set, JAX takes `<directory>/.lockfile` around each read and write, so the writes follow one another (measured,
+  two processes compiling 150 programs together into a fresh directory, 13 trials on each of Python 3.12 and 3.14: no
+  damaged entry with the limit, 16 and 121 damaged entries without it). A lock held longer than 10 s is JAX's timeout: that
+  read or write is skipped with JAX's own warning, and the run goes on.
 - **What it cannot do.** It holds compiled programs, not tracing: a second run still traces and lowers each program,
   and the first run of an experiment, or of a changed one, pays in full. A process killed mid-write (a second
-  Ctrl+C), or an entry written before this repair existed, can leave a truncated or damaged one. The next run that
+  Ctrl+C), or an entry written before JAX's limit was set (by an earlier MIME, or by two commands at once then), can leave
+  a truncated or damaged one. The next run that
   reads it gets a warning from JAX and compiles instead: it succeeds and its numbers are those of a run with no cache
   (tested with entries cut to half and to nothing). JAX does not rewrite an entry whose file exists, so the warning
   repeats on every run that reads it.
@@ -42,8 +47,8 @@ The numbers a run gives are the same with it and without it; what changes is the
 
 That is JAX saying an entry of the cache is damaged (`Unknown frame descriptor`, `ended before the end-of-stream
 marker`): the run went on and compiled the program instead, and its numbers are right. The warning comes back on every
-run that reads the entry, so remove the cache once with `mime cache clear`. The next run builds it again. On a terminal, `mime run`, `mime serve` and `mime study run` print that command beside
-the first such warning. To keep a command out of it meanwhile, `--no-xla-cache`.
+run that reads the entry, so remove the cache once with `mime cache clear`. The next run builds it again. On a terminal,
+`mime run`, `mime serve` and `mime study run` print that command beside the first such warning. To keep a command out of it meanwhile, `--no-xla-cache`.
 
 ## In a script of your own
 
@@ -69,8 +74,9 @@ use_xla_cache(user_xla_cache_root())
 
 This sets the directory only, with JAX's default of caching a program that took a second or more to compile. Add
 `jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)` and
-`jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)` for the thresholds above. It is not capped; call
-`mime.env.prune_to_cap(user_xla_cache_root())` to cap it.
+`jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)` for the thresholds above. It is not capped and takes no lock (JAX locks only when it is given a size limit, `jax_compilation_cache_max_size`, with the
+`filelock` package): set that limit too if processes of your own share the directory, and call
+`mime.env.prune_to_cap(user_xla_cache_root())` to cap the other directories.
 
 ## What it does not claim
 

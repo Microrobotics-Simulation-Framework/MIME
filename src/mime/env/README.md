@@ -54,8 +54,9 @@
   decides whether an entry is a hit. Without `--xla-cache` there is no persistent cache.
 - **The user's cache** (`user_xla_cache`, `user_xla_cache_root`, `prune_to_cap`, `clear_user_xla_cache`): what `mime run` and
   `mime serve` keep in the user's cache directory, the same layout under `xla`, written with every program stored and
-  pruned of its oldest entries once it passes its cap, at the start of the command, and cleared at its end of the entries
-  that two commands writing one program at once left unreadable (`remove_damaged_entries`); see
+  capped in two parts (JAX's own size limit on the directory the command uses, which also makes JAX lock each read and write
+  of an entry so that two commands compiling one program at once cannot damage it; MIME's pruning of the other jaxlib
+  releases', platforms' and CPUs' directories at the start of the command); see
   [the compilation cache](../../../docs/compilation_cache.md).
 - **The GPU types** (`EXACT_GPUS`), as Modal names them. A name Modal may serve with another model (`A100`, `H100`,
   `B200+`) is refused with the exact names to use instead. The two A100 names are one family: Modal's guide names no

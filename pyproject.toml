@@ -55,6 +55,10 @@ dependencies = [
     "pooch>=1.8",
     # Where `mime credentials` keeps a token: the user's config directory. pooch already depends on it.
     "platformdirs>=3",
+    # JAX's compilation cache takes a lock around an entry's read and write only when a size limit is set, and imports this
+    # package then; `mime run` and `mime serve` set one (`mime.env._xla_cache`) so that two commands writing one program
+    # at once cannot leave a damaged entry. JAX raises without it once a limit is set.
+    "filelock>=3.12",
     # A distribution name and a version in a bundle's lock are checked against PEP 503 and PEP 440 before one is printed
     # into a `pip install` command, and `mime env check` evaluates the environment markers of the pinned requirements
     # files with it. pooch already depends on it. A licence is checked as an SPDX expression by its `packaging.licenses`,
