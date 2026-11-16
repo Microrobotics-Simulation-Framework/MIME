@@ -137,7 +137,14 @@ A label is read **where it is defined**: an interface of the vocabulary when it 
 `mime.core.ParamSpec(...)` (MADDENING's `ParamSpec`, with its units read) when the node's `param_specs()` is called; and a state's `Units(...)` when the annotation holding it is evaluated, which
 for a module that postpones its annotations is when the node's typed state is first read (a build, a save, or the tests that
 read every node's). A typo, or a value that is not text (a number given to `Units`), is the refusal `units.label` and not a silent label
-that nothing parses. A registration's interface carries no values, so its units may be empty. A test collects
+that nothing parses.
+
+A node's `ParamSpec` label is checked **when the specs are read, not at import**: a `param_specs()` runs for a fit or a
+gradient study, the docs pages and the trainable helper, and a build never calls it, so a typo there stays unread by a
+script that only runs the experiment. Because the node's author wrote the label, not the user, a label MIME cannot read in a
+node's `param_specs()` is the node's defect, `entry.defect` (an internal refusal that names the node and the label), and
+never the user's `units.label`. MIME's own labels are also covered without reading any specs: CI's source scan parses every
+`units=` literal of the source. A registration's interface carries no values, so its units may be empty. A test collects
 every label MIME writes from the registry, the node classes, the vocabulary and the source, and parses them all.
 
 ## Errors

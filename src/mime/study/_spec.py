@@ -33,7 +33,7 @@ import yaml
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.results._study_folder import bare_vector, encode_value
 from mime.study._override import parse_value
-from mime.units import Quantity
+from mime.units import ANGULAR_VELOCITY, FREQUENCY, Quantity, rate_symbol
 
 if TYPE_CHECKING:
     from mime.study._study import Points, Study
@@ -66,7 +66,8 @@ class _Loader(yaml.SafeLoader):
 
 
 def value_text(value: object, path: str) -> object:
-    """An axis value as a spec writes it: a quantity as ``<number(s)> <unit>``, a tuple of bare numbers (a direction, a
+    """An axis value as a spec writes it: a quantity as ``<number(s)> <unit>`` (a rate of radians as ``rad/s``, so that the spec reads back as
+    the rate it counts, not as turns: :func:`encode_value`'s symbol is the dimension's, ``Hz``), a tuple of bare numbers (a direction, a
     quaternion) as a list of its numbers, a name as it is, a number or boolean as it is."""
     numbers = bare_vector(value)
     if numbers is not None:
@@ -76,7 +77,7 @@ def value_text(value: object, path: str) -> object:
         magnitude = held["value"]
         text = ", ".join(repr(float(v)) for v in cast(list[float], magnitude)) if isinstance(magnitude, list) \
             else repr(float(cast(float, magnitude)))
-        unit = held["unit"]
+        unit = rate_symbol(ANGULAR_VELOCITY) if value.dimension == FREQUENCY and value.angle == "radian" else held["unit"]
         return text if unit == "1" else f"{text} {unit}"
     if isinstance(value, str):
         if parse_value(value) is not None:

@@ -16,8 +16,9 @@ from jax import Array
 from maddening.core.node import BoundaryInputSpec, SimulationNode
 from maddening.core.params import ParamSpec as MaddeningParamSpec
 
+from mime._refusals import InternalError, entry_defect
 from mime.core._symbols import Symbol
-from mime.units import parse_label
+from mime.units import UnitError, parse_label
 
 if TYPE_CHECKING:
     from mime.core.ledger import LedgerFlag
@@ -189,7 +190,8 @@ else:
     @dataclass(frozen=True)
     class ParamSpec(MaddeningParamSpec):
         """MADDENING's ``ParamSpec`` with its units label read where the spec is made
-        (:func:`~mime.units.parse_label`): a typo is the ``units.label`` refusal there, not a label a reader finds later.
+        (:func:`~mime.units.parse_label`) when the spec is made, which is when the node's ``param_specs()`` runs (a fit, the
+        docs pages), not at import; :func:`node_param_specs` reports the typo there as the node's defect.
         A spec with no units (the default) holds none to read. Every other argument, and every method, is
         ``ParamSpec``'s. Type checkers see MADDENING's class: ``dict`` is invariant in its values, so a node that
         returned the subclass would not match its base's ``param_specs``."""
@@ -209,6 +211,21 @@ def _numeric(value: object) -> bool:
         return True
     return isinstance(value, tuple) and all(isinstance(v, (int, float)) and not isinstance(v, bool)
                                             for v in cast(tuple[object, ...], value))
+
+
+def node_param_specs(node: SimulationNode) -> Mapping[str, Any]:
+    """``node.param_specs()``, where a unit label MIME cannot read in a ``ParamSpec`` it builds is reported as the node's
+    defect (``entry.defect``, an internal refusal naming the node and the label's own refusal), not as the ``units.label``
+    refusal of a user's label: a node's author wrote it. A label is read when the specs are, never at import, so every
+    place that reads the specs of a node reads them through this (a fit or gradient study, the docs pages, the trainable
+    helper)."""
+    try:
+        return cast(Mapping[str, Any], node.param_specs())
+    except UnitError as error:
+        cls = type(node)
+        raise InternalError([entry_defect(
+            cls, f"param_specs() declares a ParamSpec whose units label cannot be read: {error}",
+            label=cls.__name__)]) from error
 
 
 class MimeNode(SimulationNode):

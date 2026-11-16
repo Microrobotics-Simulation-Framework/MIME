@@ -32,12 +32,14 @@ from mime.units import (
     MAGNETIC_FLUX_DENSITY,
     TIME,
     Dimension,
+    Hz,
     Quantity,
     UnitError,
     mm,
     mmHg,
     ms,
     parse_unit,
+    rad_per_s,
     s,
     si,
     unit_symbol,
@@ -251,14 +253,18 @@ def same_unit(held: Quantity, dimension: Dimension) -> bool:
             and type(held.dimension) is type(dimension) and held.angle == dimension.angle)
 
 
-@pytest.mark.parametrize("dimension", [FREQUENCY, ANGULAR_VELOCITY])
-def test_a_rate_a_spec_writes_reads_back_as_the_rate_it_counts(dimension):
-    from mime.units import rate_symbol
+@pytest.mark.parametrize("rate", [Hz(1.5), rad_per_s(1.5), rad_per_s((0.0, 0.0, 1.5))], ids=["Hz", "rad/s", "rad/s vector"])
+def test_a_rate_a_spec_writes_reads_back_as_the_rate_it_counts(rate):
+    """Through the spec's own writer and reader (``value_text``, ``value_of``), not the unit's symbol function: a spec
+    that wrote a rate of radians as ``Hz`` read it back as turns, a 2 pi misread."""
+    from mime.study._spec import value_of, value_text
 
-    held = parse_value(f"1.5 {rate_symbol(dimension)}")
-    assert held is not None and held.value == 1.5 and same_unit(held, dimension)
-    other = ANGULAR_VELOCITY if dimension is FREQUENCY else FREQUENCY
-    assert not same_unit(held, other), "the comparison tells the two rates apart"
+    back = value_of(value_text(rate, "axis"), "axis")
+    assert isinstance(back, Quantity) and back.value == rate.value and back.angle == rate.angle
+    written = ANGULAR_VELOCITY if rate.angle == "radian" else FREQUENCY
+    assert same_unit(back, written), back
+    other = ANGULAR_VELOCITY if rate.angle == "turn" else FREQUENCY
+    assert not same_unit(back, other), "the comparison tells the two rates apart"
 
 
 @given(exponents=st.tuples(*[st.integers(-3, 3)] * 7), number=st.floats(0.001, 1000.0))
@@ -503,3 +509,80 @@ def test_the_torr_differs_from_the_conventional_mmhg_in_the_eighth_significant_f
     torr = 101325.0 / 760.0
     assert f"{mmHg.factor:.6e}" == f"{torr:.6e}", "seven significant figures agree"
     assert f"{mmHg.factor:.7e}" != f"{torr:.7e}", "the eighth does not"
+
+
+# -- a spec's rate reads back as the rate it counts (the second re-check's minor) -------------------------------------------
+
+
+def test_a_rate_a_spec_writes_is_read_back_by_a_study_re_read_from_its_spec_as_the_rate_it_counts(script_a_spec, tmp_path):
+    """The spec writer wrote ``rad_per_s((0, 0, 1))`` as ``0.0, 0.0, 1.0 Hz``, which reads back as turns, and a study re-read
+    from its spec refused every point (``state.units``) where the study it was written from ran. The real writer
+    (``spec_text``) and the real reader (``Study.from_spec``), a rad/s value at a rad/s site and a Hz value at a Hz site."""
+    from mime.study import Study, grid
+    from mime.study._spec import spec_text
+    experiment = script_a_spec()
+    folder = tmp_path / "experiment"
+    lock = experiment.save(folder)
+    points = grid({"umr.initial.angular_velocity": [rad_per_s((0.0, 0.0, 1.0))],
+                   "field.commands.frequency": [Hz(10.0)]})
+    spec = tmp_path / "study.mime.yaml"
+    spec.write_text(spec_text(points, duration=ms(1.0), record=[], every=None, batch=None, drop_refused=False, reasons={},
+                              base="experiment", input_hash=lock["hashes"]["input"]))
+    written = Study(experiment).sweep(points, duration=ms(1.0)).plan()
+    read = Study.from_spec(spec).plan()
+    refused = [r.code for p in read.points for r in (p.refusals or ())]
+    assert refused == [] and [r.code for p in written.points for r in (p.refusals or ())] == []
+    for axis, value in zip(read.axes, read.points[0].values.values(), strict=True):
+        wanted = {"umr.initial.angular_velocity": "radian", "field.commands.frequency": "turn"}[axis.path]
+        assert value.angle == wanted, (axis.path, value)
+
+
+# -- a node author's label typo is the node's defect (the second re-check's minor) --------------------------------------------
+
+
+@pytest.fixture
+def a_torque_node_whose_param_specs_has_a_typo(monkeypatch):
+    """The re-check's plant: ``ParamSpec(units="kPa")`` in ``MagneticTorqueNode.param_specs`` (kPa is no unit of MIME's
+    vocabulary). Script A builds cleanly with it: a label is read when the specs are, not at import or at build."""
+    import mime.nodes.magnetic._torque as torque
+
+    cls = next(v for v in vars(torque).values() if isinstance(v, type) and "param_specs" in vars(v))
+    real = cls.param_specs
+    monkeypatch.setattr(cls, "param_specs", lambda self: {**real(self), "typo": ParamSpec(units="kPa")})
+    return cls
+
+
+def an_internal_defect_naming(error: BaseException, cls: type) -> None:
+    from mime.errors._boundary import crossed
+
+    refusals = crossed(error).refusals
+    assert [r.code for r in refusals] == ["entry.defect"], [r.code for r in refusals]
+    assert [r.category.name for r in refusals] == ["INTERNAL"]
+    assert cls.__name__ in refusals[0].message and "kPa" in refusals[0].message, refusals[0].message
+
+
+def test_a_label_typo_in_a_nodes_param_specs_is_the_nodes_defect_where_a_study_reads_the_specs(
+        script_a_spec, a_torque_node_whose_param_specs_has_a_typo):
+    from mime.build._maddening import parameter_specs
+
+    built = script_a_spec().build()
+    with pytest.raises(Exception) as caught:
+        parameter_specs(built.graph)
+    an_internal_defect_naming(caught.value, a_torque_node_whose_param_specs_has_a_typo)
+
+
+def test_a_label_typo_in_a_nodes_param_specs_is_the_nodes_defect_where_the_docs_and_the_trainable_helper_read_a_nodes_specs(
+        script_a_spec, a_torque_node_whose_param_specs_has_a_typo):
+    from mime.core._node import node_param_specs
+
+    held = script_a_spec().build().graph._nodes  # pyright: ignore[reportPrivateUsage]
+    node = next(h.node for h in held.values() if type(h.node) is a_torque_node_whose_param_specs_has_a_typo)
+    with pytest.raises(Exception) as caught:
+        node_param_specs(node)
+    an_internal_defect_naming(caught.value, a_torque_node_whose_param_specs_has_a_typo)
+
+
+def test_a_param_specs_that_reads_clean_is_read_as_it_is(script_a_spec):
+    from mime.build._maddening import parameter_specs
+
+    assert parameter_specs(script_a_spec().build().graph), "script A's nodes declare parameters"

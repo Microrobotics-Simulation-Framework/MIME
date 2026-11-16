@@ -26,7 +26,8 @@ from maddening.core.static_data import StaticArray
 from numpy.typing import NDArray
 
 from mime.core import MimeNode, differentiated_nodes, one_ulp_up_leaf, run_constants_made
-from mime.core._node import run_constants_for_derivative
+from mime.core._node import node_param_specs, run_constants_for_derivative
+from mime.units import UnitError
 
 type NodeFields = dict[str, dict[str, Array]]
 
@@ -143,7 +144,15 @@ def parameter_leaves(graph: GraphManager) -> dict[str, dict[str, Any]]:
 
 
 def parameter_specs(graph: GraphManager) -> dict[str, dict[str, ParamSpec]]:
-    return cast(dict[str, dict[str, ParamSpec]], _held(graph).param_specs().get("nodes", {}))
+    """Every node's ``ParamSpec`` by key. A node whose spec cannot be made (a unit label MIME cannot read) is that node's
+    defect, ``entry.defect`` naming it (:func:`~mime.core._node.node_param_specs`), not a user's ``units.label``."""
+    try:
+        return cast(dict[str, dict[str, ParamSpec]], _held(graph).param_specs().get("nodes", {}))
+    except UnitError:
+        for held in _held(graph)._nodes.values():
+            if held.accepts_params:
+                node_param_specs(held.node)
+        raise
 
 
 type Fed = Mapping[str, Mapping[str, Any]]

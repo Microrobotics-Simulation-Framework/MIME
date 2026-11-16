@@ -62,6 +62,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     label read where the spec is made, and every node of MIME declares its parameters with it (it replaces the one-off
     `param_spec` helper that only one node used). A NumPy function on a quantity (`np.abs(q)`) is a coded refusal that says
     what to write, not NumPy's own `TypeError`; the operators it hands to the quantity are as they were.
+  - **The second re-check's minors.** A study's spec writes a rate of radians with its angle (`0.0, 0.0, 1.0 rad/s`, not `Hz`),
+    so a study re-read from its spec counts the rate it was written with and no longer refuses every point (`state.units`);
+    the study folder's own writer (`study.json`) is as it was, so no saved form or content hash changes. A label typo in a
+    node's `param_specs()` is read where the specs are (a fit or gradient study, the docs pages, the trainable helper), not
+    at import or at build, and is the node's defect (`entry.defect`, internal, naming the node and the label), not the
+    user's `units.label`; MIME's own literals are also covered by CI's source scan.
 
 - **The camera's sampled route: any kind with a cheap sign function** (`mime.sensing`, route 2; `Geometry.sign_function`,
   `SignValue`, `sign_zone`; `Geometry.crease_measure`, `CreaseMeasure`; dev2, camera PR 5a). A kind whose geometry declares a
