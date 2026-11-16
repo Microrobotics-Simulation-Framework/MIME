@@ -17,13 +17,12 @@ import pytest
 from push_cases import copy_of, saved_toy
 from scaffold_rig import Person, check_of, tree_of
 
-from mime import scaffold
-from mime.blocks import read_definition
+from mime.scaffold import _scaffold, _values
+from mime.blocks._definition import read_definition
 from mime.build import BuildRefused
 from mime.cli import main as mime_main
 from mime.cli import _guide
 from mime.push import _check, _defaults
-from mime.scaffold import _scaffold
 from mime.testing.toys import coupled_toy
 
 #: A block's walk with no default held: the id, version, licence and title kept; a description; one creator (family and
@@ -31,8 +30,8 @@ from mime.testing.toys import coupled_toy
 ANSWERS = ("", "", "", "", "A probe", "Carberry", "Josiah", "", "", "", "microrobot, demo")
 
 
-def walked(path: Path, person: Person) -> scaffold.Scaffolded:
-    result = scaffold.scaffold("block", path, typed=person.typed, ask=person.ask, say=person.say)
+def walked(path: Path, person: Person) -> _scaffold.Scaffolded:
+    result = _scaffold.scaffold("block", path, typed=person.typed, ask=person.ask, say=person.say)
     assert person.answers == [], f"answers left unasked: {person.answers}"
     return result
 
@@ -41,7 +40,7 @@ def test_a_new_block_is_walked_field_by_field_with_its_line_and_values_held_are_
     person = Person(*ANSWERS)
     result = walked(tmp_path / "probe", person)
     heads = [prompt.split("\n")[0].split(":")[0] for prompt in person.asked if prompt.split("\n")[0].split(":")[0]
-             in scaffold.KEYS["block"]]
+             in _values.KEYS["block"]]
     assert heads == ["block.id", "block.version", "block.licence", "record.title", "record.description",
                      "record.creators", "record.keywords"], "each key asked once, in the walk's order"
     assert 'use "mylab.probe"? [Y/n] ' in person.asked[0] and "block.id: the block's id" in person.asked[0]
@@ -62,7 +61,7 @@ def test_a_value_that_is_not_valid_is_said_and_asked_again(tmp_path: Path):
 
 def test_a_set_value_is_taken_as_given_and_not_asked(tmp_path: Path):
     person = Person(*([""] * 14))
-    result = scaffold.scaffold("block", tmp_path / "probe", sets=["block.id=labx.given"], typed=person.typed,
+    result = _scaffold.scaffold("block", tmp_path / "probe", sets=["block.id=labx.given"], typed=person.typed,
                                ask=person.ask, say=person.say)
     assert (result.values["block.id"].value, result.values["block.id"].source) == ("labx.given", "--set")
     assert not any(prompt.startswith("block.id") for prompt in person.asked)
@@ -76,9 +75,9 @@ def test_the_walk_offers_to_save_what_it_was_told_and_never_under_yes(tmp_path: 
     assert held.values["creators"] == [{"family": "Carberry", "given": "Josiah"}] and held.values["keywords"] == [
         "microrobot", "demo"]
     again = Person()
-    scaffold.scaffold("block", tmp_path / "probe2", yes=True, typed=again.typed, ask=again.ask, say=again.say)
+    _scaffold.scaffold("block", tmp_path / "probe2", yes=True, typed=again.typed, ask=again.ask, say=again.say)
     assert again.asked == []
-    second = scaffold.scaffold("block", tmp_path / "probe3", yes=True, say=lambda line: None)
+    second = _scaffold.scaffold("block", tmp_path / "probe3", yes=True, say=lambda line: None)
     assert second.values["record.creators"].source == "defaults.toml"
 
 
@@ -89,7 +88,7 @@ def test_a_no_to_the_offer_saves_nothing_and_a_walk_with_nothing_new_does_not_as
     assert not _defaults.defaults_path().exists()
     _defaults.write_defaults({"creators": [{"family": "Carberry", "given": "Josiah"}]})
     kept = Person(*([""] * 7))
-    scaffold.scaffold("block", tmp_path / "probe2", typed=kept.typed, ask=kept.ask, say=kept.say)
+    _scaffold.scaffold("block", tmp_path / "probe2", typed=kept.typed, ask=kept.ask, say=kept.say)
     assert not any("Save these" in prompt for prompt in kept.asked)
 
 
@@ -104,7 +103,7 @@ def test_the_save_offer_adds_to_the_defaults_already_saved_and_names_a_blocks_na
 def test_enter_read_as_no_is_caught_by_the_walk_that_keeps_every_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     _defaults.write_defaults({"creators": [{"family": "Carberry", "given": "Josiah"}], "keywords": ["microrobot"]})
     keeping = Person("", "", "", "", "", "", "")
-    scaffold.scaffold("block", tmp_path / "kept", typed=keeping.typed, ask=keeping.ask, say=keeping.say)
+    _scaffold.scaffold("block", tmp_path / "kept", typed=keeping.typed, ask=keeping.ask, say=keeping.say)
     assert keeping.answers == []
     original = _scaffold.Walk.keep
 
@@ -114,7 +113,7 @@ def test_enter_read_as_no_is_caught_by_the_walk_that_keeps_every_value(tmp_path:
     monkeypatch.setattr(_scaffold.Walk, "keep", no_for_enter)
     planted = Person(*([""] * 7))
     with pytest.raises(AssertionError):
-        scaffold.scaffold("block", tmp_path / "planted", typed=planted.typed, ask=planted.ask, say=planted.say)
+        _scaffold.scaffold("block", tmp_path / "planted", typed=planted.typed, ask=planted.ask, say=planted.say)
 
 
 # -- the other kinds' walks -----------------------------------------------------------------------------------------------
@@ -123,7 +122,7 @@ def test_enter_read_as_no_is_caught_by_the_walk_that_keeps_every_value(tmp_path:
 def test_a_bundle_is_walked_over_the_experiments_declared_licence(tmp_path: Path):
     folder = saved_toy(tmp_path)
     person = Person("", "", "", "Carberry", "Josiah", "", "", "", "")
-    scaffold.scaffold("bundle", folder, typed=person.typed, ask=person.ask, say=person.say)
+    _scaffold.scaffold("bundle", folder, typed=person.typed, ask=person.ask, say=person.say)
     held = tomllib.loads((folder / "mime.toml").read_text(encoding="utf-8"))
     assert held["bundle"]["licence"] == "CC-BY-4.0" and held["record"]["creators"][0]["family"] == "Carberry"
     assert 'use "CC-BY-4.0"? [Y/n] ' in person.asked[0]
@@ -134,7 +133,7 @@ def test_a_bundle_is_walked_over_the_experiments_declared_licence(tmp_path: Path
 def test_a_licence_the_experiment_does_not_declare_is_refused_for_a_bundle(tmp_path: Path):
     folder = saved_toy(tmp_path)
     with pytest.raises(BuildRefused) as refused:
-        scaffold.scaffold("bundle", folder, yes=True, sets=["bundle.licence=MIT"], say=lambda line: None)
+        _scaffold.scaffold("bundle", folder, yes=True, sets=["bundle.licence=MIT"], say=lambda line: None)
     assert refused.value.refusals[0].code == "scaffold.set" and "declares CC-BY-4.0" in refused.value.refusals[0].message
     assert not (folder / "mime.toml").exists()
 
@@ -142,7 +141,7 @@ def test_a_licence_the_experiment_does_not_declare_is_refused_for_a_bundle(tmp_p
 def test_a_plugins_names_come_from_its_folder_and_the_defaults_and_set(tmp_path: Path):
     _defaults.write_defaults({"creators": [{"family": "Carberry", "given": "Josiah"}]}, licences={"code": "MIT"},
                              namespace="tstlab")
-    result = scaffold.scaffold("plugin", tmp_path / "tstlab-probes", yes=True, sets=["plugin.package=probes"],
+    result = _scaffold.scaffold("plugin", tmp_path / "tstlab-probes", yes=True, sets=["plugin.package=probes"],
                                say=lambda line: None)
     held = {key: (value.value, value.source) for key, value in result.values.items()}
     assert held["plugin.distribution"] == ("tstlab-probes", "scaffold's own")
@@ -156,7 +155,7 @@ def test_a_plugins_names_come_from_its_folder_and_the_defaults_and_set(tmp_path:
 
 def test_the_namespace_a_plugin_takes_is_the_registrys_form(tmp_path: Path):
     with pytest.raises(BuildRefused) as refused:
-        scaffold.scaffold("plugin", tmp_path / "p", yes=True, sets=["plugin.namespace=mime"], say=lambda line: None)
+        _scaffold.scaffold("plugin", tmp_path / "p", yes=True, sets=["plugin.namespace=mime"], say=lambda line: None)
     assert refused.value.refusals[0].code == "scaffold.set"
 
 
@@ -173,7 +172,7 @@ def toy(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def test_from_writes_the_declarations_of_a_saved_experiment_with_the_named_thing_as_a_socket(toy: Path, tmp_path: Path):
-    result = scaffold.scaffold("block", tmp_path / "from_toy", yes=True, source=toy, sockets=["water=bath"],
+    result = _scaffold.scaffold("block", tmp_path / "from_toy", yes=True, source=toy, sockets=["water=bath"],
                                say=lambda line: None)
     folder = tmp_path / "from_toy"
     assert result.written and (folder / "cases").is_dir()
@@ -201,7 +200,7 @@ def test_from_takes_the_saved_experiments_declared_licence_not_the_default(tmp_p
     the default, which silently relaxed the licence)."""
     source = saved_with("CC-BY-NC-4.0", tmp_path / "src")
     said: list[str] = []
-    result = scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"], say=said.append)
+    result = _scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"], say=said.append)
     assert licence_of(tmp_path / "blk") == "CC-BY-NC-4.0"
     assert (result.values["block.licence"].value, result.values["block.licence"].source) == ("CC-BY-NC-4.0", "scaffold's own")
     assert check_of("block", tmp_path / "blk") == []
@@ -212,12 +211,12 @@ def test_a_licence_that_differs_from_the_saved_experiments_is_refused_and_the_sa
     source = saved_with("CC-BY-NC-4.0", tmp_path / "src")
     for given in ("CC-BY-4.0", "MIT"):
         with pytest.raises(BuildRefused) as refused:
-            scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"],
+            _scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"],
                               sets=[f"block.licence={given}"], say=lambda line: None)
         refusal = refused.value.refusals[0]
         assert refusal.code == "scaffold.set" and "declares CC-BY-NC-4.0" in refusal.message
         assert not (tmp_path / "blk").exists()
-    scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"],
+    _scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"],
                       sets=["block.licence=CC-BY-NC-4.0"], say=lambda line: None)
     assert licence_of(tmp_path / "blk") == "CC-BY-NC-4.0"
 
@@ -225,12 +224,12 @@ def test_a_licence_that_differs_from_the_saved_experiments_is_refused_and_the_sa
 def test_a_walk_over_from_offers_the_declared_licence_and_refuses_another_typed(tmp_path: Path):
     source = saved_with("CC-BY-NC-4.0", tmp_path / "src")
     person = Person(*([""] * 12))
-    scaffold.scaffold("block", tmp_path / "blk", source=source, sockets=["water=bath"], typed=person.typed, ask=person.ask,
+    _scaffold.scaffold("block", tmp_path / "blk", source=source, sockets=["water=bath"], typed=person.typed, ask=person.ask,
                       say=person.say)
     assert any('use "CC-BY-NC-4.0"? [Y/n] ' in each for each in person.asked)
     assert licence_of(tmp_path / "blk") == "CC-BY-NC-4.0"
     typed = Person("", "", "n", "CC0-1.0", "CC-BY-NC-4.0", *([""] * 12))
-    scaffold.scaffold("block", tmp_path / "blk2", source=source, sockets=["water=bath"], typed=typed.typed, ask=typed.ask,
+    _scaffold.scaffold("block", tmp_path / "blk2", source=source, sockets=["water=bath"], typed=typed.typed, ask=typed.ask,
                       say=typed.say)
     assert any("declares CC-BY-NC-4.0" in each for each in typed.asked), "the other licence is said and asked again"
     assert licence_of(tmp_path / "blk2") == "CC-BY-NC-4.0"
@@ -240,7 +239,7 @@ def test_an_experiment_that_declares_no_licence_gives_the_defaults_content_licen
     source = saved_with(None, tmp_path / "src")
     _defaults.write_defaults({}, licences={"content": "CC0-1.0"})
     said: list[str] = []
-    scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"], say=said.append)
+    _scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"], say=said.append)
     assert licence_of(tmp_path / "blk") == "CC0-1.0"
     assert "the saved experiment declares no licence: block.licence is CC0-1.0, from defaults.toml" in said
 
@@ -248,18 +247,18 @@ def test_an_experiment_that_declares_no_licence_gives_the_defaults_content_licen
 def test_from_refuses_what_it_cannot_write_before_the_folder_is_made(toy: Path, tmp_path: Path):
     for sockets, words in ((["water=ocean"], "ocean"), (["name=bath"], "name")):
         with pytest.raises(BuildRefused) as refused:
-            scaffold.scaffold("block", tmp_path / "bad", yes=True, source=toy, sockets=sockets, say=lambda line: None)
+            _scaffold.scaffold("block", tmp_path / "bad", yes=True, source=toy, sockets=sockets, say=lambda line: None)
         assert refused.value.refusals[0].code == "block.socket" and words in refused.value.refusals[0].message
         assert not (tmp_path / "bad").exists()
     with pytest.raises(BuildRefused) as refused:
-        scaffold.scaffold("block", tmp_path / "bad", yes=True, source=toy, sockets=["bath"], say=lambda line: None)
+        _scaffold.scaffold("block", tmp_path / "bad", yes=True, source=toy, sockets=["bath"], say=lambda line: None)
     assert refused.value.refusals[0].code == "scaffold.set" and not (tmp_path / "bad").exists()
 
 
 def test_the_folder_is_removed_again_when_a_step_after_it_was_made_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(_scaffold, "_save_experiment", lambda root, text: (_ for _ in ()).throw(RuntimeError("full disk")))
     with pytest.raises(RuntimeError):
-        scaffold.scaffold("experiment", tmp_path / "half", yes=True, say=lambda line: None)
+        _scaffold.scaffold("experiment", tmp_path / "half", yes=True, say=lambda line: None)
     assert not (tmp_path / "half").exists()
 
 

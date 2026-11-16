@@ -31,12 +31,13 @@ from push_cases import copy_of, saved_toy
 from scaffold_rig import KINDS, NAMESPACE, Person, made, tree_of
 from study_rigs import write_study
 
-from mime import credentials, push, scaffold
+from mime.credentials import _store
+from mime.push import _draft
+from mime.scaffold import _scaffold, _values
 from mime.assets._acceptances import acceptances_path
 from mime.build import REFUSAL_TABLE, BuildRefused
 from mime.cli import main as mime_main
-from mime.push import _defaults, _draft
-from mime.scaffold import _scaffold, _values
+from mime.push import _defaults
 from mime.vocabulary import register_namespace
 
 
@@ -80,7 +81,7 @@ def overwritten(kind: str, path: Path) -> list[str]:
     """What a second scaffold at ``path`` changed: empty when it was refused (``scaffold.exists``) and nothing moved."""
     before = tree_of(path)
     try:
-        scaffold.scaffold(kind, path, yes=True, say=quiet)
+        _scaffold.scaffold(kind, path, yes=True, say=quiet)
     except BuildRefused as refused:
         if codes(refused) != ["scaffold.exists"]:
             return [f"refused as {codes(refused)}, not scaffold.exists"]
@@ -91,9 +92,9 @@ def overwritten(kind: str, path: Path) -> list[str]:
 @pytest.mark.parametrize("kind", KINDS)
 def test_a_second_scaffold_is_refused_and_changes_nothing(kind: str, tmp_path: Path, saved: Path, study: Path):
     path = target(kind, tmp_path, saved, study)
-    scaffold.scaffold(kind, path, yes=True, say=quiet)
+    _scaffold.scaffold(kind, path, yes=True, say=quiet)
     assert overwritten(kind, path) == []
-    refused = refusal_of(lambda: scaffold.scaffold(kind, path, yes=True, say=quiet))
+    refused = refusal_of(lambda: _scaffold.scaffold(kind, path, yes=True, say=quiet))
     assert codes(refused) == ["scaffold.exists"]
     assert "scaffold never overwrites" in refused.refusals[0].message
     if kind in ("bundle", "study", "block"):
@@ -107,7 +108,7 @@ def test_a_path_that_exists_is_refused_though_it_holds_nothing_of_ours(kind: str
     path = tmp_path / "taken"
     path.mkdir()
     (path / "mine.txt").write_text("mine", encoding="utf-8")
-    refused = refusal_of(lambda: scaffold.scaffold(kind, path, yes=True, say=quiet))
+    refused = refusal_of(lambda: _scaffold.scaffold(kind, path, yes=True, say=quiet))
     assert codes(refused) == ["scaffold.exists"] and "--setup" not in refused.refusals[0].action
     assert tree_of(path) == {"mine.txt": b"mine"}
 
@@ -115,14 +116,14 @@ def test_a_path_that_exists_is_refused_though_it_holds_nothing_of_ours(kind: str
 def test_a_folder_holding_sharing_yaml_is_refused_and_push_init_still_migrates_it(saved: Path, tmp_path: Path):
     folder = copy_of(saved, tmp_path)
     (folder / "sharing.yaml").write_text("format: mime.sharing/1\n", encoding="utf-8")
-    refused = refusal_of(lambda: scaffold.scaffold("bundle", folder, yes=True, say=quiet))
+    refused = refusal_of(lambda: _scaffold.scaffold("bundle", folder, yes=True, say=quiet))
     assert codes(refused) == ["scaffold.exists"] and "sharing.yaml" in refused.refusals[0].message
     assert not (folder / "mime.toml").exists()
 
 
 def test_the_overwrite_check_fails_when_the_guard_is_planted_away(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     path = tmp_path / "experiment_a"
-    scaffold.scaffold("experiment", path, yes=True, say=quiet)
+    _scaffold.scaffold("experiment", path, yes=True, say=quiet)
     monkeypatch.setattr(_scaffold, "_exists", lambda *a: None)
 
     def replacing(kind, root, plan):
@@ -138,7 +139,7 @@ def test_the_overwrite_check_fails_when_the_guard_is_planted_away(tmp_path: Path
 
 def asked_under_yes(kind: str, path: Path) -> list[str]:
     person = Person()
-    scaffold.scaffold(kind, path, yes=True, typed=person.typed, ask=person.ask, say=person.say)
+    _scaffold.scaffold(kind, path, yes=True, typed=person.typed, ask=person.ask, say=person.say)
     return person.asked
 
 
@@ -152,7 +153,7 @@ def test_the_yes_check_fails_for_a_scaffold_that_asks_or_accepts(tmp_path: Path,
     monkeypatch.setattr(_scaffold, "_walks", lambda yes, dry_run: True)
     person = Person("")
     with pytest.raises(AssertionError):
-        scaffold.scaffold("block", tmp_path / "asking", yes=True, typed=person.typed, ask=person.ask, say=quiet)
+        _scaffold.scaffold("block", tmp_path / "asking", yes=True, typed=person.typed, ask=person.ask, say=quiet)
     assert person.asked, "the planted walk asked a question, and the check sees it"
     acceptances_path().parent.mkdir(parents=True, exist_ok=True)
     acceptances_path().write_text("{}", encoding="utf-8")
@@ -166,14 +167,14 @@ def test_the_yes_check_fails_for_a_scaffold_that_asks_or_accepts(tmp_path: Path,
 def test_no_terminal_and_no_yes_is_refused_naming_yes_and_writes_nothing(kind: str, tmp_path: Path, saved: Path, study: Path):
     path = target(kind, tmp_path, saved, study)
     before = tree_of(tmp_path)
-    refused = refusal_of(lambda: scaffold.scaffold(kind, path, say=quiet))
+    refused = refusal_of(lambda: _scaffold.scaffold(kind, path, say=quiet))
     assert codes(refused) == ["scaffold.no-terminal"] and "--yes" in refused.refusals[0].action
     assert tree_of(tmp_path) == before
 
 
 def test_a_terminal_is_not_refused(tmp_path: Path):
     person = Person(*([""] * 20))
-    scaffold.scaffold("block", tmp_path / "walked", typed=person.typed, ask=person.ask, say=person.say)
+    _scaffold.scaffold("block", tmp_path / "walked", typed=person.typed, ask=person.ask, say=person.say)
     assert (tmp_path / "walked" / "mime.toml").is_file()
 
 
@@ -190,9 +191,9 @@ def test_the_command_line_refuses_with_exit_two_when_nothing_answers(tmp_path: P
 def test_an_unknown_set_key_names_the_known_keys_and_writes_nothing(kind: str, tmp_path: Path, saved: Path, study: Path):
     path = target(kind, tmp_path, saved, study)
     before = tree_of(tmp_path)
-    refused = refusal_of(lambda: scaffold.scaffold(kind, path, yes=True, sets=["record.titel=x"], say=quiet))
+    refused = refusal_of(lambda: _scaffold.scaffold(kind, path, yes=True, sets=["record.titel=x"], say=quiet))
     assert codes(refused) == ["scaffold.set"]
-    for key in scaffold.KEYS[kind]:
+    for key in _values.KEYS[kind]:
         assert key in refused.refusals[0].action, key
     assert tree_of(tmp_path) == before
 
@@ -206,7 +207,7 @@ def test_an_unknown_set_key_names_the_known_keys_and_writes_nothing(kind: str, t
     (["record.creators=Carberry, Josiah, 0000-0002-1825-0098"], "ORCID"),
 ])
 def test_a_set_that_cannot_be_taken_is_refused_naming_the_key(sets: list[str], words: str, tmp_path: Path):
-    refused = refusal_of(lambda: scaffold.scaffold("block", tmp_path / "b", yes=True, sets=sets, say=quiet))
+    refused = refusal_of(lambda: _scaffold.scaffold("block", tmp_path / "b", yes=True, sets=sets, say=quiet))
     assert codes(refused) == ["scaffold.set"] and words in refused.refusals[0].message
     assert not (tmp_path / "b").exists()
 
@@ -214,7 +215,7 @@ def test_a_set_that_cannot_be_taken_is_refused_naming_the_key(sets: list[str], w
 def test_set_is_taken_over_the_defaults_and_scaffolds_own(tmp_path: Path):
     _defaults.write_defaults({"creators": [{"family": "Carberry", "given": "Josiah"}], "keywords": ["microrobot"]},
                              licences={"content": "CC0-1.0"}, namespace="labx")
-    held = scaffold.scaffold("block", tmp_path / "probe", yes=True, sets=["block.version=2.0.0",
+    held = _scaffold.scaffold("block", tmp_path / "probe", yes=True, sets=["block.version=2.0.0",
                                                                           "record.keywords=a, b"], say=quiet).values
     assert {key: (value.value, value.source) for key, value in held.items() if key != "record.title"} == {
         "block.id": ("labx.probe", "defaults.toml"), "block.version": ("2.0.0", "--set"),
@@ -231,7 +232,7 @@ def test_set_is_taken_over_the_defaults_and_scaffolds_own(tmp_path: Path):
     ("block", {"sockets": ["medium=bath"]}, "no --from"),
 ])
 def test_from_and_socket_on_a_kind_that_takes_none_are_refused(kind: str, flags: dict, words: str, tmp_path: Path):
-    refused = refusal_of(lambda: scaffold.scaffold(kind, tmp_path / "x", yes=True, say=quiet, **flags))
+    refused = refusal_of(lambda: _scaffold.scaffold(kind, tmp_path / "x", yes=True, say=quiet, **flags))
     assert codes(refused) == ["scaffold.set"] and words in refused.refusals[0].message
     assert not (tmp_path / "x").exists()
 
@@ -242,10 +243,10 @@ TOKEN = "t0ken_" + "Abc123XyZ" * 4
 
 
 def token_written(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    monkeypatch.setenv(next(iter(credentials.SERVICES.values())), TOKEN)
+    monkeypatch.setenv(next(iter(_store.SERVICES.values())), TOKEN)
     path = tmp_path / "tokened"
     try:
-        scaffold.scaffold("experiment", path, yes=True, sets=[f"experiment.name=run_{TOKEN}"], say=quiet)
+        _scaffold.scaffold("experiment", path, yes=True, sets=[f"experiment.name=run_{TOKEN}"], say=quiet)
     except BuildRefused as refused:
         assert codes(refused) == ["scaffold.set"] and "experiment.name" in refused.refusals[0].message
         assert TOKEN not in refused.refusals[0].message
@@ -271,7 +272,7 @@ def test_dry_run_writes_nothing_draws_the_tree_and_says_where_each_value_came_fr
     path = target(kind, tmp_path, saved, study)
     before = tree_of(tmp_path)
     said: list[str] = []
-    result = scaffold.scaffold(kind, path, yes=True, dry_run=True, sets=[], say=said.append)
+    result = _scaffold.scaffold(kind, path, yes=True, dry_run=True, sets=[], say=said.append)
     assert tree_of(tmp_path) == before and not result.written
     assert said[0].startswith("Would scaffold") and "(nothing written)" in said[0]
     assert any(line.startswith("  from scaffold's own:") for line in said)
@@ -280,12 +281,12 @@ def test_dry_run_writes_nothing_draws_the_tree_and_says_where_each_value_came_fr
 
 def test_dry_run_asks_nothing_though_a_person_is_there(tmp_path: Path):
     person = Person()
-    scaffold.scaffold("block", tmp_path / "b", dry_run=True, typed=person.typed, ask=person.ask, say=person.say)
+    _scaffold.scaffold("block", tmp_path / "b", dry_run=True, typed=person.typed, ask=person.ask, say=person.say)
     assert person.asked == [] and not (tmp_path / "b").exists()
 
 
 def test_the_dry_run_check_fails_for_a_run_that_writes(tmp_path: Path):
-    scaffold.scaffold("block", tmp_path / "b", yes=True, say=quiet)
+    _scaffold.scaffold("block", tmp_path / "b", yes=True, say=quiet)
     assert tree_of(tmp_path), "the snapshot the dry-run checks compare sees a written block"
 
 
@@ -300,8 +301,8 @@ def test_push_init_and_scaffold_yes_write_the_same_bytes(kind: str, defaulted: b
                                   "keywords": ["microrobot"]}, licences={"content": "CC0-1.0"})
     source = saved if kind == "bundle" else study
     by_init, by_scaffold = copy_of(source, tmp_path / "init"), copy_of(source, tmp_path / "scaffold")
-    push.init(by_init)
-    scaffold.scaffold(kind, by_scaffold, yes=True, say=quiet)
+    _draft.init(by_init)
+    _scaffold.scaffold(kind, by_scaffold, yes=True, say=quiet)
     assert (by_init / "mime.toml").read_bytes() == (by_scaffold / "mime.toml").read_bytes()
 
 
@@ -309,15 +310,15 @@ def test_the_alias_check_fails_when_one_writer_is_planted_apart(tmp_path: Path, 
     by_init, by_scaffold = copy_of(saved, tmp_path / "init"), copy_of(saved, tmp_path / "scaffold")
     real = _draft.new_manifest
     monkeypatch.setattr(_draft, "new_manifest", lambda *a, **k: real(*a, **k) + "# one writer's own line\n")
-    push.init(by_init)
+    _draft.init(by_init)
     monkeypatch.setattr(_draft, "new_manifest", real)
-    scaffold.scaffold("bundle", by_scaffold, yes=True, say=quiet)
+    _scaffold.scaffold("bundle", by_scaffold, yes=True, say=quiet)
     assert (by_init / "mime.toml").read_bytes() != (by_scaffold / "mime.toml").read_bytes()
 
 
 def test_an_existing_mime_toml_is_kept_softly_by_init_and_refused_by_scaffold(saved: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     folder = copy_of(saved, tmp_path)
-    push.init(folder)
+    _draft.init(folder)
     held = (folder / "mime.toml").read_bytes()
     assert mime_main(["push", str(folder), "--to", "zenodo-sandbox", "--init"]) == 0
     out = capsys.readouterr().out
@@ -350,43 +351,43 @@ def test_a_namespace_an_installed_distribution_declares_is_refused_read_from_the
     """``labx`` is MIME's lab fixture's, installed in the environment the suite runs in (``lab_fixture/``)."""
     held = _values.taken_namespaces()
     assert "labx" in held and "mime-lab-fixture" in held["labx"]
-    refused = refusal_of(lambda: scaffold.scaffold("plugin", tmp_path / "p", yes=True, sets=["plugin.namespace=labx"], say=quiet))
+    refused = refusal_of(lambda: _scaffold.scaffold("plugin", tmp_path / "p", yes=True, sets=["plugin.namespace=labx"], say=quiet))
     assert codes(refused) == ["scaffold.set"] and "mime-lab-fixture" in refused.refusals[0].message
     assert not (tmp_path / "p").exists()
 
 
 def test_set_refuses_a_taken_namespace_naming_it_and_a_free_one(tmp_path: Path):
     for word in ("helix", "camera"):
-        refused = refusal_of(lambda word=word: scaffold.scaffold("plugin", tmp_path / "p", yes=True,
+        refused = refusal_of(lambda word=word: _scaffold.scaffold("plugin", tmp_path / "p", yes=True,
                                                                   sets=[f"plugin.namespace={word}"], say=quiet))
         refusal = refused.refusals[0]
         assert codes(refused) == ["scaffold.set"] and word in refusal.message and f"lab_{word}" in refusal.message
         assert not (tmp_path / "p").exists()
-    scaffold.scaffold("plugin", tmp_path / "p", yes=True, sets=["plugin.namespace=lab_helix"], say=quiet)
+    _scaffold.scaffold("plugin", tmp_path / "p", yes=True, sets=["plugin.namespace=lab_helix"], say=quiet)
     assert (tmp_path / "p" / "pyproject.toml").is_file()
 
 
 def test_a_namespace_derived_from_the_folders_name_is_refused_too(tmp_path: Path):
-    refused = refusal_of(lambda: scaffold.scaffold("plugin", tmp_path / "helix-robot", yes=True, say=quiet))
+    refused = refusal_of(lambda: _scaffold.scaffold("plugin", tmp_path / "helix-robot", yes=True, say=quiet))
     refusal = refused.refusals[0]
     assert codes(refused) == ["scaffold.set"] and "helix" in refusal.message and "folder's name" in refusal.message
     assert "--set plugin.namespace=" in refusal.action and not (tmp_path / "helix-robot").exists()
-    dry = refusal_of(lambda: scaffold.scaffold("plugin", tmp_path / "helix-robot", yes=True, dry_run=True, say=quiet))
+    dry = refusal_of(lambda: _scaffold.scaffold("plugin", tmp_path / "helix-robot", yes=True, dry_run=True, say=quiet))
     assert codes(dry) == ["scaffold.set"], "a dry run shows what --yes would do, which is the refusal"
 
 
 def test_a_namespace_the_defaults_hold_is_refused_naming_the_defaults(tmp_path: Path):
     _defaults.write_defaults({}, namespace="helix")
-    refused = refusal_of(lambda: scaffold.scaffold("plugin", tmp_path / "robot", yes=True, say=quiet))
+    refused = refusal_of(lambda: _scaffold.scaffold("plugin", tmp_path / "robot", yes=True, say=quiet))
     assert codes(refused) == ["scaffold.set"] and "defaults" in refused.refusals[0].message
     assert "mime defaults" in refused.refusals[0].action
-    scaffold.scaffold("plugin", tmp_path / "robot", yes=True, sets=["plugin.namespace=lab_robot"], say=quiet)
+    _scaffold.scaffold("plugin", tmp_path / "robot", yes=True, sets=["plugin.namespace=lab_robot"], say=quiet)
 
 
 def test_a_walk_does_not_offer_a_taken_namespace_and_asks_until_a_free_one_is_typed(tmp_path: Path):
     """The distribution kept, then at the namespace: Enter (refused, asked again), a taken word (said, asked again), a free one."""
     person = Person("", "", "helix", "lab_robot", "", "", "", "", "")
-    scaffold.scaffold("plugin", tmp_path / "helix-robot", typed=person.typed, ask=person.ask, say=person.say)
+    _scaffold.scaffold("plugin", tmp_path / "helix-robot", typed=person.typed, ask=person.ask, say=person.say)
     assert not any("use helix?" in each or 'use "helix"?' in each for each in person.asked), "never offered to keep"
     assert any("cannot be used" in each for each in person.asked), "the reason is said at the question"
     assert sum("first word of MIME's" in each for each in person.asked) >= 3, "Enter and the typed word are each told why"
@@ -401,7 +402,7 @@ def test_a_kind_that_is_not_the_folders_is_manifest_kind_naming_both(tmp_path: P
     for asked, folder, found in (("study", copy_of(saved, tmp_path / "a"), "bundle"),
                                  ("bundle", copy_of(study, tmp_path / "b"), "study")):
         before = tree_of(folder)
-        refused = refusal_of(lambda asked=asked, folder=folder: scaffold.scaffold(asked, folder, yes=True, say=quiet))
+        refused = refusal_of(lambda asked=asked, folder=folder: _scaffold.scaffold(asked, folder, yes=True, say=quiet))
         refusal = refused.refusals[0]
         assert codes(refused) == ["manifest.kind"]
         assert f"a {asked} was asked for" in refusal.message and f"is a {found} folder" in refusal.message
@@ -411,8 +412,8 @@ def test_a_kind_that_is_not_the_folders_is_manifest_kind_naming_both(tmp_path: P
 
 def test_an_existing_mime_toml_of_another_kind_is_scaffold_exists_with_the_route_to_edit_it(tmp_path: Path, saved: Path):
     folder = copy_of(saved, tmp_path)
-    scaffold.scaffold("bundle", folder, yes=True, say=quiet)
-    refused = refusal_of(lambda: scaffold.scaffold("study", folder, yes=True, say=quiet))
+    _scaffold.scaffold("bundle", folder, yes=True, say=quiet)
+    refused = refusal_of(lambda: _scaffold.scaffold("study", folder, yes=True, say=quiet))
     assert codes(refused) == ["scaffold.exists"] and f"mime push {folder} --setup" in refused.refusals[0].action
 
 
@@ -432,7 +433,7 @@ def link_problems(kind: str, tmp_path: Path, saved: Path, study: Path) -> list[s
     """Empty where a scaffold meets the dangling link with ``scaffold.exists`` and leaves it be."""
     path, link = linked(kind, tmp_path, saved, study)
     try:
-        scaffold.scaffold(kind, path, yes=True, say=quiet)
+        _scaffold.scaffold(kind, path, yes=True, say=quiet)
     except BuildRefused as refused:
         found = codes(refused)
         problems = [] if found == ["scaffold.exists"] else [f"refused as {found}"]

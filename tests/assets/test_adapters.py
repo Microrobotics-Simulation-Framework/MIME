@@ -25,7 +25,8 @@ from pathlib import Path
 
 import pytest
 
-from mime import assets, credentials
+from mime import assets
+from mime.credentials import _store
 from mime.assets import _adapters, _fetch
 from mime.build import BuildRefused
 from mime.credentials import Token
@@ -116,7 +117,7 @@ def test_the_lab_stores_adapter_is_registered_by_its_entry_point():
 
 
 def test_the_machines_store_hands_the_token_to_its_own_host_and_never_across_a_redirect(cache):
-    credentials.store(credentials.host_service("127.0.0.1"), Token("host:127.0.0.1", HARNESS_TOKEN))
+    _store.store(_store.host_service("127.0.0.1"), Token("host:127.0.0.1", HARNESS_TOKEN))
     with LoopbackStore() as store, LoopbackStore("localhost") as other:
         store.files["/private"] = PAYLOAD
         store.tokens["/private"] = HARNESS_TOKEN

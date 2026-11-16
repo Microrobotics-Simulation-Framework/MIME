@@ -11,9 +11,11 @@ from pathlib import Path
 import pytest
 from zenodo_records import FakeRecords, FakeTransport, Killed
 
-from mime import push
+from mime.push import _draft, _state
 from mime.build import BuildRefused
-from mime.push import Client, Plan, Service
+from mime.push._client import Client
+from mime.push._plan import Plan
+from mime.push._service import Service
 from mime.push._plan import RecordFile, file_hashes
 from mime.testing.toys import full_toy
 
@@ -28,17 +30,17 @@ def a_token() -> str:
 
 def with_token(monkeypatch: pytest.MonkeyPatch, service: str = "zenodo-sandbox") -> str:
     """A fresh token for ``service``, in its environment variable (the conftest's home holds no credentials file)."""
-    from mime import credentials
+    from mime.credentials import _store
 
     token = a_token()
-    monkeypatch.setenv(credentials.SERVICES[service], token)
+    monkeypatch.setenv(_store.SERVICES[service], token)
     return token
 
 
 def write_manifest(folder: Path, *, creators: str = CREATOR, extra: str = "") -> Path:
     """``--init``'s ``mime.toml`` with one creator named, and ``extra`` lines added at its end, under ``[record]``, each
     in place of the line ``--init`` wrote of its key."""
-    path, _, _ = push.init(folder)
+    path, _, _ = _draft.init(folder)
     text = path.read_text(encoding="utf-8").replace("creators = []", f"creators = [{creators}]")
     for key in [line.partition("=")[0].strip() for line in extra.splitlines()]:
         text = "".join(line for line in text.splitlines(keepends=True) if not line.startswith(f"{key} = "))
@@ -72,10 +74,10 @@ def copy_of(folder: Path, root: Path) -> Path:
 
 
 def client(fake: FakeRecords, service: Service | None = None, **given: object) -> Client:
-    from mime import credentials
+    from mime.credentials import _store
 
     held = service or fake.service()
-    token = credentials.token(held.credential)
+    token = _store.token(held.credential)
     assert token is not None
     return Client(held, token, FakeTransport(fake), pause=0, sleep=lambda seconds: None, **given)  # type: ignore[arg-type]
 
@@ -104,13 +106,13 @@ def plan_of(fake: FakeRecords, files: dict[str, bytes], where: Path, service: Se
                 "CC0-1.0", sharing, payload, "0.3.0")
 
 
-def run_until_drafted(plan: Plan, fake: FakeRecords, said: list[str]) -> tuple[push.Drafted, int]:
+def run_until_drafted(plan: Plan, fake: FakeRecords, said: list[str]) -> tuple[_draft.Drafted, int]:
     """Push again, as a person would after a stop, until a push completes: the push that completed, and how many
     stopped before it."""
     stops = 0
     while True:
         try:
-            return push.send(plan, push.read_state(plan.service, plan.experiment), client(fake), said.append), stops
+            return _draft.send(plan, _state.read_state(plan.service, plan.experiment), client(fake), said.append), stops
         except (Killed, BuildRefused):
             stops += 1
             assert stops < 6, said[-5:]

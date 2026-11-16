@@ -645,7 +645,7 @@ def make_plan(folder: str | os.PathLike[str], service: Service, sharing: Sharing
     ``publication``, the bundle is packed with the staged lock that names it (:mod:`mime.push._stage`); ``version`` is
     the record's number in its concept, and ``own`` the DOIs of this experiment's earlier versions, whose files a new
     version holds again."""
-    from mime.credentials import held_tokens
+    from mime.credentials._store import held_tokens
     from mime.saved._bundle import scan_text
     from mime.saved._card import judged_folder
     from mime.saved._folder import LOCK_FILE
@@ -758,7 +758,7 @@ def make_block_plan(folder: str | os.PathLike[str], service: Service, sharing: S
     ``mime-block:<id>``. The cases' saved folders are judged as a bundle's are. Refused with every reason found."""
     from mime.blocks._container import pack_block
     from mime.blocks._definition import definition_of
-    from mime.credentials import held_tokens
+    from mime.credentials._store import held_tokens
     from mime.saved._bundle import scan_text
     from mime.saved._folder import named_files, read_folder
     from mime.saved._terms import folder_terms
@@ -813,7 +813,7 @@ def make_studies_plan(folder: str | os.PathLike[str], service: Service, sharing:
     stays at its record's locations, which the containers name. ``[study] licence`` must be every experiment's of every
     study. Study containers carry no staged lock; ``publication`` (the draft's reserved DOI) is named in the card alone.
     Refused with every reason found."""
-    from mime.credentials import held_tokens
+    from mime.credentials._store import held_tokens
     from mime.results._study_read import read_study
     from mime.saved._bundle import scan_text
     from mime.saved._folder import named_files, read_folder

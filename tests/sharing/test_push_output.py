@@ -41,7 +41,7 @@ from push_output_scenario import LINK_KEY, Run, build, session
 from zenodo_records import FakeRecords, served
 
 import mime.cli
-from mime import push
+from mime.push import _draft, _service, _state
 from mime._said import PLAN_HEAD, Said, kind_of
 from mime.cli import main
 from mime.push import _client
@@ -69,7 +69,7 @@ def fake(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[FakeRecord
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
     with served(token) as held:
-        monkeypatch.setitem(push.SERVICES, "zenodo-sandbox", held.service())  # type: ignore[index]
+        monkeypatch.setitem(_service.SERVICES, "zenodo-sandbox", held.service())  # type: ignore[index]
         yield held
 
 
@@ -166,7 +166,7 @@ def test_a_said_line_is_its_text_in_every_way_a_pipe_or_a_test_can_read_it():
 def test_what_push_says_is_told_apart_by_kind_and_each_kind_is_its_text(built: Path, fake: FakeRecords, tmp_path: Path):
     said: list[str] = []
     folder = copy_of(built / "mime_sandbox_terms", tmp_path)
-    push.push(folder, push.SERVICES["zenodo-sandbox"], say=said.append)
+    _draft.push(folder, _service.SERVICES["zenodo-sandbox"], say=said.append)
     assert [kind_of(line) for line in said] == ["plan-head", "plan-up", "plan-reference", "plan-field", "plan-field",
                                                 "plan-warning", "done", "done", None, "link"]
     assert [bool(getattr(line, "last", False)) for line in said] == [False] * 5 + [True] + [False] * 4
@@ -204,9 +204,9 @@ def test_each_file_goes_up_reported_to_the_end_and_the_bytes_sent_are_the_files(
     monkeypatch.setattr(_client, "_REPORT_BYTES", 4096)
     folder = copy_of(built / "mime_sandbox_toy", tmp_path)
     told = Told()
-    push.push(folder, push.SERVICES["zenodo-sandbox"], progress=told, transport=_client.HttpTransport())
+    _draft.push(folder, _service.SERVICES["zenodo-sandbox"], progress=told, transport=_client.HttpTransport())
     held = fake.records["629525"].files
-    staged = push.state_directory(push.SERVICES["zenodo-sandbox"], "full_toy") / "staged"
+    staged = _state.state_directory(_service.SERVICES["zenodo-sandbox"], "full_toy") / "staged"
     for key, entry in held.items():
         reports = [(done, total) for name, done, total in told.of("sending") if name == key]
         assert entry.data == (staged / key).read_bytes() and len(entry.data) == reports[-1][1]
@@ -223,7 +223,7 @@ def test_the_files_to_come_are_announced_first_each_is_whole_after_its_bytes_and
     commits named."""
     folder = copy_of(built / "mime_sandbox_toy", tmp_path)
     told = Told()
-    push.push(folder, push.SERVICES["zenodo-sandbox"], progress=told, transport=_client.HttpTransport(), pause=0.02)
+    _draft.push(folder, _service.SERVICES["zenodo-sandbox"], progress=told, transport=_client.HttpTransport(), pause=0.02)
     held = fake.records["629525"].files
     assert told.events[0][0] in ("doing", "files")
     announced = told.of("files")
@@ -246,7 +246,7 @@ def test_a_transport_that_is_not_the_real_one_is_told_the_files_but_never_their_
 
     told = Told()
     folder = copy_of(built / "mime_sandbox_toy", tmp_path)
-    drafted = push.push(folder, push.SERVICES["zenodo-sandbox"], progress=told, transport=FakeTransport(fake), pause=0)
+    drafted = _draft.push(folder, _service.SERVICES["zenodo-sandbox"], progress=told, transport=FakeTransport(fake), pause=0)
     assert told.of("sending") == [] and drafted.uploaded, "files went up, and a test's transport was told no bytes"
     assert len(told.of("sent")) == len(drafted.uploaded) and told.of("files")
 
@@ -534,7 +534,7 @@ def test_a_progress_that_raises_is_read_by_the_library_as_a_dropped_connection_w
 
     folder = copy_of(built / "mime_sandbox_toy", tmp_path)
     with pytest.raises(BuildRefused) as refused:
-        push.push(folder, push.SERVICES["zenodo-sandbox"], progress=Raises(), transport=_client.HttpTransport(), pause=0)
+        _draft.push(folder, _service.SERVICES["zenodo-sandbox"], progress=Raises(), transport=_client.HttpTransport(), pause=0)
     assert refused.value.codes() == ["push.service"] and "connection dropped" in str(refused.value)
 
 
@@ -551,7 +551,7 @@ def test_a_display_that_raises_does_not_refuse_the_push_it_is_drawing(built: Pat
             raise RuntimeError("the terminal went away")
 
         monkeypatch.setattr(display._live, "start", broken)  # noqa: SLF001
-        drafted = push.push(folder, push.SERVICES["zenodo-sandbox"], progress=display,
+        drafted = _draft.push(folder, _service.SERVICES["zenodo-sandbox"], progress=display,
                             transport=_client.HttpTransport(), pause=0)
         display.close()
     assert display.failed and len(drafted.uploaded) == 2
