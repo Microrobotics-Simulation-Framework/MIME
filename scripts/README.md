@@ -40,6 +40,8 @@ Eight scripts are a maintainer's tools, run by hand and never by CI:
 | `bump_bases.py` | writes `src/mime/data/env/bases.json` and `uv.json` (uv's image pinned by digest): for each Python series MIME supports, the base image pinned by digest, with its Python, Debian, glibc and own distributions read from the image's layers on Docker Hub; `--check` exits one when the tags have moved. Its output lands in a pull request, never in a build |
 | `colab_links.py` | points every link that opens a notebook of `docs/notebooks/` in Colab (the README's badges, the guide's lines, the notebooks' own badges) at the one branch its `BRANCH` names: change `BRANCH`, run it, and commit what it rewrote; `--check` changes nothing and exits 1 on a link to another branch or to a notebook that is not there, which `tests/examples/test_notebooks.py` runs |
 
+`assemble_changelog.py` folds the fragments of `changes.d/` into `CHANGELOG.md`'s Unreleased block and deletes them (`--dry-run` prints the result, `--check` exits 1 while a fragment waits); a change writes a fragment and does not edit the changelog ([`CONTRIBUTING.md`](../CONTRIBUTING.md#the-changelog-write-a-fragment)). It is run by hand in the small pull request after a merge, never by CI.
+
 `check_anomalies.py` runs inside `mime docs check` (see
 [`mime.docs`](../src/mime/docs/README.md)), which CI runs in its default lane: the documentation's sources, the docs
 walk, the number rule, the citation check over the built pages and the pages built under eight hash seeds, then
