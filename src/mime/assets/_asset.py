@@ -109,28 +109,28 @@ def _record_terms(record: AssetRef) -> Terms:
     return Terms(licence, record.credit or "", record.role or "results", record.locations)
 
 
-def _source_refused(message: str, action: str) -> ArgumentRefused:
-    return ArgumentRefused([Refusal("asset.source", RefusalClass.USER, message, action)])
-
-
 #: Each origin, as a refusal says it.
 ORIGIN_WORDS: dict[Origin, str] = {"named": "a record's name", "file": "a local file", "record": "a whole record"}
 
 
 def refused_origin(held: Asset, setting: str, forms: str) -> ArgumentRefused:
     """``asset.source``: ``setting`` does not read ``held``'s origin; ``forms`` are the ones it reads."""
-    return _source_refused(f"{setting} does not read {ORIGIN_WORDS[held.origin]}, asset({held.name!r})", f"write {forms}")
+    return ArgumentRefused([Refusal(
+        "asset.source", RefusalClass.USER,
+        f"{setting} does not read {ORIGIN_WORDS[held.origin]}, asset({held.name!r})", f"write `{forms}`")])
 
 
 def _named(name: str, sha256: str | None, terms: Terms | None) -> Asset:
     if "://" in name or name.split(":", 1)[0] in ("https", "http", "doi", "file", "package"):
-        raise _source_refused(
+        raise ArgumentRefused([Refusal(
+            "asset.source", RefusalClass.USER,
             f"asset({name!r}) names a location; a string names a record, and a remote file needs a record with its "
             f"sha256", f"write asset(AssetRef(name=\"<name>\", sha256=\"<64 hex digits>\", size=<bytes>, "
-                       f"licence=\"<SPDX id>\", locations=({name!r},))), or a record's name")
+                      f"licence=\"<SPDX id>\", locations=({name!r},))), or a record's name")])
     if terms is not None:
-        raise _source_refused(f"asset({name!r}, terms=...) gives terms to a record, whose terms are its own",
-                              f"write asset({name!r}) alone; terms= is a local file's, asset(Path(...), terms=...)")
+        raise ArgumentRefused([Refusal(
+            "asset.source", RefusalClass.USER, f"asset({name!r}, terms=...) gives terms to a record, whose terms are its own",
+            f"write asset({name!r}) alone; terms= is a local file's, asset(Path(...), terms=...)")])
     from mime.assets._known import known, reference
 
     try:
@@ -157,12 +157,14 @@ def asset(source: str | os.PathLike[str] | AssetRef, *, sha256: str | None = Non
     location, terms given to a record or a name, and a sha256 that is not 64 lowercase hex digits (``asset.source``);
     any other type (``call.wrong-type``)."""
     if sha256 is not None and not (isinstance(cast(object, sha256), str) and _SHA256.fullmatch(sha256)):
-        raise _source_refused(f"sha256={sha256!r} is not 64 lowercase hex digits",
-                              "write the file's SHA-256 as 64 lowercase hex digits, or leave sha256= out")
+        raise ArgumentRefused([Refusal(
+            "asset.source", RefusalClass.USER, f"sha256={sha256!r} is not 64 lowercase hex digits",
+            "write the file's SHA-256 as 64 lowercase hex digits, or leave sha256= out")])
     if isinstance(source, AssetRef):
         if sha256 is not None or terms is not None:
-            raise _source_refused("a file declared by its record takes its sha256 and its terms from the record",
-                                  "write asset(record) alone")
+            raise ArgumentRefused([Refusal(
+                "asset.source", RefusalClass.USER,
+                "a file declared by its record takes its sha256 and its terms from the record", "write asset(record) alone")])
         from mime.assets._cache import named_path
 
         return Asset(source.name, source.sha256, named_path(source), _record_terms(source), source)
@@ -173,7 +175,7 @@ def asset(source: str | os.PathLike[str] | AssetRef, *, sha256: str | None = Non
         return Asset(path.name, sha256, path, terms)
     raise ArgumentTypeRefused([Refusal(
         "call.wrong-type", RefusalClass.USER, f"asset takes a record's name, a path or an AssetRef, not "
-                                              f"{type(source).__name__}", f"write {FORMS}")])
+                                              f"{type(source).__name__}", f"write `{FORMS}`")])
 
 
 # --- reading a name's bytes ----------------------------------------------------------------------------------------
@@ -232,7 +234,7 @@ def _named_bytes(held: Asset) -> bytes:
     if problem is not None:
         raise BuildRefused([Refusal("asset.hash-mismatch", RefusalClass.ENVIRONMENT, problem,
                                     "install the MIME, or the package, the experiment was written against, or "
-                                    "declare the asset again from its script to take these bytes")])
+                                    "declare the asset again with `asset(...)` to take these bytes")])
     ref = held.ref()
     path = packaged_path(ref)
     if path is not None:

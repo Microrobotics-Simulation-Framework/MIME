@@ -89,7 +89,7 @@ def packaged_record(name: str) -> RecordFile:
     if _packaged_file(name) is None:
         records = sorted(held for held in known() if _packaged_file(held) is not None)
         raise ArgumentRefused([Refusal("asset.unknown", RefusalClass.USER, f"no packaged record is named {name!r}",
-                                       f"name one of the packaged records: {records}")])
+                                       f"name one of the packaged records, as `asset(name)`: {records}")])
     return RecordFile(packaged=name, sha256=asset(name).sha256)
 
 
