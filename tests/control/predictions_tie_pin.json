@@ -55,5 +55,17 @@
     "cannot_discriminate_if": "as gate 1"
   },
   "bounds_and_estimates": "the pin is an equality on a declared constant and a behavioural check of its two-sided rule on one constructed pair of faces at 0.95 and 1.05 of the window: it bounds nothing about the law's accuracy. A 95 % lower bound after 20 of 20 catches is 0.86",
-  "outcomes": "none yet"
+  "outcomes": {
+    "written": "2026-11-16, after the runs; the predictions above are unchanged",
+    "runs": "local, the laptop, CPU, .github/probe/detection_rate.py, 20 fresh processes planted and 20 clean per node and plant (the clean arm is the same node with the variable removed)",
+    "gate_1_window_x16_is_caught": {
+      "hit": true,
+      "value": "tie_x16: the two-faces node caught 20/20 and the direct pin 20/20, clean 0/20 flagged on each, none inconclusive (95 % lower bound 0.861)"
+    },
+    "gate_2_window_div4_is_caught": {
+      "hit": true,
+      "value": "tie_div4: the two-faces node caught 20/20 and the direct pin 20/20, clean 0/20 flagged on each, none inconclusive (95 % lower bound 0.861)"
+    },
+    "note": "the two-faces node alone catches each mutant on its own side (x16 at the 1.05 cases, /4 at the 0.95 cases); the direct pin is a second, independent catch"
+  }
 }

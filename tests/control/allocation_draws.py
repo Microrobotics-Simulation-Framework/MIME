@@ -38,7 +38,6 @@ import numpy as np
 from hypothesis import strategies as st
 from scipy.optimize import lsq_linear
 
-from mime.control._allocation import TIE_ULPS
 from mime.data import asset
 from mime.fields import CalibratedMultipole
 from mime.fields._coil_array import calibration_of
@@ -50,6 +49,10 @@ KINDS = ("field", "gradient", "both", "force")
 SLACK = 16.0
 #: The scaled rows' least singular value over their largest above which the minimiser is unique.
 UNIQUE = 1e-6
+#: The oracle's own copy of the law's tie window, in units in the last place: a literal, never imported from
+#: ``mime.control._allocation``, so that a change to the law's constant is seen by a test (``test_exact_allocation``'s
+#: pin) and does not move the oracle with it. Changing it is a contract change that needs the maintainer's word.
+DECLARED_TIE_ULPS = 64
 FIELD_SCALE, GRADIENT_SCALE = 1e-2, 1.0
 
 
@@ -174,10 +177,17 @@ def effort_line(problem: Problem, reference: np.ndarray, dtype: str) -> float:
 
 
 def tie_window(problem: Problem, commands: np.ndarray, dtype: str) -> float:
-    """The law's tie window at ``commands``: ``TIE_ULPS`` eps times the scaled target's norm and what the commands make
-    (``mime.control._allocation._selection``'s ``width``)."""
+    """One side of the law's tie window at ``commands``: ``DECLARED_TIE_ULPS`` eps times the scaled target's norm and
+    what the commands make (``mime.control._allocation._selection``'s ``width``)."""
     a, b = problem.scaled(dtype)
-    return TIE_ULPS * float(np.finfo(dtype).eps) * (float(np.linalg.norm(b)) + float(np.linalg.norm(a @ commands)))
+    return DECLARED_TIE_ULPS * float(np.finfo(dtype).eps) * (float(np.linalg.norm(b)) +
+                                                             float(np.linalg.norm(a @ commands)))
+
+
+def two_sided_window(problem: Problem, best: np.ndarray, candidate: np.ndarray, dtype: str) -> float:
+    """The law's tie rule, both sides: a candidate is tied to the best where its residual is within the best's window
+    and its own added (``residual <= residual[best] + width[best] + width``)."""
+    return tie_window(problem, best, dtype) + tie_window(problem, candidate, dtype)
 
 
 def verdict(problem: Problem, commands: np.ndarray, dtype: str) -> list[str]:
@@ -194,7 +204,7 @@ def verdict(problem: Problem, commands: np.ndarray, dtype: str) -> list[str]:
     a, b = problem.scaled(dtype)
     mine, theirs = float(np.linalg.norm(a @ commands - b)), float(np.linalg.norm(a @ reference - b))
     held = residual_line(problem, dtype)
-    tied = held + tie_window(problem, commands, dtype) + tie_window(problem, reference, dtype)
+    tied = held + two_sided_window(problem, reference, commands, dtype)
     if unique(problem, dtype):
         miss, near = float(np.max(np.abs(commands - reference))), line(problem, reference, dtype)
         # A unique minimiser binds the law to BVLS's commands only where the law can tell its face from another: faces
