@@ -18,7 +18,11 @@ last place of the scale each result came from (CLAUDE.md: no absolute part), com
   size), because a pose's last place does not reach the rounding a differently compiled program makes inside the
   iteration: at ``SHALLOW_BASIN`` the first step overshoots to 50 hull sizes, its rounding is amplified a thousandfold
   by the second, and 0.4.0 ends at the deepest point from every pose one ulp away and at a point 1 mm shallower from one
-  in ten of its rattled copies. A group seeded far off the wall may end anywhere on the body
+  in ten of its rattled copies. Where 0.4.0 does not resolve a group the looped end is not compared with its end but
+  judged by its own stationarity: a converged flag must meet the residual the step's rounding leaves (the condition
+  number of its matrix times the sizes, in units of the dtype's resolution) and must be the flag all of 0.4.0's arms give
+  where they agree, so that a loop too short or a carry from two steps back, which leave the iterate unconverged, are
+  caught without asking for the same endpoint. A group seeded far off the wall may end anywhere on the body
   (``_contact.shallower``), and there 0.4.0's own end
   moves by millimetres under a change of one ulp: neither its point nor its value is resolved, and it is reported, not
   judged. Two draws on which the versions ended 1.7 mm apart on CI's runners are checked on every run, with a
@@ -348,8 +352,14 @@ def searches(name: str, dtype: str):
         within = contact.search_tolerance(x.dtype, node._size) - jnp.sqrt(jnp.sum((x - reached) ** 2, axis=-1))
         return x, reached, within
 
+    def conditioned(q, pose, x):
+        """The condition number of the step's matrix at ``x``: what the solve's rounding is a multiple of."""
+        found = pair(q, pose, False)
+        return jnp.linalg.cond(contact._supported(found, x, found.body.pose, found.body.parameters, found.other)[1])
+
     return (p, node._size, jax.jit(seeds), jax.jit(partial(search, loops=False)),
-            jax.jit(jax.vmap(rattle, in_axes=(None, None, None, 0))), jax.jit(partial(search, loops=True)))
+            jax.jit(jax.vmap(rattle, in_axes=(None, None, None, 0))), jax.jit(conditioned),
+            jax.jit(partial(search, loops=True)))
 
 
 #: How many rattled copies of 0.4.0's search (``searches``) stand beside the one-ulp poses in judging whether 0.4.0
@@ -383,8 +393,8 @@ class Searched(NamedTuple):
     infinite where their converged flags differ off the flag's band); ``spread``, how far 0.4.0's own ends from the
     poses one ulp away (``one_ulp_away``) and from its rattled searches (``RATTLES``) stand from its end at the pose, on
     the same measure; ``missed``, ``alone`` on
-    the groups 0.4.0 resolves (``resolved``), zero on the rest, where 0.4.0 alone ends elsewhere under a change of one
-    ulp or of its rounding; ``resolved``, the groups whose ``spread`` is within the rule's width (``NEWTON_ULPS``);
+    the groups 0.4.0 resolves (``resolved``), and on the rest, where 0.4.0 alone ends elsewhere under a change of one
+    ulp or of its rounding, zero or infinite as the looped end is stationary or not (``unstationary``); ``resolved``, the groups whose ``spread`` is within the rule's width (``NEWTON_ULPS``);
     and ``value``, how far
     the wall's gap at its support stands from the gap at 0.4.0's (the support's value there)."""
 
@@ -393,6 +403,7 @@ class Searched(NamedTuple):
     spread: np.ndarray
     value: np.ndarray
     resolved: np.ndarray
+    unstationary: np.ndarray
 
 
 def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: Any = None,
@@ -402,7 +413,7 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
     (``rattles`` of them, ``RATTLES``; none to judge by the poses alone), may stand from its end at the pose for a
     group to be judged (``NEWTON_ULPS``; the rule's widening is the control of ``UNJUDGED_CEILING``)."""
     with jax.enable_x64(DTYPES[dtype]):
-        p, size, seeds, unrolled, rattled, looped = searches(name, dtype)
+        p, size, seeds, unrolled, rattled, conditioned, looped = searches(name, dtype)
         q, at = traced(p, dtype), np.asarray(jnp.asarray(pose, dtype=dtype))
         kept = seeds(q, jnp.asarray(at))
         ends = [[np.asarray(v, dtype=np.float64) for v in unrolled(q, jnp.asarray(moved), kept)]
@@ -411,7 +422,9 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
             kicks = jnp.asarray(kicks_for(kept.shape[0], dtype)[:rattles])
             rattled_ends = [np.asarray(v, dtype=np.float64) for v in rattled(q, jnp.asarray(at), kept, kicks)]
             ends += [[v[k] for v in rattled_ends] for k in range(rattles)]
-        x_l, s_l, w_l = (np.asarray(v, dtype=np.float64) for v in (planted or looped)(q, jnp.asarray(at), kept))
+        found = (planted or looped)(q, jnp.asarray(at), kept)
+        x_l, s_l, w_l = (np.asarray(v, dtype=np.float64) for v in found)
+        cond = np.asarray(conditioned(q, jnp.asarray(at), found[0]), dtype=np.float64)
     (x_u, *x_moved), (s_u, *s_moved), (w_u, *w_moved) = zip(*ends, strict=True)
     unit = float(np.finfo(dtype).eps) * size
     band = NEWTON_ULPS * unit
@@ -429,11 +442,23 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
     alone = apart(x_l, s_l, w_l, x_u, s_u, w_u)
     spread = np.max([apart(x_k, s_k, w_k, x_u, s_u, w_u) for x_k, s_k, w_k in zip(x_moved, s_moved, w_moved)], axis=0)
     resolved = spread <= width
-    return Searched(np.where(resolved, alone, 0.0), alone, spread, np.abs(gaps(s_l) - gaps(s_u)) / unit, resolved)
+    # Where 0.4.0 does not resolve a group the looped end is judged by its own stationarity: a converged flag must meet the
+    # residual the step's own rounding leaves (the condition number of its matrix times the point's size and the hull's,
+    # in units of the dtype's resolution), and must be the one 0.4.0's arms all give where they agree.
+    flags = np.stack([w_u, *w_moved])
+    flag_wrong = (np.all(flags >= 0, axis=0) & (w_l < -band)) | (np.all(flags < 0, axis=0) & (w_l >= band))
+    floor = cond * (np.linalg.norm(x_l, axis=-1) / size + 1.0)
+    off_floor = (w_l >= 0) & (np.linalg.norm(x_l - s_l, axis=-1) / unit > floor)
+    unstationary = ~resolved & (flag_wrong | off_floor)
+    missed = np.where(resolved, alone, np.where(unstationary, np.inf, 0.0))
+    return Searched(missed, alone, spread, np.abs(gaps(s_l) - gaps(s_u)) / unit, resolved, unstationary)
 
 
-#: The most groups of a run, in a dtype, that the Newton steps' property may leave unjudged (its groups where 0.4.0's own
-#: ends one ulp away, or from its rattled searches, stand past ``NEWTON_ULPS``): a share of all the groups its draws held.
+#: The most groups of a run, in a dtype, that the Newton steps' property may leave unjudged against 0.4.0's end (its groups
+#: where 0.4.0's own ends one ulp away, or from its rattled searches, stand past ``NEWTON_ULPS``): a share of all the groups
+#: its draws held. These groups are judged by the looped end's own stationarity instead (``Searched.unstationary``). The
+#: ceiling is a monitor of the rule's own premise, how often 0.4.0 does not resolve a group: it is computed from 0.4.0's
+#: arms alone, so that a defect of the looped search cannot raise it.
 #: Measured on the pull request's own head, the committed property replayed under twelve Hypothesis seeds of 100 draws (800
 #: groups a dtype), the first the seed of the stress run that read 22 and 19 past the first ceiling of 2 %: float32 0.5 to
 #: 3.0 % (mean 1.4 %), float64 0.25 to 2.4 % (mean 1.0 %). The rule judging by the poses alone (the pull request's base)
@@ -465,8 +490,9 @@ def test_the_looped_newton_steps_are_the_unrolled_ones_to_rounding_where_0_4_0_r
         event("0.4.0 ends elsewhere one ulp away" if np.any(~found.resolved) else "0.4.0 settled one ulp away")
         target(min(missed, 1e30), label="units of the hull's size apart where 0.4.0 resolves them")
         assert missed <= NEWTON_ULPS, (f"{name}: groups {np.flatnonzero(found.missed > NEWTON_ULPS)}, where 0.4.0's "
-                                       f"end stays within one ulp of the pose, end {missed:.3g} units of the hull's "
-                                       f"size apart")
+                                       f"end stays within one ulp of the pose or its rounding, end {missed:.3g} units "
+                                       f"of the hull's size apart, or where it does not, a looped end that is not "
+                                       f"stationary (groups {np.flatnonzero(found.unstationary)})")
 
     draws()
     left, groups = (sum(counts[i] for counts in unjudged.values()) for i in (0, 1))
@@ -575,6 +601,79 @@ def test_control_the_poses_alone_read_the_shallow_basin_group_as_resolved_and_th
     rattled = searched_against_0_4_0("screw", "float32", shallow_basin_pose())
     assert alone.resolved[SHALLOW_GROUP] and alone.spread[SHALLOW_GROUP] < 0.1 * NEWTON_ULPS
     assert not rattled.resolved[SHALLOW_GROUP] and rattled.spread[SHALLOW_GROUP] > PLANT_FACTOR * NEWTON_ULPS
+
+
+#: Draws of FL-9's cylinder (the spin, tilt, about, towards and share of the property above) on which a group is one 0.4.0
+#: does not resolve (its end moves under its rounding, rattled), found by the pull request's review: on each a loop one
+#: short of what the search needs, or a carry that hands each step the iterate from two steps back, leaves the group
+#: unconverged where 0.4.0's arms all converge (the groups were judged, and caught, before the rattled searches left
+#: them unjudged), and the last, a stop at a residual of 1e-5 of the hull's size, leaves a converged flag over a residual
+#: far above the step's rounding.
+UNRESOLVED_CYLINDER_DRAWS = ((6.273, 0.421, 4.781, 0.71, 0.622), (4.533, 0.457, 3.983, 2.29, 0.44),
+                             (0.722, 0.423, 1.673, 0.232, 0.766))
+EARLY_STOP_DRAW = (1.509, 0.434, 2.109, 4.08, 0.268)
+EARLY_STOP = 1e-5  # of the hull's size
+
+
+def planted_search(name: str, dtype: str, plant: str):
+    """The looped search with a planted defect, jitted, from the node's constants, the pose and the kept starts: ``short``,
+    seven of the twelve Newton steps; ``stale``, each step taken from the iterate two steps back; ``early``, a group
+    stopped once its residual is within ``EARLY_STOP`` of the hull's size."""
+    kind, held = SUPPORTED[name]
+    node = hull_node(kind, held, SPACING, mass=MASS, inertia=INERTIA)
+
+    def run(q, pose, seeds_):
+        found = node.contact_pairs(q, node.hull_points(q, pose.dtype), pose)[0]._replace(loops=True)
+        hull, wall = found.body, found.other
+        values = jax.lax.stop_gradient((hull.pose, contact._numbers(hull.parameters),
+                                        contact._numbers(wall.parameters), wall.margin))
+        parameters = {**hull.parameters, **values[1]}
+        surface = contact.Wall(wall.shape, {**wall.parameters, **values[2]}, values[3])
+
+        def step(x):
+            return contact._step(found, x, values[0], parameters, surface)
+
+        if plant == "short":
+            x = jax.lax.fori_loop(0, 7, lambda _, x: step(x), seeds_)
+        elif plant == "stale":
+            x = jax.lax.fori_loop(0, contact.CONTACT_NEWTON, lambda _, held_: (held_[1], step(held_[0])),
+                                  (seeds_, seeds_))[1]
+        else:
+            def stopped(_, x):
+                near = jnp.linalg.norm(x - contact._supported(found, x, values[0], parameters, surface)[0],
+                                       axis=-1) < EARLY_STOP * node._size
+                return jnp.where(near[:, None], x, step(x))
+
+            x = jax.lax.fori_loop(0, contact.CONTACT_NEWTON, stopped, seeds_)
+        reached = contact._supported(found, x, values[0], parameters, surface)[0]
+        return x, reached, contact.search_tolerance(x.dtype, node._size) - jnp.linalg.norm(x - reached, axis=-1)
+
+    return jax.jit(run)
+
+
+@pytest.mark.parametrize("plant", ("short", "stale"))
+@pytest.mark.parametrize("draw", UNRESOLVED_CYLINDER_DRAWS)
+def test_control_a_short_or_stale_loop_is_caught_where_0_4_0_does_not_resolve_the_group(draw, plant):
+    spin, tilt, about, towards, share = draw
+    pose = placed("cylinder", spin, tilt, about, towards, share * MARGIN)
+    found = searched_against_0_4_0("cylinder", "float32", pose, planted=planted_search("cylinder", "float32", plant))
+    assert np.any(~found.resolved) and np.any(found.unstationary)
+    assert float(np.max(found.missed)) > PLANT_FACTOR * NEWTON_ULPS
+
+
+def test_control_a_stop_at_a_residual_far_above_the_steps_rounding_is_caught():
+    spin, tilt, about, towards, share = EARLY_STOP_DRAW
+    pose = placed("cylinder", spin, tilt, about, towards, share * MARGIN)
+    found = searched_against_0_4_0("cylinder", "float32", pose, planted=planted_search("cylinder", "float32", "early"))
+    assert float(np.max(found.missed)) > PLANT_FACTOR * NEWTON_ULPS
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("draw", (*UNRESOLVED_CYLINDER_DRAWS, EARLY_STOP_DRAW))
+def test_the_clean_looped_search_is_stationary_at_the_draws_the_controls_plant_into(draw, dtype):
+    spin, tilt, about, towards, share = draw
+    found = searched_against_0_4_0("cylinder", dtype, placed("cylinder", spin, tilt, about, towards, share * MARGIN))
+    assert not np.any(found.unstationary) and float(np.max(found.missed)) <= NEWTON_ULPS
 
 
 # -- the whole step ----------------------------------------------------------------------------------------------------
