@@ -43,7 +43,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from camera_cases import PLANT_SIZE, planted
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 import mime.sensing._coverage as coverage
@@ -101,6 +101,27 @@ def exact_share(terms, lines) -> float:
     return total
 
 
+def allowance(terms, lines) -> float:
+    """What the composition's own floor lets its share differ from the exact area by, on these lines: where two lines
+    are parallel to within ``UNION_FLOOR`` (or antiparallel) and lie within it of each other, its divisions take their
+    slope as the floor, so a share's rounding grows by ``1 / UNION_FLOOR`` and the rule that coinciding lines keep half of
+    a chord each misplaces at most the sliver between them (its width, their separation and the angle between them, a
+    chord's length long), once in each subset of the terms that holds both. Zero on every other draw, so that a draw
+    with no such pair is held to the clipped area's own rounding."""
+    import itertools
+
+    total = 0.0
+    eps = float(np.finfo(np.float64).eps)
+    for (i, (di, ui, vi)), (j, (dj, uj, vj)) in itertools.combinations(enumerate(lines), 2):
+        cross = abs(ui * vj - vi * uj)
+        separation = abs(di - dj) if ui * uj + vi * vj > 0 else abs(di + dj)
+        if cross <= coverage.UNION_FLOOR * math.sqrt(2.0) and separation < coverage.UNION_FLOOR:
+            holding = sum(1 for count in range(1, len(terms) + 1) for subset in itertools.combinations(terms, count)
+                          if {i, j} <= {k for term in subset for k in term})
+            total += holding * (math.sqrt(2.0) * (separation + cross) + 64 * eps / coverage.UNION_FLOOR)
+    return total
+
+
 def capped_terms():
     """A creased body's composition (two branches, each with its span; two caps, each with its ball)."""
     from mime.scene._creases import capped
@@ -114,6 +135,7 @@ def capped_terms():
 @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(distances=st.lists(st.floats(-1.2, 1.2), min_size=8, max_size=8),
        angles=st.lists(st.floats(0.0, 2.0 * math.pi), min_size=8, max_size=8))
+@example(distances=[0.0, 0.0, 0.0, 0.0, 0.0, 2e-09, 0.0, 0.0], angles=[0.0] * 8)
 def test_the_composed_share_is_the_exact_area_of_its_polygons(float64, distances, angles):
     terms = capped_terms()
     lines = [(d, math.cos(a), math.sin(a)) for d, a in zip(distances, angles, strict=True)]
@@ -121,18 +143,24 @@ def test_the_composed_share_is_the_exact_area_of_its_polygons(float64, distances
     expected = exact_share(terms, lines)
     if planted("composed-sign"):
         expected = expected + 2.0 * exact_share(terms[:1], lines)
-    assert abs(found - expected) <= 1e-12, (found, expected)
+    assert abs(found - expected) <= 1e-12 + allowance(terms, lines), (found, expected)
 
 
 @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(distances=st.lists(st.floats(-1.2, 1.2), min_size=2, max_size=2),
        angles=st.lists(st.floats(0.0, 2.0 * math.pi), min_size=2, max_size=2))
+@example(distances=[0.0, 0.5], angles=[1.0, 0.0])
+@example(distances=[0.5, 0.5], angles=[0.0, 0.0])
+@example(distances=[-0.5, 0.3], angles=[math.pi / 2, 2.0])
+@example(distances=[0.5, 0.5], angles=[0.5, 0.5])
 def test_a_union_of_two_lines_is_exact_where_they_coincide_too(float64, distances, angles):
     """Two one-line terms: the exact share, also where the lines coincide (each keeps half of their one chord) and where
-    one lies along the cell's side (``union_covered`` reads an eighth there for a line repeated along a side)."""
+    one lies along the cell's side (``union_covered`` reads an eighth there for a line repeated along a side). The
+    examples are the draws that found the side's tie (a line on a side beside one across it, the first found by
+    Hypothesis on this file's first run after the gate's draws)."""
     lines = [(d, math.cos(a), math.sin(a)) for d, a in zip(distances, angles, strict=True)]
     found = float(coverage.composed_covered(((0,), (1,)), [coverage.Line(*map(jnp.asarray, line)) for line in lines]))
-    assert abs(found - exact_share(((0,), (1,)), lines)) <= 1e-12
+    assert abs(found - exact_share(((0,), (1,)), lines)) <= 1e-12 + allowance(((0,), (1,)), lines)
 
 
 @pytest.mark.parametrize(("distance", "exact"), [(0.5, 0.0), (-0.5, 1.0)])

@@ -149,12 +149,17 @@ def _both(first: tuple[Any, Any], second: tuple[Any, Any]) -> Any:
                         resolution=lambda: switch.rounding(1.0), indicator=together)
 
 
-def _chord(nu: Any, nv: Any, c: Any) -> tuple[Any, Any, Any]:
-    """A line's chord through the cell (``nu y_u + nv y_v = c``, the normal unit): its length and its middle."""
+def _chord(nu: Any, nv: Any, c: Any, closed: bool = False) -> tuple[Any, Any, Any]:
+    """A line's chord through the cell (``nu y_u + nv y_v = c``, the normal unit): its length and its middle. ``closed``:
+    a line along one of the cell's sides (parallel to it within ``UNION_FLOOR``, on it) keeps its whole chord, the cell
+    taken as closed, where otherwise the floor's division leaves it half (``composed_covered``'s sides meet it there)."""
 
     def slab(along: Any, foot: Any) -> tuple[Any, Any]:
         held = jnp.copysign(jnp.maximum(jnp.abs(along), UNION_FLOOR), along)
-        return -foot / held, 0.5 / jnp.abs(held)
+        if not closed:
+            return -foot / held, 0.5 / jnp.abs(held)
+        half = jnp.where(jnp.abs(along) > UNION_FLOOR, 0.5, 0.5 + UNION_FLOOR)
+        return -foot / held, half / jnp.abs(held)
 
     (cu, wu), (cv, wv) = slab(-nv, c * nu), slab(nu, c * nv)
     start = switch.maximum(cu - wu, cv - wv, owner="camera.union.chord_start",
@@ -216,12 +221,17 @@ def terms_of(compose: Any, count: int) -> tuple[tuple[int, ...], ...]:
     return tuple(tuple(sorted(term)) for term in kept)
 
 
-def _kept(middle: Any, slope: Any, later: bool = False) -> tuple[Any, Any]:
+def _kept(middle: Any, slope: Any, later: bool = False, beyond: Any = None) -> tuple[Any, Any]:
     """Where on a segment (from -1/2 to 1/2 of its length) a linear function is at least zero, given its middle's value
     and its change along the segment: the interval from the end it keeps, ``_share`` of the segment long. Where the
     change is within ``UNION_FLOOR`` of zero and the function is zero to it too (two lines that coincide), the share is
     a half, kept from the end ``later`` names (the later of the two lines the start, the earlier the end), so that two
-    coinciding lines' chords keep the two halves of one chord between them."""
+    coinciding lines' chords keep the two halves of one chord between them. ``beyond``: on a side of the cell, the
+    line's distance from the cell's centre; a side on the line is taken as just outside the cell, kept whole where the
+    body lies beyond it (the distance below zero) and not at all where the body holds the cell, so that with the line's
+    whole chord (``_chord``, closed) it counts the side once, or cancels it."""
+    if beyond is not None:
+        middle = jnp.where(jnp.abs(slope) > UNION_FLOOR, middle, middle - UNION_FLOOR * beyond)
     share = _share(middle, slope)
     high = jnp.where(jnp.abs(slope) > UNION_FLOOR, slope > 0.0, later)
     low_end = switch.where(high, 0.5 - share, -0.5, owner="camera.composed.end",
@@ -251,15 +261,16 @@ def composed_covered(terms: tuple[tuple[int, ...], ...], lines: list[Line], size
     area is its boundary integral (half the sum over its sides of each side's distance from the centre times its
     length); its sides are the square's, each the share of it inside every body of the subset, and each line's chord
     through the square, the share of it inside the others'. Exact for straight lines, continuous in each; two lines that
-    coincide (to ``UNION_FLOOR``) keep a half of their chord each."""
+    coincide (to ``UNION_FLOOR``) keep a half of their chord each, and a line on one of the square's sides keeps its whole
+    chord while that side is counted by the side the body lies on (``_kept``'s ``beyond``)."""
     used = sorted({index for term in terms for index in term})
     planes = {index: _outside(lines[index], size) for index in used}
     side_bounds: dict[int, list[tuple[Any, Any]]] = {index: [] for index in used}
     for (mu, mv), (eu, ev) in _SIDES:
         for index in used:
             nu, nv, c = planes[index]
-            side_bounds[index].append(_kept(c - nu * mu - nv * mv, -(nu * eu + nv * ev)))
-    chords = {index: _chord(*planes[index]) for index in used}
+            side_bounds[index].append(_kept(c - nu * mu - nv * mv, -(nu * eu + nv * ev), beyond=c))
+    chords = {index: _chord(*planes[index], closed=True) for index in used}
     chord_bounds: dict[tuple[int, int], tuple[Any, Any]] = {}
     for j in used:
         length, mu, mv = chords[j]

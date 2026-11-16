@@ -34,8 +34,11 @@
   "controls_pinned": "single-edge-crease fails 6 of 6 (pixel 0.20 to 0.26, 4 to 5 times the line); no-crease-measure fails 6 of 6 (pixel 0.17 to 0.21). Neither moves the motion past its line at these views (single edge 0.0013 to 0.0029, no measure 0.0010 to 0.0080 against 0.0153): the motion gate does not discriminate these plants here, the pixel gate does",
   "swap": "turn 7, roll 33: route 1 within its line (1/16) and route 2 within its own, of the same exact image (local)",
   "g18_drawn": "not yet run",
-  "g17_derivative": "running",
-  "bits": "not yet run"
+  "g17_derivative": "local, 2026-11-16, float64, the sweep 1/64 to 1/16384 px and the line with camera PR 5a's envelope band: turns 0, 2, 4, 15 at 0.00037, 0.020, 0.0011, 0.020 of the line; of the central difference's own error alone 0.93, 0.53, 2.56, 3.44 (turns 4 and 15 over it: the held march's envelope error, the jvp at most 1.2e-5 of the motion from the converged difference off the crease). The first form (the sweep 1/4 to 1/256 px, the difference's own error alone): 0.48, 9.97, 2.03, 3.06. The criterion changed after data, disclosed in second_predictions.seen_before",
+  "bits": "not yet run",
+  "g17_derivative_controls": "held-least: bit-identical to the clean run at every view (cannot discriminate on the cylinder; third_predictions.why). held-caps, first form (pieces under stop_gradient): passes every view, 0.0029 to 0.98 of the line (cannot discriminate; fourth_predictions.why). held-caps, the measure from a held pinhole: fails every view, 2800 to 3550 times the line (turns 0, 2, 4, 15; deterministic views, so every run)",
+  "motion_control_pinned": "crease-lag at 0.05: fails the motion line on 6 of 6 pinned views (motion 0.0277 to 0.0494 against 0.0153; the pixel unchanged, 0.0104 to 0.0222). Ladder: 0.025 caught on 4 of 6 (turn 2, where both caps are thin and flagged, reads 0.0104), 0.0125 on 0 of 6: the smallest caught on every pinned view is 0.05, not the predicted 0.025",
+  "known_gap": "union_covered(L, L) for a line along a cell's side reads 0.125 (exact 0) and 1.125 (exact 1); composed_covered exact; recorded by test_known_gap_union_covered_of_a_line_repeated_along_a_cells_side, not fixed"
  },
  "second_predictions": {
   "written": "2026-11-16, camera PR 5b-i's second agent, before the motion control, the derivative control, the drawn views on fresh seeds, the control rates, the switch scan and the bits ran",
