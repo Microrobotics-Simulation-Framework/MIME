@@ -1955,8 +1955,8 @@ class BuiltExperiment:
         (the steps, the time each stage took, the environment this run was made in and the load report) and the run's
         own saved form, ``experiment/``, whose lock records that environment, so that a later run in it is verified
         bit for bit. ``source`` is the folder the experiment was loaded from and ``load_seconds`` the time loading and
-        building took, both for the record. The precision a lock records is applied before loading,
-        as ``mime run`` does. :meth:`RunResult.read` reads the folder back. A run
+        building took, both for the record. The precision a lock records is applied before loading
+        (``mime.env.apply_lock_precision``), as ``mime run`` does. :meth:`RunResult.read` reads the folder back. A run
         whose state is not finite at its end is written all the same, its manifest and record saying so
         (``non_finite``), and then raises ``RunFailed`` (``run.non-finite``), what it wrote as its ``written``.
 

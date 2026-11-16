@@ -5,7 +5,7 @@
 ## What is here
 
 What the package exports is what a user calls from Python: `check` with `EnvReport`, `DistributionRow` and
-`EnvRefused`, `deterministic_mode`, the user's XLA cache (`user_xla_cache`, `use_xla_cache`, `user_xla_cache_root`,
+`EnvRefused`, `apply_lock_precision`, `deterministic_mode`, the user's XLA cache (`user_xla_cache`, `use_xla_cache`, `user_xla_cache_root`,
 `prune_to_cap`) and `EXACT_GPUS`. The rest of the names below belong to MIME's commands (`mime env`, `mime modal`,
 `mime run`) and to the lock, and live in the package's private modules.
 
