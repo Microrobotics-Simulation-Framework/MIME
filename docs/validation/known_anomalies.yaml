@@ -3889,3 +3889,123 @@ anomalies:
       spacings and the far field are not measured, and whether the drag 0.4.0 mrs rung shares it is not measured.
     workaround: "Take a derivative in a shape leaf near a wall from two builds' difference (the study's own finite-difference route) rather than through the node, or check the node's derivative against one before relying on it."
     planned_resolution: "Open, before a fit or a descent in a shape leaf relies on the MRS rung near a wall: find the held value that depends on the radius (the two builds' force points and quadratures compared first), and make it a leaf or make the two-builds check run the step. This entry changes no code."
+
+  - anomaly_id: MIME-ANO-157
+    title: "On an A100 under JAX 0.12.0.1 with XLA's Triton GEMM fusion on (its default), one float64 operator assembled wrong at the highest matmul precision and no error followed; --xla_gpu_enable_triton_gemm=false removed it. Which einsum and why are not isolated"
+    description: >
+      A pure-JAX inertial flow solver (outside MIME: a Newton-Krylov solve of a held sphere in a tube, with the
+      convective Jacobian assembled from element matrices by einsum) ran on a Modal A100-SXM4-40GB with JAX 0.12.0.1
+      (the version uv.lock pins), in float64 and with JAX_DEFAULT_MATMUL_PRECISION=highest. It did not converge in 5 of 5
+      arms: Re 0 converged and every Re above 0 stagnated (3000 FGMRES iterations, the linear residual 3.2 against a
+      target of 3.3e-3), at two problem sizes, and with the local inverses in float64 [measured]. A comparison of the two
+      backends in one process (the Re 50 operator, the smaller size) located it: the assembled Jacobian against JAX's own
+      Jacobian-vector product differed by a relative 0.538 on the GPU and 4e-16 on the CPU; the Picard half of the
+      Jacobian alone was identical on both (0.1146) and so was the residual (4.5976386502604), so the Newton half of the
+      convective Jacobian assembled wrong, its values off by 0.55 [measured]. With XLA_FLAGS=--xla_gpu_enable_triton_gemm=false
+      the same comparison read 3.7e-16 and the assembled values matched the CPU's to 2.6e-16, and the full run converged
+      with its forces equal to the CPU's to 1.2e-16 at Re 300 (the worst over Re 0 to 300 1.8e-14) [measured, one flag,
+      one comparison, one program].
+
+      Here the failure was loud, because the solve did not converge. The operator itself was wrong without any error:
+      only a comparison against the CPU, or against the Jacobian-vector product, exposes it.
+
+      What is not isolated. Which einsum is wrong, and why. That the Triton GEMM fusion is the path is inferred from the
+      flag changing the result; the one source patch tried (the four-operand einsum rewritten by broadcast) timed out and
+      says nothing. It is not TF32: the matmul-precision setting made no difference (default, highest and tensorfloat32
+      gave the same iteration counts and forces to 1e-16; a bfloat16 setting gave the same forces to 12 digits, so the
+      setting reaches no operation of that program), and it is not the precision the operands are held in. Not every
+      path is hit: MIME's FVM, run through the experiment API on the same A100 without the flag (a periodic tube, RK3,
+      float64 and float32), matched the CPU's error against Womersley's analytic profile (0.007384 against the CPU's
+      0.00738 at 16 cells across the diameter, 0.002063 against 0.00206 at 32) [measured, both dtypes]. A second program
+      of the spike (a Galerkin clot solve) reproduced an earlier A100 run, which compares the A100 with itself and cannot
+      tell a wrong operator from a right one, so it says nothing here. A T4 pilot of the first program converged; it ran
+      before the failure was found, so I read it as without the flag [inferred, not recorded].
+
+      What this bounds and what it does not. It establishes that a GPU can compute a wrong float64 operator at the
+      highest matmul precision, which is why float64 and highest are not a guard against it. That is one program, one
+      device type (the 40 GB SXM4 card), one JAX and jaxlib release, one container per launch. It bounds nothing about how often it happens, and nothing about any MIME node: MIME's FVM matched the CPU
+      on the same device, and MIME's other einsum-heavy GPU paths (the MLP drag, the MRS rung's matrices, the field
+      providers) have no CPU-equality control on a GPU in this repository.
+
+      MIME's response is a guard, not a fix. A build on a GPU whose XLA_FLAGS do not hold
+      --xla_gpu_enable_triton_gemm=false warns (TritonGemmUnguarded), the build report carries the line, and mime env
+      check prints it; the script mime modal writes sets the flag for every container of a GPU run. MIME does not set
+      the flag in a process it did not start.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A GPU run of any code that assembles an operator by einsum could carry a wrong operator with no error, at the
+      precision a reader would take to be safe, so a result from it can be wrong without a sign of it. Where the wrong
+      operator leaves a solve stagnating (as here) it shows; where it only moves a coefficient, it does not. A reader
+      relying on a GPU run needs the run's own comparison against the CPU for the operator that matters.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev2"
+    affected_components:
+      - "environment: a GPU run's XLA flags, JAX 0.12.0.1 on an A100-40GB (SXM4); any node whose step assembles an operator by einsum is a candidate and none of MIME's is shown affected"
+    verification:
+      - "tests/build/test_triton_gemm_guard.py::test_the_warning_is_made_for_a_gpu_whose_flags_do_not_turn_the_triton_gemm_fusion_off"
+      - "tests/build/test_triton_gemm_guard.py::test_a_build_on_a_gpu_without_the_flag_warns_and_the_report_says_so_read_through_the_seam"
+      - "tests/env/test_check.py::test_the_check_warns_on_a_gpu_whose_flags_leave_the_triton_gemm_fusion_on_and_never_refuses_for_it"
+      - "tests/env/test_modal_script.py::test_a_gpu_script_starts_every_container_with_the_triton_gemm_fusion_off_and_names_why_and_a_cpu_script_sets_no_flag"
+    residual_risk: >
+      The tests above verify the guard's logic and the script's text through a seam, with no GPU; the wrong operator and
+      the flag's cure are not reproduced in CI, which has none. The warning reads XLA_FLAGS from the environment, and XLA
+      reads it once when JAX's backend starts, so a flag set in a process after that is read by the warning and not by
+      XLA (the same limit as mime.env.deterministic_mode). The flag is a workaround whose cause is untested: it may not
+      be needed on another device or release (the H100, the L4 and other JAX versions are not measured), and its cost to
+      a GPU run's speed is not measured for MIME (the spike's FVM timings were taken without the flag, so what it costs the FVM is
+      unknown). A script written by mime modal records the flag in the run's lock, so a GPU run
+      from it verifies within the lock's tolerance against a folder saved without it, as every GPU run already does.
+    workaround: "Set XLA_FLAGS=--xla_gpu_enable_triton_gemm=false before JAX starts (the first jax call or computation), in the shell or the container's environment; mime modal's script does. Keep a CPU-equality check on at least one einsum-heavy node of a GPU acceptance run: build the node's operator on both backends in one process and compare."
+    planned_resolution: "Open. A reduction to the one einsum and the XLA version that fixes it (a report to JAX or XLA) is not done; until it is, the guard stands. No lane of GPU runs exists for this; one (a CPU-equality check per einsum-heavy node on a GPU) needs Modal runs and the maintainer's approval."
+
+  - anomaly_id: MIME-ANO-158
+    title: "The FVM's IMEX Euler grew a noise-seeded transverse disturbance at half its declared CFL line at a cross-section Reynolds number of 450 without tripping the CFL stop; the declared line itself is unstable from 230. RK3 is not affected"
+    description: >
+      The FVM's IMEX Euler (the only scheme an open vessel or a tube tree has) declares a CFL line of 0.4 g(n) and
+      refuses a step past it (flow.cfl-predicted before the run, flow.cfl-exceeded during it). A step-sweep spike at a
+      periodic tube (convection on, a steady Poiseuille drive of cross-section mean speed U plus a 1e-3 U noise, seed 0,
+      2 D long, 20 D/U, 16 cells across the diameter unless stated, a 4-vCPU runner, float64) took the step as a fraction f
+      of that declared line [measured, one run a point]:
+
+      At f = 1, the declared line, the stop fired in 4 of 4 runs at Re_D 230, 450, 650 and 900, after the transverse
+      energy had grown 1e3 to 9e3 times; at Re_D 1 and 100 it did not fire and the flow stayed quiet. That is a loud
+      failure, the run refused, but the declared line is not a stable step from Re_D 230 up.
+
+      At f = 0.5 the transverse energy grew over 10 times its start at Re_D 450, at 16 and at 32 cells across, and the
+      stop never fired: this is the silent one. At f = 0.5 and Re_D 230 the flow was stable, and at 650 and 900 the stop
+      fired. At f = 0.25 the flow was stable at Re_D 450 and 650 (and at 450 with 32 cells across), and at 900 it was
+      marginal, the energy growing 7 times, again unflagged. At f of 0.125 and below it was stable at every Re_D tried.
+      The ladder is factors of two, so at Re_D 450 the stable limit lies between f of 0.25 and 0.5, and at 650 and 900
+      between 0.25 and 0.5 and between 0.125 and 0.25.
+
+      RK3 stays stable at its full declared step at every Re_D from 100 to 900 on the same noise-seeded tube
+      [measured], so dt='auto' (RK3 where its viscous number holds) is not affected there.
+
+      What is not established. The mechanism: the cell-Peclet argument that predicted the limit (f of 5.5 over the
+      cell Reynolds number, from a von Neumann condition on the viscous term) was 2.5 to 5 times too low, and its grid
+      scaling (the limit would double at 32 cells across) was not seen (it did not move between 16 and 32 at Re_D 450,
+      which excludes a doubling narrowly: the measured ratio is under 2). The measured limit falls about as 1 over Re_D
+      at 16 cells across (f times Re_D between 112 and 325) [inferred]. Not measured: what happens after 20 D/U (a
+      disturbance that grew may saturate or not, a point called stable may be growing slowly), other noise seeds or
+      amplitudes, pulsatile flow in an open tube, a tube tree's junction at Re_D 450 to 650 (the Y was run at steady Re_D
+      230 only, stable at f of 0.4, 0.1 and 0.03), and any effect on a body's drag or a vessel's flux. The spike's
+      periodic-tube accuracy arm (RK3, against Womersley) cannot test convection, since the exact axial flow has none,
+      so no accuracy claim about IMEX Euler's convection follows from it.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A run of IMEX Euler at a step the CFL check accepts can carry a growing transverse disturbance with no refusal
+      and no flag, so its flow field at later times may not be the physical one: nothing in the run's report says so. A
+      study that relies on a vessel flow at Re_D above about 400 from IMEX Euler needs its own check of the transverse
+      velocity against a smaller step.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev2"
+    affected_components:
+      - "entry: dynamics fvm 0.1.0; IMEX Euler's CFL line (0.4 g(n)) and its per-step CFL check, convection on, at a cross-section Reynolds number above about 200"
+    residual_risk: >
+      Bounds only the points measured: one tube, one seed and amplitude, one horizon, a ladder in factors of two, and
+      the stop's silence at those points. It estimates nothing about the size of the growth beyond the horizon or about
+      geometries other than a straight periodic tube. The mechanism and the grid scaling are unknown.
+    workaround: "In a periodic vessel, use dt='auto' (RK3), stable at its full declared step at every Re_D measured (100 to 900). Where IMEX Euler is the only scheme (an open vessel, a tube tree), take the step at a quarter of the declared line or less at a cross-section Re_D of 450 to 650 and an eighth at 900 (stable at those points, one seed, 20 D/U), and compare the transverse velocity's growth against a run at half that step before relying on the flow."
+    planned_resolution: "Open. A mechanism and a measured stability line in place of the declared 0.4 (the spike's f times Re_D between 112 and 325 is a fit to a ladder of factors of two, not a law), a check that reads the growth of the transverse flow and not only the CFL number, or RK3 for open vessels (a later PR's), are the routes; none is decided or built. This entry changes no code."

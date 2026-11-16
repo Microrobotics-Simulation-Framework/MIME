@@ -6,6 +6,13 @@ A0 declares an arm whose description holds elements the build reads past, so tha
 nothing and warn of nothing, which the last test holds to, and under ``mime run`` (a subprocess of the installed console
 script, where no frame is the script's) a range warning is a ``mime: warning:`` line with no source.
 
+The two tests that start ``mime`` in a process of their own carry the module's ``own_child_cache`` mark
+(``tests/_child_cache.py``): they require that process's standard error to hold no warning but the range warning's
+line, and a child that shares CI's compilation cache can read an entry another process damaged (two processes that
+compile one program write its entry in place, and JAX warns, ``UserWarning: Error reading persistent compilation cache
+entry ... Unknown frame descriptor``; the cause and its reproduction are in ``tests/test_child_cache.py``). The mark
+reaches only what a child inherits, so this module's in-process tests keep the worker's cache.
+
 The control is the old fixed stack level put back (``warnings.warn(..., stacklevel=3)`` where the build's wrapper and
 ``build`` stand between the warning and a ``save``'s caller): the same assertions then name ``_experiment.py`` for
 ``save`` and ``load``, so a test that passed either way would show here."""
@@ -30,6 +37,8 @@ import mime.viz._web as web_module
 from mime.core.multibody import DescriptionWarning
 from mime.experiment import Experiment
 from mime.units import ms
+
+pytestmark = pytest.mark.own_child_cache
 
 
 def files_warned_from(call) -> list[str]:
@@ -129,19 +138,25 @@ def turning_lines(done: subprocess.CompletedProcess[str]) -> list[str]:
     return [line for line in done.stderr.splitlines() if TURNING in line]
 
 
-def test_under_mime_run_a_range_warning_is_a_line_with_no_source_and_not_the_console_scripts(turning_folder, tmp_path):
-    done = run_in_a_process([console_script(), "run", str(turning_folder), "--duration", "0.01s",
-                             "--out", str(tmp_path / "run")], tmp_path)
-    assert done.returncode == 0, done.stderr
-    (line,) = turning_lines(done)
-    assert line.startswith("mime: warning: "), line
+def assert_a_range_warning_is_a_line_with_no_source(done: subprocess.CompletedProcess[str]) -> None:
+    lines = turning_lines(done)
+    assert len(lines) == 1, lines
+    assert lines[0].startswith("mime: warning: "), lines[0]
     assert "UserWarning" not in done.stderr and "sys.exit(main())" not in done.stderr
     assert console_script() not in done.stderr, "no line of the console script's stub"
 
 
+def test_under_mime_run_a_range_warning_is_a_line_with_no_source_and_not_the_console_scripts(turning_folder, tmp_path):
+    done = run_in_a_process([console_script(), "run", str(turning_folder), "--duration", "0.01s",
+                             "--out", str(tmp_path / "run")], tmp_path)
+    assert done.returncode == 0, done.stderr
+    assert_a_range_warning_is_a_line_with_no_source(done)
+
+
 def test_control_the_same_warning_from_a_script_that_calls_the_command_names_that_script(turning_folder, tmp_path):
     """The assertions above fail for this run: a script of the user's that calls ``mime.cli.main`` is the script, and
-    the warning keeps the usual form with its file and line."""
+    the warning keeps the usual form with its file and line. The assertions themselves are run on that real standard
+    error and must refuse it, on every run: a MIME warning printed with its source and its class is caught."""
     script = tmp_path / "caller.py"
     script.write_text(textwrap.dedent(f"""
         import sys
@@ -152,3 +167,5 @@ def test_control_the_same_warning_from_a_script_that_calls_the_command_names_tha
     assert done.returncode == 0, done.stderr
     lines = turning_lines(done)
     assert lines and all(line.startswith(f"{script}:") and "UserWarning" in line for line in lines), done.stderr
+    with pytest.raises(AssertionError):
+        assert_a_range_warning_is_a_line_with_no_source(done)

@@ -25,9 +25,11 @@ import numpy as np
 import mime.sensing._coverage as coverage
 import mime.sensing._forms as forms
 import mime.sensing._render as render_module
+import mime.sensing._sampled as sampled_route
 from mime.core import switch
 from mime.sensing import Appearance, CameraPose, Pinhole, Subject
 from mime.testing import SwitchRow
+from mime.units import um
 
 #: A normal's components, with ``a^2 + b^2 = 1``: the pixel square's corner reach is ``(a + b) / 2`` and its flat ``(a - b) / 2``.
 A, B = 0.8, 0.6
@@ -287,15 +289,160 @@ def guard_points() -> dict:
         return {"crosses": jnp.where(coverage._crosses(point[0], point[1], point[0], point[1]), 1.0, 0.0)}
 
     at = jnp.asarray([0.4, 0.3])
-    return {"the camera's exact disc over pixels some of which the ball does not touch": (
+
+    def sampled_ray(slope):
+        # The march along a ray whose first-order distance only rises (the stand-in's slope, no dips): its least
+        # sample is the first, where the parabola's vertex is not taken; no spacing crosses the surface; and there is
+        # no second minimum, so the second piece is the first moved out.
+        sampled = sampled_route.Sampled(_Profile({}, slope), "solid", 1.0, 1.0, _Profile.SAMPLES)  # type: ignore[arg-type]
+        o = (jnp.asarray(0.0), jnp.asarray(-1e3), jnp.asarray(0.0))
+        d = (jnp.asarray([0.0]), jnp.asarray([1.0]), jnp.asarray([0.0]))
+        held = sampled_route.march(sampled, {}, o, d, (jnp.asarray([0.0]),) * 3)
+        first, second = sampled_route.pieces(sampled, held)({}, o, d)
+        return {"first": first, "second": second, "chord": sampled_route.chord(sampled, {}, o, d, held)}
+
+    def directionless(distance):
+        # A line of no direction (an edge function flat to the floor) beside a line across the cell.
+        return {"share": coverage.union_covered(coverage.Line(jnp.asarray(1e15), jnp.asarray(0.0), jnp.asarray(0.0)),
+                                                coverage.Line(distance, jnp.asarray(0.6), jnp.asarray(0.8)))}
+
+    slope = jnp.asarray(_Profile.SLOPE)
+    at_distance = jnp.asarray(0.2)
+    return {"the camera's union of two branches, one of no direction": (
+                lambda: directionless(at_distance), lambda: jax.jacfwd(directionless)(at_distance)),
+            "the camera's sampled march along a ray whose distance only rises": (
+                lambda: sampled_ray(slope), lambda: jax.jacfwd(sampled_ray)(slope)),
+            "the camera's exact disc over pixels some of which the ball does not touch": (
                 lambda: window(centre), lambda: jax.jacfwd(window)(centre)),
             "the camera's crossing test on a side of no length": (lambda: degenerate(at),
                                                                   lambda: jax.jacfwd(degenerate)(at))}
 
 
+# -- route 2, the sampled march -------------------------------------------------------------------------------------
+
+#: The helix the kinds' rows evaluate.
+COIL = {"radius": 0.4e-3, "pitch": 0.6e-3, "turns": 2.5, "filament_radius": 0.08e-3}
+
+
+class _Profile:
+    """A stand-in kind for the march's rows: along the ray ``y`` (from -1 to 1 across the enclosing ball of radius one,
+    looked at from far along +y), its first-order distance is a gentle slope with narrow dips centred on chosen
+    samples, so that each owner's indicator is placed exactly: ``dips`` maps a sample's index to how far below the
+    slope its dip reaches."""
+
+    SAMPLES, SLOPE, WIDTH = 41, 1e-2, 0.2
+
+    def __init__(self, dips: dict[int, float], slope: float = SLOPE):
+        self.dips, self.slope = dips, slope
+
+    def at(self, k: float) -> float:
+        return -1.0 + 2.0 * k / (self.SAMPLES - 1)
+
+    def sign_function(self, parameters, region, point):
+        from mime.registry import SignValue
+
+        y = point[1]
+        k = (y + 1.0) * (self.SAMPLES - 1) / 2.0
+        value = 1.0 + self.slope * k
+        for index, depth in self.dips.items():
+            value = value - depth * jnp.exp(-(((k - index) / self.WIDTH) ** 2))
+        return SignValue(value, jnp.ones_like(value))
+
+
+def _profile_marched(dips: dict[int, float], slope: float = _Profile.SLOPE):
+    """What the pixel reads of the march along the stand-in's ray: its two pieces' values."""
+    stand_in = _Profile(dips, slope)
+    sampled = sampled_route.Sampled(stand_in, "solid", 1.0, 1.0, _Profile.SAMPLES)  # type: ignore[arg-type]
+    o = (jnp.asarray(0.0), jnp.asarray(-1e3), jnp.asarray(0.0))
+    d = (jnp.asarray([0.0]), jnp.asarray([1.0]), jnp.asarray([0.0]))
+    held = sampled_route.march(sampled, {}, o, d, (jnp.asarray([0.0]),) * 3)
+    first, second = sampled_route.pieces(sampled, held)({}, o, d)
+    return shared(jnp.concatenate([first, second]))
+
+
+def sampled_rows(declared) -> list[SwitchRow]:
+    """The march's owners on the stand-in's profile, each indicator placed by a dip's depth: ``least`` two dips
+    the offset apart; ``basin`` a second dip the offset below the lower of its neighbours (a slope keeps every other
+    sample's margin at the slope's step; falling, so that every sample a basin, its branch forced, puts the second
+    piece at the far end, and none at the near); ``second`` three dips, the second and the third the offset apart;
+    ``branch`` the second dip of ``basin``, whose margin is the indicator."""
+    deep, step = 1.5, _Profile.SLOPE
+    return [
+        SwitchRow(declared["camera.sampled.least"], lambda o: _profile_marched({10: deep, 20: deep - o + 10 * step}),
+                  1e-3),
+        SwitchRow(declared["camera.sampled.basin"], lambda o: _profile_marched({10: deep, 20: step + o}, -step), 1e-3),
+        SwitchRow(declared["camera.sampled.second"],
+                  lambda o: _profile_marched({10: deep, 20: 0.5, 30: 0.5 + 10 * step - o}), 1e-3),
+        SwitchRow(declared["camera.sampled.branch"], lambda o: _profile_marched({10: deep, 20: step + o}), 1e-3),
+    ]
+
+
+def sign_rows(declared) -> list[SwitchRow]:
+    """The kinds' sign functions' own switches: ``helix.end.low`` and ``.high``, a point whose nearest angle on the
+    helix lies the offset inside the arc from an end (half the filament's radius from that angle's point, towards the
+    axis), its value."""
+    from mime.scene import Helix
+    from mime.scene._helix import HelixTurn
+
+    kind = Helix(radius=um(400.0), pitch=um(600.0), turns=2.5, filament_radius=um(80.0))
+    parameters = {name: jnp.asarray(value) for name, value in COIL.items()}
+    turn = HelixTurn({name: float(value) for name, value in COIL.items()})
+    centroid = np.asarray(turn.centroid(), dtype=np.float64)
+
+    def value(o, end):
+        theta = o if end == "low" else float(turn.sweep) - o
+        centre = np.array([float(turn.b) * (theta - 0.5 * float(turn.sweep)), float(turn.radius) * math.cos(theta),
+                           float(turn.radius) * math.sin(theta)])
+        point = centre + 0.5 * COIL["filament_radius"] * np.array([0.0, -math.cos(theta), -math.sin(theta)]) - centroid
+        found = kind.sign_function(parameters, "solid", tuple(jnp.asarray([c]) for c in point))
+        return {"sign_function": found.value}
+
+    return [SwitchRow(declared[f"helix.end.{end}"], lambda o, end=end: value(o, end), 1e-3) for end in ("low", "high")]
+
+
+# -- route 2's exact union of two branches ----------------------------------------------------------------------------
+
+#: A line at 30 degrees to the cell's u axis, the slabs' coefficients of its distance along it (in cells).
+UNION_ANGLE = math.radians(30.0)
+
+
+def union_rows(declared) -> list[SwitchRow]:
+    """The union's owners, each on the helper that evaluates it, its indicator placed: ``share``'s ratio at the offset
+    from zero (``low``) or one (``high``); ``nested`` two shares keeping the same end, the second the offset larger;
+    ``apart`` two at opposite ends overlapping by the offset; ``ends`` the second change the offset (its share then
+    one, so the branches agree: it measures nothing); the chord's ends and its emptiness on a line at 30 degrees, its
+    distance placing each (the indicator linear in it)."""
+    one = jnp.asarray(1.0)
+
+    def share(ratio):
+        return shared(coverage._share(jnp.asarray(ratio - 0.5), one))
+
+    def both(first, second):
+        return shared(coverage._both(*(tuple(jnp.asarray(v) for v in part) for part in (first, second))))
+
+    nu, nv = math.cos(UNION_ANGLE), math.sin(UNION_ANGLE)
+    across = nu / nv + nv / nu
+
+    def chord(c):
+        return shared(jnp.stack(coverage._chord(jnp.asarray(nu), jnp.asarray(nv), jnp.asarray(c))))
+
+    start_at = (0.5 / nv - 0.5 / nu) / across
+    empty_at = (0.5 / nu + 0.5 / nv) / across
+    return [
+        SwitchRow(declared["camera.union.share.low"], share, 1e-3),
+        SwitchRow(declared["camera.union.share.high"], lambda o: share(1.0 - o), 1e-3),
+        SwitchRow(declared["camera.union.nested"], lambda o: both((-0.1, 1.0), (-0.1 + o, 1.0)), 1e-3),
+        SwitchRow(declared["camera.union.apart"], lambda o: both((0.0, 1.0), (o, -1.0)), 1e-3),
+        SwitchRow(declared["camera.union.ends"], lambda o: both((-0.1, 1.0), (0.3, o)), 1e-3),
+        SwitchRow(declared["camera.union.chord_start"], lambda o: chord(start_at + o / across), 1e-3),
+        SwitchRow(declared["camera.union.chord_end"], lambda o: chord(-start_at - o / across), 1e-3),
+        SwitchRow(declared["camera.union.chord_empty"], lambda o: chord(empty_at - o / across), 1e-3),
+    ]
+
+
 def camera_rows(declared) -> list[SwitchRow]:
     return [*edge_rows(declared), *pieces_rows(declared), corner_row(declared), *disc_rows(declared),
-            *form_rows(declared)]
+            *form_rows(declared), *sampled_rows(declared), *union_rows(declared)]
 
 
 __all__ = ["camera_rows"]

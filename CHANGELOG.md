@@ -9,6 +9,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The camera's sampled route: any kind with a cheap sign function** (`mime.sensing`, route 2; `Geometry.sign_function`,
+  `SignValue`, `sign_zone`; `Geometry.crease_measure`, `CreaseMeasure`; dev2, camera PR 5a). A kind whose geometry declares a
+  cheap sign function is imaged without a closed form: each ray's line through its enclosing ball is sampled (32 samples by
+  default, more for a slender body so that they lie at most half its smallest length apart), the first-order distance
+  marched on itself in one reduction, and the least sample and the least other local minimum held, refined by a descent and
+  a quartic, as two pieces of route 1's pixel integration. The helix and the ellipsoid now appear in the in-loop camera (its
+  window sized at the build, as a disc's is) and in `render`; the sphere, capsule, cylinder, screw and helix declare sign
+  functions (`mime.scene`).
+  - **The ripple fix.** Every cell takes the exact share of the union of the two branches' half-planes, not one straight edge
+    a cell: one edge missed up to half a cell along a sharp notch's sliver and made a coil's image ripple as it moved.
+  - **Where both pieces cross a pixel** (two parts of the outline meeting, as FL-9's lobes in concave notches and a coil's
+    crossing turns), route 1's corner sub-samples take it, and the corner line is derived (`corner_line.py`) rather than
+    declared. The first step left a 0.09 to 0.25 per-pixel error off the screw's crease there; the sub-samples bring it to
+    the line. A dense window on the pixels a guard flags verifies each flagged pixel, and the guard's test of whether a
+    least is already covered by the branch read is exact (the covered share positive and the read lines' union under the
+    whole sub-cell), not a sufficient half-diagonal one.
+  - **What the verification reports.** `corner_unverified` (the unverified corner pixel-frames: it sums over an exposure's
+    sub-frames, so a pixel unverified in each of K counts K times) and `corner_bound` (the largest bound on a flagged
+    pixel's error; the tests check `error <= line + bound`, nothing tighter) are state on a camera node that images a shape by route 2, and only there:
+    they warn and never refuse, a scene whose bodies all take route 1 has neither in its state, and its compiled programs
+    are bit for bit the release's in float32 and float64 (a one-ulp control differs on the runner). Over 2400 clean fresh
+    draws (seeds 2800 to 2999, the twelve groups: 200 poses, each seen in 12 groups, since a pose is drawn from its seed
+    alone) none was flagged: a 95 % upper bound of about 1.5 % of poses (3 in 200), not 0.12 %. The flag's planted control
+    fired on 200 of 200, and a flagged pixel's error held under its bound (a median 0.58 to 0.67 of it); the only
+    flagged pixels ever observed are the control's.
+  - **The line did not move; the rule did.** The corner line (derived in `scripts/camera_route2/corner_line.py` before
+    its draws) never changed in any round. The confirmation's rule did: the fix's predictions required the single edge
+    (the second branch dropped) caught on 200 of 200 draws with its least at 1.25 of the line; after the maintainer's answer
+    (keep the corner gate and state each width's measured power per plant) round 5 **states** the single edge's power
+    instead (197 to 200 of 200 a group, its least 0.26 to 3.0 of the line, under 1.25 in 8 of 12 groups). The derivation's
+    refinement term (`refined_residual`) also changed its scan domain after the first confirmation failed (252c05ed): it
+    scanned the held point anywhere within the sub-ray's reach of the centre ray's least, and now within half a spacing of
+    the least (the descent's lowest sample on the symmetric filament), the term's value staying 1e-4 (the residual 4.7e-6
+    to 1.06e-5 px); the new premise is checked by the gate's guard on each draw.
+  - **What the gate bounds, in image terms.** A misread whose image effect exceeds the line is caught at the measured rate
+    (the smallest misread caught on every draw, in pixels, float32 / float64: the coil 0.5 at 128 pixels, 0.15 / 0.1 at 256 and 512; the second coil 0.1 / 0.1 at 128 and 256 and 0.15 / 0.1 at 512, leaving out the named draws below, from round 4's seeds 2600 to 2799 with the three draws excluded afterwards, not
+    re-measured on fresh seeds; the corner gate's docstring holds the per-width table). At poses where even a dropped branch moves no
+    pixel past the line (draws 2624, 2791 and 2750) there is no image error to catch. This is a bound on the misreads the
+    plants represent, not a proof for every pose.
+  - **Derivatives.** The collected gates are the pointwise ripple's line (1 %) and the derivative's mean over a pixel of
+    motion against the image's change over it (5e-4); the tighter numbers are probe measurements of `scripts/`, which CI does
+    not collect. The coil's motion derivative against the truth's central difference reads within 0.42 % even at the worst
+    sub-pixel position (G20, a probe). The earlier 0.6 to 1 % residual at three entries was the one-pixel central difference's own
+    error (its step sweep converges to the derivative within 2.21e-4 at steps of 1/512 or finer), not the derivative's:
+    nothing to fix. The image's refinement from N to 2N samples moves by 1.8e-6, and the motion by 4.2e-5.
+  - **The cost.** The build reports each sampled body's structural cost estimate (its window's rays, sub-frames,
+    evaluations a ray and one evaluation's flops-equivalents from XLA's cost analysis: a count, never a time) and warns
+    above 1e9 flops-equivalents a frame, naming the offline renderer. At the rates measured through the in-loop camera
+    (27 to 30 G a second in float32 and 15 to 18 in float64 on a four-core runner) that line is about 33 to 37 ms and
+    56 to 66.4 ms a frame. The frame's cost against the original base, at round 3's compacted head, is 0.63 to 0.69 on four threads
+    and 1.16 to 1.48 on one (the compaction runs on the threads a runner has); round 4's verification adds 1.04 to 1.10 of
+    that on four threads and 1.01 to 1.05 on one (the final head's own ratio was not measured).
+  - **The route is chosen by capability**: a creased kind (a solid whose body is the intersection of two or more regions: the
+    cylinder, the box, the screw) takes route 2 only with its crease measure, so the box and the screw are refused
+    (`camera.crease-unmeasured`) until the screw's measure comes; a kind with neither a closed form nor a sign function is
+    refused (`camera.no-route`); `camera.no-closed-form` now refuses only `route="closed form"` on a kind without one, and
+    `route="sampled"` is a route. New switches: `camera.sampled.least`, `.basin`, `.second`, `.branch`, and the helix's
+    `helix.end.low`, `.high`. `mime.testing.sign_function_problems` holds a kind's sign function to its regions' sign at
+    drawn points and its gradient's length. The saved form gains nothing.
+- **A coil array on a frame of its own chain, and the exposure envelope** (apparatus lane, AP3b, dev2).
+  - **`CoilArray(mount="<segment>.<frame>", at=..., orientation=...)`** (the calibrated multipole 0.1.0's new setting):
+    the array placed by `at` and `orientation` in a frame of its own apparatus's chain, which carries it (a mobile
+    electromagnet on an arm). Each step the node composes the placement onto the frame's pose as the chain publishes it,
+    through the existing mount edge (`ProviderBuilder.mount`, `ctx.mount`), so the field stays linear in the currents at
+    every pose: its forward model takes the frame's pose as `x.mount_pose`, and the exact allocation holds at each
+    tick. **What it bounds**: along A0's moving chain (the rotor turning), the mounted field and gradient agree with the
+    same array placed in the world at the frame's pose (the host's `actuation`, float64) within 10 times `eps` times the
+    sum of the magnitudes of the terms each entry is summed from, over its peak, in float64 and float32 (a first-order
+    running-error bound, the factor of 10 empirical; on 72 random chain poses the largest miss was 2.3 times that floor
+    in float64 and 1.9 in float32, where the sources' own cancellation `eps / c` is not the floor: 9.4 times):
+    agreement to rounding, not bit for bit (different programs). At each tick the currents a controller allocates make the wanted field at the
+    pose it read, and are the host's exact allocation there. The frame's motion enters only through the pose (no induced
+    currents). An array placed in the world keeps its record, its program and its input hash: `mount` is left out of the
+    record where it is not given.
+  - **`mount.provider`**, a new refusal code: a mount that names no frame of the apparatus's chain; a mount on a segment
+    that takes loads (a dynamic rung), since the array's mass on the segment and the reaction on it are not modelled
+    (mount it on a kinematic segment); and `actuation()` (and `placement()`) of a mounted array, whose placement in the
+    world is the chain's at each step. A belief mounted elsewhere than its truth is `controller.believed`.
+  - **A controller inside the compiled step (mode 1) cannot read a chain's frame poses** (`controller.unreached-read`,
+    as before): its node runs first in the step, each read edge must carry the state at the step's start, and nothing it
+    writes reaches the chain, so the schedule runs the chain before it and the read would carry the end of the step
+    (`mime.build._in_graph.order_refusals`). A callback (mode 2) reads them at the start of its period; a test holds that
+    mode 1 gives the refusal with its code, not a late value.
+  - **`Exposure(body, field=..., flux_density=, field_gradient=, rate_of_change=)`** (`exposure` 0.1.0, a registered
+    observation): the field a body is exposed to, each step, where a law bound to it reads the field: `flux_density`
+    (`|B|`), `field_gradient` (the Frobenius norm of the gradient, `sqrt(sum_ij G_ij^2)`) and `rate_of_change`
+    (`|B_n - B_(n-1)| / dt`, a one-step difference along the body's path, its motion included: an estimate of `|dB/dt|`
+    with an error of order `dt`). **Step 0's rate of change is not measured**: no earlier reading exists, so it is held
+    at 0, raising no flag and setting no maximum; a field switched on between step 0 and step 1 is seen at step 1. The
+    maxima are kept at the end (`max_<quantity>`). Each limit is optional, a quantity carrying its reason; a declared one
+    gives its quantity a flag (`above_<quantity>`), raised at each step it stands above the limit. A flag says a modelled
+    quantity passed a declared number, nothing more. **What it bounds**: `flux_density` and `field_gradient` against the
+    host's `actuation` within `10 eps / c`, in both dtypes; `rate_of_change` against the host's derivative along a moving
+    chain within `dt` times the second derivative there plus its rounding, and the chord in a uniformly turning field. In
+    float32 the rate carries rounding noise of order `eps |B| / dt` (more where the provider's sources cancel), so a flag
+    limit near the true rate flickers and `max_rate_of_change` reads high; computing the difference in float64 would not
+    remove it (the readings arrive rounded), and float64 does (documented on the page, held by a test).
+    Acoustic quantities arrive with the first acoustic provider.
+  - **`exposure.declaration`**, a new refusal code: a limit with no reason, a pending one, or one not above zero.
+  - **`mime.units.T_per_s`** (`FIELD_RATE`, `FieldRate`), a field's rate of change, so that a rate limit carries its
+    reason (a quantity derived by division carries none). The saved form writes it as `unit_symbol` gives it, which
+    `parse_unit` reads back.
 - **The closed loop through a camera, as an example** (`examples/camera_loop.py`, camera 3c, dev2): a magnetic sphere in
   Navion_2's field steered by what a camera sees, in GRAPH mode. A camera port (`imaging.frames`, of `camera:.expected`)
   feeds a tracker, then a PID, then the exact allocation (`ctx.allocator`), then the coils' command port (25 A). The
@@ -125,6 +227,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the template's `default` job does not re-run when a label is added (`if: github.event.action != 'labeled'`; the `slow` job
   still runs on the label); the control's clean plugin is built and run once for its module, and each plant re-writes one file of
   a copy and runs only the stage that catches it; the pyright tests skip, with a reason, on a machine without `node`.
+
+- **`mime scaffold plugin`: the typing route for a real engine, a duration guard, and four slots, from the clot port** (dev2, lane P's
+  P7c; template files only: no new verb, code, seam or saved form). The template's typing job was red from its first commit for a
+  real engine (1,093 pyright-strict errors on a 3.5k-line one, 95 % of them unknown types from jaxlib's missing stubs and
+  unannotated parameters). `pyrightconfig.json` is still strict, with the six unknown-type rules (`reportUnknownArgumentType`,
+  `...MemberType`, `...VariableType`, `...ParameterType`, `...LambdaType`, `reportMissingParameterType`) off for `engine/` and
+  `fit/` alone, by `executionEnvironments`; the adapter, the records and the `assert_type` file stay strict, and the other strict
+  rules (unused variables, `None` defaults into typed parameters, possibly unbound) still check the engine. Measured on the
+  ported plugin: 1,093 errors before; a typed `jnp` alias in every module 865 (unannotated parameters stay unknown); standard
+  mode with the adapter listed under `strict` 111; this route 131 (engine 36, `fit` 6, the adapter 89: the fork's entries call `jnp` directly, and with the
+  template's `Any` alias on a copy they fall to 39). A planted unannotated function is reported
+  in `entries/` and not in `engine/` or `fit/`, and a planted unused variable is reported in all three, every run; the
+  `assert_type` file still fails on a planted type change. **A duration guard**: `scripts/check_durations.py` reads the default
+  lane's JUnit report and fails a test over 30 s unless `tests/duration_allowlist.txt` lists it with a reason (a small version of
+  MIME's own gate: no cold-cache re-run, no ceiling); the plugin's CI runs it after `pytest --junitxml`; its test runs it on a
+  report pytest wrote. **Slots**: `fit/` beside `engine/` (the AST no-`mime` test reads both, from one `MIME_FREE` tuple),
+  `scripts` and `docs` in the sdist include (and `scripts` on the tests' path), the float32 and float64 advice saying when a
+  float64-only reference is fine (a reference the engine is computed against, never the law's own path), and `.gitignore` naming
+  no benchmark script (it ignores the files a saved experiment is made of, below `benchmarks/*/`, never the folders). **Relative imports**: the template's package imports itself relatively, and
+  `tests/test_relative_imports.py` (the port's test, proven on the real plugin, over a shared `tests/import_rules.py`) refuses an
+  absolute self-import, a constant-string `import_module` or `__import__` of it included, with a planted form of each. The control
+  now plants five more slips (an import of `mime` in `fit/`, two absolute self-imports, a limit a hundred times too loose, an
+  allowlist line that needs no reason) and each fails the stage that is there to catch it. Review fixes: the no-`mime` test also refuses an import of the adapter from `engine/` or `fit/`
+  (`from ..entries import X`, `from .. import entries`, `from ..entries.example_load import X`, absolute or relative, and a root
+  module or `__init__` that imports `mime`), each spelling planted; `tests/import_rules.py` also reads an aliased `import_module`,
+  `name=`, a relative name with `package=`, and a placeholder-free f-string, and both tests' docstrings say plainly what a static
+  check cannot see (`find_spec`, `sys.modules`, `runpy`, `exec`, a computed name); the README no longer suggests a suite-wide
+  x64 switch (a float64-only reference runs under `jax.experimental.enable_x64` in its own test); the duration guard fails an
+  allowlist row whose test is not in the report, and splits a row on its last ` # ` so an id may hold one.
 
 - **Static meshes in the in-loop camera, traced once a run** (`mime.sensing._mesh`, `mime.sensing.mesh_chords`,
   `MeshChords`, `MESH_SAMPLES`; `mime.observations.Camera`; `mime.viz.write_mesh(..., decimation_distance=)`; dev2, camera
@@ -1427,6 +1558,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `along`, and a study that `drop_refused=True` leaves with no point (a refusal that applies to every point is a mistake in the
   base, not a bad point), are refused by `Study.run`, `run_to` and `gradient`; a result of zero members reads "0 members", not "no
   flag raised in any member".
+- **`observation.field-read` is lifted where a law reads the field at the same point** (apparatus lane, AP3b): an
+  observation's read of a field that varies in space now shares the slot a law bound to the body already reads at the
+  same point (the same pose read and the same point fixed in it), as a uniform field's read already shared a law's, so
+  it adds no slot and the provider's node and the physics' derived hash stay what they were without it. Before, every
+  such read was refused, waiting for observations' own provider instances; the refusal was there only because a slot of
+  the observation's own would change the provider's node, and a law's slot at the same point already holds the field
+  there (every slot publishes every interface its provider publishes). So `PhaseLag` on a coil array now builds where
+  the torque reads the field (`tests/oracles/test_shared_point_read.py`: the field it reads is the torque's slot,
+  against `actuation` in both dtypes), and the exposure envelope reads its field this way. A point no law reads is still
+  refused, its route the observation's own instance of the provider, later work.
+
+- **A GPU build warns when XLA's Triton GEMM fusion is left on, and the `mime modal` script turns it off** (`TritonGemmUnguarded`,
+  `BuildReport.triton_warning`, `EnvReport.triton_warning`; `mime.env._host.triton_gemm_warning`; MIME-ANO-157). On an A100 under
+  JAX 0.12.0.1 one float64 operator assembled wrong at the highest matmul precision, with no error, until
+  `--xla_gpu_enable_triton_gemm=false`; which einsum and why are not isolated, and no MIME node is shown affected. On a GPU
+  whose `XLA_FLAGS` lack the flag the build warns beside the matmul-precision warning, the report carries the line and `mime env
+  check` prints it (it passes; it never refuses). MIME does not set the flag in a process it did not start; the script `mime
+  modal` writes sets it for every container of a GPU run (none on a CPU), citing the anomaly. The warning reads the environment
+  and starts no backend. The precision seam `mime.env._host.device_and_matmul` is now `gpu_environment` and returns the flags
+  too, `precision_note` a third value. The docs say a GPU acceptance run keeps a CPU-equality check on one einsum-heavy node.
+  The guard's logic is tested through the seam; **the real GPU path is not tested in CI** (no GPU there).
 - **The run's precision is stated, and a GPU build warns when the matmul precision is not `highest`** (the build report, `RunResult`, `outputs.json`;
   `mime.env._host.run_precision`, `precision_note`; usability bundle 3, F14). The README quickstart runs in float32 (JAX's default) and
   neither the build report nor the result said so. The report's summary has a `precision: float32` (or `float64`) line, a result's
@@ -2033,6 +2185,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its vector. A0's own field, about 1 mT in its first samples, draws an 8 mm arrow, within the cap and unchanged. The cap is in the view alone (the
   glTF and the page), the page's notes name each capped arrow by its prim path, and the stage and the recording are
   unchanged.
+
+### Known Anomalies
+
+- `MIME-ANO-157`: on an A100 (JAX 0.12.0.1) XLA's Triton GEMM fusion assembled one float64 operator wrong at the highest matmul
+  precision with no error; `--xla_gpu_enable_triton_gemm=false` removed it; which einsum and why are not isolated.
+- `MIME-ANO-158`: the FVM's IMEX Euler grew a noise-seeded transverse disturbance at half its declared CFL line at Re_D 450
+  without tripping the CFL stop (the declared line itself is unstable from Re_D 230; RK3 is not affected); mechanism unknown.
 
 ## [0.3.0.dev1] - 2026-11-05
 

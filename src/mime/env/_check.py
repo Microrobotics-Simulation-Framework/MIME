@@ -33,7 +33,7 @@ from mime.build import BuildRefused, BuildReport, Refusal, RefusalClass
 from mime.build._refusals import SUBJECT_NAME, Subject
 from mime.build._maddening import devices as devices_of_jax
 from mime.env._gpus import gpu_type, is_kind_of
-from mime.env._host import runner_record
+from mime.env._host import runner_record, triton_gemm_warning, xla_flags
 from mime.env._pins import Pin, applicable, bases, optional_pins, parse_requirements, pins, same_version, series_of
 from mime.env._xla_cache import use_xla_cache
 
@@ -479,6 +479,9 @@ class EnvReport:
     #: The pins against what is installed (:func:`distribution_rows`), which a terminal draws as a table; not in
     #: :meth:`text` nor :meth:`record`.
     rows: tuple[DistributionRow, ...] = ()
+    #: On a GPU whose ``XLA_FLAGS`` leave XLA's Triton GEMM fusion on, the warning that says so
+    #: (:func:`mime.env._host.triton_gemm_warning`); the check still passes, as the build does.
+    triton_warning: str | None = None
 
     def text(self) -> str:
         lines = [f"environment: every one of the {self.distributions} distributions installed as pinned "
@@ -495,6 +498,8 @@ class EnvReport:
         if self.matmul_precision is not None:
             lines.append(f"matmul precision: {self.matmul_precision}")
         lines.append(f"xla cache: {self.xla_cache or 'off'}")
+        if self.triton_warning is not None:
+            lines.append(f"WARNING: {self.triton_warning}")
         return "\n".join(lines)
 
     def record(self) -> dict[str, object]:
@@ -502,21 +507,25 @@ class EnvReport:
                 "system": self.system, "devices": list(self.devices), "x64": self.x64,
                 "matmul_precision": self.matmul_precision, "xla_cache": self.xla_cache,
                 "fingerprint": self.fingerprint, "runner": dict(self.runner), "base": self.base, "lab": self.lab,
-                "mime": self.mime, "shadows_checked": self.shadows_checked}
+                "mime": self.mime, "shadows_checked": self.shadows_checked,
+                "triton_warning": self.triton_warning}
 
 
 def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = None, base: bool = False,
           lab: str | Path | None = None, xla_cache: str | Path | None = None, mime_version: str | None = None,
           installed: Mapping[str, Sequence[str]] | None = None, devices: Sequence[DeviceLike] | None = None,
-          system: System | None = None, modules: Mapping[str, str] | None = None) -> EnvReport:
+          system: System | None = None, modules: Mapping[str, str] | None = None,
+          flags: str | None = None) -> EnvReport:
     """Check this environment against the pins of ``variant`` (with ``base``, against the base image of this Python
     series too, and with ``lab``, a requirements file, against the lab's pins), MIME against ``mime_version`` (the
     version of the pinned wheel; without it MIME is not held to one), and JAX's devices against ``gpu`` (an exact type,
     or ``None`` for the CPU). Modules Python imports from outside this environment's site-packages are refused. Then
     apply the precision ``folder``'s lock records (a GPU run whose lock records a matmul precision other than the
     highest is refused), and XLA's cache under ``xla_cache``. Raises ``BuildRefused`` with every difference;
-    ``installed``, ``devices``, ``system`` and ``modules`` stand in for what the check reads, in tests (the imports are
-    read only from this environment's own distributions)."""
+    ``installed``, ``devices``, ``system``, ``modules`` and ``flags`` (``XLA_FLAGS``) stand in for what the check reads, in
+    tests (the imports are read only from this environment's own distributions). On a GPU whose flags do not turn
+    XLA's Triton GEMM fusion off the report carries a warning (MIME-ANO-157); the check does not refuse, and never sets
+    the flag."""
     requested = gpu_type(gpu) if gpu is not None else None
     runner = runner_record()
     x64 = lock_x64(folder) if folder is not None else None
@@ -537,6 +546,8 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
     seen: list[DeviceLike] = list(devices) if devices is not None else list(jax_devices())
     refusals += device_refusals(seen, requested)
     refusals += gpu_precision_refusals(recorded, requested)
+    triton = triton_gemm_warning("gpu" if any(d.platform == "gpu" for d in seen) else "cpu",
+                                 xla_flags() if flags is None else flags)
     rows = distribution_rows(found, expected)
     if refusals:
         raise EnvRefused(refusals, pin_rows=[row for row in rows if not row.agrees])
@@ -554,7 +565,7 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
                      config.jax_default_matmul_precision, cache,
                      fingerprint() if installed is None else "not read (the distributions were given)", runner,
                      held_base, str(lab) if lab is not None else None, mime_version, held_modules is not None,
-                     rows)
+                     rows, triton)
 
 
 __all__ = ["AS_PINNED", "DISTRIBUTION", "INSTALLERS", "DistributionRow", "EnvRefused", "EnvReport", "System",

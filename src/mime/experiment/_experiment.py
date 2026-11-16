@@ -723,13 +723,17 @@ class Experiment:
             record = record_of(self._settings, self._declarations, plans, derived, stage)
             from mime.env._host import precision_note
 
-            precision, matmul_warning = precision_note()
+            precision, matmul_warning, triton_warning = precision_note()
             report = replace(report, stage_hash=record.stage_hash, assets=pins.lines(), ranges=range_lines(plans),
-                             precision=precision, matmul_warning=matmul_warning)
+                             precision=precision, matmul_warning=matmul_warning, triton_warning=triton_warning)
         if matmul_warning is not None:
             from mime.env._host import MatmulPrecisionReduced
 
             warn_at_script(matmul_warning, MatmulPrecisionReduced)
+        if triton_warning is not None:
+            from mime.env._host import TritonGemmUnguarded
+
+            warn_at_script(triton_warning, TritonGemmUnguarded)
         for text in report.range_warnings():
             warn_at_script(text, UserWarning)
         for text in description_warnings(plans):
@@ -1119,11 +1123,10 @@ def run_layout(plans: PlanSet, graph: GraphManager | None = None) -> Layout:
     flags: list[FlagLayout] = []
     for plan in plans.entries:
         cls = plan.registered.cls
-        rung = getattr(plan.entry, "rung", None)
         if plan.joined:
             continue  # its group's plan builds its node, and lays out the flags its node raises
         flags += [FlagLayout(plan.owner, cls.label(), plan.node_name(flag.node), flag.field, flag.meaning)
-                  for flag in cls.raises if flag.raised_by(rung, bool(plan.members), plan.entry)]
+                  for flag in plan.raised_flags()]
         speed = speed_limit_flag(plans, plan)
         if speed is not None:
             flags.append(speed)
@@ -1715,9 +1718,7 @@ class BuiltExperiment:
     def _warn_raised(self, result: RunResult) -> None:
         """A warning for each flag that warns (``Flag.warns``) and the run raised, with its count and where."""
         warns = {f"{plan.node_name(flag.node)}.{flag.field}" for plan in self._plans.entries
-                 for flag in plan.registered.cls.raises
-                 if flag.warns and not plan.joined
-                 and flag.raised_by(getattr(plan.entry, "rung", None), bool(plan.members), plan.entry)}
+                 for flag in plan.raised_flags() if flag.warns and not plan.joined}
         warns |= {flag.path for flag in self.layout.flags if flag.warns}
         for read in result.flags:
             if read.path in warns and read.was_raised:

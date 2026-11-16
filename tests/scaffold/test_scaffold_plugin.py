@@ -9,11 +9,17 @@ The control (``test_scaffold_control.py``) runs the plugin; these hold what a ru
   benchmark's ``mime.toml``; none of them, and the files hold a placeholder to replace;
 - no file holds a machine path, a home folder or a token;
 - a licence whose text MIME does not ship gets a file that says so, and Apache-2.0 gets its text;
-- the engine's import rule is MIME's own at the scaffold: the AST test in the plugin is the one that holds it.
+- the engine's import rule is MIME's own at the scaffold: the AST test in the plugin is the one that holds it, over the
+  engine and the second MIME-free package (``fit/``);
+- the follow-ups of the clot port (P7c): the typing route (strict, with the unknown-type rules off for the packages that
+  import no ``mime`` and for them alone), the duration guard in the default lane, the sdist's ``scripts`` and ``docs``,
+  no stale case name in ``.gitignore``, the relative-import rule, the float64 reference advice.
 """
 
 import hashlib
+import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -35,12 +41,15 @@ EXPECTED = {
     ".github/workflows/ci.yml", ".gitignore", "CITATION.cff", "LICENSE", "README.md", "pyproject.toml",
     "pyrightconfig.json",
     "benchmarks/build_case.py", "benchmarks/mime.toml", "examples/example.py",
+    "scripts/check_durations.py",
     f"src/{PACKAGE}/__init__.py", f"src/{PACKAGE}/engine/__init__.py", f"src/{PACKAGE}/engine/load.py",
+    f"src/{PACKAGE}/fit/__init__.py",
     f"src/{PACKAGE}/entries/__init__.py", f"src/{PACKAGE}/entries/_vocabulary.py",
     f"src/{PACKAGE}/entries/example_load.py",
     f"src/{PACKAGE}/records/__init__.py", f"src/{PACKAGE}/records/records.json",
     f"src/{PACKAGE}/records/data/example.json",
     "tests/assert_types.py", "tests/conftest.py", "tests/plants.py", "tests/test_engine_imports.py",
+    "tests/import_rules.py", "tests/test_relative_imports.py", "tests/test_durations.py", "tests/duration_allowlist.txt",
     "tests/test_nodes.py", "tests/test_registry.py", "tests/test_validity.py",
     "tests/engine/test_properties.py", "tests/verification/test_example.py",
 }
@@ -169,6 +178,198 @@ def test_the_property_skeleton_tells_the_author_the_rules_that_cost_time(path: s
     assert all(each in text for each in expected), path
 
 
+def test_the_sdist_carries_scripts_and_docs_and_the_tests_find_scripts(tmp_path: Path):
+    options = tomllib.loads(files_of(scaffolded(tmp_path))["pyproject.toml"])["tool"]
+    assert {"scripts", "docs"} <= set(options["hatch"]["build"]["targets"]["sdist"]["include"])
+    assert "scripts" in options["pytest"]["ini_options"]["pythonpath"]  # tests import scripts/check_durations.py
+
+
+def test_gitignore_names_no_benchmark_script_and_ignores_what_a_benchmark_generates_and_not_an_authors_own_folders(tmp_path: Path):
+    """The case's folder name was written in three files and went stale when the port renamed the case, so the ignore names no
+    case and no script; but it must not swallow an author's own folder below ``benchmarks/`` (data, a table, notes) either:
+    it ignores the files a saved experiment is made of, and the ``mime.toml`` the script copies beside them. Read by git itself,
+    not by the text."""
+    root = scaffolded(tmp_path)
+    assert "build_case" not in (root / ".gitignore").read_text(encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    for folder in ("case", "strip/scene", "data", "notes"):
+        (root / "benchmarks" / folder).mkdir(parents=True)  # git matches a pattern ending in a slash against folders that exist
+
+    def ignored(path: str) -> bool:
+        return subprocess.run(["git", "check-ignore", "-q", path], cwd=root, check=False).returncode == 0
+
+    generated = ("benchmarks/case/experiment.mime.yaml", "benchmarks/case/mime.lock", "benchmarks/case/reference.npz",
+                 "benchmarks/case/mime.toml", "benchmarks/strip/scene/scene.usda", "benchmarks/strip/experiment.mime.yaml", "junit.xml")
+    authors_own = ("benchmarks/build_case.py", "benchmarks/mime.toml", "benchmarks/data/table.csv", "benchmarks/data/reference.json",
+                   "benchmarks/notes/README.md", "benchmarks/case/notes.md", "benchmarks/strip/fixture.json")
+    assert [path for path in generated if not ignored(path)] == []
+    assert [path for path in authors_own if ignored(path)] == []
+
+
+def test_the_default_lane_runs_the_duration_guard_on_a_junit_report(tmp_path: Path):
+    steps = [step.get("run", "") for step in yaml.safe_load(files_of(scaffolded(tmp_path))[".github/workflows/ci.yml"])
+             ["jobs"]["default"]["steps"]]
+    assert "uv run --no-sync pytest --junitxml=junit.xml" in steps
+    assert steps.index("uv run --no-sync python scripts/check_durations.py junit.xml") > steps.index(
+        "uv run --no-sync pytest --junitxml=junit.xml")
+
+
+def test_the_second_mime_free_package_is_covered_by_the_import_rule(tmp_path: Path):
+    held = files_of(scaffolded(tmp_path))
+    assert 'MIME_FREE = ("engine", "fit")' in held["tests/test_engine_imports.py"]
+    assert f"src/{PACKAGE}/fit/__init__.py" in held and "imports no `mime`" in held[f"src/{PACKAGE}/fit/__init__.py"]
+
+
+def test_the_package_imports_itself_relatively_in_the_template(tmp_path: Path):
+    """The template's own modules: no absolute import of the package, in any file of ``src/`` (the plugin's own test holds the
+    rule from here on; this is the template keeping it)."""
+    for path, text in files_of(scaffolded(tmp_path)).items():
+        if path.startswith(f"src/{PACKAGE}/") and path.endswith(".py"):
+            assert not re.search(rf"^\s*(from|import) {PACKAGE}\b", text, re.MULTILINE), path
+    assert "from ..engine import load as law" in files_of(scaffolded(tmp_path / "again"))[f"src/{PACKAGE}/entries/example_load.py"]
+
+
+def test_the_readme_says_when_a_float64_only_reference_is_fine(tmp_path: Path):
+    readme = " ".join(files_of(scaffolded(tmp_path))["README.md"].split())
+    assert "reference the engine is computed *against*" in readme and "float64 alone" in readme
+    assert "Never let the law's own path be float64-only" in readme
+
+
+def test_the_readme_does_not_suggest_a_suite_wide_x64_switch(tmp_path: Path):
+    """CLAUDE.md: a float64-only rig says so by a declared guard, never by a blanket ``JAX_ENABLE_X64=1``. The README names the
+    scoped route (``enable_x64`` in that test), says the law's own path is tested in both dtypes, and no longer offers
+    ``tests/conftest.py`` as the place that turns x64 on; the template's conftest does not turn it on either."""
+    held = files_of(scaffolded(tmp_path))
+    readme = " ".join(held["README.md"].split())
+    assert "jax.experimental.enable_x64" in readme and "never as a suite-wide switch" in readme
+    assert "The law's own path is tested in both dtypes" in readme
+    assert "or `tests/conftest.py` does" not in readme
+    assert not re.search(r"enable_x64|JAX_ENABLE_X64|jax_enable_x64", held["tests/conftest.py"])
+
+
+# -- the import rules and the duration guard, run as the plugin's own tests read them -----------------------------------
+
+def template_module(root: Path, name: str, monkeypatch: pytest.MonkeyPatch) -> Any:
+    """``tests/<name>.py`` of the scaffolded plugin imported here (its ``import_rules`` beside it found), for a call of its
+    functions on a planted source. The modules are dropped from ``sys.modules`` afterwards by the monkeypatch."""
+    monkeypatch.syspath_prepend(str(root / "tests"))
+    monkeypatch.delitem(sys.modules, "import_rules", raising=False)
+    spec = importlib.util.spec_from_file_location(f"scaffolded_{name}", root / "tests" / f"{name}.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.delitem(sys.modules, "import_rules", raising=False)
+    return module
+
+
+#: Each way into the adapter that a MIME-free package can spell, written as the engine (or fit) would write it. The old rule
+#: read ``mime`` by name only, and all of these pull ``mime`` in through the adapter without naming it.
+ADAPTER_IMPORTS = ("from ..entries import ExampleLoad", "from .. import entries", "from ..entries.example_load import ExampleLoad",
+                   "from ..records import data", "import PKG.entries", "from PKG.entries import ExampleLoad",
+                   "from PKG import entries", "from ... import entries", 'import importlib\nimportlib.import_module("PKG.entries")',
+                   'import importlib\nimportlib.import_module(".entries", package="PKG")',
+                   'import importlib\nimportlib.import_module("..entries", package=__package__)')
+
+
+@pytest.mark.parametrize("folder", ["engine", "fit"])
+def test_the_mime_free_rule_refuses_every_spelling_of_an_import_of_the_adapter(folder: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The hole: the engine and fit imported no ``mime`` by name, yet ``from ..entries import ExampleLoad`` (the natural spelling
+    once a package imports itself relatively), ``from .. import entries`` and the rest brought it in through the adapter, and both
+    AST tests passed. Each spelling is refused from ``engine/`` and from ``fit/`` (and from a module one folder deeper), by the
+    plugin's own function on the scaffolded package; the honest imports between the MIME-free packages are not."""
+    root = scaffolded(tmp_path)
+    module = template_module(root, "test_engine_imports", monkeypatch)
+    base = f"{PACKAGE}.{folder}"
+    for planted in ADAPTER_IMPORTS:
+        source = planted.replace("PKG", PACKAGE)
+        here = f"{base}.sub" if planted.startswith("from ... ") else base
+        assert module.adapter_imports(source, here), f"{source!r} was not refused in {here}"
+    for honest in ("from . import load", "from ..engine import load", "from ..fit import model", "from .. import fit, engine",
+                   "import jax\nfrom jax import numpy", f"import {PACKAGE}_other", "import mimesis"):
+        assert not module.adapter_imports(honest, base) and not module.mime_imports(honest), f"{honest!r} was refused"
+
+
+@pytest.mark.parametrize("path", ["engine/leak.py", "fit/leak.py"])
+@pytest.mark.parametrize("spelling", ["from ..entries import ExampleLoad", "from .. import entries",
+                                      "from ..entries.example_load import ExampleLoad"])
+def test_a_planted_relative_import_of_the_adapter_fails_the_plugins_own_test(spelling: str, path: str, tmp_path: Path):
+    """The end to end: the plugin's own ``tests/test_engine_imports.py`` run by pytest on the scaffolded package, clean first
+    (it passes), then with one module of ``engine/`` or ``fit/`` importing the adapter: it fails, and names the module."""
+    root = scaffolded(tmp_path)
+    run = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_engine_imports.py",
+           "tests/test_relative_imports.py"]
+    environment = {**os.environ, "JAX_PLATFORMS": "cpu", "PYTHONPATH": str(root / "src")}
+    clean = subprocess.run(run, cwd=root, capture_output=True, text=True, env=environment, check=False)
+    assert clean.returncode == 0, clean.stdout[-1500:]
+    (root / "src" / PACKAGE / path).write_text(spelling + "\n", encoding="utf-8")
+    planted = subprocess.run(run, cwd=root, capture_output=True, text=True, env=environment, check=False)
+    assert planted.returncode == 1 and path in planted.stdout and "test_the_mime_free_packages_import_no_mime" in planted.stdout, \
+        planted.stdout[-1500:]
+
+
+def test_a_package_root_that_imports_mime_is_the_adapter_and_a_root_module_that_does_not_is_not(tmp_path: Path,
+                                                                                                 monkeypatch: pytest.MonkeyPatch):
+    root = scaffolded(tmp_path)
+    module = template_module(root, "test_engine_imports", monkeypatch)
+    package = root / "src" / PACKAGE
+    (package / "_constants.py").write_text("PI = 3.14159\n", encoding="utf-8")
+    assert not module.adapter_imports("from .. import _constants\nfrom .._constants import PI", f"{PACKAGE}.engine")
+    (package / "_constants.py").write_text("from mime.units import N\n", encoding="utf-8")
+    assert module.adapter_imports("from .._constants import PI", f"{PACKAGE}.engine")
+    (package / "_constants.py").unlink()
+    assert not module.adapter_imports("from .. import engine", f"{PACKAGE}.fit")
+    (package / "__init__.py").write_text("import mime\n", encoding="utf-8")
+    assert module.adapter_imports("from .. import engine", f"{PACKAGE}.fit")
+
+
+#: What the import tests read that the first version missed (the review's list), each as a source that imports ``PKG``.
+CHEAP_STATIC = ('from importlib import import_module as im\nim("PKG.x")', "import importlib\nimportlib.import_module(name='PKG.x')",
+                "import importlib\nimportlib.import_module('.engine', package='PKG')",
+                "import importlib\nimportlib.import_module('.engine', 'PKG')", 'import importlib\nimportlib.import_module(f"PKG.x")',
+                "from importlib import import_module\nload = import_module\nload('PKG.x')", "load = __import__\nload('PKG')")
+#: What a static check cannot see: the docstrings say so, and these hold that they are not found.
+NOT_SEEN = ('import importlib\nimportlib.import_module("P" + "KG")', 'import importlib.util\nimportlib.util.find_spec("PKG.x")',
+            'import sys\nsys.modules["PKG.x"]', 'import runpy\nrunpy.run_module("PKG.x")', 'exec("import PKG")',
+            'import importlib\nimportlib.import_module(f"PKG.{x}")')
+
+
+@pytest.mark.parametrize("test", ["test_relative_imports", "test_engine_imports"])
+def test_the_import_tests_read_the_cheap_static_forms_and_say_plainly_what_they_cannot_see(test: str, tmp_path: Path,
+                                                                                         monkeypatch: pytest.MonkeyPatch):
+    """The relative-import test's docstring said it read ``importlib.import_module`` and ``__import__`` calls; an aliased name,
+    ``name=``, the ``package=`` form and a placeholder-free f-string were missed, so the docstring overstated. The cheap static
+    ones are now read (both tests share ``import_rules``); the rest are listed in each docstring, and held not found."""
+    root = scaffolded(tmp_path)
+    module = template_module(root, test, monkeypatch)
+    package = PACKAGE if test == "test_relative_imports" else "mime"
+    found = module.absolute_self_imports if test == "test_relative_imports" else module.mime_imports
+    if test == "test_relative_imports":
+        monkeypatch.setattr(module, "NAME", package)
+    for planted in CHEAP_STATIC:
+        assert found(planted.replace("PKG", package)), f"{planted!r} was not found"
+    for unseen in NOT_SEEN:
+        assert not found(unseen.replace("PKG", package)), f"{unseen!r} was found: the docstring's limit would be wrong"
+    docstring = " ".join((module.__doc__ or "").split())
+    for limit in ("find_spec", "sys.modules", "runpy", "exec", "computed"):
+        assert limit in docstring, f"{test}'s docstring does not name {limit} as what it cannot see"
+    assert "aliased" in docstring and "package=" in docstring
+
+
+def test_the_duration_guard_fails_a_stale_row_and_takes_an_id_with_a_hash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    root = scaffolded(tmp_path)
+    monkeypatch.syspath_prepend(str(root / "scripts"))
+    monkeypatch.delitem(sys.modules, "check_durations", raising=False)
+    guard = importlib.import_module("check_durations")
+    try:
+        report = ('<testsuites><testsuite><testcase classname="tests.test_a" name="test_fast" time="0.2"/>'
+                  '<testcase classname="tests.test_a" name="test_p[a # b]" time="45.0"/></testsuite></testsuites>')
+        failures, _ = guard.judge(report, "tests/test_a.py::test_gone # kept: it was slow once\n"
+                                          "tests/test_a.py::test_p[a # b] # kept: the id holds a hash\n", limit=30.0)
+        assert len(failures) == 1 and "test_gone" in failures[0] and "not in the report" in failures[0]
+    finally:
+        sys.modules.pop("check_durations", None)
+
+
 # -- the typing check ---------------------------------------------------------------------------------------------------
 
 #: pyright's PyPI package runs on node: the system's if there is one, else it downloads one from nodejs.org on first use. A
@@ -209,6 +410,34 @@ def test_a_changed_type_fails_the_assert_type_file(tmp_path: Path):
     report = pyright_report(root)
     messages = [(each["file"], each["message"]) for each in report["generalDiagnostics"]]
     assert any(file.endswith("assert_types.py") and "assert_type" in message for file, message in messages), messages
+
+
+@needs_node
+def test_the_unknown_type_rules_are_off_for_the_engine_and_fit_alone(tmp_path: Path):
+    """The typing route's control. An unannotated function, in the adapter, is reported (strict stays strict there); in the
+    engine and in ``fit`` the same function is not (jaxlib has no stubs, so untyped JAX reads as unknown), and every other
+    strict rule still is: an unused variable in each is reported. The route is both halves at once, every run."""
+    root = scaffolded(tmp_path)
+    unannotated = "def untyped(a, b):\n    return a + b\n\n\ndef unused() -> None:\n    value = 1\n"
+    for folder in ("engine", "fit", "entries"):
+        (root / "src" / PACKAGE / folder / "_planted.py").write_text(unannotated, encoding="utf-8")
+    rules: dict[str, set[str]] = {}
+    for each in pyright_report(root)["generalDiagnostics"]:
+        rules.setdefault(each["file"].split("/")[-2], set()).add(each["rule"])
+    assert rules["engine"] == {"reportUnusedVariable"}, rules
+    assert rules["fit"] == {"reportUnusedVariable"}, rules
+    assert {"reportUnusedVariable", "reportMissingParameterType"} <= rules["entries"], rules
+    assert set(rules) == {"engine", "fit", "entries"}, "nothing else is reported"
+
+
+def test_the_pyright_config_relaxes_the_unknown_type_rules_for_the_mime_free_packages_only(tmp_path: Path):
+    config = json.loads(files_of(scaffolded(tmp_path))["pyrightconfig.json"])
+    assert config["typeCheckingMode"] == "strict"
+    relaxed = {each["root"]: {rule for rule, value in each.items() if value is False} for each in config["executionEnvironments"]}
+    assert set(relaxed) == {f"src/{PACKAGE}/engine", f"src/{PACKAGE}/fit"}, "the adapter and the records are not relaxed"
+    assert all(rules == {"reportUnknownArgumentType", "reportUnknownMemberType", "reportUnknownVariableType",
+                         "reportUnknownParameterType", "reportUnknownLambdaType", "reportMissingParameterType"}
+               for rules in relaxed.values())
 
 
 def test_the_typing_extra_pins_the_pyright_this_suite_checks_the_template_with(tmp_path: Path):

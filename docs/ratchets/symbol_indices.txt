@@ -56,6 +56,7 @@ GravityNode R  # the rotation matrix of the body's orientation q: a function of 
 GravityNode q  # the body's orientation, an input the node declares only where the centre of buoyancy is off the centre of mass, so no row can name it for every build; route: `held_where_read` extended to inputs
 MagneticTorqueNode R  # the rotation matrix of the body's orientation q: a function of a row's symbol; route: the function convention
 SwimSpeedNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+ExposureNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 UniformRotatingNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 IntegratingRotatingNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 PhaseLagNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt

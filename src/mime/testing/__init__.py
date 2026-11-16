@@ -166,6 +166,7 @@ from mime.testing._kind_conformance import (
     drawing_problems,
     kind_problems,
     sampling_kinds,
+    sign_function_problems,
 )
 from mime.testing._shape_suite import (
     CONVEXITY_BAND_EVALUATIONS,
@@ -359,6 +360,7 @@ __all__ = [
     "sampling_problems",
     "sampling_quality",
     "shape_probes",
+    "sign_function_problems",
     "suite_spacing",
     "support_problems",
     "switch_distances",

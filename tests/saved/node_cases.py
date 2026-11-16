@@ -263,6 +263,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
         no_node="a switch: it builds no node, and its account is the metered bodies' records, rigid_inertial's, "
                 "verified under its own case and by tests/energy"),
     ("observation", "phase_lag", "0.1.0"): NodeCase(),
+    ("observation", "exposure", "0.1.0"): NodeCase(),
     ("drive", "drive.constant", "0.1.0"): NodeCase(),
     ("response", "response.first_order_lag", "0.1.0"): NodeCase(
         no_node="a response: it builds no node; the command stage computes it (ports:<apparatus>, verified against a "

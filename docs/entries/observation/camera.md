@@ -66,8 +66,12 @@ a warning, and the frame no longer equals the offline render, whose window is de
 **When not to use it.**
 - For a microscope's or a real camera's optics: the model is a pinhole with OpenCV's five distortion coefficients, backlit,
   and nothing it says is a statement about a physical camera that was not calibrated against it.
-- For a body without a closed form (a screw, a helix, a box or an ellipsoid that moves): it is refused with its reason until
-  the sampled route lands; `hide` it, or image it offline. A structure of one is imaged by its drawing.
+- For a creased body without its crease measure (the screw, the box): it is refused with its reason
+  (`camera.crease-unmeasured`) until the screw's crease measure comes; `hide` it. A body with neither a closed form nor a
+  sign function is refused too (`camera.no-route`). The helix and the ellipsoid take the sampled route, whose frame costs
+  its samples a ray times its window's rays: the build report gives its structural estimate and warns above a declared
+  line (`mime.sensing._sampled.COST_LINE`), naming the offline renderer. A structure of a drawn kind with no closed form is
+  imaged by its drawing.
 - For a mesh that moves, or a camera on a frame that may move with a mesh in view: refused (`camera.mesh-moving`,
   `camera.mesh-mounted`), naming `hide=`; the camera traces static meshes once a run, and a moving camera keeps no static
   structure.

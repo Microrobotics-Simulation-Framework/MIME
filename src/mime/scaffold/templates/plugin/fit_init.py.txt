@@ -1,0 +1,8 @@
+"""A second package that imports no `mime`: a home for a fitting or calibration harness, or any code that should run without MIME.
+
+Empty on purpose. The engine (`${package}.engine`) is your law; this is where code that works on the law, a fit of its
+parameters to data for example, lives beside it and not in the adapter. It is held to the engine's rule by
+tests/test_engine_imports.py (an AST test: it imports no `mime`) and typed as the engine is (pyrightconfig.json: the
+checks that need jaxlib's stubs are off here, the rest are on). Keep it when you have such code, delete the folder when you
+do not, and take `"fit"` out of `MIME_FREE` in that test and the entry for it in pyrightconfig.json.
+"""

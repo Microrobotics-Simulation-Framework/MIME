@@ -119,6 +119,30 @@ def test_a_gpu_run_on_the_type_it_requested_computes_matmuls_at_the_highest_prec
     assert report.matmul_precision == "highest"
 
 
+def test_the_check_warns_on_a_gpu_whose_flags_leave_the_triton_gemm_fusion_on_and_never_refuses_for_it(folder):
+    """MIME-ANO-157. The flags are read through ``flags``, as the devices are through ``devices``: no GPU is needed."""
+    gpu = dict(variant="cuda12", gpu="A100-40GB", base=True, installed=pinned("cuda12"), devices=A100_40GB,
+               system=base_system())
+    unguarded = check(folder, flags="", **gpu)
+    assert unguarded.triton_warning is not None and "--xla_gpu_enable_triton_gemm=false" in unguarded.triton_warning
+    assert f"WARNING: {unguarded.triton_warning}" in unguarded.text().splitlines()
+    assert unguarded.record()["triton_warning"] == unguarded.triton_warning
+    on_cpu = check(folder, variant="cpu", base=True, installed=pinned("cpu"), devices=CPU, system=base_system(),
+                   flags="")
+    for quiet in (check(folder, flags="--xla_gpu_enable_triton_gemm=false", **gpu), on_cpu):
+        assert quiet.triton_warning is None and "WARNING" not in quiet.text()
+        assert quiet.record()["triton_warning"] is None
+
+
+def test_the_check_reads_the_environments_flags_where_none_are_given(folder, monkeypatch):
+    gpu = dict(variant="cuda12", gpu="A100-40GB", base=True, installed=pinned("cuda12"), devices=A100_40GB,
+               system=base_system())
+    monkeypatch.setenv("XLA_FLAGS", "--xla_gpu_enable_triton_gemm=false")
+    assert check(folder, **gpu).triton_warning is None
+    monkeypatch.delenv("XLA_FLAGS")
+    assert check(folder, **gpu).triton_warning is not None
+
+
 @pytest.mark.parametrize("recorded", [None, "default", "float32", "bfloat16"])
 def test_a_gpu_run_whose_lock_records_another_matmul_precision_is_refused(tmp_path, recorded):
     jax.config.update("jax_default_matmul_precision", None)

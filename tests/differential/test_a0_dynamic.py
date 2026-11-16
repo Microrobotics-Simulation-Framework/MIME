@@ -72,10 +72,15 @@ def x64():
 
 @pytest.fixture(scope="module", params=list(FREQUENCY))
 def measured(request):
+    """A0 on its dynamic rungs for 10 s at one frequency: 22 to 70 s cold, built again by every worker that runs a reader
+    under ``--dist worksteal``, so a reader that lands on a second worker pays it there (the ``[10hz]`` run was built on two
+    workers of shard 18 in 17 of the 30 cold Python 3.12 and 3.14 reports of 14 to 15 November, one of them an unlisted
+    reader at 45.1 s). The eight readers carry ``fixture_first`` (``tests/_fixture_first.py``), which gives them to one worker."""
     found, run = measure(request.param)
     return request.param, found, run
 
 
+@pytest.mark.fixture_first
 def test_a0_on_its_dynamic_rungs_matches_its_reference_with_exactly_the_second_declarations_differences(measured):
     """The gate: every quantity of the second declaration holds its tolerance about its prediction, at both
     frequencies (``a0_dynamic_compare.second``): the first's gates that never read the angle, carried; the phases read
@@ -88,6 +93,7 @@ def test_a0_on_its_dynamic_rungs_matches_its_reference_with_exactly_the_second_d
     assert second_failures(gates) == []
 
 
+@pytest.mark.fixture_first
 def test_the_first_declaration_holds_but_where_the_finding_moves_it(measured):
     """The first declaration, as committed: every gated quantity holds its declared tolerance about its prediction
     but those that read the rotor's single-precision angle (``ANGLE_READING``), which the finding moves and which are
@@ -104,6 +110,7 @@ def test_the_first_declaration_holds_but_where_the_finding_moves_it(measured):
     assert [name for name in failures(rows) if name not in ANGLE_READING] == []
 
 
+@pytest.mark.fixture_first
 def test_the_rotors_spin_up_turns_the_wrist_as_predicted(measured):
     """The rotor's inertia on the arm (the declaration's ``rotor-axial-inertia``): as the PI loop spins the rotor up,
     the drive's reaction turns joint 6 backwards and the joint loop pulls it back. Its largest excursion and speed are
@@ -118,6 +125,7 @@ def test_the_rotors_spin_up_turns_the_wrist_as_predicted(measured):
         assert abs(value / predicted[name] - 1) <= tolerance, name
 
 
+@pytest.mark.fixture_first
 def test_no_joint_reaches_a_stop(measured):
     """The declaration's ``stops``: no joint reaches a limit, so the stops' impulses (0.2 clipped and kept the velocity)
     never act."""
@@ -132,6 +140,7 @@ def test_no_joint_reaches_a_stop(measured):
     assert margin > 0.0
 
 
+@pytest.mark.fixture_first
 def test_what_cannot_discriminate_is_reported_and_why(measured):
     """The radial offset sits on the projection's constraint, and the locked ratio of the body's rotation to the field's
     is 1 whatever the frequency."""
@@ -140,6 +149,7 @@ def test_what_cannot_discriminate_is_reported_and_why(measured):
     assert abs(found["rotation_ratio_body_over_field"] - 1) <= 1e-4
 
 
+@pytest.mark.fixture_first
 def test_the_comparison_tells_one_frequency_from_the_other(measured):
     """The control for the whole comparison: held to the other frequency's prediction, 0.3 misses every gated quantity
     but the distance from the body, which the controller holds at either frequency."""
@@ -150,6 +160,7 @@ def test_the_comparison_tells_one_frequency_from_the_other(measured):
     assert [row.quantity for row in rows if row.holds] == ["magnet_body_distance_minus_standoff_mean_m"]
 
 
+@pytest.mark.fixture_first
 def test_the_second_declaration_tells_one_frequency_from_the_other(measured):
     """Its control for the whole comparison: held to the other frequency's prediction, every carried gate but the
     distance misses, and so does every phase gate the declaration said would (each whose two predictions are further
@@ -164,6 +175,7 @@ def test_the_second_declaration_tells_one_frequency_from_the_other(measured):
     assert gates["magnet_body_distance_minus_standoff_mean_m"].holds
 
 
+@pytest.mark.fixture_first
 def test_the_magnets_pose_through_its_mount_is_the_references_moved_by_the_prediction(measured):
     """The rotor's pose (the flange's, the motor on it, the rotor turned about its axis) at the reference's sampled
     steps in the window: its position and its spin axis are the reference's moved by the emulation's predicted

@@ -94,6 +94,9 @@ DISTORTION_BOX = 0.3
 #: or the share of saturated ones) it raised for in that frame, and zero at every other step.
 FLAG_FIELDS = ("beyond_distortion", "saturated", "outside_parent", "small_silhouette", "window_overflow", "behind",
                "ghosting", "thin_cap")
+#: The flags of the sampled route's corners, each a state field only of a camera that images a body by that route
+#: (:meth:`CameraNode.flag_fields`): a camera without one compiles the programs it did before them.
+SAMPLED_FLAG_FIELDS = ("corner_unverified", "corner_bound")
 #: The static structure of a camera fixed in the world, a leaf (:meth:`CameraNode.run_constants`): the ray table's origin,
 #: its ten planes (the direction, its derivatives along u and v, whether a pixel lies beyond the distortion), the standing
 #: subjects' transmission and the static flags in their names' order, packed flat (:func:`packed`).
@@ -159,6 +162,8 @@ class CameraState(TypedDict, closed=True):
     behind: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     ghosting: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     thin_cap: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    corner_unverified: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    corner_bound: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
 
 
 class CameraInputs(TypedDict, extra_items=ReadOnly[Float[Array, "7"]]):
@@ -334,7 +339,7 @@ class CameraNode(MountedNode):
     # -- what the node holds, made once from its constants ----------------------------------------------------------
 
     def _made(self) -> tuple[Pinhole, tuple[Subject, ...]]:
-        """The detector and the subjects, each disc-covered body's window sized from its initial pose."""
+        """The detector and the subjects, each disc-covered or sampled body's window sized from its initial pose."""
         held = self.constants()
         spec = json.loads(cast(str, held["spec"]))
         intrinsics = self.build_intrinsics()
@@ -351,7 +356,8 @@ class CameraNode(MountedNode):
         made: list[Subject] = []
         for each in spec["subjects"]:
             subject = scene.subject_of(each)
-            if subject.moving and subject.coverage == "disc" and subject.window is None:
+            if subject.moving and subject.window is None and (subject.coverage == "disc"
+                                                               or subject.placed.sampled is not None):
                 at = poses[bodies.index(owner[subject.name])]
                 origin = _composed(at, np.concatenate([np.asarray(subject.placed.centre), [1.0, 0.0, 0.0, 0.0]]))[:3]
                 reach = float(np.asarray(projected_reach(reach_camera, pose0, origin, subject.enclosing())))
@@ -384,6 +390,12 @@ class CameraNode(MountedNode):
         if p is not None and MESH_KEYS[0] in p:
             return tuple(jnp.asarray(p[key], dtype=dtype) for key in MESH_KEYS)
         return tuple(jnp.asarray(self._tree.arrays[key], dtype=dtype) for key in MESH_KEYS)
+
+    def flag_fields(self) -> tuple[str, ...]:
+        """The flags the node holds as state: :data:`FLAG_FIELDS`, and :data:`SAMPLED_FLAG_FIELDS` where a subject takes
+        the sampled route."""
+        sampled = any(each.placed.sampled is not None for each in self._held[1])
+        return FLAG_FIELDS + (SAMPLED_FLAG_FIELDS if sampled else ())
 
     def traces_meshes(self) -> bool:
         """Whether the node traces static meshes (the stage's scenery, or structures by their drawings)."""
@@ -587,7 +599,7 @@ class CameraNode(MountedNode):
         scalar = as_run_array(0.0)
         zero_int = jnp.asarray(0, dtype=jnp.int32)
         rows, columns = self.image_shape()
-        flags = {name: scalar for name in FLAG_FIELDS}
+        flags = {name: scalar for name in self.flag_fields()}
         return node_fields(CameraState(
             steps=zero_int, frame_step=jnp.asarray(-1, dtype=jnp.int32), age=zero_int, new_frame=zero_int,
             image=as_run_array(np.zeros((rows, columns))), expected=as_run_array(np.zeros((rows, columns))),
@@ -634,7 +646,7 @@ class CameraNode(MountedNode):
         def framed(rays: Rays, static: Array, flags: dict[str, Any]) -> tuple[Array, Array, dict[str, Array]]:
             captured = exposed(subjects, camera, pose, rays, static, dict(flags), moves, Exposure(sub_frames),
                                response_of(spec), key)
-            totals = {name: jnp.zeros((), dtype=dtype) for name in FLAG_FIELDS}
+            totals = {name: jnp.zeros((), dtype=dtype) for name in self.flag_fields()}
             for flag, value in captured.flags.items():
                 kind = flag.split(":")[0]
                 if kind in totals:
@@ -712,7 +724,7 @@ class CameraNode(MountedNode):
             return self._rendered(p, exposure, intrinsics, pose, key, dtype)
 
         def keep() -> tuple[Array, Array, dict[str, Array]]:
-            return held["image"], held["expected"], {name: jnp.zeros((), dtype=dtype) for name in FLAG_FIELDS}
+            return held["image"], held["expected"], {name: jnp.zeros((), dtype=dtype) for name in self.flag_fields()}
 
         # The frame's render is checkpointed: reverse mode keeps a cond's residuals as large as its largest branch at
         # every step whichever branch runs, so a step's tape would hold a render's (tens of frames) at every step of the

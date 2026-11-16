@@ -3,7 +3,8 @@ refusal, and ``allocate()`` re-based on it.
 
 **The swap test** draws problems on the three arrays MIME ships (``allocation_draws``) and holds the law to BVLS at
 camera spike R2's line in both dtypes, limits inactive and active. Its plant (``ALLOCATION_PLANT=limits``): the law
-is handed limits 1 % looser.
+is handed limits 1 % looser. Where two faces are within the law's tie window the test lets the law take either, the one of
+less effort: a unique minimiser binds it only past that window (a recorded draw, below, pins this).
 
 **The derivative**, within a draw's active set, is affine in the wanted values and the limit, so central differences
 over a segment whose ends hold the same active set are exact up to rounding, and judge it to the line over the step;
@@ -30,6 +31,7 @@ import inspect
 import os
 import re
 import sys
+from collections import Counter
 from collections.abc import Iterator
 from functools import cache
 from pathlib import Path
@@ -40,9 +42,9 @@ import numpy as np
 import pytest
 from allocation_cases import (GUARD_POINTS, LIMIT, OWNER, allocating_field, allocating_sphere, guard_point_derivative,
                               guard_point_value)
-from allocation_draws import (SLACK, General, Problem, bvls, column_oracle, generals, line, problems, reach_of,
-                              residual_line, verdict)
-from hypothesis import HealthCheck, assume, given, settings
+from allocation_draws import (SLACK, General, Problem, bvls, column_oracle, general_at, generals, line, problems,
+                              provider, reach_of, residual_line, tie_window, unique, verdict)
+from hypothesis import HealthCheck, assume, event, given, settings
 from hypothesis import strategies as st
 
 import mime.control._allocation as law_module
@@ -99,6 +101,70 @@ def test_control_limits_one_percent_looser_fail_the_swap_test():
     with in_dtype("float64"):
         found = exact_allocation(a, b, lower=-problem.limit * 1.01, upper=problem.limit * 1.01, scales=s, owner=OWNER)
         assert verdict(problem, np.asarray(found.commands), "float64") != []
+
+
+def tie_draw() -> Problem:
+    """Release run 43740791320 (shard 29, Python 3.13), the swap test's draw: OctoMag at the centre of its region asked
+    for a field of 2.72 times what its coils reach at 5 A, along y, with the field rows over 10 mT and the gradient's over
+    1 T/m."""
+    matrix = provider("octomag").actuation(m((0.0, 0.0, 0.0))).matrix()
+    wanted = np.zeros(8)
+    wanted[1] = reach_of(matrix, 5.0) * float(np.exp(1.0))
+    return Problem("octomag", "both", matrix, wanted, np.asarray([1e-2] * 3 + [1.0] * 5), 5.0)
+
+
+def test_a_unique_minimiser_binds_the_law_only_past_its_tie_window_in_float32():
+    """The draw failed the swap test in float32: the law put command 1 at +5 A where BVLS puts it at -5 A. The problem is
+    unique (its columns are alike, spread 1.4, condition 12: nothing near the stated column-spread limit), and the two
+    faces' residuals differ by 85 units in the last place of the target's norm, which float32 resolves (its computed
+    residuals are good to a third of one), but inside the law's tie window of 64 units each side, so the law ties the
+    faces, and their effort is equal. The law's own rule then holds either, and the verdict holds it to the residual
+    past its windows, not to BVLS's commands. The controls: float64, whose windows are 1e-9 of that, holds the law to
+    BVLS's commands, and a face off by a command whose flip costs far past the float32 windows is still refused."""
+    problem = tie_draw()
+    a, b = problem.scaled("float32")
+    reference = bvls(problem, "float32")
+    flipped = reference.copy()
+    flipped[0] *= -1  # the tied face
+    gap = float(np.linalg.norm(a @ flipped - b) - np.linalg.norm(a @ reference - b))
+    window = tie_window(problem, flipped, "float32") + tie_window(problem, reference, "float32")
+    # the premise of the draw: unique, resolvable by float32's rounding, inside the windows
+    assert unique(problem, "float32") and 8 * float(np.finfo("float32").eps) * float(np.linalg.norm(b)) < gap < window
+    assert verdict(problem, flipped, "float32") == []
+    assert verdict(problem, solved(problem, "float32"), "float32") == []
+    far = reference.copy()
+    far[1] *= -1  # a command whose flip costs far more than the windows
+    assert verdict(problem, far, "float32") != []
+    assert verdict(problem, solved(problem, "float64"), "float64") == []
+    assert verdict(problem, bvls(problem) * np.asarray([-1, 1, 1, 1, 1, 1, 1, 1]), "float64") != []
+
+
+def cardiomag_tie_draw() -> Problem:
+    """Release run 43748061840's second swap red (PR 325's CI, float32): CardioMag at the centre of its region asked for a
+    field along z and a gradient's last entries, the field rows over 10 mT and the gradient's over 1 T/m, 5 A."""
+    matrix = provider("cardiomag").actuation(m((0.0, 0.0, 0.0))).matrix()
+    wanted = np.asarray([0.0, 0.0, 0.03585362502957054, 0.0, 0.0, 0.0, 0.057365800047312863, 0.043024350035484646])
+    return Problem("cardiomag", "both", matrix, wanted, np.asarray([1e-2] * 3 + [1.0] * 5), 5.0)
+
+
+def test_a_unique_minimiser_with_a_command_off_its_bound_is_held_to_the_tie_window_too():
+    """The second draw of the same cause. Unique (columns alike), float64 agrees with BVLS to 3e-14 A; in float32 the law
+    puts command 5 at its +5 A bound where BVLS leaves it at 4.95 A, and the commands differ by 0.062 A against a line of
+    0.00083. The residuals differ by 3.4e-5, inside the windows (1.3e-4), and the law's effort is the lower. The law's
+    float32 commands at the draw are held here as numbers, so that the case does not move with the law's rounding."""
+    problem = cardiomag_tie_draw()
+    a, b = problem.scaled("float32")
+    reference = bvls(problem, "float32")
+    law = np.asarray([5.0, -4.20883465, 4.74467897, -4.38866854, 5.0, -4.01990557, 3.06744909, -3.12709117])
+    gap = float(np.linalg.norm(a @ law - b) - np.linalg.norm(a @ reference - b))
+    window = tie_window(problem, law, "float32") + tie_window(problem, reference, "float32")
+    assert unique(problem, "float32") and float(np.max(np.abs(law - reference))) > line(problem, reference, "float32")
+    assert 0.0 < gap < window
+    assert verdict(problem, law, "float32") == []
+    far = reference.copy()
+    far[2] *= -1  # a command whose flip costs far more than the windows
+    assert verdict(problem, far, "float32") != []
+    assert verdict(problem, solved(problem, "float64"), "float64") == []
 
 
 def fixed_problems() -> list[Problem]:
@@ -318,10 +384,17 @@ def law_of(names: tuple[str, ...], only: str = "commands", planted: bool = True)
 
 
 #: Steps of the central difference, tried from the largest: the first at which both ends, and the double step's ends,
-#: hold the base's active set.
-STEPS = (1e-5, 1e-6, 1e-7)
-#: Of a draw's inputs at least this many must be differenced (the rest held an active-set change within every step).
-DIFFERENCED = 6
+#: hold the base's active set, and at which the difference's own rounding is small against the derivative it judges
+#: (``ROUNDING_SHARE``). A draw's active set can switch within 1e-7 of its base along one input's tangent (a coil a
+#: hair from its bound), which a ladder stopping at 1e-7 reads as "undifferenceable".
+STEPS = (1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10, 1e-11)
+#: The share of the law's sensitivity (its largest derivative, times the tangent) that a step's rounding may reach before
+#: the step is too small to judge by: the floor of the ladder, set by the dtype's rounding and not by a number of decades.
+ROUNDING_SHARE = 1e-3
+#: Of the draws of a run (the float64 property's), each input must be differenced in at least this share. A draw that no
+#: step clears is not a failure of the law (an input can sit on an active-set switch); a run in which most draws leave an
+#: input undifferenced has tested too little of it.
+RUN_DIFFERENCED_SHARE = 0.9
 
 
 class Derivatives(NamedTuple):
@@ -351,7 +424,8 @@ def derivatives_at(names: tuple[str, ...], values: list[np.ndarray], tangents: l
             [np.asarray(c, np.float64) for c in pullback(jnp.asarray(cotangent, dtype=dtype))])
 
 
-def derivative_in_every_input_problems(general: General, dtype: str) -> list[str]:
+def derivative_in_every_input_problems(general: General, dtype: str,
+                                       differenced_inputs: set[str] | None = None) -> list[str]:
     """What is wrong with the law's derivative in each of its inputs (matrix, wanted, lower, upper, offset, reference,
     reference scales, scales) at ``general``, along one tangent in each.
 
@@ -366,7 +440,12 @@ def derivative_in_every_input_problems(general: General, dtype: str) -> list[str
     Jacobian's absolute product and the law's own sensitivity (its largest derivative in any input, times the
     tangent): the scale an input's rounding is of where the derivative in it is zero, which the result's own scale
     would call exact. The condition number is the selected set's: the derivative of a least squares or a
-    pseudo-inverse carries it, and its square in the matrix's."""
+    pseudo-inverse carries it, and its square in the matrix's.
+
+    ``differenced_inputs``, if given, is filled with the names of the inputs the float64 central difference judged. An
+    input whose every step crossed an active-set change, or whose rounding at the steps that did not was too large to
+    judge by, is left out and is no failure of the draw (it can sit on a switch): the property's run counts them, and
+    fails where an input was left out of too many draws (``run_guard_problems``)."""
     found: list[str] = []
     rng = np.random.default_rng(general.seed + 1)
     names = tuple(general.inputs())
@@ -423,32 +502,85 @@ def derivative_in_every_input_problems(general: General, dtype: str) -> list[str
                 high, low = np.asarray(ends[1].commands), np.asarray(ends[-1].commands)
                 one = (high - low) / (2 * h)
                 two = (np.asarray(ends[2].commands) - np.asarray(ends[-2].commands)) / (4 * h)
-                allowed = 2 * np.abs(two - one) + SLACK * eps * float(np.max(np.abs(high) + np.abs(low))) / (2 * h)
+                rounding = SLACK * eps * float(np.max(np.abs(high) + np.abs(low))) / (2 * h)
+                if rounding > ROUNDING_SHARE * floor:
+                    break  # smaller steps only round worse: the rest of the ladder cannot judge this input
+                allowed = 2 * np.abs(two - one) + rounding
                 if np.any(np.abs(one - product) > allowed):
                     found.append(f"{name}: forward mode {product} against central differences {one} at h {h}: "
                                  f"{float(np.max(np.abs(one - product))):.3g} past {float(np.max(allowed)):.3g}")
                 differenced += 1
+                if differenced_inputs is not None:
+                    differenced_inputs.add(name)
                 break
     if dtype == "float32" and differenced == 0 and not found:
         # float32 and float64 chose different active sets at the rounded inputs (a near tie): the premise of the
         # comparison, one active set, does not hold, so the draw is no evidence either way.
         assume(False)
-    if dtype == "float64" and differenced < DIFFERENCED and not found:
-        found.append(f"only {differenced} of {len(names)} inputs were differenced (an active-set change within "
-                     f"every step of the rest): the draw tests too little")
+    if dtype == "float64" and differenced == 0 and not found:
+        found.append(f"none of {len(names)} inputs could be differenced: the draw tests nothing")
+    return found
+
+
+def run_guard_problems(draws: int, differenced: Counter[str], present: Counter[str]) -> list[str]:
+    """What a run of the float64 property left too little tested: ``present[name]`` draws had the input ``name`` and
+    ``differenced[name]`` of them judged it by a central difference."""
+    found = [f"{name}: differenced in {differenced[name]} of {count} draws, under the share {RUN_DIFFERENCED_SHARE}"
+             for name, count in sorted(present.items()) if differenced[name] < RUN_DIFFERENCED_SHARE * count]
+    if draws == 0:
+        found.append("the run drew nothing")
     return found
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])
-@settings(max_examples=100, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
-@given(general=generals())
-def test_the_derivative_in_every_input_is_the_selected_sets_in_both_modes(dtype, general):
+def test_the_derivative_in_every_input_is_the_selected_sets_in_both_modes(dtype):
     """The law's derivative in the matrix, the wanted values, the limits, the offset, the reference, its scales and the
     rows' scales (the first derivative test differentiates in the wanted values and the limit alone, so a wrong or
     stopped dependence on the matrix was invisible to it), on problems of 3 to 8 commands, tall and wide, regularised
     or not. Plants: ``stop_q`` (the orthogonal factor of the tall solve stopped) and ``stop_inverse`` (the wide
-    solve's pseudo-inverse stopped)."""
-    assert derivative_in_every_input_problems(general, dtype) == [], general.form
+    solve's pseudo-inverse stopped).
+
+    The premise that a draw tests the derivative in each input is held over the run, not per draw: an input a draw
+    leaves undifferenced (an active-set switch within every step) is counted, reported as a Hypothesis event, and the
+    run fails if any input was left out of more than a tenth of the draws (``run_guard_problems``). The property is
+    run from inside the test, so that the counts live in one process whatever the shard or worker."""
+    draws, differenced, present = [0], Counter[str](), Counter[str]()
+
+    @settings(max_examples=100, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
+    @given(general=generals())
+    def the_property(general: General) -> None:
+        judged: set[str] = set()
+        assert derivative_in_every_input_problems(general, dtype, judged) == [], general.form
+        if dtype == "float64":
+            draws[0] += 1
+            present.update(general.inputs().keys())
+            differenced.update(judged)
+            event(f"{len(judged)} of {len(general.inputs())} inputs differenced")
+
+    the_property()
+    if dtype == "float64":
+        assert run_guard_problems(draws[0], differenced, present) == []
+
+
+def test_the_run_guard_fails_a_run_that_differences_too_little():
+    """The guard's control: a run in which the matrix was differenced in 80 of 100 draws fails, and one at 95 passes."""
+    present = Counter({"matrix": 100, "wanted": 100})
+    assert run_guard_problems(100, Counter({"matrix": 80, "wanted": 100}), present) != []
+    assert run_guard_problems(100, Counter({"matrix": 95, "wanted": 100}), present) == []
+    assert run_guard_problems(0, Counter(), Counter()) != []
+
+
+#: The draw of release run 43731739240 (seed 3512841, 6 commands, 6 rows, plain): its matrix and upper limit sit within
+#: 7e-8 and 1.1e-7 along their tangents of an active-set switch, so that a ladder stopping at a step of 1e-7 (whose double
+#: step crosses it) judged only five of the seven inputs and the per-draw count failed.
+SWITCH_NEAR_DRAW = (6, 6, False, 3512841)
+
+
+def test_a_draw_with_the_matrix_a_hair_from_a_switch_is_differenced_in_every_input():
+    judged: set[str] = set()
+    general = general_at(*SWITCH_NEAR_DRAW)
+    assert derivative_in_every_input_problems(general, "float64", judged) == []
+    assert judged == set(general.inputs())
 
 
 # -- the limit on the columns' spread --------------------------------------------------------------------------------
