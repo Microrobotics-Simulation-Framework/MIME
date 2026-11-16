@@ -234,11 +234,11 @@ def test_millinewtons_and_square_millimetres_are_units_of_the_dimension_and_scal
 
 
 def test_an_angle_site_takes_deg_and_rad_and_refuses_what_is_not_an_angle():
-    from mime.units import ANGLE, rad
+    from mime.units import Angle, rad
 
-    assert si(deg(90), ANGLE, what="an angle") == pytest.approx(math.pi / 2) == si(rad(math.pi / 2), ANGLE, what="a")
+    assert si(deg(90), Angle, what="an angle") == pytest.approx(math.pi / 2) == si(rad(math.pi / 2), Angle, what="a")
     for wrong, said in ((30.0, "the bare value 30.0"), (mm(1), "length"), (Hz(1) * s(0.1), "turns"), (s(1), "time")):
         with pytest.raises(UnitError, match=said):
-            si(wrong, ANGLE, what="an angle")
+            si(wrong, Angle, what="an angle")
     assert si(30.0, DIMENSIONLESS, what="a number") == 30.0, "a dimensionless site still takes a bare number"
     assert si(deg(30), DIMENSIONLESS, what="a number") == pytest.approx(math.pi / 6)

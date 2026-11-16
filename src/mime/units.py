@@ -135,7 +135,7 @@ class _Radians(Dimension):
 
 
 class _PlaneAngle(Dimension):
-    """A plane angle, counted in radians: :data:`ANGLE`'s class. It has no exponents, so it equals :data:`DIMENSIONLESS`,
+    """A plane angle, counted in radians: :data:`Angle`'s class. It has no exponents, so it equals :data:`DIMENSIONLESS`,
     and it is its own class for the reason :class:`_Turns` is: ``typing`` keeps one ``Annotated[Quantity, ...]`` for markers
     that are equal and of one type, so a setting that says it is an angle is told from one that is dimensionless by its
     marker's type."""
@@ -166,7 +166,7 @@ FREQUENCY: Dimension = _Turns((DIMENSIONLESS / TIME).exponents)
 ANGULAR_VELOCITY: Dimension = _Radians(FREQUENCY.exponents)
 #: A plane angle, in radians: ``deg(30)`` and ``rad(0.5)``. A site declared with it takes a quantity of an angle and refuses
 #: a bare number (30 of what?), a quantity of any other dimension, and a number of turns (a frequency times a time).
-ANGLE: Dimension = _PlaneAngle(DIMENSIONLESS.exponents)
+Angle: Dimension = _PlaneAngle(DIMENSIONLESS.exponents)
 VELOCITY = LENGTH / TIME
 ACCELERATION = LENGTH / TIME**2
 FORCE = MASS * ACCELERATION
@@ -224,7 +224,6 @@ Current = CURRENT
 Temperature = TEMPERATURE
 Frequency = FREQUENCY
 AngularVelocity = ANGULAR_VELOCITY
-Angle = ANGLE
 Velocity = VELOCITY
 Acceleration = ACCELERATION
 Force = FORCE
@@ -696,7 +695,7 @@ _SYMBOLS = {
 def unit_symbol(dimension: Dimension) -> str:
     """How the saved form writes a dimension: its SI symbol (``m``, ``m/s^2``), ``1`` when dimensionless, and
     otherwise a product of base units (``m^2 kg s^-1``), which :func:`parse_unit` reads back. A plane angle
-    (:data:`ANGLE`) is ``rad``, which reads back as dimensionless."""
+    (:data:`Angle`) is ``rad``, which reads back as dimensionless."""
     if isinstance(dimension, _PlaneAngle):
         return "rad"
     if dimension == DIMENSIONLESS:
@@ -1228,7 +1227,7 @@ from mime.core._labels import install_label_reader  # noqa: E402  (``mime.core``
 install_label_reader(parse_label, unit_label, UnitError)
 
 __all__ = [
-    "ACCELERATION", "ANGULAR_VELOCITY", "AREA", "Angle", "ANGLE", "AngularVelocity", "Area", "COMPLIANCE", "Compliance", "HYDRAULIC_RESISTANCE",
+    "ACCELERATION", "ANGULAR_VELOCITY", "AREA", "Angle", "AngularVelocity", "Area", "COMPLIANCE", "Compliance", "HYDRAULIC_RESISTANCE",
     "HydraulicResistance", "PRESSURE", "Pressure", "VOLUME_FLUX", "VolumeFlux", "Pa", "Pa_s_per_m3", "m3_per_Pa",
     "m3_per_s", "mL_per_s", "SAY_THE_ANGLE", "rate_symbol", "says_its_angle", "CURRENT",
     "DENSITY", "DIMENSIONLESS", "DYNAMIC_VISCOSITY", "FIELD_GRADIENT", "FIELD_RATE", "FORCE", "FREQUENCY", "LENGTH",

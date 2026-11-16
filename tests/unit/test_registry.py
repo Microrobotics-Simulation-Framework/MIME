@@ -24,7 +24,7 @@ from mime.registry import (
 )
 from mime.testing.toys import ToyBody, ToyDrag, ToyRecorder, ToySpring
 from mime.things import ThingKind
-from mime.units import ANGLE, DIMENSIONLESS, FORCE, LENGTH, MASS, Angle, Length, Quantity, Time, deg, mm, s, unit_symbol
+from mime.units import DIMENSIONLESS, FORCE, LENGTH, MASS, Angle, Length, Quantity, Time, deg, mm, s, unit_symbol
 from mime.vocabulary import Capability, register_namespace
 
 register_namespace("registering", "0.0.1")
@@ -149,10 +149,10 @@ type _MaybeQuantity = Quantity | None
 
 def test_an_angle_setting_is_kept_as_an_angle_and_documented_with_its_unit():
     assert dimensioned_settings(_law_with(Annotated[Quantity, Angle], deg(30))) == (
-        {"margin": DimensionedSetting(ANGLE)}, [])
+        {"margin": DimensionedSetting(Angle)}, [])
     assert dimensioned_settings(_law_with(Annotated[Quantity | None, Angle], None)) == (
-        {"margin": DimensionedSetting(ANGLE, optional=True)}, [])
-    assert str(ANGLE) == "angle (rad)" and unit_symbol(ANGLE) == "rad" and unit_symbol(DIMENSIONLESS) == "1"
+        {"margin": DimensionedSetting(Angle, optional=True)}, [])
+    assert str(Angle) == "angle (rad)" and unit_symbol(Angle) == "rad" and unit_symbol(DIMENSIONLESS) == "1"
     assert type(get_args(Annotated[Quantity, Angle])[1]) is not type(get_args(Annotated[Quantity, DIMENSIONLESS])[1]), \
         "typing keeps one Annotated for equal markers of one type: an angle and a number are told apart by type"
 
