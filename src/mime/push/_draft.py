@@ -1017,6 +1017,27 @@ def _nothing() -> None:
     pass
 
 
+def dry_run(folder: str | os.PathLike[str], service: Service, *, say: Say = _quiet, full: bool = False) -> Plan:
+    """What :func:`push` would upload and where, and nothing sent: the plan it shows before its first request, made as
+    ``push`` makes it (from the folder and what push kept of the experiment's earlier drafts, never a request), shown
+    in full where ``full``, and a line saying nothing was sent. It reads no token and opens no connection, so it runs
+    offline and for a service the user has no token for."""
+    usable(service)
+    root = Path(os.path.abspath(folder))
+    experiment = experiment_name(root)
+    state = read_state(service, experiment)
+    plan = planned(root, service, state)
+    published = state.published if state is not None and state.record is None else None
+    if published is not None and unchanged(plan, published):
+        say(f"dry run: {plain(experiment)!r} is unchanged since {published.doi} (version {published.version} on "
+            f"{service.name}), so a push would make no version, and nothing was sent")
+        return plan
+    _show_plan(lambda: plan, state, say, full)()
+    say(f"dry run: nothing was sent and nothing on {service.name} was read or changed; `mime push <folder> --to "
+        f"{service.name}` makes the draft and uploads these files")
+    return plan
+
+
 def send(plan: Plan, state: DraftState | None, client: Client, say: Say = _quiet, *,
          overwrite_site_edits: bool = False, choices: Choices | None = None, show: Callable[[], None] = _nothing,
          full: bool = False, holder: list[Plan] | None = None) -> Drafted:

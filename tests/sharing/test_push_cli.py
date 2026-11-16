@@ -126,3 +126,26 @@ def test_without_a_terminal_a_draft_is_made_and_a_publish_is_not(toy: Path, fake
     code, out, err = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--publish", "--yes")
     assert code == 2 and "[user] push.unconfirmed" in err and not fake.records["629525"].published
     assert "--confirm 10.5072/zenodo.629525" in err
+
+
+def test_dry_run_shows_the_plan_and_sends_nothing(toy: Path, fake: FakeRecords, tmp_path: Path,
+                                                  capsys: pytest.CaptureFixture[str],
+                                                  monkeypatch: pytest.MonkeyPatch):
+    """``mime push`` had no ``--dry-run`` (the tour's step 93, an unrecognised argument): the plan it shows before its
+    first request, then nothing sent, with no token read and no request made (both planted to fail)."""
+    from mime.push import _client, _draft
+
+    folder = copy_of(toy, tmp_path)
+    assert run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--init")[0] == 0
+    write_manifest(folder)
+    monkeypatch.setattr(_draft, "token_of", lambda service: (_ for _ in ()).throw(AssertionError("read a token")))
+    monkeypatch.setattr(_client.Client, "request", lambda *a, **k: (_ for _ in ()).throw(AssertionError("sent")),
+                        raising=False)
+    code, out, err = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--dry-run")
+    assert code == 0, err
+    assert "Pushing 'full_toy'" in out and "  up: " in out, "the plan is shown"
+    assert "dry run: nothing was sent" in out and "made the draft" not in out
+    assert fake.drafts() == [] and push.read_state(fake.service(), "full_toy") is None
+    with pytest.raises(SystemExit):
+        main(["push", str(folder), "--to", "zenodo-sandbox", "--dry-run", "--publish"])
+    assert "not allowed with argument" in capsys.readouterr().err, "a mode of its own"

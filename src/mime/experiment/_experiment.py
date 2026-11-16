@@ -1041,10 +1041,13 @@ def own_run_folder(out: Path) -> bool:
     return RUN_RECORD in names and all(_is_what_it_is_named(out / name) for name in names)
 
 
-def foreign_entries(out: Path) -> tuple[str, ...]:
+def foreign_entries(out: Path, *, own_too: bool = False) -> tuple[str, ...]:
     """What keeps ``out`` from being a folder a run may be written into without ``force``: its entries, sorted (a folder
     ends in ``/``), when it holds anything and is not MIME's own run folder (:func:`own_run_folder`), and ``()`` when it
-    is not there, is empty, or is MIME's own. A file at ``out``, or a link that leads nowhere, is named."""
+    is not there, is empty, or is MIME's own. A file at ``out``, or a link that leads nowhere, is named. With
+    ``own_too`` (``mime run``'s rule: no silent overwrite anywhere) MIME's own run folder is named too, since a run
+    replaces the run in it; the folder the runner's environment check alone is in is still free, as a run is about to
+    be written into it."""
     if out.is_symlink() and not out.exists():
         return (f"{out.name} (a link to nowhere)",)
     if not out.exists():
@@ -1052,7 +1055,9 @@ def foreign_entries(out: Path) -> tuple[str, ...]:
     if not out.is_dir():
         return (out.name,)
     held = sorted(child.name + ("/" if child.is_dir() else "") for child in out.iterdir())
-    return () if not held or own_run_folder(out) else tuple(held)
+    if not held or held == [ENV_CHECK_FILE] and own_run_folder(out):
+        return ()
+    return tuple(held) if own_too or not own_run_folder(out) else ()
 
 
 def not_a_folder(out: Path) -> bool:
@@ -1060,23 +1065,28 @@ def not_a_folder(out: Path) -> bool:
     return (out.is_symlink() and not out.exists()) or (out.exists() and not out.is_dir())
 
 
-def refuse_out_not_own(out: Path, force: bool, *, meanwhile: bool = False) -> None:
+def refuse_out_not_own(out: Path, force: bool, *, meanwhile: bool = False, own_too: bool = False) -> None:
     """Refuse, before a run starts, a folder that is neither new, empty nor MIME's own run folder (:func:`own_run_folder`):
     the run replaces the files of its own names in it (``outputs.json``, ``run.json``, ``experiment/``'s saved form), and
     a file of yours of one of those names is lost, with nothing said. ``force`` runs into it all the same, but not into
     what is no folder (a file, a link to nowhere): there is nothing to run into. ``meanwhile`` says the folder was
     judged once already and has changed since, while the run computed (:meth:`BuiltExperiment.run_to` judges it again
-    where writing begins)."""
-    held = foreign_entries(Path(out))
+    where writing begins). ``own_too`` refuses MIME's own run folder as well (``mime run``'s rule, his: a run never
+    replaces another run without being asked to), which :meth:`BuiltExperiment.run_to` does not, so that a script that
+    runs again into its own folder keeps working."""
+    held = foreign_entries(Path(out), own_too=own_too)
     if not held or (force and not not_a_folder(Path(out))):
         return
     shown = ", ".join(held[:5]) + (", ..." if len(held) > 5 else "")
     what = ("a link to nowhere" if Path(out).is_symlink() else "a file") if not_a_folder(Path(out)) else None
     changed = f"{out} changed while the run computed, and " if meanwhile else ""
+    ours = what is None and own_run_folder(Path(out))
     raise ArgumentRefused([Refusal(
         "run.out-not-empty", RefusalClass.USER,
-        f"{changed}the run would be written into {out}, which holds {shown} and is not an empty folder or a MIME run "
-        "folder" if what is None else f"{changed}the run would be written into {out}, which is {what}, not a folder",
+        f"{changed}the run would be written into {out}, which holds {shown} and is "
+        + ("a MIME run folder already: the run would replace that run" if ours else
+           "not an empty folder or a MIME run folder") if what is None else
+        f"{changed}the run would be written into {out}, which is {what}, not a folder",
         "write it to a new folder or an empty one: --out <a new folder> (or out=); or run into this one with --force "
         "(or force=True): it warns at the start of what the folder holds, Ctrl+C cancels the run until writing begins "
         "(nothing is touched), an amber notice says when writing begins, and only the files a run writes are replaced"

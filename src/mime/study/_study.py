@@ -554,8 +554,9 @@ class Study:
         groups whose number is ``i`` modulo ``k`` (``k`` at most the study's groups), the rest left ``pending``; shards
         run one after another into one folder add up to the whole study. ``pilot`` has ``say`` the measured cost of a
         chunk of the first group this run runs, before the rest."""
-        from mime.study._folder_run import run_study_to
+        from mime.study._folder_run import refuse_unwritable_out, run_study_to
 
+        refuse_unwritable_out(Path(out))  # before the plan, which takes seconds to minutes
         refuse_no_members(self.plan(), "run")
         assert self._points is not None
         return run_study_to(self, self._experiment, self._points, Path(out), shard=shard, pilot=pilot, say=say)

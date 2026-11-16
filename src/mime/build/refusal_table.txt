@@ -315,6 +315,7 @@ ledger.unmetered              user
 live.address-in-use           environment
 live.chunk                    user
 live.command                  user
+live.endpoint                 user
 live.input-mode               user
 live.input-unknown            user
 live.input-value              user
@@ -352,6 +353,7 @@ load.other-release            user
 load.record-changed           user
 load.reference                user
 load.reference-changed        user
+load.run-folder               user
 load.setting                  user
 load.setting-unknown          user
 load.stage-changed            user
@@ -396,6 +398,7 @@ material.not-a-record         user
 material.require              user
 medium.field-role             user
 medium.flow-twice             user
+modal.out-exists              user
 modal.study-base              user
 modal.study-shards            user
 modal.wheel                   environment
