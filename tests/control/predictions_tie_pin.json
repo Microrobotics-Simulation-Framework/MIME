@@ -1,0 +1,71 @@
+{
+  "written": "2026-11-16, committed before the runs that rate the pin's mutants (the commit that adds this file is the timestamp): the exact allocation's tie window, TIE_ULPS, whose change was invisible to the allocator tests because their oracle imported the constant",
+  "phase": "allocator test pin: the oracle carries its own 64 and the two-sided rule",
+  "labels": "predictions by the pinning agent (Sonnet) from two local single runs of each mutant (not rates); test-side only, no src/ change",
+  "seen_before": [
+    "PR 323's review: TIE_ULPS x16 in the law went unseen, 0 of 8 runs, because tests/control/allocation_draws.py imported the law's constant for its tie window",
+    "locally, one run of each mutant over the new tests: x16 fails the direct pin and the two 1.05 cases (float64, float32), passes the 0.95 cases; /4 fails the direct pin and the two 0.95 cases, passes the 1.05 cases; the clean run passes all seven (the premise, the oracle's own gap over its own window, measured within 0.04 of the nominal ratio in both dtypes)"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU, the laptop (JAX_PLATFORMS=cpu); each run a fresh process",
+    "sizes_and_parameters": "a constructed two-face problem, rows diag(0.001, 1) over unit scales, wanted (0.001 (1 - g), 0.3), limits +-1, reference (1, 0.3): the free face (residual zero) and the bound face (residual 0.001 g, effort zero) differ in residual by 0.95 and by 1.05 of the oracle's two-sided window; no Hypothesis draw: deterministic",
+    "mutants": "the law's TIE_ULPS patched in the test module's context to 64 x 16 = 1024 (ALLOCATION_PLANT=tie_x16) and 64 / 4 = 16 (ALLOCATION_PLANT=tie_div4)"
+  },
+  "gate_1_window_x16_is_caught": {
+    "claim": "a law whose tie window is 16 times wider is caught on every run, and the unplanted arm is quiet",
+    "kind": "equality, with a control",
+    "case": "tests/control/test_exact_allocation.py::test_the_law_ties_two_faces_just_inside_its_window_and_not_just_outside (the 1.05 cases fail) and ::test_the_laws_tie_window_is_the_oracles_declared_64_ulps, ALLOCATION_PLANT=tie_x16; each node rated alone",
+    "prediction": {
+      "value": "20/20 caught on each node; clean 0/20",
+      "band": [20, 20],
+      "unit": "runs caught of 20",
+      "basis": "derived: the 1.05 pair's residual gap is 0.066 of the x16 window, so the law ties and takes the bound face; the pin compares 1024 with the literal 64. Neither depends on a draw or a seed",
+      "why": "deterministic problem and a deterministic comparison"
+    },
+    "control": {
+      "plant": "ALLOCATION_PLANT=tie_x16",
+      "environment_variable": "ALLOCATION_PLANT=tie_x16",
+      "expected_rate": "20/20",
+      "runs": 20,
+      "clean_expected": "0/20"
+    },
+    "if_wrong": "read the missed seed's output: a miss means the faces' tie did not follow the window (the switch's argmin or the premise's margin), not a rounding draw",
+    "cannot_discriminate_if": "the premise's ratio leaves its band in some dtype (the test then fails clean, which the clean arm shows)"
+  },
+  "gate_2_window_div4_is_caught": {
+    "claim": "a law whose tie window is a quarter as wide is caught on every run, and the unplanted arm is quiet",
+    "kind": "equality, with a control",
+    "case": "the same node, the 0.95 cases fail, and the direct pin, ALLOCATION_PLANT=tie_div4",
+    "prediction": {
+      "value": "20/20 caught on each node; clean 0/20",
+      "band": [20, 20],
+      "unit": "runs caught of 20",
+      "basis": "derived: the 0.95 pair's gap is 3.8 of the /4 window, so the law does not tie and takes the free face; the pin compares 16 with 64",
+      "why": "deterministic"
+    },
+    "control": {
+      "plant": "ALLOCATION_PLANT=tie_div4",
+      "environment_variable": "ALLOCATION_PLANT=tie_div4",
+      "expected_rate": "20/20",
+      "runs": 20,
+      "clean_expected": "0/20"
+    },
+    "if_wrong": "as gate 1",
+    "cannot_discriminate_if": "as gate 1"
+  },
+  "bounds_and_estimates": "the pin is an equality on a declared constant and a behavioural check of its two-sided rule on one constructed pair of faces at 0.95 and 1.05 of the window: it bounds nothing about the law's accuracy. A 95 % lower bound after 20 of 20 catches is 0.86",
+  "outcomes": {
+    "written": "2026-11-16, after the runs; the predictions above are unchanged",
+    "runs": "local, the laptop, CPU, .github/probe/detection_rate.py, 20 fresh processes planted and 20 clean per node and plant (the clean arm is the same node with the variable removed)",
+    "gate_1_window_x16_is_caught": {
+      "hit": true,
+      "value": "tie_x16: the two-faces node caught 20/20 and the direct pin 20/20, clean 0/20 flagged on each, none inconclusive (95 % lower bound 0.861)"
+    },
+    "gate_2_window_div4_is_caught": {
+      "hit": true,
+      "value": "tie_div4: the two-faces node caught 20/20 and the direct pin 20/20, clean 0/20 flagged on each, none inconclusive (95 % lower bound 0.861)"
+    },
+    "note": "the two-faces node alone catches each mutant on its own side (x16 at the 1.05 cases, /4 at the 0.95 cases); the direct pin is a second, independent catch"
+  }
+}
