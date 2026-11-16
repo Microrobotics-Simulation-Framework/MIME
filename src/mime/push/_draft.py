@@ -45,6 +45,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
+from mime._manifest_file import OLD_FILE
 from mime._said import (
     DONE,
     EDIT_OURS,
@@ -76,7 +77,7 @@ from mime.push._fields import access_words
 from mime.push._owners import ACCESS_FIELD, FIELD_OWNERS, field_owner
 from mime.push._plan import NOTICE_KEY, Plan, RecordFile, make_plan, restaged, with_sharing
 from mime.push._service import TEST_PREFIX, ZENODO, ZENODO_SANDBOX, Service
-from mime.push._manifest import OLD_FILE, manifest_path, manifest_text, old_values, present, read_record
+from mime.push._manifest import manifest_path, manifest_text, old_values, present, read_record
 from mime.push._sharing import DEFAULT_LICENCE
 from mime.push._state import (
     ACCESS,

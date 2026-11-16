@@ -9,7 +9,7 @@ reason's class and the profile's rule for it, never a code):
   value and MIME computes the extrapolated one by the declared method, recording its basis.
 - ``unknown``: each reason is covered by the experiment's acceptance for that read, with its reason ("accepting it
   anyway is your declaration, not the reader's"), or else the profile's rule for the reason's class decides
-  (:func:`mime.validity.decide`, the one function every site applies its rules through): a waiver it generates, with a
+  (:func:`mime.validity._profiles.decide`, the one function every site applies its rules through): a waiver it generates, with a
   pending basis (exploratory, for an assumption: an unstated condition, a value stated without its origin), or a
   listing; any other reason, and one whose class has no rule, refuses the build. ``no_pick`` is refused even then: no
   one value exists until OpenMaterica reads picks.
@@ -28,7 +28,7 @@ import materica
 from mime.build._refusals import ISSUES, Explained
 from mime.materials._records import Extrapolation, LoadedRecord, Record
 from mime.materials._values import RecordField
-from mime.validity import decide
+from mime.validity._profiles import decide
 from mime.validity._bases import basis_text
 from mime.validity._profiles import Action, Decision, Finding, Judge
 from mime.units import (

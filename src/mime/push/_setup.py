@@ -32,6 +32,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import cast
 
+from mime._manifest_file import OLD_FILE
 from mime._said import DONE, QUESTION_CONFIRM, Said
 from mime._shell import quoted
 from mime._terminal import plain
@@ -46,7 +47,6 @@ from mime.push._defaults import (
 from mime.push._fields import ACCESS_LEVELS, access_problems
 from mime.push._manifest import (
     BUNDLE,
-    OLD_FILE,
     folder_kind,
     kind_of,
     manifest_problems,

@@ -207,7 +207,7 @@ def _settings_of(value: object) -> tuple[str, ...]:
     return tuple(held.name for held in fields(value))
 
 
-class _Names:
+class HandleNames:
     """A handle's namespace of typed paths (``field.commands``, ``umr.initial``): each name it holds is an attribute,
     and any other is an ``AttributeError`` on the line that names it."""
 
@@ -239,11 +239,11 @@ class BodyHandle(Handle):
         self._initial = tuple(initial)
 
     @property
-    def initial(self) -> _Names:
+    def initial(self) -> HandleNames:
         def path(key: str) -> TypedPath:
             return InitialPath(self.name, "initial", key)
 
-        return _Names(self._initial, path, f"body {self.name!r}'s initial state")
+        return HandleNames(self._initial, path, f"body {self.name!r}'s initial state")
 
 
 class ApparatusHandle(Handle):
@@ -261,11 +261,11 @@ class ApparatusHandle(Handle):
         self._commands = tuple(commands)
 
     @property
-    def commands(self) -> _Names:
+    def commands(self) -> HandleNames:
         def path(command: str) -> TypedPath:
             return CommandPath(self.name, "commands", command)
 
-        return _Names(self._commands, path, f"apparatus {self.name!r}'s commands")
+        return HandleNames(self._commands, path, f"apparatus {self.name!r}'s commands")
 
     def __getattr__(self, field: str) -> FieldPath:
         if field.startswith("_"):

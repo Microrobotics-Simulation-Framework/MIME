@@ -26,6 +26,7 @@ from typing import cast
 
 import yaml
 
+from mime._manifest_file import BLOCK_TABLES, MANIFEST_FAMILY, MANIFEST_FILE, MANIFEST_FORMAT, OLD_FILE
 from mime._shell import quoted
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
@@ -33,15 +34,8 @@ from mime.push._sharing import DEFAULT_LICENCE, RECORD_KEYS, Problem, Reader, Sh
 from mime.push._toml import key_lines, value_text
 from mime.saved._versions import newer_form_refusal
 
-MANIFEST_FILE = "mime.toml"
-MANIFEST_FORMAT = "mime.toml/1"
-MANIFEST_FAMILY = "toml"
-#: The record's metadata before ``mime.toml``, which this MIME no longer reads.
-OLD_FILE = "sharing.yaml"
 BUNDLE, STUDY, BLOCK = "bundle", "study", "block"
 KINDS = (BUNDLE, STUDY)
-#: A block's tables, which only a block folder's ``mime.toml`` holds.
-BLOCK_TABLES = ("block", "requires", "sockets", "assets", "licences", "permissions", "validity", "cases")
 _TOP = ("format", *KINDS, "record")
 #: What each kind's folder is, said where a kind table does not match its folder.
 _FOLDER_WORDS = {BUNDLE: "a saved folder (Experiment.save writes one)",
@@ -357,6 +351,6 @@ def record_lines(held: Mapping[str, object], name: str) -> list[str]:
     return lines
 
 
-__all__ = ["BLOCK", "BLOCK_TABLES", "BUNDLE", "KINDS", "MANIFEST_FILE", "MANIFEST_FORMAT", "OLD_FILE", "STUDY", "Manifest",
-           "folder_kind", "kind_of", "manifest_path", "manifest_problems", "manifest_text", "old_values", "present",
-           "read_manifest", "read_record", "read_toml", "record_lines", "toml_holdable", "toml_problems", "toml_shaped"]
+__all__ = ["BLOCK", "BUNDLE", "KINDS", "STUDY", "Manifest", "folder_kind", "kind_of", "manifest_path", "manifest_problems",
+           "manifest_text", "old_values", "present", "read_manifest", "read_record", "read_toml", "record_lines",
+           "toml_holdable", "toml_problems", "toml_shaped"]

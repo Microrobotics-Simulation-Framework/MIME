@@ -36,7 +36,8 @@ from mime.build._refusals import Explained, page_of, plain_possessive
 from mime.dynamics import RigidInertial
 from mime.gradients import GradientStatus
 from mime.registry import ControlLaw, Controller, GradientRecord, Signal, register_controller
-from mime.errors import KEPT, write_traceback
+from mime.errors import write_traceback
+from mime.errors._display import TRACEBACK_FILES_RETAINED
 from mime.errors._boundary import crossed, public
 from mime.errors._display import DIRECTORY_VARIABLE, TRACEBACK_VARIABLE, short_text
 from mime.errors._frames import is_library, script_traceback
@@ -208,11 +209,11 @@ def test_the_script_traceback_keeps_the_scripts_frames_and_the_control_finds_the
 def test_the_full_chain_is_written_to_its_file_and_the_newest_are_kept(tmp_path, monkeypatch):
     monkeypatch.setenv(DIRECTORY_VARIABLE, str(tmp_path))
     paths = []
-    for _ in range(KEPT + 3):
+    for _ in range(TRACEBACK_FILES_RETAINED + 3):
         error = crossed(_raised(lambda: _inner(BuildRefused([refusal()]))))
         paths.append(write_traceback(error))
     held = sorted(tmp_path.glob("*.txt"))
-    assert len(held) == KEPT and paths[-1] in held and paths[0] not in held
+    assert len(held) == TRACEBACK_FILES_RETAINED and paths[-1] in held and paths[0] not in held
     text = held[-1].read_text(encoding="utf-8")
     assert "frame.gravity-missing" in text and "environment:" in text and "Traceback" in text and "_inner" in text
 
@@ -592,13 +593,14 @@ def test_the_cleanup_deletes_only_mimes_own_files_and_writes_them_for_their_user
     """The control: the user's own .txt files in the directory, which a cleanup of every .txt deleted."""
     monkeypatch.setenv(DIRECTORY_VARIABLE, str(tmp_path))
     users = [tmp_path / name for name in ("2025_lab_notebook.txt", "a00_my_results.txt", "notes.txt")]
-    users += [tmp_path / f"{index:03d}.txt" for index in range(KEPT + 5)]
+    users += [tmp_path / f"{index:03d}.txt" for index in range(TRACEBACK_FILES_RETAINED + 5)]
     for path in users:
         path.write_text("the user's own", encoding="utf-8")
-    written = [write_traceback(crossed(_raised(lambda: _inner(BuildRefused([refusal()]))))) for _ in range(KEPT + 3)]
+    written = [write_traceback(crossed(_raised(lambda: _inner(BuildRefused([refusal()]))))) for _ in
+               range(TRACEBACK_FILES_RETAINED + 3)]
     assert all(path.is_file() for path in users), "no file of the user's is deleted"
     held = sorted(tmp_path.glob(f"{_display.PREFIX}*.txt"))
-    assert len(held) == KEPT and written[-1] in held and written[0] not in held
+    assert len(held) == TRACEBACK_FILES_RETAINED and written[-1] in held and written[0] not in held
     if os.name == "posix":
         assert all((path.stat().st_mode & 0o777) == 0o600 for path in held)
 
