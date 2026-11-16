@@ -771,7 +771,7 @@ def _env_check(arguments: argparse.Namespace) -> int:
         report = env.check(arguments.folder, variant=arguments.variant, gpu=arguments.gpu, base=arguments.base,
                            lab=arguments.lab, xla_cache=arguments.xla_cache, mime_version=arguments.mime_version,
                            strict=arguments.strict or arguments.base or arguments.mime_version is not None
-                           or arguments.folder is not None)
+                           or arguments.folder is not None, strict_plugins=arguments.strict)
     except BuildRefused as refused:
         _write_record(arguments.record, {"refused": [str(r) for r in refused.refusals]})
         raise
@@ -2064,7 +2064,9 @@ def build_parser() -> _guide.MimeParser:
                            help="hold every pin exactly, for a reproduction: a distribution at another version than "
                                 "its pin, though inside the ranges MIME's dependencies declare, and one nothing pins, "
                                 "are refused (without it they are notes). It is implied by --base, --mime-version and "
-                                "a folder (its lock), the reproduction's own arguments")
+                                "a folder (its lock), the reproduction's own arguments, except for one thing: an "
+                                "installed plugin that nothing pins is a note unless --strict is given itself, since "
+                                "a lab's second plugin is no difference in the environment the experiment ran in")
     env_check.add_argument("--record", type=Path, metavar="FILE", help="also write what the check found as JSON")
     modal = commands.add_parser("modal", help="write the script that runs a saved experiment on Modal")
     modal.add_argument("folder", type=Path, help="a folder written by Experiment.save")

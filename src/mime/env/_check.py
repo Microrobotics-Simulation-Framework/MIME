@@ -19,7 +19,7 @@ import json
 import os
 import platform
 import sysconfig
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -247,10 +247,21 @@ def outside_declared_ranges(name: str, version: str, paths: Sequence[str] | None
     return None
 
 
+def plugin_distributions() -> frozenset[str]:
+    """The distributions installed here that register entries or assets for MIME (a ``mime.entries`` or ``mime.assets``
+    entry point), by canonical name: a lab's plugins, which an experiment may never use."""
+    found: set[str] = set()
+    for group in ("mime.entries", "mime.assets"):
+        for point in importlib.metadata.entry_points(group=group):
+            if point.dist is not None:
+                found.add(canonicalize_name(point.dist.metadata["Name"]))
+    return frozenset(found)
+
+
 def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapping[str, Expected], *,
                           tolerated: frozenset[str] = frozenset(),
                           optional: Mapping[str, Expected] | None = None, strict: bool = True,
-                          notes: list[str] | None = None,
+                          plugins: Collection[str] = (), notes: list[str] | None = None,
                           outside: Callable[[str, str], str | None] = outside_declared_ranges) -> list[Refusal]:
     """A refusal for each pinned distribution missing or at another version, each installed one nothing pins
     (``tolerated`` names aside), and each of ``optional`` (MIME's own extras' and groups' pins, accepted where they are
@@ -260,7 +271,9 @@ def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapp
     pin is a refusal only where that version is outside the ranges the installed distributions declare for it
     (``outside``), and a distribution nothing pins is no refusal: each is a line in ``notes`` instead, "tested with
     X, installed Y", since a plain install resolves its dependencies within their ranges, newer than the pins CI
-    tested."""
+    tested. ``plugins`` names the installed distributions that are a lab's plugins: one nothing pins is a note too
+    (``--strict`` leaves it out, and it is then a refusal), since a lab's second plugin is no difference in the
+    environment an experiment ran in, where a pinned distribution at another version is."""
     refusals: list[Refusal] = []
     said = notes if notes is not None else []
     held_optional = dict(optional or {})
@@ -300,7 +313,7 @@ def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapp
                                         f"{name} is installed at {', '.join(held)} and pinned at {allowed.version} by "
                                         f"{allowed.source}", REBUILD, subject=subject))
             continue
-        if name not in expected and name not in tolerated and not strict:
+        if name not in expected and name not in tolerated and (not strict or name in plugins):
             said.append(f"{name} {', '.join(held)} is installed and nothing pins it (a distribution beside MIME's own, "
                         f"which the pins neither test nor vouch for)")
             continue
@@ -592,7 +605,8 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
           lab: str | Path | None = None, xla_cache: str | Path | None = None, mime_version: str | None = None,
           installed: Mapping[str, Sequence[str]] | None = None, devices: Sequence[DeviceLike] | None = None,
           system: System | None = None, modules: Mapping[str, str] | None = None,
-          flags: str | None = None, strict: bool = True) -> EnvReport:
+          flags: str | None = None, strict: bool = True, strict_plugins: bool = True,
+          plugins: Collection[str] | None = None) -> EnvReport:
     """Check this environment against the pins of ``variant`` (with ``base``, against the base image of this Python
     series too, and with ``lab``, a requirements file, against the lab's pins), MIME against ``mime_version`` (the
     version of the pinned wheel; without it MIME is not held to one), and JAX's devices against ``gpu`` (an exact type,
@@ -605,7 +619,8 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
     the flag. ``strict`` (the default) holds every pin exactly, as a reproduction needs; without it a distribution
     installed at another version than its pin, inside the ranges the installed distributions declare, and one nothing
     pins, are notes in the report (``EnvReport.notes``) and not refusals, which is what a plain install of MIME meets
-    (it resolves within the ranges, newer than the pins CI tested)."""
+    (it resolves within the ranges, newer than the pins CI tested). A plugin installed beside the pins that nothing pins is a
+    note too unless ``strict_plugins`` (``mime env check --strict``): ``plugins`` stands in for the installed plugins."""
     requested = gpu_type(gpu) if gpu is not None else None
     runner = runner_record()
     x64 = lock_x64(folder) if folder is not None else None
@@ -621,7 +636,8 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
     tolerated = frozenset(() if base else INSTALLERS) | frozenset(() if mime_version is not None else (DISTRIBUTION,))
     refusals += distribution_refusals(found, expected, tolerated=tolerated,
                                       optional=optional_expected(expected, held_system.markers), strict=strict,
-                                      notes=notes)
+                                      plugins=() if strict_plugins else (plugins if plugins is not None else
+                                                                         plugin_distributions()), notes=notes)
     held_modules = modules if modules is not None else (environment_modules() if installed is None else None)
     if held_modules is not None:
         refusals += shadow_refusals(held_modules)

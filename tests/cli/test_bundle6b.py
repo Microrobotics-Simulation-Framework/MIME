@@ -353,3 +353,27 @@ def test_registry_has_a_header_row_and_names_the_namespace_each_entry_comes_from
     assert rows and all(len(row) == 4 for row in rows)
     assert {"mime", "toy"} <= {row[3] for row in rows}
     assert all(row[1].startswith("toy.") for row in rows if row[3] == "toy")
+
+
+# -- (af) an installed plugin that nothing pins is a note, and --strict makes it a refusal -------------------------------
+
+
+def test_an_installed_plugin_nothing_pins_is_a_note_unless_strict_is_asked_for(tmp_path):
+    from mime.build import BuildRefused
+    from mime.env import check
+    from mime.env._check import expected_distributions, this_system
+
+    expected, _ = expected_distributions("cpu", this_system(), base=None, lab=[], mime_version=None)
+    installed = {name: (want.version,) for name, want in expected.items()}
+    installed["labx-plugin"] = ("0.1.0",)
+    installed["some-other-package"] = ("1.0",)
+    common = dict(variant="cpu", installed=installed, system=this_system(), modules={}, flags="")
+    only_plugin = {key: held for key, held in installed.items() if key != "some-other-package"}
+    note = check(strict=True, strict_plugins=False, plugins={"labx-plugin"}, **{**common, "installed": only_plugin})
+    assert any("labx-plugin" in line for line in note.notes)
+    with pytest.raises(BuildRefused) as refused:
+        check(strict=True, strict_plugins=True, plugins={"labx-plugin"}, **{**common, "installed": only_plugin})
+    assert refused.value.codes() == ["env.unpinned"]
+    with pytest.raises(BuildRefused) as refused:  # the control: a package that is no plugin is still refused
+        check(strict=True, strict_plugins=False, plugins={"labx-plugin"}, **common)
+    assert refused.value.codes() == ["env.unpinned"] and "some-other-package" in str(refused.value)
