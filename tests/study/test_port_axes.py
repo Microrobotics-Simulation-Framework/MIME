@@ -44,6 +44,7 @@ import jax
 import numpy as np
 import pytest
 from believed_cases import REASON, BelievedPD, believed_sphere
+from iterative_cases import iterative_coils
 
 import mime.study._fit as fit_module
 import mime.study._gradient as gradient_module
@@ -384,6 +385,23 @@ def test_gate1_the_derivative_through_the_stage_and_the_allocation_meets_central
     found = ladder(allocating(bound), bound, dtype)
     assert found.miss <= found.line, found
     allocator = share(allocating(bound), bound, dtype, _is_controllers)
+    assert abs(allocator) >= SHARE * abs(found.gradient), (allocator, found.gradient)
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_gate1_the_derivative_through_the_stage_and_the_iterative_allocation_meets_central_differences(dtype, monkeypatch):
+    """The combination of G14a and AP4a: the allocating rig with the exact path's size patched below its three coils
+    (``iterative_coils``), so ``ctx.allocator`` takes the iterative path, whose implicit derivative passes the
+    controller's leaf of the bound through ``_bounds``' bound tangents. The line is gate 1's, from the step sweep's own
+    floor; the allocator's share is at least a tenth of the derivative, as on the exact path."""
+    bound = ALLOCATING_BOUND
+    with iterative_coils(monkeypatch):
+        assert "iterative" in "\n".join(allocating(bound, "port_iterative_report").build().report.controller)
+        assert saturated(allocating(bound, "port_iterative_a"), bound, dtype, (STAGE, "currents")) >= 1 - 1e-6, \
+            "no coil reaches its bound"
+        found = ladder(allocating(bound, "port_iterative_b"), bound, dtype)
+        assert found.miss <= found.line, found
+        allocator = share(allocating(bound, "port_iterative_c"), bound, dtype, _is_controllers)
     assert abs(allocator) >= SHARE * abs(found.gradient), (allocator, found.gradient)
 
 
