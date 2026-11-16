@@ -114,6 +114,7 @@ from mime.scene._visual_sets import (
     mesh_path,
     mesh_source,
     pinned_visuals,
+    shipped_visual_sets,
     visual_sets,
 )
 
@@ -140,5 +141,5 @@ __all__ = [
     "mesh_source", "meters_per_unit", "pinned_visuals", "placed", "quadrature", "quadrature_counts", "quadrature_owners", "quasi_uniform",
     "read_kind", "register_shape", "sampled_points", "sampled_reach", "scene_up", "sha256_hex", "shape_settings",
     "rotation", "stage_derived_findings", "stage_edits", "stage_text", "unit_vector", "up_axis", "up_axis_problem",
-    "valid_part_path", "valid_prim_path", "visual_sets", "within", "world_frame",
+    "shipped_visual_sets", "valid_part_path", "valid_prim_path", "visual_sets", "within", "world_frame",
 ]

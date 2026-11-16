@@ -152,3 +152,61 @@ def test_push_defaults_is_gone_and_mime_defaults_is_the_one_spelling(capsys):
     assert mime_main(["push", "--defaults"]) == 2
     assert "cli.usage" in capsys.readouterr().err
     assert mime_main(["defaults"]) == 0
+
+
+# -- (u) mime assets check always ends with a total ------------------------------------------------------------------
+
+
+def test_assets_check_ends_with_a_total_even_when_nothing_is_cached(capsys, monkeypatch):
+    """With nothing cached it printed nothing at all, which reads as a command that did not run."""
+    from types import SimpleNamespace
+
+    from mime import assets
+
+    monkeypatch.setattr(assets, "known", lambda: {name: SimpleNamespace(name=name) for name in ("a", "b", "c")})
+    outcomes = {"a": "not cached", "b": "not cached", "c": "not cached"}
+    monkeypatch.setattr(assets, "check", lambda ref: outcomes[ref.name])
+    assert mime_main(["assets", "check"]) == 0
+    assert capsys.readouterr().out == "3 assets: 0 ok, 0 corrupt, 3 not cached (nothing to hash)\n"
+    outcomes.update(a="ok", b="corrupt")
+    assert mime_main(["assets", "check"]) == 1
+    assert capsys.readouterr().out.splitlines() == ["a  ok", "b  corrupt",
+                                                    "3 assets: 1 ok, 1 corrupt, 1 not cached (nothing to hash)"]
+
+
+# -- (v) the AR4's manifest is shipped, references only ----------------------------------------------------------------
+
+
+def test_the_shipped_visual_set_holds_references_and_no_mesh_bytes():
+    """Confirmed before shipping (#198, the tiers): every record is a name, a sha256, a size, an upstream address and
+    the terms (redistribution not permitted), the file is a few kilobytes beside meshes of megabytes, and nothing but
+    JSON is in its folder. It is the example description's own manifest, byte for byte."""
+    import importlib.resources
+    import json
+
+    root = importlib.resources.files("mime.data") / "visual_sets"
+    names = sorted(each.name for each in root.iterdir() if each.name != "__pycache__")
+    assert names == ["ar4_mk5.json"]
+    shipped = (root / "ar4_mk5.json").read_bytes()
+    assert len(shipped) < 50_000 and shipped == (Path(__file__).resolve().parents[2] / "examples" / "descriptions" / "ar4"
+                                                  / "visuals.json").read_bytes()
+    held = json.loads(shipped)
+    assert held["licences"]["LicenseRef-Annin-Robotics-NonCommercial"]["redistribution"] == "not_permitted"
+    for record in held["assets"]:
+        assert set(record) <= {"name", "sha256", "size", "licence", "locations", "role", "kind"}, record
+        assert record["size"] > 10_000
+        assert all(location.startswith("https://raw.githubusercontent.com/Annin-Robotics/") for location in
+                   record["locations"])
+    assert len(json.dumps(held["assets"])) < 20_000 < sum(record["size"] for record in held["assets"]) / 1000, \
+        "the records are a thousandth of the meshes they name: the bytes are at their upstream"
+
+
+def test_visuals_list_names_the_shipped_set_with_nothing_installed_and_fetch_knows_it_by_name(capsys):
+    from mime.viz import manifests_for
+
+    assert mime_main(["visuals", "list"]) == 0
+    assert "ar4_mk5  18 files" in capsys.readouterr().out
+    assert [held.name for held in manifests_for("ar4_mk5")] == ["ar4_mk5"]
+    from mime.scene import visual_sets
+
+    assert "ar4_mk5" not in visual_sets(), "a description still finds its meshes' records beside it, never in MIME's data"

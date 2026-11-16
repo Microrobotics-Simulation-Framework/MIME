@@ -10,6 +10,7 @@ import os
 import sys
 import warnings
 import zipfile
+from collections import Counter
 from collections.abc import Callable, Generator, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
@@ -680,11 +681,11 @@ def _serve(arguments: argparse.Namespace) -> int:
 
 def _visuals(arguments: argparse.Namespace) -> int:
     from mime import viz
-    from mime.scene import visual_sets
+    from mime.scene import shipped_visual_sets, visual_sets
 
     if arguments.visuals_command == "list":
         baked = {name for name, _ in viz.baked_layers()}
-        held_sets = visual_sets()
+        held_sets = {**shipped_visual_sets(), **visual_sets()}
 
         def draw() -> None:
             from mime.assets import size_text
@@ -705,8 +706,9 @@ def _visuals(arguments: argparse.Namespace) -> int:
         for name in sorted(baked - set(held_sets)):
             print(for_terminal(f"{name}  baked (its manifest is beside the description it came with)"))
         if not held_sets and not baked:
-            print("no set: a description's manifest is beside it (visuals.json); `mime visuals fetch <its folder>` "
-                  "bakes its meshes")
+            print("no set is installed or shipped. A description's manifest sits beside it (visuals.json): `mime visuals "
+                  "fetch <its folder>` bakes its meshes; or install a package that ships sets (a `mime.assets` entry "
+                  "point)")
         return 0
     if arguments.visuals_command == "fetch":
         manifests = viz.manifests_for(arguments.set)
@@ -923,6 +925,9 @@ def _assets(command: str, arguments: Sequence[str], accept_licences: Sequence[st
         for name, outcome in outcomes.items():
             if outcome != "not cached":
                 print(f"{name}  {outcome}")
+        counted = Counter(outcomes.values())
+        print(f"{len(outcomes)} asset{'' if len(outcomes) == 1 else 's'}: {counted['ok']} ok, {counted['corrupt']} corrupt, "
+              f"{counted['not cached']} not cached (nothing to hash)")
         return 1 if "corrupt" in outcomes.values() else 0
     else:
         if not refs:

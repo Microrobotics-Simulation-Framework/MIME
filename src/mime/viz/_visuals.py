@@ -27,7 +27,14 @@ from typing import Any, cast
 from mime._lock_json import read_lock
 from mime.assets import AssetRef, Manifest, read_manifest, read_manifest_data
 from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, RefusalClass
-from mime.scene import VISUAL_ASSET, VISUAL_ROLE, VISUAL_SHA256, manifest_beside, visual_sets
+from mime.scene import (
+    VISUAL_ASSET,
+    VISUAL_ROLE,
+    VISUAL_SHA256,
+    manifest_beside,
+    shipped_visual_sets,
+    visual_sets,
+)
 from mime.terms import derived_verdict
 from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom, Vt
 from mime.viz._meshes import Mesh, TriangleBudget, decimate, one_sided_distances, read_stl, write_mesh
@@ -65,11 +72,11 @@ LOCK_VISUALS = "visuals"
 
 
 def _unknown(target: str) -> ArgumentRefused:
-    known = ", ".join(sorted(visual_sets())) or "none by name"
+    known = ", ".join(sorted({*shipped_visual_sets(), *visual_sets()})) or "none by name"
     return ArgumentRefused([Refusal(
         "visuals.unknown-set", RefusalClass.USER,
         f"{target!r} is no manifest MIME finds: not a manifest file, a description with a manifest beside it, a folder "
-        f"holding visuals.json or a saved experiment, nor the name of a set an installed package ships ({known})",
+        f"holding visuals.json or a saved experiment, nor the name of a set MIME or an installed package ships ({known})",
         "name the description's folder (mime visuals fetch examples/descriptions/ar4/), its manifest file, a saved "
         "folder, or a set from mime visuals list")])
 
@@ -93,7 +100,7 @@ def lock_manifests(folder: Path) -> list[Manifest]:
 def manifests_for(target: str | Path) -> list[Manifest]:
     """The manifests ``target`` names: a manifest file; a description file, with the manifest beside it; a saved or run
     folder, with the manifests its lock holds; a folder holding ``visuals.json``; or the name of a set an installed
-    package ships."""
+    package ships or MIME's own data holds (``mime visuals list``)."""
     path = Path(target)
     if path.is_file():
         if path.suffix == ".json":
@@ -109,7 +116,7 @@ def manifests_for(target: str | Path) -> list[Manifest]:
         if (path / "visuals.json").is_file():
             return [read_manifest(path / "visuals.json")]
         raise _unknown(str(target))
-    named = visual_sets().get(str(target))
+    named = visual_sets().get(str(target)) or shipped_visual_sets().get(str(target))
     if named is None:
         raise _unknown(str(target))
     return [named]
