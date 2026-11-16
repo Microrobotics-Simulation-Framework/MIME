@@ -1,4 +1,4 @@
-"""``mime serve``: a saved experiment's live session in a process of its own, speaking ``mime.live/1`` over ZMQ, a PUB
+"""``mime serve``: a saved experiment's live session in a process of its own, speaking ``mime.live/2`` over ZMQ, a PUB
 for its frames and a REP for its commands, bound to localhost unless asked otherwise; and the Python client of it.
 
 A served session does not outlive the process that launched it (:class:`LauncherWatch`): when that process is gone, the
@@ -22,10 +22,11 @@ import errno
 import json
 import os
 import signal
+import socket
 import sys
 import time
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from types import FrameType
@@ -33,9 +34,9 @@ from typing import Any, Protocol, cast
 
 from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, RefusalClass
 from mime.live._protocol import COMMANDS, PROTOCOL, Frame, FrameSchema, frame_from_json, is_frame, refused, reply
-from mime.live._session import STOPPED, LiveSession, frame_schema
+from mime.live._session import STOPPED, LiveSession, checked_budget, frame_schema, refuse_a_log
 from mime.live._state import ServeState, flag_watches, watch_rows
-from mime.live._zmtp import Client, ListenError, Server, is_loopback, parse_endpoint
+from mime.live._zmtp import Client, ListenError, MessageTooLarge, Server, is_loopback, parse_endpoint
 from mime.units import Quantity
 
 DEFAULT_COMMANDS = "tcp://127.0.0.1:5555"
@@ -90,14 +91,82 @@ def _bind_problems(commands: str, frames: str, allow_remote_commands: bool) -> l
                                  "give tcp://<host>:<port>, such as --commands tcp://127.0.0.1:5555"))
             continue
         if not allow_remote_commands and not is_loopback(host):
-            found.append(Refusal(
-                _NOT_LOOPBACK[option], RefusalClass.USER,
-                f"{option} {endpoint} is not a loopback address (127.0.0.0/8, ::1, or localhost; a host name is not "
-                f"resolved here): {_EXPOSES[option]}, and a live session has no authentication",
-                f"keep it on loopback and reach the session through an SSH tunnel ({_TUNNEL}), or pass "
-                "--allow-remote-commands to bind it all the same, with no authentication",
-                why="a tunnel authenticates and encrypts; the session's own sockets do neither"))
+            found.append(_not_loopback(option, endpoint))
     return found
+
+
+def _listen_refused(error: ListenError) -> BuildRefused | ArgumentRefused:
+    """The coded refusal of a socket that could not listen, naming its option and endpoint."""
+    option = "--commands" if error.kind == "REP" else "--frames"
+    if error.malformed:
+        return ArgumentRefused([Refusal("live.endpoint", RefusalClass.USER, error.strerror or str(error),
+                                        "give tcp://<host>:<port>, such as --commands tcp://127.0.0.1:5555")])
+    if error.not_loopback:  # its host resolved to loopback when checked, and elsewhere when the server bound it
+        return ArgumentRefused([_not_loopback(option, error.endpoint)])
+    if error.errno == errno.EADDRINUSE:
+        return BuildRefused([Refusal(
+            "live.address-in-use", RefusalClass.ENVIRONMENT,
+            f"cannot listen on {option} {error.endpoint}: its port is in use, by another mime serve or another "
+            "program", "stop the other session, or serve on free ports: mime serve <folder> --commands "
+            "tcp://127.0.0.1:0 --frames tcp://127.0.0.1:0 (port 0 takes a free one, which the ready line and "
+            "--ready-file give)",
+            why="each session takes its own ports, and a client of the defaults would reach the other one")])
+    return BuildRefused([Refusal(
+        "live.transport", RefusalClass.ENVIRONMENT,
+        f"cannot listen on {option} {error.endpoint}: {error.strerror or error}",
+        "give an address of this machine and a port this user may bind, such as --commands tcp://127.0.0.1:0")])
+
+
+def _too_large(size: int, limit: int) -> bytes:
+    """The reply to a request over the server's limit, whose bytes it drops unread."""
+    return _encoded(refused(None, [Refusal(
+        "live.message-too-large", RefusalClass.USER,
+        f"a request of at least {size} bytes, over the {limit} a session takes; it was dropped unread",
+        "send a smaller request, a command's small JSON object: `{\"command\": \"set\", \"values\": {\"<label>\": "
+        "<a value of its declared shape>}}`",
+        why="a session reads no request larger than any command it takes, so that no client can make it hold more")]))
+
+
+def tunnel(endpoints: Mapping[str, str]) -> str:
+    """The ssh command that reaches the session from another machine: each socket's port forwarded to the address it is
+    bound to (loopback, for a wildcard), the login this process runs as on this machine's own name for itself."""
+    forwards: list[str] = []
+    for kind in ("REP", "PUB"):
+        host, port = parse_endpoint(endpoints[kind])
+        target = {"0.0.0.0": "127.0.0.1", "": "127.0.0.1", "::": "::1"}.get(host, host)
+        forwards.append(f"-L {port}:{f'[{target}]' if ':' in target else target}:{port}")
+    try:
+        import getpass
+
+        login = f"{getpass.getuser()}@{socket.gethostname()}"
+    except Exception:  # noqa: BLE001 - a login nobody can name (no user entry, no name): the placeholder
+        login = "<user>@<host>"
+    return f"ssh -N {' '.join(forwards)} {login}"
+
+
+def default_out(name: str) -> Path:
+    """Where a session writes its run folder when not told, made here so that it is the session's alone:
+    ``./<experiment>-live-<UTC time>/``, or ``-2``, ``-3`` and on after it when another session took that name in the
+    same second."""
+    base = f"{name}-live-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
+    count = 1
+    while True:
+        held = Path.cwd() / (base if count == 1 else f"{base}-{count}")
+        try:
+            held.mkdir()
+            return held
+        except FileExistsError:
+            count += 1
+
+
+def _not_loopback(option: str, endpoint: str) -> Refusal:
+    return Refusal(
+        _NOT_LOOPBACK[option], RefusalClass.USER,
+        f"{option} {endpoint} is not a loopback address (127.0.0.0/8, ::1, or localhost; a host name is not resolved "
+        f"here): {_EXPOSES[option]}, and a live session has no authentication",
+        f"keep it on loopback and reach the session through an SSH tunnel ({_TUNNEL}), or pass "
+        "--allow-remote-commands to bind it all the same, with no authentication",
+        why="a tunnel authenticates and encrypts; the session's own sockets do neither")
 
 
 def _exposed(server: Server, commands: str, frames: str) -> str | None:
@@ -145,18 +214,14 @@ class LauncherWatch:
         return os.getppid() != self.launcher
 
 
-def default_out(name: str) -> Path:
-    """Where a session writes its run folder when not told: ``./<experiment>-live-<UTC time>/``."""
-    return Path.cwd() / f"{name}-live-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
-
-
 def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAULT_FRAMES,
           chunk: Quantity | None = None, pace: float | None = 1.0, out: Path | None = None,
           select: Sequence[str] | None = None, json_frames: bool = False, start: bool = False,
           allow_remote_commands: bool = False, ready_file: Path | None = None, say: Callable[[str], None] = print,
           warn: Callable[[str], None] = _to_stderr,
           outlive_launcher: bool = False, watch: Sequence[str] | None = None, view: ServeView | None = None,
-          idle_timeout: float | None = None, max_wall: float | None = None) -> Path | None:
+          idle_timeout: float | None = None, max_wall: float | None = None, force: bool = False,
+          record_budget: int | None = None) -> Path | None:
     """Load and build the saved experiment in ``folder``, open its live session and serve it until a ``stop`` command,
     SIGTERM or SIGINT: commands on ``commands`` (a REP), frames on ``frames`` (a PUB), binary or, with
     ``json_frames``, JSON. ``start`` starts stepping at once; otherwise a client's ``start`` does. ``ready_file``
@@ -166,7 +231,14 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
     Both endpoints are on loopback (:func:`~mime.live._zmtp.is_loopback`) unless ``allow_remote_commands``: any other is
     refused before anything binds (``live.commands-not-loopback``, ``live.frames-not-loopback``), as nothing
     authenticates a client. With it, each socket bound elsewhere is named in a warning (``warn``) once it listens. A port
-    in use is refused, naming it (``live.address-in-use``).
+    in use is refused, naming it (``live.address-in-use``). Once they listen it says the ``ssh`` command that reaches
+    the session from another machine (:func:`tunnel`).
+
+    ``out``, the run folder, takes ``mime run``'s rule, judged before anything binds: a new folder or an empty one; any
+    other, an earlier run's included, is refused (``run.out-not-empty``) unless ``force``, which warns and writes into
+    it, replacing only the files a run writes. A command log is never replaced or written into, ``force`` or not
+    (``live.log-exists``): the session opens its own exclusively. Without ``out`` the session makes a folder of its own
+    here (:func:`default_out`). ``record_budget`` is the samples a recording may hold (:class:`LiveSession`).
 
     ``watch`` names the rows of a view's table of values (:func:`~mime.live._state.watch_rows`; a name the frames do not
     carry is refused, ``live.watch``, before a run folder is opened) and changes nothing the frames carry. ``view``, if
@@ -178,6 +250,10 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
     limit by what is left of the chunk."""
     _timeout("--idle-timeout", idle_timeout)
     _timeout("--max-wall", max_wall)
+    if record_budget is not None:
+        checked_budget(record_budget)
+    if out is not None:
+        _refuse_out(folder, out, force, warn)
     problems = _bind_problems(commands, frames, allow_remote_commands)
     if problems:
         raise ArgumentRefused(problems)
@@ -186,24 +262,11 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
     from mime.experiment import Experiment
 
     try:
-        server = Server(commands, frames)
+        server = Server(commands, frames, allow_remote=allow_remote_commands, too_large=_too_large)
     except ListenError as error:
-        option = "--commands" if error.kind == "REP" else "--frames"
-        if error.errno == errno.EADDRINUSE:
-            raise BuildRefused([Refusal(
-                "live.address-in-use", RefusalClass.ENVIRONMENT,
-                f"cannot listen on {option} {error.endpoint}: its port is in use, by another mime serve or another "
-                "program", "stop the other session, or serve on free ports: mime serve <folder> --commands "
-                "tcp://127.0.0.1:0 --frames tcp://127.0.0.1:0 (port 0 takes a free one, which the ready line and "
-                "--ready-file give)",
-                why="each session takes its own ports, and a client of the defaults would reach the other one")]) \
-                from error
-        raise BuildRefused([Refusal(
-            "live.transport", RefusalClass.ENVIRONMENT,
-            f"cannot listen on {option} {error.endpoint}: {error.strerror or error}",
-            "give an address of this machine and a port this user may bind, such as --commands tcp://127.0.0.1:0")]) \
-            from error
+        raise _listen_refused(error) from error
     state: ServeState | None = None
+    claimed: Path | None = None
     try:
         warning = _exposed(server, commands, frames)
         if warning is not None:
@@ -219,16 +282,22 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
             view.pause()
         if experiment.load_report is not None:
             say(experiment.load_report.text())
-        target = out if out is not None else default_out(built.plans.settings.experiment)
         carried = frame_schema(built, select)
         flags = flag_watches(carried, built.layout.flags)
         rows, shown = watch_rows(carried, watch, cast(list[dict[str, Any]], built.binding().record()["entries"]), flags)
-        session = built.live(chunk=chunk, pace=pace, select=select, out=target)
+        target = out if out is not None else (claimed := default_out(built.plans.settings.experiment))
+        session = built.live(chunk=chunk, pace=pace, select=select, out=target, force=force,
+                             record_budget=record_budget)
         if view is not None:
             state = ServeState(built.plans.settings.experiment, str(target))
             state.watch(rows, flags, len(built.layout.flags), table=shown)
     except BaseException:
         server.close()
+        if claimed is not None:
+            try:
+                claimed.rmdir()  # the folder it made, if the session never wrote into it
+            except OSError:
+                pass
         raise
     session.driven = True
     session.clients = server.counts
@@ -283,6 +352,8 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
             view.running(state)
         say(f"mime serve: {built.plans.settings.experiment} ready ({PROTOCOL}); commands on {endpoints['commands']}, "
             f"frames on {endpoints['frames']}; its run folder will be {target}")
+        say(f"mime serve: from another machine, run there {tunnel(server.endpoints)} (with the name it knows this "
+            "machine by, if another), and connect to the same endpoints")
         if start:
             session.start(thread=False)
         while session.state != STOPPED and not stopping:
@@ -361,6 +432,22 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
                         str(written) if written is not None else None)
     say(f"mime serve: stopped at step {session.steps}; wrote {written}")
     return written
+
+
+def _refuse_out(folder: Path, out: Path, force: bool, warn: Callable[[str], None]) -> None:
+    """``mime run``'s rule for ``--out``, before anything binds or loads: not over the saved folder, and a new folder
+    or an empty one unless ``force``, which warns, naming what it holds; a command log refused, ``force`` or not."""
+    from mime.experiment._experiment import foreign_entries, refuse_out_not_own, refuse_out_over
+
+    refuse_out_over(out, [folder])
+    refuse_out_not_own(out, force, own_too=True)
+    refuse_a_log(out)
+    forced = foreign_entries(out, own_too=True) if force else ()
+    if forced:
+        warn(f"mime serve: warning: --force: {out} holds {', '.join(forced[:5])}{', ...' if len(forced) > 5 else ''}, "
+             "which is not an empty folder; the session writes into it when it opens and when it stops, replacing any "
+             "file of the names a run writes (outputs.npz, outputs.json, run.json, report.json, topology.json, "
+             "experiment/)")
 
 
 class _Steppers:
@@ -452,12 +539,15 @@ class LiveClient:
         self.schema = FrameSchema.from_record(self.hello["schema"])
 
     def request(self, command: str, **arguments: Any) -> dict[str, Any]:
-        answer = self.commands.request(json.dumps({"protocol": PROTOCOL, "command": command,
-                                                   **arguments}).encode("utf-8"))
+        """The reply to ``command``; a reply over the client's limit is refused (``live.message-too-large``)."""
+        body = json.dumps({"protocol": PROTOCOL, "command": command, **arguments}).encode("utf-8")
+        answer = _received(lambda: self.commands.request(body), "a reply")
         return cast(dict[str, Any], json.loads(answer.decode("utf-8")))
 
     def frame(self) -> Frame:
-        data = self.frames.receive()
+        """The next frame; one over the client's limit is refused (``live.message-too-large``), and the next is read
+        after it."""
+        data = _received(self.frames.receive, "a frame")
         if is_frame(data):
             return self.schema.decode(data)
         return frame_from_json(json.loads(data.decode("utf-8")), self.schema)
@@ -467,4 +557,18 @@ class LiveClient:
         self.frames.close()
 
 
-__all__ = ["DEFAULT_COMMANDS", "DEFAULT_FRAMES", "LauncherWatch", "LiveClient", "default_out", "serve"]
+def _received(take: Callable[[], bytes], what: str) -> bytes:
+    """What ``take`` received, or the coded refusal of a message over the client's limit, dropped unread."""
+    try:
+        return take()
+    except MessageTooLarge as error:
+        raise BuildRefused([Refusal(
+            "live.message-too-large", RefusalClass.ENVIRONMENT,
+            f"the session sent {what} of at least {error.size} bytes, over the {error.limit} this client takes; it was "
+            "dropped unread", "check that the endpoints are a mime serve session's; a session's largest messages are "
+                              "far below the limit (the protocol's page states them)",
+            why="a client reads no message larger than any a session sends, so that no peer can make it hold more")]) \
+            from error
+
+
+__all__ = ["DEFAULT_COMMANDS", "DEFAULT_FRAMES", "LauncherWatch", "LiveClient", "default_out", "serve", "tunnel"]

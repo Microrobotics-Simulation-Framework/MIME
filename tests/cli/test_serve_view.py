@@ -279,7 +279,7 @@ def back_from_the_load_report(monkeypatch, columns: int, *, draw_due: bool) -> t
         display.say("load report: its first line\nload report: its last line")
         display.running(state)
         armed = True
-        display.say("mime serve: tracked ready (mime.live/1)")
+        display.say("mime serve: tracked ready (mime.live/2)")
         armed = False
         for drawer in drawers:
             drawer.join(HANG)
