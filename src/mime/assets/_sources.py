@@ -43,7 +43,7 @@ from typing import Protocol, cast, runtime_checkable
 
 from mime.assets._adapters import MIME_SOURCE, SOURCE_GROUP
 from mime.assets._manifest import Manifest, is_manifest_data, read_manifest_data
-from mime.assets._reference import AssetRef
+from mime.assets._reference import PACKAGE_PREFIX, AssetRef
 from mime._refusals import BuildRefused, MimeError, Refusal, RefusalClass
 
 #: MIME's own records, in ``mime.data``.
@@ -279,8 +279,12 @@ def conflict_refusal(name: str, held: Sequence[Sourced]) -> BuildRefused:
 
 
 def own_record(name: str) -> AssetRef | None:
-    """MIME's own record of ``name`` (``mime.data``'s ``assets/``), or ``None`` where it holds none."""
-    return next((each.ref for each in shared().records.get(name, ()) if each.source == MIME_SOURCE), None)
+    """MIME's own record of ``name`` whose bytes the installed package ships (a location ``package:mime/<path>``), or
+    ``None``. A record of MIME's own that names only remote locations (a wall table) is not one: a lock keeps its pin of
+    the version it was written against (the pin wins), and that version is its own bytes, not MIME's."""
+    held = next((each.ref for each in shared().records.get(name, ()) if each.source == MIME_SOURCE), None)
+    shipped = f"{PACKAGE_PREFIX}{MIME_SOURCE}/"
+    return held if held is not None and any(location.startswith(shipped) for location in held.locations) else None
 
 
 def own_namespaces() -> frozenset[str]:
@@ -290,8 +294,8 @@ def own_namespaces() -> frozenset[str]:
 
 
 def claims_an_own_name(ref: AssetRef) -> BuildRefused | None:
-    """The refusal (``asset.packaged-name``) of a record that claims a name MIME's own records hold as other bytes or
-    other terms: a lock, a pin or a script's record never stands in for what MIME ships under its name. A record that
+    """The refusal (``asset.packaged-name``) of a record that claims a name MIME ships a file under (:func:`own_record`)
+    as other bytes or other terms: a lock, a pin or a script's record never stands in for what MIME ships under its name. A record that
     restates MIME's own one changes nothing."""
     own = own_record(ref.name)
     if own is None or (own.sha256 == ref.sha256 and terms_of(own) == terms_of(ref)):
