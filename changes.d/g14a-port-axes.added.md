@@ -10,4 +10,5 @@
   the host makes its law from each member's declared bounds, as built, with no derivative through it. Not built: a
   controller believing a limit other than the hardware's. **The derived hash of every in-graph allocating loop over
   declared bounds moves** (the controller's node holds the port's numbers as leaves where it held them as constants); its
-  outputs at the declared bound are those of the release before it.
+  outputs at the declared bound are those of the release before it, bit for bit on the eight such programs the repo builds (float64
+  and float32), and a loop that reads no bound or runs on the host keeps its hash.

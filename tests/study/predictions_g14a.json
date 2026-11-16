@@ -103,5 +103,42 @@
     "if_wrong": "the stage off the path: the derivative's sources would not include it",
     "cannot_discriminate_if": "n/a"
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-16, after the probe run 43814284541 (probe/g14a-gates at bc6e55d6, all 11 jobs success) and the discriminating-range oracle; the predictions above are not edited, a missed one is recorded as missed",
+    "gate_1_central_differences": {
+      "result": "hit on 5 of 6 clauses, 1 missed",
+      "observed": "every clean draw passed: 30 seeds x 2 rigs x 2 dtypes = 120 of 120 (seeds 0..29, not the 50 predicted: the numbers arm ran 30). miss/line at most 0.316 (allocating f64), 0.297 (driven f64), 0.034 (f32, both rigs). h* = 1e-2 (allocating f64), 1e-3 or 1e-2 (driven f64), 1e-1 (every f32 draw). resolution (line/|g|): allocating f64 3.9e-12..1.9e-11, driven f64 2.2e-11..1.0e-10, allocating f32 1.5e-4..3.0e-4, driven f32 3.4e-4..1.05e-3. every draw saturated (reached 1.0 in f64; 1 +- 5e-8 in f32)",
+      "missed": "the f32 resolution band 1e-6..1e-3: driven f32's largest resolution is 1.05e-3, 5 % above the band's top; the line and the gate are unaffected (the smallest plant, the share line of 10 %, is 100 times the resolution)",
+      "discriminating_range": "the gate-1 oracle (|g (1 + size) - D(h*)| over the line, the 30 draws' own rows) scanned with the devkit's discriminating_range.py, 30 draws, sizes 1e-14..1e-1: a relative error in the gradient is caught on every draw from 2.3e-11 (allocating f64, refined; plant_at 2.3e-10), 1.2e-10 (driven f64), 3.0e-4 (allocating f32), 1.0e-3 (driven f32); 0 false alarms in 120 clean calls; the plants (allocating at least 0.1 g, flip_stage 2 g) sit at least 100 times above the largest resolution"
+    },
+    "gate_1_allocator_share": {
+      "result": "hit, at the edge of the band",
+      "observed": "allocator share exactly 0.5, stage share exactly 0.5, sum 1.0 on all 60 allocating rows (30 seeds x 2 dtypes), against the line of 0.10: the clip meets the allocation at a tie and jnp.clip splits half and half, as the prediction's basis said. The band's 0.5 is the observed value, so the band's lower edge was met exactly, not exceeded"
+    },
+    "gate_2_zero_control": {
+      "result": "hit on the laptop only",
+      "observed": "tests/study/test_port_axes.py 18 passed locally at seed 0 (the probe ran no gate 2 arm; CI runs it on the PR)"
+    },
+    "gate_3_every_path_sets_both": {
+      "result": "hit",
+      "observed": "one_leaf_controller and one_leaf_stage each 50/50 caught and 0/50 clean on the both-paths test (det_one_leaf_controller, det_one_leaf_stage), and 50/50 and 0/50 on gate 1 (det_one_leaf_controller_g1, det_one_leaf_stage_g1); every_run true, 95 % lower bound 0.942 each"
+    },
+    "gate_3_plants_on_gate_1": {
+      "result": "hit",
+      "observed": "constant (allocating) 50/50, flip_controller 50/50, flip_stage (driven) 50/50; 0/50 clean on each; no inconclusive run; 95 % lower bound 0.942"
+    },
+    "gate_4_base_unchanged": {
+      "result": "equality hit; the one-ulp control hit in float64 and missed in float32",
+      "observed": "base 64949f61 against head bc6e55d6 (the branch before its merge of the release tip's changes.d fragments), 12 rigs x 2 dtypes, one CPU, one thread: every numeric array bit-identical (worst 0.0 ulp of scale) for all 11 rigs that are not the control, in both dtypes. derived hash moved for default, saturating, slewed, smooth, glitched_trip, miscalibrated, camera_loop_camera, camera_loop_state (both dtypes), unchanged for callback, unread, camera_probe. The controller node's new leaves: port_coils__currents__high and __low (__slew too for slewed and glitched_trip). The only unequal arrays on a moved rig are derived_hash and controller_port_leaves",
+      "missed": "control_one_ulp in float32: the bound one ulp up moved the outputs by 0.0 (only the hash differs), so the float32 comparison cannot see a one-ulp change of the bound; the float64 control moved them by 4.43 ulp of scale (it can). The float32 comparison still holds as an equality of two compiled programs over 11 rigs, with a resolution coarser than one float32 ulp of the bound that the probe did not measure"
+    },
+    "gate_5_one_compile": {
+      "result": "hit on the laptop only",
+      "observed": "in the 18 passed locally; the probe ran no arm for it"
+    },
+    "gate_6_trip": {
+      "result": "hit on the laptop only",
+      "observed": "in the 18 passed locally; the probe ran no arm for it"
+    }
+  }
 }
