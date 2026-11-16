@@ -87,5 +87,18 @@
     "claim": "bytes per vertex-frame of the GLB for one moving field, and the page's own statement of its size",
     "prediction": {"value": 28.5, "band": [26, 31], "unit": "bytes per vertex-frame", "basis": "measured-before"}
   },
-  "outcomes": null
+  "outcomes": {
+    "written": "2026-11-16, after the gates ran locally on this branch (laptop, CPU); CI's runs are the pull request's",
+    "gate_readback": "as predicted: 0 of 13 samples differ in float32 (m, every step) and float64 (mm, every third step), points and both fields; decimated (129 x 129 -> 8,100 drawn vertices) points and the mean field within one float32 unit of an independent fsum, the max field bit-equal; plants caught 1/1 each (12 of 12 later codes flagged)",
+    "gate_determinism": "as predicted: stage, recording, GLB and page equal across two processes; the clock plant caught 1/1 (recording differs, stage equal)",
+    "gate_time_base": "as predicted: holds (every third step); rate x2 and x0.5 caught 2/2",
+    "gate_glb_structure": "as predicted: 18 targets (9 drawn samples x 2 fields), VEC4 COLOR_0, min and max on every POSITION accessor, animations run and run:rate; pygltflib reads 18 targets and 2 animations; plants (min/max removed, VEC3) caught 1/1 each; a 141-sample recording drawn at 128 a field (256 targets). Khronos validator 2.0.0-dev.3.10 (local, not in CI): 0 errors and 0 warnings on the whole (33 x 33), decimated (129 x 129) and still sheets; the min/max plant 2 errors (the accessor is shared by two targets)",
+    "gate_picker": "as predicted: time 0.4 and paused kept, the field and its range switched; the restore line removed gives time 0 (1/1)",
+    "gate_decimation": "32,768 triangles drawn as 15,842 over 8,100 clusters; 0 folded triangles at pulls 0.35 and 0.6, depths 0 to 10 widths; the mirrored map folds 15,842 of 15,842 (1/1); the max keeps the front exactly, the mean smears it (1/1). PREDICTION WRONG for the coarse-cluster plant: clusters coarser than the crater (budgets 4,000 to 40, a crater 3.6 to 0.4 cubes wide) did not fold at all, so it is no control and the mirrored map is. Beyond the stated range: at a pull of 0.9 (the crater's mouth a tenth of its width, under a cube) and 10 widths deep, 2 of 15,842 drawn triangles lean against the wall's normals there, none turning over in plan (every drawn normal keeps +z)",
+    "gate_compare_refusal": "as predicted: members of 25 and 36 vertices refused (compare.scene); equal members written (1/1)",
+    "gate_live_default": "as predicted: the 3 surface fields out of the default schema, all 3 in when named",
+    "gate_near_origin": "as predicted: refused at 1.001 x 100 extents (the entry named), builds at 0.999 x (1/1)",
+    "gate_bits_unchanged": "as predicted: stage, recording, run outputs, GLB, page and binding entries sha256-equal between origin/release/v0.3.0 (c2ffa639) and this branch on full_toy, coupled_toy and gantry_magnet, in float32 and float64 (36/36); with the sheet added each of the 36 differs. A first measurement found the binding of the gantry differing: the spike's record had dropped space=world from pose entries; restored",
+    "size": "1,089 vertices x 41 samples, two fields: GLB 2,072,744 bytes (46.4 bytes a vertex-frame, against the spike's 44 for two fields), page 4,207,380 bytes; one moving field not measured again here"
+  }
 }
