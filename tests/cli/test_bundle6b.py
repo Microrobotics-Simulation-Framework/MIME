@@ -56,6 +56,31 @@ def test_the_refusal_of_a_mistake_names_the_commands_own_help_and_its_example(ca
     assert "`mime show --help`" in err and "mime show my_experiment --graph" in err
 
 
+@pytest.mark.parametrize("words, said", [(["defaults", "foo"], "'foo' is not a command of `mime defaults` (choose from show, edit)"),
+                                         (["stduy"], "'stduy' is not a command of `mime` (choose from ")],
+                         ids=lambda value: " ".join(value) if isinstance(value, list) else "said")
+def test_a_command_mistyped_is_named_as_the_command_it_is_not_and_never_by_argparses_dest(capsys, words, said):
+    assert mime_main(words) == 2
+    err = capsys.readouterr().err
+    assert said in err and "argument " not in err and "_command" not in err
+
+
+def test_a_flag_the_line_already_has_is_never_the_suggestion(capsys):
+    assert mime_main(["run", "x", "--out", "o", "--bogus"]) == 2
+    err = capsys.readouterr().err
+    assert "did you mean" not in err
+    assert mime_main(["run", "x", "--outt", "o"]) == 2  # the control: a flag the line lacks is still suggested
+    assert "did you mean --out?" in capsys.readouterr().err
+
+
+def test_a_flag_that_was_removed_points_to_what_replaces_it(capsys):
+    assert mime_main(["push", "--defaults"]) == 2
+    err = capsys.readouterr().err
+    assert "--defaults is gone from push" in err and "`mime defaults`" in err and "`mime defaults edit`" in err
+    assert mime_main(["push", "--bogus"]) == 2  # the control: a flag that never existed has no such pointer
+    assert "is gone" not in capsys.readouterr().err
+
+
 # -- (p) a group of commands given no command -------------------------------------------------------------------------
 
 
@@ -286,6 +311,18 @@ def test_verify_of_an_experiment_ends_with_an_acceptance_as_a_study_and_a_block_
     for other in (BLOCK, STUDY):
         assert other.startswith("An acceptance: ") and "It bounds nothing about physics" in other
         assert "It bounds nothing about physics" in last
+
+
+def test_verify_of_a_run_folder_ends_with_its_own_acceptance(saved, tmp_path, capsys):
+    """The run half: ``verify --run`` prints the run's acceptance paragraph (not the experiment's), last."""
+    jax.config.update("jax_enable_x64", True)
+    out = tmp_path / "run"
+    assert mime_main(["run", str(saved), "--out", str(out), "--duration", "0.04s"]) == 0
+    capsys.readouterr()
+    assert mime_main(["verify", "--run", str(out)]) == 0
+    lines = capsys.readouterr().out.rstrip().splitlines()
+    assert lines[-1].startswith("An acceptance: the run's saved form made its outputs again here. It bounds nothing about physics")
+    assert not any("saved form loads and rebuilds" in line for line in lines)
 
 
 # -- (ac) every command's help documents its exit codes ----------------------------------------------------------------

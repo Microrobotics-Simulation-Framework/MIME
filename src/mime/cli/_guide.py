@@ -236,8 +236,20 @@ def usage_refusal(target: argparse.ArgumentParser, message: str, hints: Sequence
                        f"example")
     nearest = "".join(f"{hint} " for hint in hints)
     shown = f"; for example `{example}`" if example is not None else ""
-    return Refusal("cli.usage", RefusalClass.USER, message,
+    return Refusal("cli.usage", RefusalClass.USER, _in_users_words(message, named),
                    f"{nearest}`{named} --help` shows its options{shown}.")
+
+
+#: argparse's words for a command mistyped where a command was wanted: its ``dest`` (``defaults_command``, ``command``)
+#: is a name in the program, and not a word a person knows.
+_INVALID_COMMAND = re.compile(r"argument (?:\w+_)?command: invalid choice: '([^']*)' \(choose from ([^)]*)\)")
+
+
+def _in_users_words(message: str, named: str) -> str:
+    """``message`` with argparse's name for a command's place (``argument defaults_command``) said as the command or group
+    it is in: ``'foo' is not a command of `mime defaults` (choose from show, edit)``."""
+    return _INVALID_COMMAND.sub(lambda found: f"'{found.group(1)}' is not a command of `{named}` (choose from "
+                                              f"{found.group(2)})", message)
 
 
 def _subparsers_of(parser: argparse.ArgumentParser) -> argparse._SubParsersAction[argparse.ArgumentParser] | None:  # pyright: ignore[reportPrivateUsage]
@@ -312,14 +324,25 @@ def hints_for(message: str, parser: argparse.ArgumentParser, words: Sequence[str
             here = child
     known = sorted({option for each in (here, top) for option in each._option_string_actions
                     if option.startswith("--")})
+    given = {word.split("=", 1)[0] for word in words}
     for word in words:
         flag = word.split("=", 1)[0]
         if flag.startswith("--") and flag not in known:
-            near = _close(flag, known)
+            removed = REMOVED_FLAGS.get((command_words(top, words), flag))
+            if removed is not None:
+                hints.append(removed)
+                continue
+            near = _close(flag, [option for option in known if option not in given])  # never one the line already has
             if near is not None:
                 hints.append(f"did you mean {near}?")
     return hints
 
+
+#: A flag a command no longer has, by the command's words and the flag: what to use instead.
+REMOVED_FLAGS: dict[tuple[tuple[str, ...], str], str] = {
+    (("push",), "--defaults"): "--defaults is gone from push: your defaults are `mime defaults` (shown) and "
+                               "`mime defaults edit` (changed).",
+}
 
 #: The options that take a duration (``mime.cli._durations``), and the words a unit is written as.
 _DURATION_OPTIONS = ("--duration", "--every", "--stage-every", "--idle-timeout", "--max-wall")
