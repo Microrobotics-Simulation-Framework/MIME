@@ -594,7 +594,7 @@ class LiveSession:
         except MimeError as error:
             return refused(str(name) if name is not None else None, error.refusals)
         except Exception as error:  # noqa: BLE001 - a session never dies on one request
-            from mime.errors import translated
+            from mime.errors._translate import translated
 
             return refused(str(name) if name is not None else None, translated(error).refusals)
 

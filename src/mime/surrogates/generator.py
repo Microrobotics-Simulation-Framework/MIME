@@ -760,11 +760,4 @@ def protocol_json(domain: Domain, discretisation: Discretisation) -> str:
                                  **{name: len(cases) for name, cases in held_out.items()}}}, indent=1)
 
 
-__all__ = ["ASYMMETRY_TOLERANCE", "CANONICAL", "DESIGNS", "DOMAIN", "EIGENVALUE_FLOOR", "MARGIN",
-           "MEASURED_NEAR_WALL_EDGES", "MEASURED_NEAR_WALL_NOTES", "NEAR_WALL_CRITERION_COMMIT", "NEAR_WALL_DESIGN",
-           "NEAR_WALL_GAPS", "NEAR_WALL_QUANTITIES", "NEAR_WALL_SPACINGS", "NEAR_WALL_TOLERANCE", "NEAR_WALL_TUBE",
-           "NEAR_WALL_USES", "OPEN_NEAR_WALL_EDGE", "ROLLS", "TRAINING_MARGINS", "TUBES", "MRSEvaluator", "Case",
-           "DeclaredEdge", "Design", "Discretisation", "Domain", "OpenEdge", "Sample", "TrainingData", "accuracy",
-           "design_named", "evaluate", "experiment", "held_out_cases", "into_canonical", "near_wall_ratio",
-           "near_wall_ratios", "overlap", "protocol_json", "resting_offset", "samples_npz", "swim_per_spin",
-           "training_cases", "training_margins", "wall_excess"]
+__all__: list[str] = []

@@ -33,7 +33,7 @@ from mime.build._plan import Section
 from mime.build._control import Mode
 from mime.build._refusals import ArgumentRefused
 from mime.control._run import automatic_chunks
-from mime.errors import public
+from mime.errors._boundary import public
 from mime.registry import unbatched_of
 from mime.study._axes import BUILT_CUT, STUDY_REASON, Axis, differ, resolve, value_text
 from mime.study._point import Point, build_point, precision, same_build, same_run

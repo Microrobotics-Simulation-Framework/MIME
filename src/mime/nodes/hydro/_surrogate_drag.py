@@ -99,7 +99,9 @@ from mime.core import (
     typed_view,
 )
 from mime.data import Asset, asset_bytes
-from mime.surrogates import SCREW_FEATURES, SURROGATES, CholeskyMLP, Evaluator, ScrewSurrogate
+from mime.surrogates import SURROGATES, Evaluator
+from mime.surrogates._cholesky_mlp import CholeskyMLP
+from mime.surrogates._screw import SCREW_FEATURES, ScrewSurrogate
 
 #: The lubrication's smallest gap, in metres: the 0.2 line's ``delta_floor_mm = 1e-6``.
 GAP_FLOOR = 1e-9

@@ -31,7 +31,8 @@ from mime.units import (
     si,
     unit_symbol,
 )
-from mime.validity import Basis, basis_problem, basis_text
+from mime.validity import Basis
+from mime.validity._bases import basis_problem, basis_text
 
 #: How the build report and the saved form label a value that came from a declaration.
 DECLARED_IN_THE_EXPERIMENT = "declared in the experiment"

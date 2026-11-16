@@ -22,7 +22,7 @@ from mime._lineage import Origin
 from mime._npz import StoredNpz
 from mime._terminal import plain
 from mime.build._refusals import ArgumentRefused, ArgumentTypeRefused, MimeError, Refusal, RefusalClass
-from mime.errors import public
+from mime.errors._boundary import public
 from mime.registry import OutputKind, Reduction
 from mime.results._containment import ContainmentRead
 from mime.results._energy import EnergyAccount
@@ -54,7 +54,7 @@ if TYPE_CHECKING:
 
     from mime.results._figure import FigureRecipe
     from mime.experiment import Experiment
-from mime.validity import Stamp
+from mime.validity._pending import Stamp
 
 type Arrays = Mapping[str, Mapping[str, NDArray[Any]]]
 

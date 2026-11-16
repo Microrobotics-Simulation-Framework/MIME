@@ -25,7 +25,7 @@ from profile_cases import Paperwork, settling_ball
 from mime import Body, Experiment, Medium, State
 from mime.build import BuildRefused
 from mime.dynamics import RigidInertial
-from mime.errors import ArgumentRefused
+from mime.build._refusals import ArgumentRefused
 from mime.interactions import Drag, Gravity
 from mime.observations import SwimSpeed
 from mime.scene import Scene, Sphere, Z

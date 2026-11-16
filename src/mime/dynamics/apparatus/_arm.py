@@ -26,7 +26,7 @@ from mime.registry import BuildContext, CalibrationInstance, CalibrationType, Ca
 from mime.scene import Asset
 from mime.units import ANGULAR_VELOCITY, DIMENSIONLESS, FORCE, LENGTH, MASS, MOMENT_OF_INERTIA, TORQUE, Magnitude, \
     Quantity, unit_symbol
-from mime.validity import basis_text
+from mime.validity._bases import basis_text
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, JOINT_POSITIONS, JOINT_VELOCITIES, LINK_INERTIA, \
     LINK_MOMENTUM, LINK_WRENCH, Capability
 

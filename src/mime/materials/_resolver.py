@@ -27,7 +27,7 @@ from mime.materials._values import (
 )
 from mime.things import DERIVED, Derived, PartMass, ThingKind, derive, magnetisation
 from mime.units import unit_symbol
-from mime.validity import Judge
+from mime.validity._profiles import Judge
 
 if TYPE_CHECKING:
     from materica.core.record import RecordStore

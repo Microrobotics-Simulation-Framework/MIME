@@ -1,6 +1,7 @@
 """A user must be able to annotate what a public function hands them or takes (maintainer's rule, SURFACE-REDUCTION item
-100: keep public every type a user would annotate), so no public signature names a class of ``mime.push``, ``mime.credentials``, ``mime.cli``, ``mime.scaffold`` or
-``mime.blocks`` that no package exports.
+100: keep public every type a user would annotate), so no public signature names a class of ``mime.push``, ``mime.credentials``, ``mime.cli``, ``mime.scaffold``,
+``mime.blocks``, ``mime.terms``, ``mime.errors``, ``mime.validity``, ``mime.walls``, ``mime.surrogates`` or
+``mime.materials`` that no package exports.
 
 The walk reads each name of the ``__all__`` of every public ``mime`` package: a function's parameters and return, a
 class's fields and the signatures of its public methods and properties. A class of the tooling packages that an
@@ -23,7 +24,8 @@ from typing import Any
 import mime
 from mime.push._draft import Drafted
 
-TOOLING = ("mime.push", "mime.credentials", "mime.cli", "mime.scaffold", "mime.blocks")
+TOOLING = ("mime.push", "mime.credentials", "mime.cli", "mime.scaffold", "mime.blocks",
+           "mime.terms", "mime.errors", "mime.validity", "mime.walls", "mime.surrogates", "mime.materials")
 
 
 def exported() -> set[int]:
@@ -97,6 +99,15 @@ def signatures(name: str, thing: object) -> Iterator[tuple[str, object, types.Mo
 #: exported or no signature names it: the test fails on a line that no longer applies, so the list only shrinks.
 UNDECIDED = {
     "mime.push._sharing.Sharing": "decided with Manifest in the DUPLICATES work (rule 4)",
+    "mime.validity._profiles.Judge": "decide() is named in one docs page's prose and no script calls it: its types follow its decision",
+    "mime.validity._profiles.Finding": "as Judge: decide()'s parameter",
+    "mime.validity._profiles.Action": "as Judge: decide()'s parameter",
+    "mime.validity._profiles.Decision": "as Judge: decide()'s return",
+    "mime.validity._profiles.FindingClasses": "using_tables() is named in one docs page's prose and no script calls it",
+    "mime.validity._profiles.ProfileRules": "as FindingClasses: using_tables()'s parameter",
+    "mime.validity._pending.Stamp": "results.Layout.stamp: plumbing of the results package, which waits for its own reduction",
+    "mime.materials._values.ResolvedValue": "build.EntryPlan.values and ResolvedRegistration.values: plumbing of the build package, which waits for its reduction",
+    "mime.materials._records.LoadedRecord": "saved.SavedRecord.records: plumbing of the saved package, which waits for its own reduction",
 }
 
 
