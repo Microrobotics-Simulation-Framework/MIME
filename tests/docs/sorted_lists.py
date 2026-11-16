@@ -48,3 +48,8 @@ def order_problems(name: str, text: str, key: Callable[[str], tuple]) -> list[st
 def code_key(line: str) -> tuple[str, ...]:
     """A refusal code, which a line of the floor is, and which a line of the removals starts with."""
     return (line.partition(" # ")[0].strip(),)
+
+
+def entry_key(line: str) -> tuple[str, ...]:
+    """An entry's kind, name and version, which a line of the entries floor is and a line of its removals starts with."""
+    return tuple(line.partition(" # ")[0].split())

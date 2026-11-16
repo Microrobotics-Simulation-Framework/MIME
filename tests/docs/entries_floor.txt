@@ -1,0 +1,60 @@
+# MIME's own entries (kind, name, version) when the registry's total stopped being pinned: generated once from the
+# registry of a fresh interpreter, MIME's namespace only (never a lab's or the toys'), sorted, never edited by hand. An
+# entry on it that the registry no longer holds fails (tests/docs/test_entries_floor.py) unless entries_removed.txt logs
+# its removal with a reason: an entry dropped together with its `register_<kind>` decorator, or a namespace import
+# dropped, leaves source and registry agreeing and is caught only here. An entry added later needs no line.
+controller arm_tracking 0.1.0
+drive drive.constant 0.1.0
+drive drive.ramp 0.1.0
+dynamics arm 0.1.0
+dynamics fvm 0.1.0
+dynamics motor 0.2.0
+dynamics rigid_inertial 0.2.0
+dynamics rigid_inertial 0.3.0
+dynamics rigid_inertial 0.4.0
+dynamics womersley 0.1.0
+field provider calibrated_multipole 0.1.0
+field provider point_dipole 0.1.0
+field provider uniform_rotating 0.1.0
+field provider uniform_rotating 0.2.0
+geometry box 0.1.0
+geometry capsule 0.1.0
+geometry capsule 0.2.0
+geometry cylinder 0.1.0
+geometry ellipsoid 0.1.0
+geometry helix 0.1.0
+geometry plane 0.1.0
+geometry plug 0.1.0
+geometry screw 0.2.0
+geometry screw 0.3.0
+geometry sphere 0.1.0
+geometry sphere 0.2.0
+geometry tube 0.1.0
+geometry tube_tree 0.1.0
+interaction body_force 0.1.0
+interaction contact 0.1.0
+interaction contact 0.4.0
+interaction contact 0.5.0
+interaction darcy 0.1.0
+interaction drag 0.3.0
+interaction drag 0.4.0
+interaction drag 0.5.0
+interaction gravity 0.1.0
+interaction inflow 0.1.0
+interaction magnetic.force 0.1.0
+interaction magnetic.force 0.2.0
+interaction magnetic.torque 0.1.0
+interaction magnetic.torque 0.2.0
+interaction shared_distal 0.1.0
+interaction valve 0.1.0
+interaction windkessel 0.1.0
+observation camera 0.1.0
+observation energy_ledger 0.1.0
+observation exposure 0.1.0
+observation phase_lag 0.1.0
+observation swim_speed 0.1.0
+response response.first_order_lag 0.1.0
+response response.ideal 0.1.0
+wall kind free_space 0.1.0
+wall kind plane 0.1.0
+wall kind tube 0.1.0

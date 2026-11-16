@@ -425,6 +425,8 @@ shared line:
   counts the declarations tests print are derived, never written.
 - **An entry.** Register it with its `register_<kind>` decorator; the registry test compares the decorated classes by kind
   with the entries a fresh interpreter holds, so no number of entries is edited.
+  A new entry needs no line anywhere. To remove one on purpose, log it as `<kind> <name> <version>  # <reason>` in
+  `tests/docs/entries_removed.txt` (`tests/docs/entries_floor.txt` is never edited), or the floor test fails naming it.
 
 A new list that grows with changes is kept sorted the same way, with a check like `test_sorted_lists.py`'s, and a new
 test that pins a total of something that changes is a conflict waiting: derive it, or check the set it counts.

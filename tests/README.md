@@ -289,6 +289,9 @@
     namespace); no total is pinned. R1 (a lab's `Problem` code refused, never raised), R2 (a planted tuple code, a code in
     a plain construction call, a code in a file of its own, a code passed by a variable, a stray code-shaped string and a
     stale row, each found) and R3 (an uncatalogued code, or one in the wrong class, raises where it is constructed);
+  - `test_entries_floor.py`: an entry of `entries_floor.txt` (MIME's own, never a lab's or the toys') that a fresh
+    interpreter no longer holds fails unless `entries_removed.txt` logs it; controls on a copy of the package: the
+    decorator removed from `Exposure`, the import that registers it dropped, a planted floor entry, a logged removal;
   - `test_refusal_floor.py`: a code of `refusal_floor.txt` (the table's codes when its total stopped being pinned) that the
     table no longer holds fails unless `refusal_removed.txt` logs it with a reason; a logged code the table holds again, a
     log line with no reason and a floor line out of order each fail;
