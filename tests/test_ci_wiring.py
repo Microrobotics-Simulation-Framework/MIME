@@ -872,6 +872,7 @@ def test_every_skip_flag_of_the_command_is_listed():
 def test_mime_docs_takes_a_skip_flag_only_spelled_in_full():
     """The guard reads the full spelling, so the parser must refuse every shorter one: argparse takes ``--skip-ex`` for
     ``--skip-example-runs`` unless the parser says ``allow_abbrev=False``. The control is the full spelling."""
+    from mime.build import BuildRefused
     from mime.cli import build_parser
     from mime.cli._guide import _subparsers_of  # pyright: ignore[reportPrivateUsage]
 
@@ -881,8 +882,9 @@ def test_mime_docs_takes_a_skip_flag_only_spelled_in_full():
     assert parser.parse_args(["docs", "check", "--skip-example-runs"]).skip_example_runs is True
     for flag in SKIPPABLE:
         for length in range(len("--s"), len(flag)):
-            with pytest.raises(SystemExit):
+            with pytest.raises(BuildRefused) as refused:  # a mistake in the line is the coded refusal ``cli.usage``
                 parser.parse_args(["docs", "check", flag[:length]])
+            assert refused.value.codes() == ["cli.usage"]
     assert all(not child.allow_abbrev for child in _every_docs_parser(docs.choices["docs"]))
 
 

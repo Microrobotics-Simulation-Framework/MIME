@@ -835,17 +835,19 @@ def show_environment(report: EnvReport, stream: IO[str]) -> None:
         console.print(_text(line), soft_wrap=True)
 
 
-def show_registry(entries: Sequence[tuple[str, str, str, str]], not_loaded: dict[str, str], stream: IO[str]) -> None:
+def show_registry(entries: Sequence[tuple[str, str, str, str, str]], not_loaded: dict[str, str], stream: IO[str]) -> None:
     """``mime registry`` on a terminal: the registered entries as one table, grouped by kind, a row for each with its name,
-    its version and what it declares (its settings, as it names them); then a line for each namespace not loaded, as
-    the plain output says it. ``entries`` are (kind, name, version, settings) in the order the plain output prints them."""
+    its version, where it comes from (``mime``, or the namespace of the plugin that registers it) and what it declares
+    (its settings, as it names them); then a line for each namespace not loaded, as the plain output says it. ``entries``
+    are (kind, name, version, from, settings) in the order the plain output prints them."""
     console = _console_of(stream)
-    table = _table("", ("kind", "name", "version", "declares"))
+    table = _table("", ("kind", "name", "version", "from", "declares"))
     held = None
-    for kind, name, version, declares in entries:
+    for kind, name, version, source, declares in entries:
         if held is not None and kind != held:
             table.add_section()
-        table.add_row(_text(kind if kind != held else "", "bold"), _text(name), _text(version), _text(declares or "-"))
+        table.add_row(_text(kind if kind != held else "", "bold"), _text(name), _text(version), _text(source),
+                      _text(declares or "-"))
         held = kind
     console.print(table)
     for name, reason in not_loaded.items():

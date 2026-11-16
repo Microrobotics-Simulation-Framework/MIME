@@ -7,7 +7,7 @@
 #   list      the finding is listed, in the build report and by `mime pending`, and never refused
 #   refuse    the finding is refused
 #
-# One function (`mime.validity.decide`) applies every action at every site. A profile and class with no row: what the
+# One function (`mime.validity._profiles.decide`) applies every action at every site. A profile and class with no row: what the
 # site did before profiles, which is nothing for a physical value's missing source, a numerical value's missing
 # evidence and an undeclared default (reported among the defaults), and a refusal for a read's unknown reason, a
 # pending reason and a numerical default taken. Profiles act on waivers alone: a rule generates or accepts a waiver,

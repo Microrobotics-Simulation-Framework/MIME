@@ -40,6 +40,25 @@ def visual_sets() -> Mapping[str, Manifest]:
     return MappingProxyType(found)
 
 
+@cache
+def shipped_visual_sets() -> Mapping[str, Manifest]:
+    """The visual sets MIME's own data holds (``mime/data/visual_sets``), by name: each a manifest of references (a name,
+    a sha256, a size, the upstream address and the terms of each file) and never a mesh, so that ``mime visuals list`` and
+    ``mime visuals fetch <name>`` know them with nothing installed beside. They are not among :func:`visual_sets`: a
+    description still finds its meshes' records beside it (or in a package that ships them), never in MIME's data."""
+    import importlib.resources
+    import json
+
+    from mime.assets import read_manifest_data
+
+    found: dict[str, Manifest] = {}
+    for entry in sorted((importlib.resources.files("mime.data") / "visual_sets").iterdir(), key=lambda held: held.name):
+        if entry.name.endswith(".json") and entry.is_file():
+            manifest = read_manifest_data(json.loads(entry.read_text(encoding="utf-8")), f"mime/data/visual_sets/{entry.name}")
+            found[manifest.name] = manifest
+    return MappingProxyType(found)
+
+
 def manifest_beside(description: Path) -> Manifest | None:
     """The manifest beside a description file, read (once for each version of its file); ``None`` where there is
     none."""

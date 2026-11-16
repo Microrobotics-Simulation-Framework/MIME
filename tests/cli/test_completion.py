@@ -278,9 +278,7 @@ def test_the_help_says_where_each_script_goes_a_line_each_and_shows_an_example(c
 
 def test_a_shell_it_does_not_write_for_is_refused_and_a_missing_one_is_asked_for(capsys):
     for words in (["completion", "powershell"], ["completion"]):
-        with pytest.raises(SystemExit) as stopped:
-            mime_main(words)
-        assert stopped.value.code == 2
+        assert mime_main(words) == 2
     assert "powershell" in capsys.readouterr().err
 
 

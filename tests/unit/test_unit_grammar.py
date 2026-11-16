@@ -18,7 +18,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 import mime.units as units
@@ -247,10 +247,20 @@ def test_a_rate_that_says_neither_is_written_hz_and_read_as_a_frequency():
     assert parse_unit("s^-1").angle is None, "written another way, it is read as it says"
 
 
-@given(case=spelled())
 def test_every_spelling_of_a_dimension_reads_as_it(case):
     held, text = case
     assert same(parse_unit(text), held), text
+
+
+#: The table's rows are the property's own examples, run on every call before any draw: the draws reach a rate with a slash
+#: or a group raised to a power in only some of their examples, which Hypothesis does not promise (a miss of the plant of a
+#: quotient that forgets its angle, release run 43886742202, drew none). A planted bug the table
+#: catches (``test_the_table_of_cases_fails_on_every_run_under_each_planted_bug``) is then caught by this property in
+#: every run, not in nearly every run, and the draws still look beyond the table.
+for _label, _held in [*EQUAL, *RATES]:
+    test_every_spelling_of_a_dimension_reads_as_it = example(case=(_held, _label))(
+        test_every_spelling_of_a_dimension_reads_as_it)
+test_every_spelling_of_a_dimension_reads_as_it = given(case=spelled())(test_every_spelling_of_a_dimension_reads_as_it)
 
 
 @st.composite

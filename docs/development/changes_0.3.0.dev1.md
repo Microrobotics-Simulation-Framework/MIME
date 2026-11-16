@@ -320,7 +320,7 @@ repository's history before that history was rewritten on 2026-11-04, and does n
   field at a time in a terminal (Enter skips, `use <value>? [Y/n]` keeps, an invalid value is asked again; an existing
   file is edited, never replaced without a word; `push.setup` without a terminal), and saves your own values (name,
   ORCID iD, affiliation, uploader, funding) as **sharing defaults** in MIME's config directory, never in a folder, which
-  `--init` and `--setup` fill a new `sharing.yaml` from and `mime push --defaults` shows. **The NOTICE is `NOTICE.txt`
+  `--init` and `--setup` fill a new `sharing.yaml` from and `mime defaults` shows. **The NOTICE is `NOTICE.txt`
   on a record**, which Zenodo previews, and a publish makes it the record's preview (one chosen on the draft's page is
   kept); the bundle's member keeps its name. **A script's `--confirm` is bound to what it was shown**: every push prints
   `--confirm <DOI>@<fingerprint>`, the DOI alone publishes a draft unchanged since the push that reserved that DOI (a

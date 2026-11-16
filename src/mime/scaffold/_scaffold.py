@@ -5,7 +5,8 @@ saved or study folder, written by :func:`mime.push._draft.new_manifest`, the wri
 (``mime.toml``, ``block.mime.yaml``, ``cases/``) and a plugin (``pyproject.toml``, its entries, a test). Every value of every
 file comes from ``--set``, else the person's ``defaults.toml``, else scaffold's own, and the walk asks only where none
 of ``--set``, ``--yes`` or ``--dry-run`` is given: Enter keeps the value shown. Scaffold never overwrites (``scaffold.exists``),
-asks nothing under ``--yes`` and accepts no licence (it asks for none), searches everything it writes for a token MIME holds
+asks nothing under ``--yes`` and chooses no licence and no namespace (where none is given it writes a marker every check
+refuses, ``mime._placeholders``), searches everything it writes for a token MIME holds
 before writing a byte, and writes nothing under ``--dry-run``, which draws the tree and where each value came from."""
 
 from __future__ import annotations
@@ -18,15 +19,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from mime._manifest_file import MANIFEST_FILE, OLD_FILE
 from mime._said import DONE, QUESTION_CONFIRM, Said
 from mime._shell import quoted
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._placeholders import PLACEHOLDER_LICENCE, PLACEHOLDER_NAMESPACE
 from mime.credentials._store import held_tokens
 from mime.push._defaults import DEFAULT_KEYS, Defaults, read_all, write_defaults
-from mime.push._manifest import MANIFEST_FILE, OLD_FILE, STUDY, record_lines
+from mime.push._manifest import STUDY, record_lines
 from mime.push._setup import Walk, asked, filled, folder_facts
-from mime.push._sharing import DEFAULT_LICENCE
 from mime.push._toml import value_text
 from mime.scaffold._templates import fill
 from mime.scaffold._values import (
@@ -67,15 +69,16 @@ from mime.scaffold._values import (
 type Say = Callable[[str], None]
 type Typed = Callable[[str], str]
 type Ask = Callable[[str], bool]
-#: A namespace to start from where the person's defaults hold none and the folder's name suggests none.
-OWN_NAMESPACE = "mylab"
-#: The licence of a plugin's code where the person's defaults name none.
-OWN_CODE_LICENCE = "Apache-2.0"
+#: What ``--yes`` writes where a namespace or a licence is wanted that neither ``--set`` nor the person's defaults gave: a
+#: marker every check refuses (:data:`mime._placeholders.PLACEHOLDER_NAMESPACE`), never a name or a licence chosen for them.
+OWN_NAMESPACE = PLACEHOLDER_NAMESPACE
+OWN_CODE_LICENCE = PLACEHOLDER_LICENCE
 #: The keys a walk keeps the value shown of at Enter: a record always has each.
 _NEEDED = frozenset({EXPERIMENT_NAME, EXPERIMENT_LICENCE, BUNDLE_LICENCE, STUDY_LICENCE, BLOCK_ID,
                      BLOCK_VERSION, BLOCK_LICENCE, TITLE, DISTRIBUTION, NAMESPACE,
                      PACKAGE, PLUGIN_LICENCE})
 #: The part of a ``[record]`` a person's defaults and ``--set`` give a new one, as ``mime.toml`` names the keys.
+_PLACEHOLDERS = (PLACEHOLDER_LICENCE, PLACEHOLDER_NAMESPACE)
 _RECORD_KEYS = {TITLE: "title", DESCRIPTION: "description", CREATORS: "creators",
                 KEYWORDS: "keywords"}
 
@@ -149,7 +152,7 @@ def _own(kind: str, root: Path, defaults: Defaults, facts: tuple[str, str, str |
          declared: str | None) -> dict[str, Held]:
     """The value of each key where nothing is set: the person's default where they have one, scaffold's own else."""
     content = defaults.licences.get("content")
-    fallback = Held(content, DEFAULTS) if content else Held(DEFAULT_LICENCE, OWN)
+    fallback = Held(content, DEFAULTS) if content else Held(PLACEHOLDER_LICENCE, OWN)
     found: dict[str, Held] = {}
     if kind == "experiment":
         found = {EXPERIMENT_NAME: Held(own_experiment_name(root.name), OWN), EXPERIMENT_LICENCE: fallback}
@@ -201,6 +204,8 @@ def _walked(kind: str, walk: Walk, current: Mapping[str, Held], sets: Mapping[st
         head = f"{key}: {why}"
         held = current.get(key)
         offered, refused = held, None
+        if held is not None and held.source == OWN and any(each in str(held.value) for each in _PLACEHOLDERS):
+            offered = None  # a marker is never offered as a value to keep: the person is asked
         if key == NAMESPACE and held is not None and (refused := namespace_clash(str(held.value))) is not None:
             head, offered = f"{head}\nthe value found, {text_of(held.value)}, cannot be used: {refused}", None
         if offered is not None and filled(offered.value) and walk.keep(head, offered.value):
@@ -247,7 +252,8 @@ def _bundle(kind: str, root: Path, facts: tuple[str, str, str | None], held: Map
 
     given: dict[str, object] = {short: held[key].value for key, short in _RECORD_KEYS.items()
                                 if key in held and held[key].source in (SET, ASKED)}
-    if held[f"{kind}.licence"].source in (SET, ASKED):
+    if held[f"{kind}.licence"].source in (SET, ASKED) or (facts[2] is None
+                                                          and held[f"{kind}.licence"].value == PLACEHOLDER_LICENCE):
         given["licence"] = held[f"{kind}.licence"].value
     text = new_manifest(root, facts, say, given)
     what = "[study] licence and [record]" if kind == STUDY else "[bundle] licence and [record]"
@@ -255,8 +261,13 @@ def _bundle(kind: str, root: Path, facts: tuple[str, str, str | None], held: Map
 
 
 def _experiment(held: Mapping[str, Held]) -> _Plan:
-    name, licence = str(held[EXPERIMENT_NAME].value), str(held[EXPERIMENT_LICENCE].value)
-    text = fill("experiment", "experiment.py.txt", {"title": _title(name), "name": repr(name), "licence": repr(licence)})
+    name, licence = str(held[EXPERIMENT_NAME].value), held[EXPERIMENT_LICENCE]
+    lines = ("    # The licence the saved files are shared under: it is bound to them when the experiment is saved.\n"
+             + (f"    experiment.licence({licence.value!r})" if licence.source != OWN or licence.value != PLACEHOLDER_LICENCE
+                else "    # Not chosen: a licence is yours to choose, and nothing is published without one. Write it here, an\n"
+                     "    # SPDX licence expression, such as CC-BY-4.0 or MIT OR Apache-2.0:\n"
+                     "    # experiment.licence(\"<your licence>\")"))
+    text = fill("experiment", "experiment.py.txt", {"title": _title(name), "name": repr(name), "licence_lines": lines})
     return _Plan({"experiment.py": text},
                  {"experiment.py": "a minimal experiment over MIME's toy entries: edit it, then `python experiment.py`",
                   "saved/": "the saved experiment `build().save()` writes: what `mime verify`, `run` and `pack` read"},

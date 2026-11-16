@@ -110,6 +110,7 @@ chain.segment-name            user
 chain.spinner-speed           user
 chain.spinner-tilted          user
 chain.spinner-unbalanced      user
+cli.usage                     user
 command.ambiguous             user
 command.held-constant         user
 command.undriven              user

@@ -56,6 +56,11 @@ The namespace `${namespace}` is filled in six places from one value: the `mime.e
 - a record, with an underscore: `${namespace}_example_record`;
 - an instance of an entry on a thing, with a colon: `${namespace}.example_load:probe`.
 
+One name is one concept: a class or entry name that another layer already uses for something else is not reused (MIME's
+scene `Cylinder` is bounded, while core's unbounded cylinder, which the engine evaluates, is to be named `CylinderShape`). An
+error you raise is named for whose fault it is: `*Refused` where your entry declines an input, with a code the user can fix,
+and `*Error` where something failed that is not the user's input.
+
 ## Layout
 
 ```

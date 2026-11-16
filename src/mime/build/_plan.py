@@ -731,6 +731,8 @@ class _Planner:
         self.geometries: dict[str, GeometryPlan] = {}
         self.fills: dict[str, str] = {}
         self.values: dict[str, Declared] = {}
+        #: The declared values refused as declared (a wrong unit, an unknown name): refused once, not again as undeclared.
+        self.refused_values: set[str] = set()
         self.dt = 0.0
         #: Whether the experiment asked for ``dt="auto"``: the base step is then chosen once every dynamics is planned
         #: (:meth:`plan_steps`), the largest its step rules take.
@@ -3914,6 +3916,7 @@ class _Planner:
                 self.refuse("value.units", RefusalClass.USER,
                             f"the declared value {path} is {declaration.value!r}, not a quantity",
                             "declare it as a quantity with its units, such as kg(8.5e-5)")
+                self.refused_values.add(path)
                 continue
             carried = declaration.value.reason
             if carried is not None and declaration.reason is not None:
@@ -3927,6 +3930,8 @@ class _Planner:
             problems = declaration_problems(held, kinds, self.directed(), parts)
             for code, message, action in problems:
                 self.refuse(code, RefusalClass.USER, message, action)
+            if problems:
+                self.refused_values.add(path)
             if problems or self.given_by_kind(path):
                 continue
             if is_pending(basis):
@@ -4062,7 +4067,7 @@ class _Planner:
         found = self.resolution(path)
         self.refuse_problems(found.problems)
         if found.value is None:
-            if found.problems or found.blocked:
+            if found.problems or found.blocked or path in self.refused_values:
                 return
             directed = self.directed()
             meaning = materials.VALUE_KINDS[held.kind][name]

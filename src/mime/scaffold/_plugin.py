@@ -21,9 +21,9 @@ from typing import NamedTuple, cast
 
 from packaging.version import Version
 
+from mime._placeholders import PLACEHOLDER_LICENCE
 from mime.push._defaults import Defaults
 from mime.push._manifest import BUNDLE, manifest_text
-from mime.push._sharing import DEFAULT_LICENCE
 from mime.push._toml import value_text
 from mime.scaffold._templates import fill, template
 from mime.scaffold._values import (
@@ -41,6 +41,16 @@ from mime.scaffold._values import (
 SHIPPED_LICENCE = "Apache-2.0"
 #: A creator where nothing names one: the record's own default, to replace.
 _PLACEHOLDER = {"family": "Author", "given": "A."}
+
+
+def _example_licence_line(content: str) -> str:
+    """The example's licence declaration: the person's content licence, or where there is none a comment that says to
+    choose one (a declared placeholder is refused when the experiment is built)."""
+    if content != PLACEHOLDER_LICENCE:
+        return f"experiment.licence({json.dumps(content)})"
+    return ("# Not chosen: a licence is yours to choose, and nothing is published without one. Write it here, an\n"
+            "    # SPDX licence expression, such as CC-BY-4.0 or MIT OR Apache-2.0:\n"
+            "    # experiment.licence(\"<your licence>\")")
 
 
 class PluginFile(NamedTuple):
@@ -128,12 +138,12 @@ def plugin_files(held: Mapping[str, Held], defaults: Defaults) -> tuple[dict[str
     names = [person_name(person) for person in people]
     distribution, namespace, package = (str(held[key].value) for key in (DISTRIBUTION, NAMESPACE, PACKAGE))
     licence = str(held[PLUGIN_LICENCE].value)
-    content = defaults.licences.get("content", DEFAULT_LICENCE)
+    content = defaults.licences.get("content", PLACEHOLDER_LICENCE)
     data = fill("plugin", "records_example.json.txt", {})
     values = {
         "distribution": distribution, "namespace": namespace, "package": package, "cff_licence": _yaml(licence),
         "prefix": namespace.upper().replace("_", "-"), "release_branch": release_branch(), "cff_title": _yaml(distribution),
-        "content_licence": json.dumps(content), "authors": _cff_authors(people),
+        "licence_line": _example_licence_line(content), "authors": _cff_authors(people),
         "sha256": hashlib.sha256(data.encode("utf-8")).hexdigest(), "size": str(len(data.encode("utf-8"))),
         "credit": json.dumps(", ".join(names) or "the plugin's authors", ensure_ascii=False)}
     values["record_licence"] = json.dumps(content)
@@ -154,12 +164,15 @@ def plugin_files(held: Mapping[str, Held], defaults: Defaults) -> tuple[dict[str
     files[f"{records}/records.json"] = fill("plugin", "records.json.txt", values)
     notes[f"{records}/records.json"] = "the example record: its sha256 is the data's, filled in"
     files[f"{records}/data/example.json"] = data
+    chosen = licence != PLACEHOLDER_LICENCE
     files["LICENSE"] = (template("plugin", "LICENSE.Apache-2.0.txt") if licence == SHIPPED_LICENCE else
-                        fill("plugin", "LICENSE.other.txt", {"licence_id": licence}))
+                        fill("plugin", "LICENSE.other.txt", {"licence_id": licence}) if chosen else
+                        template("plugin", "LICENSE.unchosen.txt"))
     notes["LICENSE"] = (f"the text of {licence}" if licence == SHIPPED_LICENCE else
-                        f"names {licence}: put its text here before you publish")
+                        f"names {licence}: put its text here before you publish" if chosen else
+                        "no licence chosen: --set plugin.licence=<yours> or write one before you publish")
     files["benchmarks/mime.toml"] = manifest_text(
-        BUNDLE, f"{distribution}: the example benchmark", content,
+        BUNDLE, f"{distribution}: the example benchmark", None if content == PLACEHOLDER_LICENCE else content,
         {**defaults.values, "licence": content})
     notes["benchmarks/mime.toml"] = "the record's manifest, copied beside the saved benchmark; `mime check` lists what to write"
     return files, notes
