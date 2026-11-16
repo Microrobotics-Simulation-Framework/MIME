@@ -65,6 +65,21 @@ def test_a_command_mistyped_is_named_as_the_command_it_is_not_and_never_by_argpa
     assert said in err and "argument " not in err and "_command" not in err
 
 
+@pytest.mark.parametrize("argparse_lists", ["show, edit", "'show', 'edit'"], ids=["unquoted", "quoted"])
+def test_the_list_of_commands_is_written_by_mime_whichever_way_argparse_spells_it(argparse_lists):
+    """Python 3.12.x, 3.13.x and 3.14 differ in whether argparse quotes the choices it lists, so a run on one Python
+    cannot show the frame is independent of that: both spellings are fed to it."""
+    from mime.cli._guide import MimeParser, _in_users_words  # pyright: ignore[reportPrivateUsage]
+
+    parser = MimeParser()
+    commands = parser.add_subparsers(dest="defaults_command")
+    commands.add_parser("show")
+    commands.add_parser("edit")
+    message = f"argument defaults_command: invalid choice: 'foo' (choose from {argparse_lists})"
+    assert _in_users_words(message, "mime defaults", parser) == \
+        "'foo' is not a command of `mime defaults` (choose from show, edit)"
+
+
 def test_a_flag_the_line_already_has_is_never_the_suggestion(capsys):
     assert mime_main(["run", "x", "--out", "o", "--bogus"]) == 2
     err = capsys.readouterr().err

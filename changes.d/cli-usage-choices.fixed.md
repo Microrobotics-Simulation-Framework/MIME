@@ -1,0 +1,1 @@
+- **A mistyped command's refusal reads the same on every Python.** `mime defaults foo` listed the choices in argparse's own spelling, which quotes each name on Python 3.14 and 3.12.8 and later (`choose from 'show', 'edit'`), so the message changed with the Python version. The `cli.usage` frame now writes the list from the command's own choices.
