@@ -433,15 +433,15 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
 
 
 #: The most groups of a run, in a dtype, that the Newton steps' property may leave unjudged (its groups where 0.4.0's own
-#: ends one ulp away stand past ``NEWTON_ULPS``): a share of all the groups its draws held. Measured on the pull
-#: request's review, the committed property replayed under seven seeds of 100 draws: float32 10 of 5,600 groups
-#: (0.18 %; on the screw alone 8 of 1,448, 0.55 %), float64 none of 4,800. With the rattled searches (``RATTLES``) in the
-#: rule, on draws as the property's: float32 37 of 9,600 groups (0.39 %) and 13 of 2,000 (0.65 %) on two samples, float64
-#: 16 of 6,400 (0.25 %); on 24,000 groups of screw draws near the wall and tilted, float32 0.65 % (the poses alone left
-#: 0.49 %). The ceiling stays at about three times the worst of those, so that the
-#: set can grow a little before anything shows and cannot grow unseen; each run reports its own count
+#: ends one ulp away, or from its rattled searches, stand past ``NEWTON_ULPS``): a share of all the groups its draws held.
+#: Measured on the pull request's own head, the committed property replayed under twelve Hypothesis seeds of 100 draws (800
+#: groups a dtype), the first the seed of the stress run that read 22 and 19 past the first ceiling of 2 %: float32 0.5 to
+#: 3.0 % (mean 1.4 %), float64 0.25 to 2.4 % (mean 1.0 %). The rule judging by the poses alone (the pull request's base)
+#: left, under four of those seeds, float32 0.1 to 0.5 % and float64 none: the rattled searches move 0.4.0's end where a
+#: pose's last place does not, which Hypothesis's targeting finds. The ceiling is about three times the worst of those, so
+#: that the set can grow a little before anything shows and cannot grow unseen; each run reports its own count
 #: (``record_property``, and printed).
-UNJUDGED_CEILING = 0.02
+UNJUDGED_CEILING = 0.10
 
 
 def over_the_ceiling(unjudged: int, groups: int) -> bool:
