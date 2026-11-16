@@ -402,7 +402,9 @@ run is split into jobs (`stress run k of n, part p of m`), each set up as the de
 last push to `release/v0.3.0` saved for the shards holding its part's files, restored and never saved (at most three shards'
 worth; the rest of the files compile cold, so a first run can be slower). Each job's JUnit report is a run artifact,
 `stress-run-<k>-part-<p>`, and the summary judges every part of every run: a part with no report, or in which nothing passed,
-fails its run.
+fails its run. A file the shard table splits (`split` in `tests/shard_weights.json`) is dealt by test across the parts, as the
+default lane deals it, so a heavy file fits a job; a part's pytest is given node ids, or the file with `--deselect` for the
+listed tests that other parts run (`scripts/stress_select.py` has the rules). Every test of it still runs in every run, once.
 
 **Repeat a failing seed locally** on the same Python, with the tests the summary names:
 
