@@ -25,7 +25,9 @@ def saved(tmp_path_factory) -> Path:
 
 
 @pytest.fixture(autouse=True)
-def restored(monkeypatch):
+def restored(monkeypatch, tmp_path_factory):
+    """The person's defaults (the config folder) are the test's own: a test that writes them never reaches the real ones."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("config")))
     monkeypatch.delenv("XLA_FLAGS", raising=False)
     held = jax.config.jax_enable_x64
     yield
@@ -419,3 +421,63 @@ def test_the_cli_refuses_an_unpinned_plugin_wherever_the_check_is_strict_and_not
     assert mime_main(common) == 0
     assert f"note: {planted_plugin} 0.1 is installed and nothing pins it (a plugin, which registers" in \
         capsys.readouterr().out
+
+
+# -- (x) on the plugin path and the bundle's: no real-looking namespace and no licence chosen ------------------------------
+
+
+def test_a_plugin_folder_that_names_no_namespace_gets_the_placeholder_not_a_real_looking_one():
+    from mime._placeholders import PLACEHOLDER_NAMESPACE
+    from mime.scaffold._values import own_plugin_names
+
+    assert own_plugin_names("9lives")["namespace"] == PLACEHOLDER_NAMESPACE  # no valid word to take from the folder
+    assert own_plugin_names("scafx-probes")["namespace"] == "scafx"  # the control: a name the folder gives is kept
+
+
+def test_a_plugin_scaffolded_with_yes_chooses_no_content_licence_and_its_benchmark_manifest_is_refused(tmp_path, capsys):
+    """Its example, its benchmark's manifest and its record carried CC-BY-4.0 where the person gave none: now a
+    placeholder in each, so ``mime check`` (the benchmark's) and the build of the example (the record's) refuse it."""
+    plugin = tmp_path / "scafx-probes"
+    assert mime_main(["scaffold", "plugin", str(plugin), "--yes", "--set", "plugin.namespace=scafx"]) == 0
+    capsys.readouterr()
+    files = {path.relative_to(plugin).as_posix(): path.read_text(encoding="utf-8")
+             for path in plugin.rglob("*") if path.is_file() and path.suffix in {".toml", ".py", ".json"}}
+    assert 'licence = "LicenseRef-CHOOSE-A-LICENCE"' in files["benchmarks/mime.toml"]
+    assert '"licence": "LicenseRef-CHOOSE-A-LICENCE"' in files["src/scafx_probes/records/records.json"]
+    assert 'experiment.licence("CC-BY-4.0")' not in files["examples/example.py"]
+    assert not any(line.strip().startswith("experiment.licence(") for line in files["examples/example.py"].splitlines())
+    for path in ("benchmarks/mime.toml", "src/scafx_probes/records/records.json", "examples/example.py"):
+        assert "CC-BY-4.0" not in files[path].replace("such as CC-BY-4.0 or MIT", "")
+    beside = tmp_path / "case"  # what build_case.py does: the saved example, with the manifest copied beside it
+    from mime.testing.toys import coupled_toy
+
+    coupled_toy().save(beside)
+    (beside / "mime.toml").write_text(files["benchmarks/mime.toml"], encoding="utf-8")
+    assert mime_main(["check", str(beside)]) == 1
+    said = capsys.readouterr()
+    assert "placeholder" in said.out + said.err and "[bundle] licence" in said.out + said.err
+
+
+def test_the_content_licence_a_person_keeps_still_reaches_the_plugin_example(tmp_path):
+    from mime.push import _defaults
+
+    _defaults.write_defaults({}, licences={"content": "CC0-1.0"})
+    plugin = tmp_path / "scafx-probes"
+    assert mime_main(["scaffold", "plugin", str(plugin), "--yes", "--set", "plugin.namespace=scafx"]) == 0
+    assert 'experiment.licence("CC0-1.0")' in (plugin / "examples" / "example.py").read_text(encoding="utf-8")
+
+
+def test_a_bundle_scaffolded_over_an_experiment_declaring_no_licence_writes_the_placeholder_and_check_refuses_it(
+        tmp_path, capsys):
+    from mime.scaffold import scaffold
+    from mime.testing.toys import coupled_toy
+
+    folder = tmp_path / "undeclared"
+    coupled_toy().save(folder)  # declares no licence
+    scaffold("bundle", folder, yes=True, say=lambda line: None)
+    text = (folder / "mime.toml").read_text(encoding="utf-8")
+    assert 'licence = "LicenseRef-CHOOSE-A-LICENCE"' in text and "CC-BY-4.0" not in text
+    capsys.readouterr()
+    assert mime_main(["check", str(folder)]) == 1
+    said = capsys.readouterr()
+    assert "placeholder" in said.out + said.err

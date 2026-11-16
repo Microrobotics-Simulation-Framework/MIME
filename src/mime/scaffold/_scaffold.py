@@ -251,7 +251,8 @@ def _bundle(kind: str, root: Path, facts: tuple[str, str, str | None], held: Map
 
     given: dict[str, object] = {short: held[key].value for key, short in _RECORD_KEYS.items()
                                 if key in held and held[key].source in (SET, ASKED)}
-    if held[f"{kind}.licence"].source in (SET, ASKED):
+    if held[f"{kind}.licence"].source in (SET, ASKED) or (facts[2] is None
+                                                          and held[f"{kind}.licence"].value == PLACEHOLDER_LICENCE):
         given["licence"] = held[f"{kind}.licence"].value
     text = new_manifest(root, facts, say, given)
     what = "[study] licence and [record]" if kind == STUDY else "[bundle] licence and [record]"
