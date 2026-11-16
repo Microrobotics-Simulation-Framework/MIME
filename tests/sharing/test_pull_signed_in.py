@@ -567,10 +567,9 @@ def test_link_is_refused_without_its_value_where_it_is_not_dash_or_env(
     link = f"{restricted.site}/records/{NUMBER}?token={KEY}"
     held = Token("held", KEY)
     for words in (["--link", link], ["--link", "env", link], ["--link", "-", NUMBER]):
-        with pytest.raises(SystemExit) as stopped:
-            main(["pull", *words, "--into", str(tmp_path / "x")])
+        code = main(["pull", *words, "--into", str(tmp_path / "x")])
         said = capsys.readouterr()
-        assert stopped.value.code == 2 and not held.occurs_in(f"{said.out}{said.err}".encode()), said
+        assert code == 2 and not held.occurs_in(f"{said.out}{said.err}".encode()), said
     monkeypatch.delenv("MIME_SHARE_LINK", raising=False)
     code, said = pulled(["--link", "env", "--into", str(tmp_path / "y")], capsys)
     assert code == 2 and "pull.source" in said and "MIME_SHARE_LINK holds no share link" in said

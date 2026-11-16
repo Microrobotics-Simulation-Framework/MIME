@@ -43,13 +43,14 @@ def test_a_new_block_is_walked_field_by_field_with_its_line_and_values_held_are_
              in _values.KEYS["block"]]
     assert heads == ["block.id", "block.version", "block.licence", "record.title", "record.description",
                      "record.creators", "record.keywords"], "each key asked once, in the walk's order"
-    assert 'use "mylab.probe"? [Y/n] ' in person.asked[0] and "block.id: the block's id" in person.asked[0]
+    assert "use " not in person.asked[0].split("\n")[-1] and "block.id: the block's id" in person.asked[0], \
+        "a placeholder is never offered as a value to keep"
     held = {key: (value.value, value.source) for key, value in result.values.items()}
-    assert held["block.id"] == ("mylab.probe", "scaffold's own")
+    assert held["block.id"] == ("choose_a_namespace.probe", "scaffold's own")
     assert held["record.description"] == ("A probe", "asked")
     assert held["record.creators"] == ([{"family": "Carberry", "given": "Josiah"}], "asked")
     assert held["record.keywords"] == (["microrobot", "demo"], "asked")
-    assert read_definition(tmp_path / "probe", record=False)[0] is not None
+    assert read_definition(tmp_path / "probe", record=False)[0] is None, "the placeholder namespace is refused on reading"
 
 
 def test_a_value_that_is_not_valid_is_said_and_asked_again(tmp_path: Path):
@@ -173,7 +174,7 @@ def toy(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 def test_from_writes_the_declarations_of_a_saved_experiment_with_the_named_thing_as_a_socket(toy: Path, tmp_path: Path):
     result = _scaffold.scaffold("block", tmp_path / "from_toy", yes=True, source=toy, sockets=["water=bath"],
-                               say=lambda line: None)
+                                sets=["block.id=labx.from_toy"], say=lambda line: None)
     folder = tmp_path / "from_toy"
     assert result.written and (folder / "cases").is_dir()
     fragment = (folder / "block.mime.yaml").read_text(encoding="utf-8")
@@ -200,7 +201,8 @@ def test_from_takes_the_saved_experiments_declared_licence_not_the_default(tmp_p
     the default, which silently relaxed the licence)."""
     source = saved_with("CC-BY-NC-4.0", tmp_path / "src")
     said: list[str] = []
-    result = _scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"], say=said.append)
+    result = _scaffold.scaffold("block", tmp_path / "blk", yes=True, source=source, sockets=["water=bath"],
+                                sets=["block.id=labx.blk"], say=said.append)
     assert licence_of(tmp_path / "blk") == "CC-BY-NC-4.0"
     assert (result.values["block.licence"].value, result.values["block.licence"].source) == ("CC-BY-NC-4.0", "scaffold's own")
     assert check_of("block", tmp_path / "blk") == []
@@ -267,7 +269,8 @@ def test_the_folder_is_removed_again_when_a_step_after_it_was_made_fails(tmp_pat
 
 def test_the_command_line_scaffolds_with_yes_and_set(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     path = tmp_path / "probe"
-    assert mime_main(["scaffold", "block", str(path), "--yes", "--set", "block.id=labx.probe", "-y"]) == 0
+    assert mime_main(["scaffold", "block", str(path), "--yes", "--set", "block.id=labx.probe",
+                      "--set", "block.licence=CC-BY-4.0", "-y"]) == 0
     out = capsys.readouterr().out
     assert "Scaffolded a block labx.probe" in out and "Next:" in out and f"mime check {path}" in out
     assert tomllib.loads((path / "mime.toml").read_text(encoding="utf-8"))["block"]["id"] == "labx.probe"
@@ -290,9 +293,7 @@ def test_dry_run_on_the_command_line_writes_nothing(tmp_path: Path, capsys: pyte
 
 
 def test_mime_new_is_retired_and_scaffold_is_the_one_start(capsys: pytest.CaptureFixture[str]):
-    with pytest.raises(SystemExit) as stopped:
-        mime_main(["new", "experiment"])
-    assert stopped.value.code == 2
+    assert mime_main(["new", "experiment"]) == 2
     assert "scaffold" in capsys.readouterr().err, "the nearest command is named"
     start = dict(_guide.GROUPS)["Start"]
     assert start == ("scaffold",) and ("scaffold",) in _guide.EXAMPLES

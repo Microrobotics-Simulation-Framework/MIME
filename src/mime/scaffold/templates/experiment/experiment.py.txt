@@ -18,8 +18,7 @@ def build() -> Experiment:
     experiment = Experiment(${name}, scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=s(0.02))
     experiment.add_body(Body("probe", dynamics=ToyBody(), initial=PROBE_START))
     experiment.attach(ToyDrag.Quadratic(), body="probe")
-    # The licence the saved files are shared under: it is bound to them when the experiment is saved.
-    experiment.licence(${licence})
+${licence_lines}
     return experiment
 
 

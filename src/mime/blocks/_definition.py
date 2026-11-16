@@ -35,6 +35,7 @@ from mime.assets import AssetRef
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._sharing import Problem, Reader, Sharing, as_text, record_of
 from mime.saved._versions import newer_form_refusal
+from mime._placeholders import PLACEHOLDER_NAMESPACE
 from mime.terms import (
     CUSTOM_STATUSES,
     CustomLicence,
@@ -76,6 +77,9 @@ LINES = {"id": 'id = "<namespace>.<name>"', "version": 'version = "0.1.0"', "lic
 def id_problem(text: str) -> str | None:
     """Why ``text`` is not a block's id, ``<namespace>.<name>``, or ``None``."""
     if _ID.fullmatch(text):
+        if text.partition(".")[0] == PLACEHOLDER_NAMESPACE:
+            return (f"{text}'s namespace is the placeholder `mime scaffold --yes` writes where it was given none: choose "
+                    f"yours, the word before the dot, and write it in its place")
         return None
     return (f"{plain(repr(text))} is not <namespace>.<name> (lower-case letters, digits and '_', each starting with a "
             f"letter)")

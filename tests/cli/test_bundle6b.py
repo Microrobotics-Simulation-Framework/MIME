@@ -1,0 +1,535 @@
+"""CLI bundle 6b, the rest of what the CLI tour found, each with the test that fails without the fix.
+
+(p) a group of commands named alone, (q) ``--traceback``'s order, (r) and (s) an override's names and units read from the
+document, once, (t) ``mime push --init`` with no service, (y) and (z) one frame for a mistake in the command line."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import jax
+import pytest
+
+from mime.cli import main as mime_main
+from mime.testing.toys import full_toy
+
+
+@pytest.fixture(scope="module")
+def saved(tmp_path_factory) -> Path:
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    folder = tmp_path_factory.mktemp("toy") / "ball"
+    full_toy().save(folder)
+    jax.config.update("jax_enable_x64", held)
+    return folder
+
+
+@pytest.fixture(autouse=True)
+def restored(monkeypatch, tmp_path_factory):
+    """The person's defaults (the config folder) are the test's own: a test that writes them never reaches the real ones."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("config")))
+    monkeypatch.delenv("XLA_FLAGS", raising=False)
+    held = jax.config.jax_enable_x64
+    yield
+    jax.config.update("jax_enable_x64", held)
+
+
+# -- (y) (z) one frame for a mistake in the command line --------------------------------------------------------------
+
+
+@pytest.mark.parametrize("words", [["run", "x", "--duration", "3ms"], ["show"], ["run", "x", "--out", "y", "--bogus"],
+                                   ["bogus"], ["credentials", "set", "nowhere"], ["push", "--defaults"]],
+                         ids=lambda words: " ".join(words))
+def test_a_mistake_in_the_command_line_is_a_coded_refusal_with_what_to_do_and_no_usage_dump(capsys, words):
+    """argparse's frame (a usage block and a bare line) and the credentials command's own were two more styles of error
+    beside the coded refusal: each is one, with a code, a ``do:`` and a ``see:``."""
+    assert mime_main(words) == 2
+    err = capsys.readouterr().err
+    assert "cli.usage" in err and "    do: " in err and "    see: " in err
+    assert not any(line.startswith("usage:") or ": error: " in line for line in err.splitlines())
+    assert "The full traceback" not in err, "a mistake in the line has no traceback to point to"
+
+
+def test_the_refusal_of_a_mistake_names_the_commands_own_help_and_its_example(capsys):
+    assert mime_main(["show"]) == 2
+    err = capsys.readouterr().err
+    assert "`mime show --help`" in err and "mime show my_experiment --graph" in err
+
+
+@pytest.mark.parametrize("words, said", [(["defaults", "foo"], "'foo' is not a command of `mime defaults` (choose from show, edit)"),
+                                         (["stduy"], "'stduy' is not a command of `mime` (choose from ")],
+                         ids=lambda value: " ".join(value) if isinstance(value, list) else "said")
+def test_a_command_mistyped_is_named_as_the_command_it_is_not_and_never_by_argparses_dest(capsys, words, said):
+    assert mime_main(words) == 2
+    err = capsys.readouterr().err
+    assert said in err and "argument " not in err and "_command" not in err
+
+
+@pytest.mark.parametrize("argparse_lists", ["show, edit", "'show', 'edit'"], ids=["unquoted", "quoted"])
+def test_the_list_of_commands_is_written_by_mime_whichever_way_argparse_spells_it(argparse_lists):
+    """Python 3.12.x, 3.13.x and 3.14 differ in whether argparse quotes the choices it lists, so a run on one Python
+    cannot show the frame is independent of that: both spellings are fed to it."""
+    from mime.cli._guide import MimeParser, _in_users_words  # pyright: ignore[reportPrivateUsage]
+
+    parser = MimeParser()
+    commands = parser.add_subparsers(dest="defaults_command")
+    commands.add_parser("show")
+    commands.add_parser("edit")
+    message = f"argument defaults_command: invalid choice: 'foo' (choose from {argparse_lists})"
+    assert _in_users_words(message, "mime defaults", parser) == \
+        "'foo' is not a command of `mime defaults` (choose from show, edit)"
+
+
+def test_a_flag_the_line_already_has_is_never_the_suggestion(capsys):
+    assert mime_main(["run", "x", "--out", "o", "--bogus"]) == 2
+    err = capsys.readouterr().err
+    assert "did you mean" not in err
+    assert mime_main(["run", "x", "--outt", "o"]) == 2  # the control: a flag the line lacks is still suggested
+    assert "did you mean --out?" in capsys.readouterr().err
+
+
+def test_a_flag_that_was_removed_points_to_what_replaces_it(capsys):
+    assert mime_main(["push", "--defaults"]) == 2
+    err = capsys.readouterr().err
+    assert "--defaults is gone from push" in err and "`mime defaults`" in err and "`mime defaults edit`" in err
+    assert mime_main(["push", "--bogus"]) == 2  # the control: a flag that never existed has no such pointer
+    assert "is gone" not in capsys.readouterr().err
+
+
+# -- (p) a group of commands given no command -------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("group, commands", [("study", ("plan", "run")), ("assets", ("list", "fetch", "sources")),
+                                             ("env", ("check",))])
+def test_a_group_named_alone_lists_its_commands_and_not_the_parsers_name_for_them(capsys, group, commands):
+    assert mime_main([group]) == 2
+    err = capsys.readouterr().err
+    assert "_command" not in err and "arguments are required" not in err
+    assert all(f"`mime {group} {name}`" in err for name in commands)
+
+
+# -- (q) --traceback: the refusal, the traceback, the refusal's line ------------------------------------------------
+
+
+def test_traceback_shows_the_refusal_first_and_its_line_again_last(saved, capsys, tmp_path):
+    assert mime_main(["--traceback", "run", str(saved), "--duration", "3", "--out", str(tmp_path / "o")]) == 2
+    err = capsys.readouterr().err
+    first, traceback, last = err.index("run.duration"), err.index("Traceback (most recent call last)"), \
+        err.rstrip().splitlines()[-1]
+    assert first < traceback, "the refusal is above the traceback"
+    assert last.startswith("mime run is refused: run.duration: --duration 3 is a bare number")
+
+
+# -- (r) (s) an override's names and units are read from the document, before the load, and refused once -------------
+
+
+@pytest.fixture
+def loading_is_forbidden(monkeypatch):
+    from mime.experiment import Experiment
+
+    def load(*_args, **_kwargs):
+        raise AssertionError("the experiment was loaded")
+
+    monkeypatch.setattr(Experiment, "load", load)
+
+
+@pytest.mark.parametrize("override, code", [("bath.viscosty=2mPa_s", "value.unknown"),
+                                            ("bath.viscosity=2", "value.units"),
+                                            ("bth.viscosity=2mPa_s", "study.unknown-path")])
+def test_an_override_with_a_wrong_name_or_unit_is_refused_before_anything_loads(saved, capsys, tmp_path,
+                                                                                loading_is_forbidden, override, code):
+    assert mime_main(["run", str(saved), "--duration", "0.1s", "--out", str(tmp_path / "o"), "--override", override]) == 2
+    err = capsys.readouterr().err
+    assert code in err and "running " not in err and not (tmp_path / "o").exists()
+
+
+def test_control_a_right_override_is_not_refused_by_the_check_on_the_document(saved):
+    from mime.study._override import parse_override, refuse_unwritable
+
+    refuse_unwritable(saved / "experiment.mime.yaml", [parse_override("bath.viscosity=2mPa_s")])
+
+
+def test_a_declared_value_in_the_wrong_unit_is_refused_once_not_again_as_undeclared():
+    """``water.viscosity`` declared as a density gave ``value.units`` and, for the same cause, ``value.undeclared``."""
+    from mime import Body, Experiment, Medium, State
+    from mime.build import BuildRefused
+    from mime.dynamics import RigidInertial
+    from mime.interactions import Drag, Gravity
+    from mime.scene import Scene, Sphere, Z
+    from mime.things import Part
+    from mime.units import kg_per_m3, m, m_per_s, ms, rad_per_s, um
+
+    for wrong in (kg_per_m3(2.0), 2.0):
+        exp = Experiment("settling_ball", scene=Scene.new(up=Z, units="m"), dt=ms(0.1))
+        water = exp.add_medium(Medium("water"))
+        exp.declare("water.density", kg_per_m3(998.0))
+        exp.declare("water.viscosity", wrong)
+        ball = exp.add_body(Body("ball", dynamics=RigidInertial(), initial=State(
+            position=m((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+            angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(Sphere(radius=um(10.0)))}))
+        exp.declare("ball.parts.steel.density", kg_per_m3(7850.0))
+        exp.attach(Drag.MRS(), body=ball, medium=water)
+        exp.attach(Gravity(), body=ball, medium=water)
+        with pytest.raises(BuildRefused) as refused:
+            exp.plan()
+        assert refused.value.codes() == ["value.units"]
+
+
+# -- (t) mime push --init needs no service; push --defaults is gone -------------------------------------------------
+
+
+def test_push_init_writes_the_manifest_with_no_service_and_names_the_choice_for_the_next_step(saved, tmp_path, capsys):
+    import shutil
+
+    folder = tmp_path / "ball"
+    shutil.copytree(saved, folder)
+    assert mime_main(["push", str(folder), "--init"]) == 0
+    out = capsys.readouterr().out
+    assert "wrote " in out and "--to <zenodo|zenodo-sandbox>" in out
+    assert mime_main(["push", str(folder), "--status"]) == 2, "every other mode still needs --to"
+    assert "--to" in capsys.readouterr().err
+
+
+def test_push_defaults_is_gone_and_mime_defaults_is_the_one_spelling(capsys):
+    assert mime_main(["push", "--defaults"]) == 2
+    assert "cli.usage" in capsys.readouterr().err
+    assert mime_main(["defaults"]) == 0
+
+
+# -- (u) mime assets check always ends with a total ------------------------------------------------------------------
+
+
+def test_assets_check_ends_with_a_total_even_when_nothing_is_cached(capsys, monkeypatch):
+    """With nothing cached it printed nothing at all, which reads as a command that did not run."""
+    from types import SimpleNamespace
+
+    from mime import assets
+
+    monkeypatch.setattr(assets, "known", lambda: {name: SimpleNamespace(name=name) for name in ("a", "b", "c")})
+    outcomes = {"a": "not cached", "b": "not cached", "c": "not cached"}
+    monkeypatch.setattr(assets, "check", lambda ref: outcomes[ref.name])
+    assert mime_main(["assets", "check"]) == 0
+    assert capsys.readouterr().out == "3 assets: 0 ok, 0 corrupt, 3 not cached (nothing to hash)\n"
+    outcomes.update(a="ok", b="corrupt")
+    assert mime_main(["assets", "check"]) == 1
+    assert capsys.readouterr().out.splitlines() == ["a  ok", "b  corrupt",
+                                                    "3 assets: 1 ok, 1 corrupt, 1 not cached (nothing to hash)"]
+
+
+# -- (v) the AR4's manifest is shipped, references only ----------------------------------------------------------------
+
+
+def test_the_shipped_visual_set_holds_references_and_no_mesh_bytes():
+    """Confirmed before shipping (#198, the tiers): every record is a name, a sha256, a size, an upstream address and
+    the terms (redistribution not permitted), the file is a few kilobytes beside meshes of megabytes, and nothing but
+    JSON is in its folder. It is the example description's own manifest, byte for byte."""
+    import importlib.resources
+    import json
+
+    root = importlib.resources.files("mime.data") / "visual_sets"
+    names = sorted(each.name for each in root.iterdir() if each.name != "__pycache__")
+    assert names == ["ar4_mk5.json"]
+    shipped = (root / "ar4_mk5.json").read_bytes()
+    assert len(shipped) < 50_000 and shipped == (Path(__file__).resolve().parents[2] / "examples" / "descriptions" / "ar4"
+                                                  / "visuals.json").read_bytes()
+    held = json.loads(shipped)
+    assert held["licences"]["LicenseRef-Annin-Robotics-NonCommercial"]["redistribution"] == "not_permitted"
+    for record in held["assets"]:
+        assert set(record) <= {"name", "sha256", "size", "licence", "locations", "role", "kind"}, record
+        assert record["size"] > 10_000
+        assert all(location.startswith("https://raw.githubusercontent.com/Annin-Robotics/") for location in
+                   record["locations"])
+    assert len(json.dumps(held["assets"])) < 20_000 < sum(record["size"] for record in held["assets"]) / 1000, \
+        "the records are a thousandth of the meshes they name: the bytes are at their upstream"
+
+
+def test_visuals_list_names_the_shipped_set_with_nothing_installed_and_fetch_knows_it_by_name(capsys):
+    from mime.viz import manifests_for
+
+    assert mime_main(["visuals", "list"]) == 0
+    assert "ar4_mk5  18 files" in capsys.readouterr().out
+    assert [held.name for held in manifests_for("ar4_mk5")] == ["ar4_mk5"]
+    from mime.scene import visual_sets
+
+    assert "ar4_mk5" not in visual_sets(), "a description still finds its meshes' records beside it, never in MIME's data"
+
+
+# -- (w) mime modal --gpu from an experiment saved without the highest matmul precision -------------------------------
+
+
+@pytest.mark.parametrize("gpu, article", [("A100-40GB", "an"), ("H100", "an"), ("L4", "an"), ("T4", "a")])
+def test_the_gpu_precision_refusal_has_its_grammar_and_says_how_to_save_for_a_gpu(gpu, article):
+    from mime.env._check import gpu_precision_refusals
+
+    (refusal,) = gpu_precision_refusals(None, gpu)
+    assert f"a run on {article} {gpu} computes" in refusal.message
+    assert "None (a CPU run records none)" in refusal.message
+    assert "JAX_DEFAULT_MATMUL_PRECISION=highest python <script>.py" in refusal.action
+    assert gpu_precision_refusals("highest", gpu) == [] and gpu_precision_refusals(None, None) == []
+
+
+# -- (x) scaffold --yes chooses no licence and no namespace --------------------------------------------------------
+
+
+def test_yes_writes_marked_placeholders_where_it_was_given_no_licence_or_namespace_and_check_refuses_them(tmp_path, capsys):
+    """``--yes`` took CC-BY-4.0 and the namespace ``mylab`` from "scaffold's own" while its help said it accepts no
+    licence: a block now carries a marker in each place, and ``mime check`` says what to choose."""
+    block = tmp_path / "lb"
+    assert mime_main(["scaffold", "block", str(block), "--yes"]) == 0
+    text = (block / "mime.toml").read_text(encoding="utf-8")
+    assert "LicenseRef-CHOOSE-A-LICENCE" in text and "choose_a_namespace.lb" in text
+    assert "CC-BY-4.0" not in text and "mylab" not in text
+    capsys.readouterr()
+    assert mime_main(["check", str(block)]) == 1
+    said = capsys.readouterr()
+    assert "placeholder" in said.out + said.err and "choose" in said.out + said.err
+
+
+def test_control_the_same_scaffold_with_a_licence_and_an_id_given_passes_its_check(tmp_path, capsys):
+    block = tmp_path / "lb"
+    assert mime_main(["scaffold", "block", str(block), "--yes", "--set", "block.id=labx.lb", "--set",
+                      "block.licence=CC-BY-4.0"]) == 0
+    capsys.readouterr()
+    assert mime_main(["check", str(block)]) == 0
+
+
+def test_an_experiment_scaffolded_with_yes_declares_no_licence_and_says_where_to_choose_one(tmp_path):
+    folder = tmp_path / "ex"
+    assert mime_main(["scaffold", "experiment", str(folder), "--yes"]) == 0
+    text = (folder / "experiment.py").read_text(encoding="utf-8")
+    assert "# experiment.licence(" in text and "CC-BY-4.0\")" not in text.replace("such as CC-BY-4.0 or MIT", "")
+    assert not any(line.strip().startswith("experiment.licence(") for line in text.splitlines())
+
+
+def test_the_placeholders_are_refused_wherever_a_licence_or_a_namespace_is_read():
+    from mime.blocks._definition import id_problem
+    from mime.push._defaults import namespace_problem
+    from mime._placeholders import PLACEHOLDER_LICENCE, PLACEHOLDER_NAMESPACE
+    from mime.terms import licence_problem
+
+    assert "placeholder" in (licence_problem(PLACEHOLDER_LICENCE) or "")
+    assert "placeholder" in (namespace_problem(PLACEHOLDER_NAMESPACE) or "")
+    assert "placeholder" in (id_problem(f"{PLACEHOLDER_NAMESPACE}.probe") or "")
+    assert licence_problem("LicenseRef-Mine") is None and id_problem("labx.probe") is None
+
+
+# -- (ab) verify ends with an acceptance paragraph for an experiment, a run, a study and a block alike --------------------
+
+
+def test_verify_of_an_experiment_ends_with_an_acceptance_as_a_study_and_a_block_do(saved, capsys):
+    from mime.blocks._card import ACCEPTANCE as BLOCK
+    from mime.saved._studies import ACCEPTANCE as STUDY
+
+    assert mime_main(["verify", str(saved)]) == 0
+    last = capsys.readouterr().out.rstrip().splitlines()[-1]
+    assert last.startswith("An acceptance: the experiment's saved form loads and rebuilds here")
+    for other in (BLOCK, STUDY):
+        assert other.startswith("An acceptance: ") and "It bounds nothing about physics" in other
+        assert "It bounds nothing about physics" in last
+
+
+def test_verify_of_a_run_folder_ends_with_its_own_acceptance(saved, tmp_path, capsys):
+    """The run half: ``verify --run`` prints the run's acceptance paragraph (not the experiment's), last."""
+    jax.config.update("jax_enable_x64", True)
+    out = tmp_path / "run"
+    assert mime_main(["run", str(saved), "--out", str(out), "--duration", "0.04s"]) == 0
+    capsys.readouterr()
+    assert mime_main(["verify", "--run", str(out)]) == 0
+    lines = capsys.readouterr().out.rstrip().splitlines()
+    assert lines[-1].startswith("An acceptance: the run's saved form made its outputs again here. It bounds nothing about physics")
+    assert not any("saved form loads and rebuilds" in line for line in lines)
+
+
+# -- (ac) every command's help documents its exit codes ----------------------------------------------------------------
+
+
+def test_every_command_without_commands_under_it_documents_its_exit_codes_in_its_help(capsys):
+    from mime.cli import _guide, build_parser
+
+    parser = build_parser()
+    paths = _guide.leaf_paths(parser)
+    leaves = [path for path in paths if not any(other[:len(path)] == path and len(other) > len(path) for other in paths)]
+    assert len(leaves) > 30
+    assert [path for path in leaves if path not in _guide.EXIT_CODES] == []
+    for path in leaves:
+        child = parser
+        for word in path:
+            child = _guide._children(child)[word]  # pyright: ignore[reportPrivateUsage]
+        text = child.format_help()
+        assert "exit codes:" in text and "refused: the cause and what to do are printed" in text, path
+        for code, meaning in _guide.EXIT_CODES[path]:
+            assert f"  {code:<5}{meaning}" in text, (path, code)
+
+
+def test_the_top_of_the_help_lists_the_codes_every_command_may_give(capsys):
+    with pytest.raises(SystemExit):
+        mime_main(["--help"])
+    out = capsys.readouterr().out
+    assert "2 refused; 3 a MIME defect; 130 Ctrl+C; 141 the reader of a pipe closed it" in out
+
+
+# -- (ad) paths below the current directory are written relative to it ----------------------------------------------------
+
+
+def test_check_and_pack_name_a_path_below_the_current_directory_relative_to_it(saved, tmp_path, monkeypatch, capsys):
+    import shutil
+
+    shutil.copytree(saved, tmp_path / "ball")
+    monkeypatch.chdir(tmp_path)
+    assert mime_main(["push", "ball", "--init"]) == 0
+    capsys.readouterr()
+    assert mime_main(["check", "ball"]) in (0, 1)
+    first = capsys.readouterr().out.splitlines()[0]
+    assert first.startswith("ball/mime.toml, a bundle's manifest"), first
+    assert mime_main(["pack", "ball"]) == 0
+    out = capsys.readouterr().out
+    assert "packed ball into ball.mimebundle (" in out and str(tmp_path) not in out
+
+
+def test_control_a_path_outside_the_current_directory_is_written_in_full(saved, tmp_path, monkeypatch):
+    from mime._shell import shown
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert shown(tmp_path / "ball" / "mime.toml") == str(tmp_path / "ball" / "mime.toml")
+    assert shown(elsewhere / "ball" / "mime.toml") == "ball/mime.toml"
+
+
+# -- (ae) mime registry has a header row and says where each entry comes from ----------------------------------------------
+
+
+def test_registry_has_a_header_row_and_names_the_namespace_each_entry_comes_from(saved, capsys):
+    """``saved`` registered the toy entries, a namespace of its own beside MIME's."""
+    assert mime_main(["registry"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "kind  name  version  from"
+    rows = [line.split("  ") for line in lines[1:] if not line.startswith("not loaded:")]
+    assert rows and all(len(row) == 4 for row in rows)
+    assert {"mime", "toy"} <= {row[3] for row in rows}
+    assert all(row[1].startswith("toy.") for row in rows if row[3] == "toy")
+
+
+# -- (af) an installed plugin that nothing pins is a note, and --strict makes it a refusal -------------------------------
+
+
+def test_an_installed_plugin_nothing_pins_is_a_note_unless_strict_is_asked_for(tmp_path):
+    from mime.build import BuildRefused
+    from mime.env import check
+    from mime.env._check import expected_distributions, this_system
+
+    expected, _ = expected_distributions("cpu", this_system(), base=None, lab=[], mime_version=None)
+    installed = {name: (want.version,) for name, want in expected.items()}
+    installed["labx-plugin"] = ("0.1.0",)
+    installed["some-other-package"] = ("1.0",)
+    common = dict(variant="cpu", installed=installed, system=this_system(), modules={}, flags="")
+    only_plugin = {key: held for key, held in installed.items() if key != "some-other-package"}
+    note = check(strict=True, strict_plugins=False, plugins={"labx-plugin"}, **{**common, "installed": only_plugin})
+    assert any("labx-plugin" in line for line in note.notes)
+    with pytest.raises(BuildRefused) as refused:
+        check(strict=True, strict_plugins=True, plugins={"labx-plugin"}, **{**common, "installed": only_plugin})
+    assert refused.value.codes() == ["env.unpinned"]
+    with pytest.raises(BuildRefused) as refused:  # the control: a package that is no plugin is still refused
+        check(strict=True, strict_plugins=False, plugins={"labx-plugin"}, **common)
+    assert refused.value.codes() == ["env.unpinned"] and "some-other-package" in str(refused.value)
+
+
+@pytest.fixture
+def planted_plugin(tmp_path, monkeypatch):
+    """The installed distributions are the pins exactly, plus ``labz-plugin``, which nothing pins and which registers an
+    entry under ``mime.entries``: a distribution found on ``sys.path`` as an installed one is, by its entry point."""
+    from mime.env import _check
+
+    dist_info = tmp_path / "site" / "labz_plugin-0.1.dist-info"
+    dist_info.mkdir(parents=True)
+    (dist_info / "METADATA").write_text("Metadata-Version: 2.1\nName: labz-plugin\nVersion: 0.1\n", encoding="utf-8")
+    (dist_info / "entry_points.txt").write_text("[mime.entries]\nlabz = labz_module\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path / "site"))
+    expected, _ = _check.expected_distributions("cpu", _check.this_system(), base=None, lab=[], mime_version=None)
+    installed = {name: (want.version,) for name, want in expected.items()} | {"labz-plugin": ("0.1",)}
+    monkeypatch.setattr(_check, "installed_distributions", lambda paths=None: installed)
+    monkeypatch.setattr(_check, "environment_modules", lambda paths=None: {})
+    monkeypatch.setattr(_check, "plugin_distributions", _check.plugin_distributions)  # the real entry-point discovery
+    return "labz-plugin"
+
+
+def test_plugin_distributions_finds_a_distribution_that_registers_an_entry_point(planted_plugin):
+    from mime.env._check import plugin_distributions
+
+    assert planted_plugin in plugin_distributions()
+    assert "numpy" not in plugin_distributions()  # the control: a distribution that registers nothing is no plugin
+
+
+@pytest.mark.parametrize("words", [["--strict"], ["--base"], ["--mime-version", "0.0.0"], ["FOLDER"]],
+                         ids=["strict", "base", "mime-version", "folder"])
+def test_the_cli_refuses_an_unpinned_plugin_wherever_the_check_is_strict_and_notes_it_when_loose(
+        words, planted_plugin, saved, capsys):
+    """Strict is asked for or implied (a folder, ``--base``, ``--mime-version``): the plugin is refused as any
+    distribution nothing pins is (other refusals may come with it). A loose check names it in a note."""
+    common = ["env", "check", "--variant", "cpu"]
+    assert mime_main([*common, *[str(saved) if word == "FOLDER" else word for word in words]]) == 2
+    refused = capsys.readouterr().err
+    assert "env.unpinned" in refused and planted_plugin in refused
+    assert mime_main(common) == 0
+    assert f"note: {planted_plugin} 0.1 is installed and nothing pins it (a plugin, which registers" in \
+        capsys.readouterr().out
+
+
+# -- (x) on the plugin path and the bundle's: no real-looking namespace and no licence chosen ------------------------------
+
+
+def test_a_plugin_folder_that_names_no_namespace_gets_the_placeholder_not_a_real_looking_one():
+    from mime._placeholders import PLACEHOLDER_NAMESPACE
+    from mime.scaffold._values import own_plugin_names
+
+    assert own_plugin_names("9lives")["namespace"] == PLACEHOLDER_NAMESPACE  # no valid word to take from the folder
+    assert own_plugin_names("scafx-probes")["namespace"] == "scafx"  # the control: a name the folder gives is kept
+
+
+def test_a_plugin_scaffolded_with_yes_chooses_no_content_licence_and_its_benchmark_manifest_is_refused(tmp_path, capsys):
+    """Its example, its benchmark's manifest and its record carried CC-BY-4.0 where the person gave none: now a
+    placeholder in each, so ``mime check`` (the benchmark's) and the build of the example (the record's) refuse it."""
+    plugin = tmp_path / "scafx-probes"
+    assert mime_main(["scaffold", "plugin", str(plugin), "--yes", "--set", "plugin.namespace=scafx"]) == 0
+    capsys.readouterr()
+    files = {path.relative_to(plugin).as_posix(): path.read_text(encoding="utf-8")
+             for path in plugin.rglob("*") if path.is_file() and path.suffix in {".toml", ".py", ".json"}}
+    assert 'licence = "LicenseRef-CHOOSE-A-LICENCE"' in files["benchmarks/mime.toml"]
+    assert '"licence": "LicenseRef-CHOOSE-A-LICENCE"' in files["src/scafx_probes/records/records.json"]
+    assert 'experiment.licence("CC-BY-4.0")' not in files["examples/example.py"]
+    assert not any(line.strip().startswith("experiment.licence(") for line in files["examples/example.py"].splitlines())
+    for path in ("benchmarks/mime.toml", "src/scafx_probes/records/records.json", "examples/example.py"):
+        assert "CC-BY-4.0" not in files[path].replace("such as CC-BY-4.0 or MIT", "")
+    beside = tmp_path / "case"  # what build_case.py does: the saved example, with the manifest copied beside it
+    from mime.testing.toys import coupled_toy
+
+    coupled_toy().save(beside)
+    (beside / "mime.toml").write_text(files["benchmarks/mime.toml"], encoding="utf-8")
+    assert mime_main(["check", str(beside)]) == 1
+    said = capsys.readouterr()
+    assert "placeholder" in said.out + said.err and "[bundle] licence" in said.out + said.err
+
+
+def test_the_content_licence_a_person_keeps_still_reaches_the_plugin_example(tmp_path):
+    from mime.push import _defaults
+
+    _defaults.write_defaults({}, licences={"content": "CC0-1.0"})
+    plugin = tmp_path / "scafx-probes"
+    assert mime_main(["scaffold", "plugin", str(plugin), "--yes", "--set", "plugin.namespace=scafx"]) == 0
+    assert 'experiment.licence("CC0-1.0")' in (plugin / "examples" / "example.py").read_text(encoding="utf-8")
+
+
+def test_a_bundle_scaffolded_over_an_experiment_declaring_no_licence_writes_the_placeholder_and_check_refuses_it(
+        tmp_path, capsys):
+    from mime.scaffold._scaffold import scaffold
+    from mime.testing.toys import coupled_toy
+
+    folder = tmp_path / "undeclared"
+    coupled_toy().save(folder)  # declares no licence
+    scaffold("bundle", folder, yes=True, say=lambda line: None)
+    text = (folder / "mime.toml").read_text(encoding="utf-8")
+    assert 'licence = "LicenseRef-CHOOSE-A-LICENCE"' in text and "CC-BY-4.0" not in text
+    capsys.readouterr()
+    assert mime_main(["check", str(folder)]) == 1
+    said = capsys.readouterr()
+    assert "placeholder" in said.out + said.err

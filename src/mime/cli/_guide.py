@@ -11,9 +11,12 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast, override
+from typing import TYPE_CHECKING, Any, cast, override
 
 from mime.cli._shell import quoted
+
+if TYPE_CHECKING:
+    from mime.build import Refusal
 
 #: The commands, by what one is doing. Every command is in exactly one group (a test holds it).
 GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -71,6 +74,69 @@ EXAMPLES: Mapping[tuple[str, ...], str] = {
     ("completion",): "mime completion bash > ~/.local/share/bash-completion/completions/mime",
 }
 
+#: What every command's exit code is where it says nothing else: 2 for a refusal (the user's or the environment's reason),
+#: 3 for a MIME defect or an error MIME does not recognise.
+_REFUSED = "refused: the cause and what to do are printed"
+_DEFECT = "a MIME defect, or an error MIME does not recognise (the file with its traceback is named)"
+
+#: What each command exits with, by its words after ``mime``: the codes it gives beyond the two every command may give (2
+#: refused, 3 a defect), as ``(code, meaning)``, shown under its example in its ``--help``. A test holds that every
+#: command has an entry; a code an entry does not list is one the command never gives (a closed output pipe ends a command
+#: with 141, whatever it was doing). A group of commands has none of its own.
+EXIT_CODES: Mapping[tuple[str, ...], tuple[tuple[int, str], ...]] = {
+    ("run",): ((0, "ran to the end"), (130, "stopped by Ctrl+C: the folder holds the steps reached, marked stopped, or "
+                                           "nothing where it was pressed before writing")),
+    ("study", "plan"): ((0, "planned: every member can run (or the refused are dropped)"),
+                        (1, "a member is refused and the plan does not drop it")),
+    ("study", "run"): ((0, "ran; members already done under the same key were skipped"),),
+    ("serve",): ((0, "stopped by a stop command, a signal, the launcher's exit or a time limit"),),
+    ("verify",): ((0, "reproduced"), (1, "an output moved (what moved is printed)"), (130, "interrupted: nothing verified")),
+    ("pending",): ((0, "nothing is pending"), (1, "something is pending (each item is printed, with its line to paste)")),
+    ("show",): ((0, "shown"),),
+    ("pack",): ((0, "packed"),),
+    ("card",): ((0, "written or printed"),),
+    ("pull",): ((0, "pulled"),),
+    ("push",): ((0, "done (a dry run sends nothing)"), (130, "interrupted: the same command goes on from what the service "
+                                                           "holds")),
+    ("check",): ((0, "no finding (items to do are listed, and are not findings under the exploratory profile)"),
+                 (1, "a finding: push would refuse as it stands")),
+    ("scaffold",): ((0, "written (or shown, under --dry-run)"),),
+    ("defaults",): ((0, "shown"),),
+    ("defaults", "show"): ((0, "shown"),),
+    ("defaults", "edit"): ((0, "saved"),),
+    ("credentials", "set"): ((0, "stored"),),
+    ("credentials", "status"): ((0, "said (whether there is a token, never the token)"),),
+    ("credentials", "remove"): ((0, "removed, or none was held"),),
+    ("env", "check"): ((0, "the environment holds every pin (differences that are only notes are printed)"),),
+    ("modal",): ((0, "the script is written"),),
+    ("cache", "clear"): ((0, "cleared, or there was nothing to clear"),),
+    ("assets", "list"): ((0, "listed"),),
+    ("assets", "fetch"): ((0, "fetched, every file hashed in full"),),
+    ("assets", "check"): ((0, "no cached asset is corrupt"), (1, "a cached asset is corrupt")),
+    ("assets", "sources"): ((0, "each asset's terms and locations are printed"),),
+    ("assets", "audit"): ((0, "nothing found"), (1, "a file whose bytes may not be redistributed, or a mesh with no "
+                                               "record, was found")),
+    ("assets", "licences"): ((0, "listed, or revoked"), (1, "--revoke named a licence that was not accepted")),
+    ("visuals", "list"): ((0, "listed"),),
+    ("visuals", "fetch"): ((0, "baked into the asset cache"),),
+    ("visuals", "view"): ((0, "the layer is printed"),),
+    ("visuals", "web"): ((0, "the page is written"),),
+    ("registry",): ((0, "listed"),),
+    ("docs", "check"): ((0, "every check passes"), (1, "a check fails")),
+    ("docs", "build"): ((0, "built"), (1, "the build has a problem: no page is written")),
+    ("completion",): ((0, "the script is printed"),),
+}
+
+
+def exit_codes_text(path: tuple[str, ...]) -> str | None:
+    """The exit codes block of a command's help: its own, then the two every command may give; ``None`` for a group of
+    commands, whose commands each have theirs."""
+    if path not in EXIT_CODES:
+        return None
+    held = sorted([*EXIT_CODES[path], (2, _REFUSED), (3, _DEFECT)])
+    return "\n".join(["exit codes:", *(f"  {code:<5}{meaning}" for code, meaning in held)])
+
+
 #: A help text starting with this is laid out as written, one example's line per line.
 _AS_WRITTEN = ("example", "install")
 
@@ -119,11 +185,75 @@ class MimeParser(argparse.ArgumentParser):
 
     @override
     def error(self, message: str) -> Any:
+        """A mistake in the command line is a coded refusal, ``cli.usage``, drawn as every refusal is (what is wrong, what
+        to do, where to read): it is raised here, and ``mime.cli.main`` shows it, so that no mistake of the line has a
+        frame of its own (a usage block and a bare line)."""
+        from mime.build import BuildRefused
+
         hints = hints_for(message, self, MimeParser.words)
-        # argparse parses the whole line with the top parser, so an argument no command took is reported by it, under
-        # the top usage: the usage and name of the command the line was for are the help (``mime run --bogus``)
+        # argparse parses the whole line with the top parser, so an argument no command took is reported by it: the
+        # command the line was for is the one whose options and example are named (``mime run --bogus``)
         target = _command_of(self, MimeParser.words) if "unrecognized arguments" in message else self
-        argparse.ArgumentParser.error(target, message + "".join(f"\n  {hint}" for hint in hints))
+        raise BuildRefused([usage_refusal(target, message, hints, MimeParser.words)])
+
+
+def command_words(top: argparse.ArgumentParser, words: Sequence[str]) -> tuple[str, ...]:
+    """The words of the deepest command a line names (``mime --plain study run x`` is ``("study", "run")``), read in
+    order, stopping at the first word that is not a command's name once one was found."""
+    here, found = top, ()
+    for word in words:
+        child = _children(here).get(word)
+        if child is not None:
+            here, found = child, (*found, word)
+        elif found and not word.startswith("-"):
+            break
+    return found
+
+
+#: What argparse says of a group of commands (``mime study``) given no command.
+_NO_SUBCOMMAND = re.compile(r"the following arguments are required: \w+_command\b")
+
+
+def _first_clause(help_text: str | None) -> str:
+    """A command's help up to its first colon, semicolon or bracket: what it is, for a list of commands."""
+    return re.split(r"[:;(]", help_text or "", maxsplit=1)[0].strip()
+
+
+def usage_refusal(target: argparse.ArgumentParser, message: str, hints: Sequence[str], words: Sequence[str]) -> Refusal:
+    """The refusal for a mistake in the command line: ``message`` is argparse's, and what to do names the command's own
+    help and its example (a group given no command lists the commands there are)."""
+    from mime.build import Refusal, RefusalClass
+
+    top = MimeParser.top
+    path = command_words(top, words) if top is not None else ()
+    named = " ".join(("mime", *path))
+    example = EXAMPLES.get(path)
+    sub = _subparsers_of(target) if _NO_SUBCOMMAND.search(message) else None
+    if sub is not None:
+        listed = "; ".join(f"`{named} {action.dest}` ({_first_clause(action.help)})" for action in sub._get_subactions())
+        return Refusal("cli.usage", RefusalClass.USER, f"{named} is a group of commands, and none was named",
+                       f"name one of its commands: {listed}. `{named} <command> --help` shows one's options, with an "
+                       f"example")
+    nearest = "".join(f"{hint} " for hint in hints)
+    shown = f"; for example `{example}`" if example is not None else ""
+    return Refusal("cli.usage", RefusalClass.USER, _in_users_words(message, named, target),
+                   f"{nearest}`{named} --help` shows its options{shown}.")
+
+
+#: argparse's words for a command mistyped where a command was wanted: its ``dest`` (``defaults_command``, ``command``)
+#: is a name in the program, and not a word a person knows. Only the mistyped word is read from them: how argparse
+#: writes the list of choices after it changed between Python versions (3.12.8 and 3.14 quote each), so the list is
+#: written here from the command's own choices.
+_INVALID_COMMAND = re.compile(r"argument (?:\w+_)?command: invalid choice: '([^']*)' \(choose from [^)]*\)")
+
+
+def _in_users_words(message: str, named: str, target: argparse.ArgumentParser) -> str:
+    """``message`` with argparse's name for a command's place (``argument defaults_command``) said as the command or group
+    it is in, and its choices listed from ``target``'s commands: ``'foo' is not a command of `mime defaults` (choose from
+    show, edit)``."""
+    choices = ", ".join(_children(target))
+    return _INVALID_COMMAND.sub(lambda found: f"'{found.group(1)}' is not a command of `{named}` (choose from {choices})",
+                                message)
 
 
 def _subparsers_of(parser: argparse.ArgumentParser) -> argparse._SubParsersAction[argparse.ArgumentParser] | None:  # pyright: ignore[reportPrivateUsage]
@@ -158,7 +288,8 @@ def attach_examples(parser: argparse.ArgumentParser, path: tuple[str, ...] = ())
         here = (*path, name)
         if here in EXAMPLES:
             held = f"{child.epilog}\n\n" if child.epilog else ""
-            child.epilog = f"{held}example:\n  {EXAMPLES[here]}"
+            codes = exit_codes_text(here)
+            child.epilog = f"{held}example:\n  {EXAMPLES[here]}" + (f"\n\n{codes}" if codes is not None else "")
         attach_examples(child, here)
 
 
@@ -197,14 +328,25 @@ def hints_for(message: str, parser: argparse.ArgumentParser, words: Sequence[str
             here = child
     known = sorted({option for each in (here, top) for option in each._option_string_actions
                     if option.startswith("--")})
+    given = {word.split("=", 1)[0] for word in words}
     for word in words:
         flag = word.split("=", 1)[0]
         if flag.startswith("--") and flag not in known:
-            near = _close(flag, known)
+            removed = REMOVED_FLAGS.get((command_words(top, words), flag))
+            if removed is not None:
+                hints.append(removed)
+                continue
+            near = _close(flag, [option for option in known if option not in given])  # never one the line already has
             if near is not None:
                 hints.append(f"did you mean {near}?")
     return hints
 
+
+#: A flag a command no longer has, by the command's words and the flag: what to use instead.
+REMOVED_FLAGS: dict[tuple[tuple[str, ...], str], str] = {
+    (("push",), "--defaults"): "--defaults is gone from push: your defaults are `mime defaults` (shown) and "
+                               "`mime defaults edit` (changed).",
+}
 
 #: The options that take a duration (``mime.cli._durations``), and the words a unit is written as.
 _DURATION_OPTIONS = ("--duration", "--every", "--stage-every", "--idle-timeout", "--max-wall")

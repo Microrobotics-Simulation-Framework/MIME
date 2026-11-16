@@ -9,12 +9,24 @@ but the same rule is safe in both."""
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
 import sys
+from pathlib import Path
 
 #: What needs no quoting anywhere.
 _PLAIN = re.compile(r"[A-Za-z0-9_@+=:,./\\-]+")
+
+
+def shown(path: str | os.PathLike[str]) -> str:
+    """A path as a line of output names it: relative to the current directory where it is below it, as a person typed it,
+    and in full where it is not (a long absolute path wraps in a terminal and says nothing a person does not know)."""
+    held = Path(os.path.abspath(path))
+    try:
+        return str(held.relative_to(Path.cwd()))
+    except ValueError:
+        return str(held)
 
 
 def quoted(word: str, *, windows: bool | None = None) -> str:

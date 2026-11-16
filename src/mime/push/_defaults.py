@@ -29,6 +29,7 @@ from typing import cast
 import platformdirs
 import yaml
 
+from mime._placeholders import PLACEHOLDER_NAMESPACE
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._sharing import Reader, funding_of, keyword_list, people, uploader_of
@@ -86,6 +87,9 @@ def _filled(value: object) -> bool:
 
 def namespace_problem(text: str) -> str | None:
     """Why ``text`` is not a namespace (one lower-case word, as the registry's, and not ``mime``), or ``None``."""
+    if text == PLACEHOLDER_NAMESPACE:
+        return (f"{text} is the placeholder `mime scaffold --yes` writes where it was given no namespace: choose yours, "
+                f"one lower-case word")
     if _NAMESPACE.fullmatch(text) and text != "mime":
         return None
     return f"{plain(text)} is not a namespace: one lower-case word (letters, digits, _), starting with a letter, not mime"
@@ -244,7 +248,7 @@ def write_defaults(values: Mapping[str, object] | None = None, *, licences: Mapp
 
 
 def defaults_lines(say: Say | None = None) -> list[str]:
-    """What ``mime defaults`` (and ``mime push --defaults``) says: where the defaults live, and each, as the file holds
+    """What ``mime defaults`` says: where the defaults live, and each, as the file holds
     it, one a line."""
     path, old = defaults_path(), old_defaults_path()
     found = read_all(say)

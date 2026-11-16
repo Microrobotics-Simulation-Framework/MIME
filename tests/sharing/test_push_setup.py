@@ -1,6 +1,5 @@
 """``mime push <folder> --setup``, a walk through ``mime.toml`` a field at a time, and a person's defaults: kept once in
-MIME's config directory, never in an experiment's folder; ``--init`` fills from them, ``mime defaults`` (and ``mime push
---defaults``, its alias) shows them and where they live, ``mime defaults edit`` walks them, and an ORCID iD in them is
+MIME's config directory, never in an experiment's folder; ``--init`` fills from them, ``mime defaults`` shows them and where they live, ``mime defaults edit`` walks them, and an ORCID iD in them is
 held to its check digit. A folder holding ``sharing.yaml`` alone gets ``mime.toml`` written from it, the old file left.
 
 The walk is driven here by a person's answers given in order (``Person``), as the command line's display asks them;
@@ -399,7 +398,7 @@ def test_the_walks_values_saved_as_defaults_live_in_the_config_directory_and_fil
     out = capsys.readouterr().out
     assert f"filled from your defaults ({path}): creators, uploader" in out
     assert push.read_manifest(other).record.creators[0].orcid == ORCID
-    assert main(["push", "--defaults"]) == 0
+    assert main(["defaults"]) == 0
     shown = capsys.readouterr().out
     assert str(path) in shown and ORCID in shown
     again = Person(*EVERY, save=True)
@@ -407,14 +406,13 @@ def test_the_walks_values_saved_as_defaults_live_in_the_config_directory_and_fil
     assert not any(each.startswith("Save these") for each in again.asked), "the defaults themselves are not asked again"
 
 
-def test_mime_defaults_and_its_alias_say_the_same_bytes(capsys: pytest.CaptureFixture[str]):
+def test_mime_defaults_and_defaults_show_say_the_same_bytes(capsys: pytest.CaptureFixture[str]):
     for values in (None, {"keywords": ["helices"]}):
         if values is not None:
             _defaults.write_defaults(values, licences={"content": "CC0-1.0"}, namespace="labx")
         assert main(["defaults"]) == 0
         shown = capsys.readouterr().out
         assert main(["defaults", "show"]) == 0 and capsys.readouterr().out == shown
-        assert main(["push", "--defaults"]) == 0 and capsys.readouterr().out == shown
     assert '  [sharing] keywords = ["helices"]' in shown and '  [licences] content = "CC0-1.0"' in shown
     assert '  [scaffold] namespace = "labx"' in shown
 
@@ -977,18 +975,16 @@ def test_control_with_setup_asking_where_every_question_asks_its_questions_are_c
     assert "[Y/n]" in capsys.readouterr().out and screen.getvalue() == "", "the planted defect is not seen"
 
 
-# --- --setup and --defaults take no flag of a push or a publish (the review of #112, I4) -------------------------------
+# --- --setup takes no flag of a push or a publish (the review of #112, I4) -------------------------------
 
 
 @pytest.mark.parametrize("flag", [["--confirm", "10.5072/zenodo.1"], ["--yes"], ["--keep-site-edits"],
                                   ["--overwrite-site-edits"], ["--full-plan"]])
-def test_setup_and_defaults_refuse_a_flag_they_would_ignore_naming_it(flag: list[str], saved: Path, tmp_path: Path,
+def test_setup_refuses_a_flag_it_would_ignore_naming_it(flag: list[str], saved: Path, tmp_path: Path,
                                                                      capsys: pytest.CaptureFixture[str]):
     folder = copy_of(saved, tmp_path)
-    for words in (["push", str(folder), "--setup", *flag], ["push", "--defaults", *flag]):
-        with pytest.raises(SystemExit) as stopped:
-            main(words)
-        assert stopped.value.code == 2
+    for words in (["push", str(folder), "--setup", *flag],):
+        assert main(words) == 2
         error = capsys.readouterr().err
         assert f"takes no {flag[0]}" in error and "pushes and publishes nothing" in error, error
     assert not (folder / "mime.toml").exists()

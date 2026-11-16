@@ -3,7 +3,9 @@ must ignore every annotation in MIME), the refusal table (``import mime`` reads 
 point by which a load finds the toy namespace. The claim is about the distribution, so the test builds a real wheel and
 reads its members."""
 
+import base64
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -179,7 +181,63 @@ def _sdist_member(sdist: tarfile.TarFile, path: str) -> bytes:
     return held.read()
 
 
-def test_the_sdist_ships_the_ar4s_description_with_its_mit_notice_and_the_wheel_does_not(wheel, sdist):
+#: The one AR4 file the wheel holds: the visual set's manifest, which ``mime visuals list`` and ``fetch`` read through
+#: ``shipped_visual_sets()``. It names each mesh at Annin Robotics' pinned commit and holds none of them.
+AR4_WHEEL_MANIFEST = "mime/data/visual_sets/ar4_mk5.json"
+AR4_PINNED_COMMIT = "6a3ebb11cedab12cd1d29b41d63aa270a008ab8b"
+AR4_UPSTREAM_PREFIX = f"https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/{AR4_PINNED_COMMIT}/"
+#: A record's fields: the name, the sha256, the size, the upstream URL (``locations``) and the terms (``licence``, which
+#: the manifest's ``licences`` table resolves), and the two labels that say how MIME shows and made the file.
+AR4_RECORD_FIELDS = {"name", "sha256", "size", "licence", "locations", "role", "kind"}
+
+
+def _ar4_files_in(names: list[str]) -> list[str]:
+    return sorted(name for name in names if "ar4" in name.lower())
+
+
+def _ar4_manifest_problems(manifest: dict[str, object]) -> list[str]:
+    """What stops a manifest being references only: a record with a field beyond :data:`AR4_RECORD_FIELDS`, one whose
+    terms do not forbid redistribution, a value that is more than a short label, a hex digest or an integer, any URDF,
+    XML, STL or base64 text, and a URL off the pinned upstream commit."""
+    problems: list[str] = []
+    licences = manifest.get("licences")
+    assert isinstance(licences, dict)
+    records = manifest.get("assets")
+    assert isinstance(records, list) and len(records) > 10
+    for record in records:
+        assert isinstance(record, dict)
+        name = record.get("name")
+        if set(record) != AR4_RECORD_FIELDS:
+            problems.append(f"{name}: fields {sorted(set(record) ^ AR4_RECORD_FIELDS)} differ from the references' own")
+        terms = licences.get(record.get("licence"))
+        if not isinstance(terms, dict) or terms.get("redistribution") != "not_permitted":
+            problems.append(f"{name}: its terms do not say redistribution is not_permitted")
+        if not record.get("locations"):
+            problems.append(f"{name}: no upstream URL")
+        for url in record.get("locations") or []:
+            if not (isinstance(url, str) and url.startswith(AR4_UPSTREAM_PREFIX)):
+                problems.append(f"{name}: {url!r} is not at the pinned upstream commit")
+        for field, value in record.items():
+            if field in ("locations", "licence"):
+                continue
+            if field == "size":
+                if not isinstance(value, int) or isinstance(value, bool):
+                    problems.append(f"{name}: size is not an integer")
+            elif field == "sha256":
+                if not (isinstance(value, str) and len(value) == 64 and set(value) <= set("0123456789abcdef")):
+                    problems.append(f"{name}: sha256 is not a hex digest")
+            elif not (isinstance(value, str) and len(value) < 64):
+                problems.append(f"{name}: {field} holds more than a label")
+    text = json.dumps(manifest)
+    for marker in ("<?xml", "<robot", "<link ", "<joint ", "solid ", "base64"):
+        if marker in text:
+            problems.append(f"the manifest holds {marker!r}")
+    if len(text) > 100_000:
+        problems.append(f"the manifest is {len(text)} bytes: references are not that long")
+    return problems
+
+
+def test_the_sdist_ships_the_ar4s_description_with_its_mit_notice_and_the_wheel_holds_only_its_references(wheel, sdist):
     urdf = _sdist_member(sdist, f"{AR4_FOLDER}/ar4.urdf")
     assert hashlib.sha256(urdf).hexdigest() == AR4_URDF_SHA256
     licence = _sdist_member(sdist, f"{AR4_FOLDER}/LICENSE").decode()
@@ -188,7 +246,34 @@ def test_the_sdist_ships_the_ar4s_description_with_its_mit_notice_and_the_wheel_
     assert licence.startswith("MIT License\n\nCopyright (c) 2021 Dexter Ong\n")
     assert "The above copyright notice and this permission notice shall be included" in licence
     assert b'"format": "mime.asset_manifest/2"' in _sdist_member(sdist, f"{AR4_FOLDER}/visuals.json")
-    assert not [name for name in wheel.namelist() if "ar4" in name.lower()]
+    assert _ar4_files_in(wheel.namelist()) == [AR4_WHEEL_MANIFEST], "no mesh, no URDF, no other AR4 file"
+    manifest = json.loads(wheel.read(AR4_WHEEL_MANIFEST))
+    assert _ar4_manifest_problems(manifest) == []
+    assert manifest["upstream"]["commit"] == AR4_PINNED_COMMIT
+
+
+def test_control_a_second_ar4_file_in_the_wheel_or_bytes_in_its_manifest_fail_the_references_only_check(wheel):
+    """The two ways the wheel's AR4 content could stop being references: a second file under the AR4's name, and a record
+    that carries mesh bytes, a URDF's text, or a URL off the pinned commit. Each is planted in a copy and seen failing."""
+    names = wheel.namelist()
+    for extra in ("mime/data/ar4.urdf", "mime/data/visuals/ar4_Link_1.STL", "mime/data/visual_sets/ar4_mk5_meshes.json"):
+        assert _ar4_files_in([*names, extra]) != [AR4_WHEEL_MANIFEST], extra
+    held = json.loads(wheel.read(AR4_WHEEL_MANIFEST))
+    assert _ar4_manifest_problems(held) == []
+    changes = {
+        "bytes field": lambda record: record.update(data=base64.b64encode(bytes(range(256))).decode()),
+        "base64 in a label": lambda record: record.update(role=base64.b64encode(bytes(100)).decode()),
+        "urdf text": lambda record: record.update(kind="<robot name='ar4'><link name='base'/></robot>"),
+        "stl text": lambda record: record.update(role="solid ar4\nfacet normal 0 0 1"),
+        "other commit": lambda record: record.update(locations=[record["locations"][0].replace(AR4_PINNED_COMMIT, "main")]),
+        "redistributable terms": lambda record: record.update(licence="LicenseRef-Other"),
+        "no location": lambda record: record.update(locations=[]),
+    }
+    for label, change in changes.items():
+        copy = json.loads(json.dumps(held))
+        change(copy["assets"][0])
+        copy["licences"]["LicenseRef-Other"] = {"redistribution": "permitted"}
+        assert _ar4_manifest_problems(copy), f"the check missed a planted {label}"
 
 
 def test_neither_distribution_holds_a_file_that_may_not_be_redistributed_or_an_unrecorded_mesh(wheel, sdist,
@@ -206,7 +291,6 @@ def test_neither_distribution_holds_a_file_that_may_not_be_redistributed_or_an_u
 def test_control_a_planted_copy_in_the_wheel_fails_the_guard(wheel, tmp_path, monkeypatch):
     """A made STL planted in a copy of the wheel, once with a record that forbids its redistribution and once with
     none: the guard finds both."""
-    import json
     import struct
 
     from mime import assets

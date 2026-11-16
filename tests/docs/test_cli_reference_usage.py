@@ -17,6 +17,7 @@ import pytest
 from mime.cli import build_parser
 from mime.cli._guide import _subparsers_of  # pyright: ignore[reportPrivateUsage]
 from mime.docs._generated import usage
+from mime.errors import MimeError
 
 
 def everything() -> argparse.ArgumentParser:
@@ -67,7 +68,7 @@ def test_the_commands_the_review_found_misprinted_are_printed_as_argparse_takes_
     assert check.startswith("mime env check --variant VARIANT [--gpu TYPE]") and check.endswith(" [folder]")
     assert usage(("pull",), held.choices["pull"]).endswith(" [source]")
     push = usage(("push",), held.choices["push"])
-    assert push.endswith(" [folder]") and "[--init | --setup | --defaults | --status | --discard | --publish | --dry-run]" in push
+    assert push.endswith(" [folder]") and "[--init | --setup | --status | --discard | --publish | --dry-run]" in push
     credentials = _subparsers_of(held.choices["credentials"])
     assert credentials is not None
     assert usage(("credentials", "status"), credentials.choices["status"]).endswith(" [{zenodo,zenodo-sandbox}]")
@@ -83,11 +84,14 @@ def test_the_commands_the_review_found_misprinted_are_printed_as_argparse_takes_
 def refused_to_omit(parser: argparse.ArgumentParser, capsys: pytest.CaptureFixture[str]) -> set[str]:
     """The names argparse says are required when it parses an empty command line (the first spelling of an option)."""
     capsys.readouterr()
+    message = ""
     try:
         parser.parse_args([])
-    except SystemExit:
+    except MimeError as error:  # the command's own parsers refuse as a coded refusal (cli.usage)
+        message = str(error)
+    except SystemExit:  # a plain argparse parser built for a control
         pass
-    message = capsys.readouterr().err
+    message += capsys.readouterr().err
     listed = re.search(r"the following arguments are required: (.+)", message)
     return {name.split("/")[0].strip() for name in listed.group(1).splitlines()[0].split(",")} if listed else set()
 

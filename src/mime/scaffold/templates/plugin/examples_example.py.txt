@@ -25,7 +25,7 @@ def build() -> Experiment:
     experiment.add_body(Body("probe", dynamics=ToyBody(), initial=PROBE_START))
     experiment.attach(ExampleLoad(), body="probe")
     # The licence the saved files are shared under: it is bound to them when the experiment is saved.
-    experiment.licence(${content_licence})
+    ${licence_line}
     return experiment
 
 
