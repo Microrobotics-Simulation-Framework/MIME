@@ -1,0 +1,58 @@
+{
+  "written": "2026-11-16, committed before the controls' detection rates and the long run are measured (the commit that adds this file is the timestamp)",
+  "phase": "camera 6a, G22's judged set: an origin on a triangle (a tie in t)",
+  "labels": "the fix round agent's predictions. Seen before: the failing draw (a tube whose vertex column lies on the ray origin) fails float32 and not float64 on the release tip, on MADDENING 0.4.2 released and on its main; the derived bound on t's rounding held on 24 000 on-surface triangle pairs at 0.26 (float32) and 0.31 (float64) of itself; with the fix the draw passes in both dtypes on both MADDENING versions",
+  "operating_point": {
+    "dtype": [
+      "float32",
+      "float64"
+    ],
+    "platform": "CPU, the maintainer's laptop (the test file's own runs, one at a time, in the heavy slot)",
+    "sizes_and_parameters": "G22 as written: 40 examples a dtype, one to three closed meshes 25 um to 1 mm, 192 rays; the long run 1500 examples a dtype with the same strategy and settings otherwise"
+  },
+  "gate_long_run": {
+    "claim": "no draw fails with the tie rule: a miss of the tree (a box test rounding a grazing hit out) would show as a judged ray with fewer crossings, which the 40-example run cannot rule out and 1500 per dtype can show above its own rate",
+    "kind": "equality",
+    "case": "tests/sensing/test_mesh_bvh.py::test_the_tree_finds_every_crossing_brute_force_finds, 1500 examples [float32] and [float64]",
+    "prediction": {
+      "value": "0 failures in 3000",
+      "band": [null, null],
+      "unit": "",
+      "basis": "estimated: one failure in several hundred CI draws on a coincidence the strategy reaches by shrinking to the origin; the other causes in CLAUDE.md's list are excluded by the draws' scales",
+      "why": "the tree's slab test is widened by 2 gamma_3 and the watertight test claims each crossing once"
+    },
+    "if_wrong": "a failure that is not an origin tie is a real finding (a miss, or the oracle): it is classified before anything is changed"
+  },
+  "gate_tied_fraction": {
+    "claim": "the tie rule leaves out almost no ordinary ray: the fraction of rays tied in an ordinary draw is below 1e-3",
+    "kind": "estimates",
+    "case": "the same long run, counted over its draws",
+    "prediction": {
+      "value": 0.0,
+      "band": [0.0, 0.001],
+      "unit": "fraction of rays",
+      "basis": "derived",
+      "why": "a tie needs the origin within about 3 eps of a triangle's plane and inside it: a set of measure near zero for an origin drawn within 5 mm"
+    }
+  },
+  "gate_controls": {
+    "claim": "each planted error is caught every run, in each dtype, and no clean run is flagged",
+    "kind": "rate",
+    "case": "tests/sensing/test_mesh_bvh.py::test_the_tree_finds_every_crossing_brute_force_finds with CAMERA_PLANT = dropped-leaf, flipped-winding, shrunk-box, by .github/probe/detection_rate.py",
+    "prediction": {
+      "value": "30/30 each in each dtype; clean 0/30",
+      "band": [null, null],
+      "unit": "",
+      "basis": "estimated for shrunk-box (new: a box shrunk to a tenth of its extent loses the crossings of the triangle's aimed rays that do not pass its core); measured-before for the other two (30/30)",
+      "why": "every plant is far above rounding"
+    },
+    "if_wrong": "a shrunk-box miss: shrink the box to a smaller part of its extent or aim it at a ray's crossing; the plant is the thing to change, never the plant's detection by a wider band"
+  },
+  "gate_bits": {
+    "claim": "no program of 6a changes: the fix touches tests only (git diff of the head against the base holds no file under src/), so the compiled programs of the camera are the base's bits",
+    "kind": "equality",
+    "basis": "derived: no source changed",
+    "if_wrong": "a file under src/ in the diff"
+  },
+  "outcomes": null
+}
