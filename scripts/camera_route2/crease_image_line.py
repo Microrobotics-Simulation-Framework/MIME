@@ -195,9 +195,40 @@ def aggregate_pose(pose: tuple) -> dict:
     return row
 
 
+#: The bands of the turn the image check's lines are kept by (the maintainer's decision, 2026-11-16: the jvp gated
+#: against the rendered image, the image's own error against the exact geometry documented by class and pinned in CI
+#: by band): edges at the scan's own turns, each band about twice the last.
+BAND_EDGES = (0.0, 1.0, 2.0, 4.0, 8.0, 15.0, 30.0)
+#: The classes a band's lines judge: the ripple's (``rest``) and the sliver's (``singular``); thin caps by their flag.
+JUDGED = ("rest", "singular")
+
+
+def bands(scan: dict) -> list[dict]:
+    """Each band's lines: ``SAFETY`` times the scan's largest error in each judged class over the poses whose turn lies
+    in the closed band (both edges' turns, so a view between two of the scan's turns is bracketed by both), with the
+    pose that sets it (the band's tail, which CI pins)."""
+    found = []
+    for low, high in zip(BAND_EDGES, BAND_EDGES[1:]):
+        rows = [row for row in scan["rows"] if low <= row["turn"] <= high]
+        band: dict = {"turns": [low, high], "poses": len(rows)}
+        for name in JUDGED:
+            worst = max((row for row in rows if row[name] is not None), key=lambda row: row[name]["error"])
+            band[name] = SAFETY * worst[name]["error"]
+            band[f"{name}_tail"] = {"turn": worst["turn"], "roll": worst["roll"], "offset": worst["offset"],
+                                    "largest": worst[name]["error"], "direction": worst[name]["direction"],
+                                    "at_v_u": worst[name]["at_v_u"]}
+        found.append(band)
+    return found
+
+
 def main() -> None:
     from multiprocessing import Pool
 
+    if "--bands" in sys.argv:
+        scan = json.loads((Path(__file__).resolve().parents[2] / "tests" / "sensing" /
+                           "crease_image_line_pr5b.json").read_text())
+        print(json.dumps({"edges": BAND_EDGES, "safety": SAFETY, "bands": bands(scan)}, indent=1))
+        return
     if "--aggregates" in sys.argv:
         poses = list(itertools.product(C.TURNS, C.ROLLS, C.OFFSETS))
         with Pool(C.WORKERS) as pool:

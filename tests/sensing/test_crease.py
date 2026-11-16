@@ -30,9 +30,19 @@ the march's branches and their regions, each corner cell the exact share of that
   march's term is zero: each read point carries the derivative of the image's own held point. The rule grew after its
   first failure (the jvp 2.56 and 3.44 times the difference's own error at turns 4 and 15, the held march's term) and
   was settled by fixing the derivative, not by widening the line; the views it is confirmed on were drawn after.
-  Reported beside it, never judged: the image's own term against the exact image's derivative. **Controls**
-  (``CAMERA_PLANT=held-caps``, the caps' derivative in the body's place gone; ``CAMERA_PLANT=near-axis``, the read points
-  of sub-rays passing the side's axis moved in the derivative only)."""
+  **Controls** (``CAMERA_PLANT=held-caps``, the caps' derivative in the body's place gone; ``CAMERA_PLANT=near-axis``, the
+  read points of sub-rays passing the side's axis moved in the derivative only).
+- **The image's own derivative error, pinned by band** (the maintainer's decision, 2026-11-16): the rendered image's
+  derivative (the jvp, which G17 holds to it) against the exact image's, a pixel at a time, in two classes with a line
+  for each in each band of the turn (``IMAGE_BANDS``, ``scripts/camera_route2/crease_image_line.py --bands``: 1.25 times
+  the 360-pose scan's largest in the band, a margin declared, not derived): **the sliver** (a pixel one of whose
+  sub-rays passes within ``NEAR_AXIS`` of the side's axis, at the rod's end with the cap nearly edge-on: 14.9 px² a px
+  at worst, where the exact image's is 0) and **the ripple** (every other pixel about the outline: up to 0.88 at caps
+  turned under about 8 degrees, under 0.16 from 15 up). Thin caps are judged by their flag. A known error of the image,
+  carried and bounded so neither class can grow unseen, not a bound on the image's accuracy; the follow-up "creased
+  image accuracy" is to remove it. Checked at G17's views and at each band's tails (the scan's poses that set its
+  lines). **Controls** (``CAMERA_PLANT=grown-ripple``, ``grown-sliver``: the error grown by ``PLANT_SIZE`` px² a px in
+  the image itself, which the jvp gate cannot see; ``single-edge-crease``)."""
 
 from __future__ import annotations
 
@@ -298,10 +308,45 @@ def plant_scheme(monkeypatch) -> None:
             return place + jnp.where(apart < NEAR_AXIS * PIXEL, (PLANT_SIZE or 1.0) * motion, 0.0)
 
         monkeypatch.setattr(sampled_route, "_place", near_axis)
+    if planted("grown-ripple") or planted("grown-sliver"):
+        # The image's own derivative error grown: each pixel's share moved GROWTH px^2 a px of the body's motion from
+        # the view's own place (along x and z), times its weight, as a ripple of period RIPPLE px (its value within
+        # GROWTH x RIPPLE / 2 pi of the scheme's). Value and derivative alike, so the jvp and the central difference
+        # both see it and the jvp gate cannot: only the image check can. grown-ripple weighs each partial pixel by
+        # 4c(1 - c); grown-sliver weighs by 1 each pixel a sub-ray of which passes within WIDENED px of the side's axis
+        # (the sliver's class, four times as wide: in it and beside it).
+        found_box = render_module._box_coverage
+        sliver = planted("grown-sliver")
+        growth = PLANT_SIZE or 1.0
+
+        def grown(subject, p, o, d, du, dv, corner_samples, form=None, unverified=None):
+            share = found_box(subject, p, o, d, du, dv, corner_samples, form, unverified)
+            home = np.array([0.0, -DISTANCE, 0.0]) - _view_centre[0]
+            place = ((home[0] - o[0]) + (home[2] - o[2])) / PIXEL
+            ripple = growth * RIPPLE / (2 * math.pi) * jnp.sin(2 * math.pi * place / RIPPLE)
+            if not sliver:
+                return share + ripple * 4.0 * share * (1.0 - share)
+            a = jax.lax.stop_gradient(jnp.asarray(p["axis"]))
+            a = a / jnp.linalg.norm(a)
+            h_o = [jax.lax.stop_gradient(c) for c in o]
+            least = jnp.full_like(share, jnp.inf)
+            for su, sv in np.asarray(coverage.sub_offsets(corner_samples), dtype=float):
+                ray = [jax.lax.stop_gradient(d[i] + su * du[i] + sv * dv[i]) for i in range(3)]
+                cross = (ray[1] * a[2] - ray[2] * a[1], ray[2] * a[0] - ray[0] * a[2], ray[0] * a[1] - ray[1] * a[0])
+                apart = jnp.abs(sum(h_o[i] * cross[i] for i in range(3))) / jnp.sqrt(sum(c * c for c in cross))
+                least = jnp.minimum(least, apart)
+            return share + jnp.where(least < WIDENED * NEAR_AXIS * PIXEL, ripple, 0.0)
+
+        monkeypatch.setattr(render_module, "_box_coverage", grown)
 
 
-#: The near-axis plant's reach from the side's axis, in pixels.
+#: The near-axis plant's reach from the side's axis, in pixels; the image's sliver class.
 NEAR_AXIS = 0.01
+#: The grown-sliver plant's reach, as a share of ``NEAR_AXIS``, and the growth plants' ripple's period, in pixels of
+#: the body's motion (about the image's own ripple's, 0.05 to 0.1).
+WIDENED, RIPPLE = 4.0, 0.1
+#: The view's own centre while it is imaged (the growth plants' reference place).
+_view_centre = [CENTRE]
 
 
 def rod(axis, route: str | None = "sampled") -> Subject:
@@ -439,15 +484,15 @@ def test_g18_route_one_and_route_two_each_hold_to_the_exact_image(dtype):
 #: within a sub-pixel), so the central difference reaches its own small-step behaviour only below about 1/1000 of a
 #: pixel; float64's rounding is still far below it at the last step.
 STEPS = tuple(4.0 ** -k for k in range(3, 8))
-#: The exact image's step for the image's term (``hull_oracle``'s central difference, settled at it in the singular
+#: The exact image's step for the image check (``hull_oracle``'s central difference, settled at it in the singular
 #: check), in pixels.
 EXACT_STEP = 1e-4
 #: The derivative's views (turn, roll, offset in pixels). ``DERIVATIVE_SEEN``: the first forms' views, measured before
 #: the held march's term was found (their failure at turns 4 and 15 is why it was looked for); ``DERIVATIVE_SINGULAR``:
 #: the three poses where a sub-ray passes the side's axis at the rod's end (``crease_singular_check.py``), measured in
 #: ``crease_held_point_check.py``. Both kept, neither evidence. ``DERIVATIVE_FRESH``: drawn from fresh entropy after
-#: this line was committed, their predictions committed before they ran (``predictions_camera_pr5b.json``,
-#: ``g17_fresh``).
+#: this line and the image check's bands were committed, their predictions committed before they ran
+#: (``predictions_camera_pr5b.json``, ``image_guard``).
 DERIVATIVE_SEEN = tuple((turn, 20.0, (0.0, 0.0)) for turn in (0.0, 2.0, 4.0, 15.0))
 DERIVATIVE_SINGULAR = ((6.0, 75.0, (0.3, 0.8)), (3.0, 0.0, (0.0, 0.0)), (2.0, 0.0, (0.0, 0.0)))
 DERIVATIVE_FRESH: tuple[tuple[float, float, tuple[float, float]], ...] = ()
@@ -480,58 +525,186 @@ def _view_id(view) -> str:
     return f"t{turn:g}-r{roll:g}-u{du:g}-v{dv:g}"
 
 
+# -- the image's own derivative error, pinned by band ---------------------------------------------------------------------
+
+#: The image check's lines by band of the turn (``scripts/camera_route2/crease_image_line.py --bands``, held in the
+#: predictions file before any fresh view): in each band, for the ripple's class (``rest``) and the sliver's
+#: (``singular``), 1.25 times the 360-pose scan's largest error over its poses in the closed band, in pixels of share a
+#: pixel of the body's motion, with the pose that set it (its tail). Never fitted, never moved.
+IMAGE_BANDS = PREDICTIONS["lines"]["image_bands"]["bands"]
+#: Each band's tails, the scan's poses that set its lines, once each: pinned, so a growth of either class past the
+#: declared margin at the pose where it was largest fails, whatever the drawn views find.
+IMAGE_TAILS = tuple(sorted({(tail["turn"], tail["roll"], tuple(tail["offset"]))
+                            for band in IMAGE_BANDS for tail in (band["rest_tail"], band["singular_tail"])}))
+
+
+def image_lines(turn: float) -> dict[str, float]:
+    """Each judged class's line at a view's turn: the strictest of the bands whose closed range holds it (both, on an
+    edge, as the scan's poses there set both)."""
+    holding = [band for band in IMAGE_BANDS if band["turns"][0] <= turn <= band["turns"][1]]
+    assert holding, f"turn {turn} outside the scanned bands"
+    return {name: min(band[name] for band in holding) for name in ("rest", "singular")}
+
+
+def axis_distance(centre: np.ndarray, axis: np.ndarray) -> np.ndarray:
+    """Each pixel's least distance of its sub-rays from the side's axis line, in pixels at the body (as
+    ``crease_image_line.axis_distance``)."""
+    v, u = (x.ravel().astype(float) for x in np.mgrid[0:HEIGHT, 0:WIDTH])
+    raw = np.stack([(u - (WIDTH - 1) / 2) / FOCAL, np.ones_like(u), -(v - (HEIGHT - 1) / 2) / FOCAL], -1)
+    norm = np.linalg.norm(raw, axis=-1, keepdims=True)
+    d = raw / norm
+    e_u, e_v = np.array([1.0 / FOCAL, 0.0, 0.0]), np.array([0.0, 0.0, -1.0 / FOCAL])
+    du = e_u / norm - d * (d @ e_u)[..., None] / norm
+    dv = e_v / norm - d * (d @ e_v)[..., None] / norm
+    o = np.array([0.0, -DISTANCE, 0.0]) - centre
+    least = np.full(len(u), np.inf)
+    for su, sv in coverage.sub_offsets(coverage.CORNER_SAMPLES):
+        cross = np.cross(d + su * du + sv * dv, axis)
+        least = np.minimum(least, np.abs(cross @ o) / np.linalg.norm(cross, axis=-1))
+    return (least / PIXEL).reshape(HEIGHT, WIDTH)
+
+
+def exact_shares(centre: np.ndarray, axis: np.ndarray) -> np.ndarray:
+    return hull_oracle.shares(hull_oracle.cylinder_outline(centre, axis, RADIUS, LENGTH), FOCAL, DISTANCE, WIDTH, HEIGHT)
+
+
+def image_classes(centre: np.ndarray, axis: np.ndarray) -> dict[str, np.ndarray]:
+    """The band's pixels (within two of a partial pixel of the exact image) by class, as the scan set them apart:
+    ``singular`` (a sub-ray within ``NEAR_AXIS`` of the side's axis), ``thin`` (about a cap narrower than two
+    sub-pixels, judged by its flag) and ``rest``."""
+    exact = exact_shares(centre, axis)
+    partial = (exact > 0) & (exact < 1)
+    band = partial.copy()
+    for dj in range(-2, 3):
+        for di in range(-2, 3):
+            band |= np.roll(np.roll(partial, dj, 0), di, 1)
+    singular = band & (axis_distance(centre, axis) < NEAR_AXIS)
+    judged, _ = judged_pixels(centre, axis)
+    return {"rest": band & ~singular & judged, "singular": singular, "thin": band & ~singular & ~judged}
+
+
+def image_check(turn: float, centre: np.ndarray, axis: np.ndarray, moved: dict[int, np.ndarray], flag: bool
+                ) -> tuple[list[str], float]:
+    """Each band pixel's image error, the rendered image's derivative along x and z (``moved``, by the body's axis
+    index, in px^2 a px) less the exact image's (``hull_oracle``'s central difference at ``EXACT_STEP``), within its
+    class's line at the view's turn; thin caps by their flag. The problems, and the largest error as a share of its
+    line."""
+    lines = image_lines(turn)
+    classes = image_classes(centre, axis)
+    problems, worst = [], 0.0
+    for index, tangent in moved.items():
+        e = np.zeros(3)
+        e[index] = PIXEL * EXACT_STEP
+        exact = (exact_shares(centre + e, axis) - exact_shares(centre - e, axis)) / (2 * EXACT_STEP)
+        error = np.abs(tangent - exact)
+        for name, mask in classes.items():
+            if not mask.any():
+                continue
+            at = np.unravel_index(int(np.argmax(np.where(mask, error, -1.0))), error.shape)
+            line = lines.get(name)
+            judged = f"{error[at] / line:.3g} of its line {line:.3g}" if line else "judged by the flag"
+            print(f"  the image's error along {'xyz'[index]}, {name} ({int(mask.sum())} pixels): largest "
+                  f"{error[at]:.4g} at v{at[0]} u{at[1]} ({judged})")
+            if line:
+                worst = max(worst, float(error[at]) / line)
+                if not error[at] <= line:
+                    problems.append(f"the {name} class's image error {error[at]:.4g} along {'xyz'[index]} at "
+                                    f"v{at[0]} u{at[1]}, past its band's line {line:.4g}")
+    _, thin = judged_pixels(centre, axis)
+    if flag != thin:
+        problems.append(f"thin_cap {flag} where a cap is {'' if thin else 'not '}that thin")
+    return problems, worst
+
+
 @pytest.mark.parametrize("view", DERIVATIVE_SEEN + DERIVATIVE_SINGULAR + DERIVATIVE_FRESH, ids=_view_id)
 def test_g17_the_creased_derivative_is_the_images(float64, view, monkeypatch):
     """The jvp of the darkness's equivalent radius and centroid, on the pixels about the caps' rims and on the rest
     apart, in the body's x and z, against the central difference of the same renderer at the sweep's last step, within
-    ``derivative_line``. Beside it, never judged here, **the image's term**: the rendered image's difference less the
-    exact image's (``hull_oracle``), the scheme's own departure from the outline's motion at a point, which a sub-cell's
-    spurious sliver can make large (the first singular pose) while the jvp follows the image exactly. **Controls**
-    (``CAMERA_PLANT``): ``held-caps`` (the crease measure read from a held pinhole, the caps' derivative in the body's
-    place gone) and ``near-axis`` (the read points of sub-rays within a hundredth of a pixel of the side's axis moved an
-    extra one of the body's motion, in the derivative only: at the singular poses)."""
+    ``derivative_line``; and the image check (``image_check``) on the jvp's image. **Controls** (``CAMERA_PLANT``):
+    ``held-caps`` (the crease measure read from a held pinhole, the caps' derivative in the body's place gone) and
+    ``near-axis`` (the read points of sub-rays within a hundredth of a pixel of the side's axis moved an extra one of the
+    body's motion, in the derivative only: at the singular poses) fail the jvp gate; ``grown-ripple``, ``grown-sliver``
+    and ``single-edge-crease`` change the image, which the jvp follows, and fail only the image check."""
     plant_scheme(monkeypatch)
     turn, roll, offset = view
     axis = axis_of(turn, roll)
     centre = CENTRE + np.array([offset[0], 0.0, -offset[1]]) * PIXEL
+    _view_centre[0] = centre
     body = rod(axis)
     crease = crease_mask(centre, axis)
-    masks = jnp.stack([jnp.asarray(crease, jnp.float64), 1.0 - jnp.asarray(crease, jnp.float64)])
-    v, u = (jnp.asarray(x, jnp.float64) for x in np.indices((HEIGHT, WIDTH)))
+    masks = (crease, ~crease)
+    v, u = np.indices((HEIGHT, WIDTH))
 
-    def aggregates_on(at):
-        dark = (1.0 - render([body], CAMERA, POSE, {"rod": (at, jnp.asarray(IDENTITY))}).transmission) * masks
-        total = jnp.sum(dark, axis=(1, 2))
-        return jnp.stack([jnp.sqrt(total / math.pi), jnp.sum(dark * u, axis=(1, 2)) / total,
-                          jnp.sum(dark * v, axis=(1, 2)) / total], axis=1)
+    def dark(at):
+        found = render([body], CAMERA, POSE, {"rod": (at, jnp.asarray(IDENTITY))})
+        return 1.0 - found.transmission, jnp.asarray(found.flags.get("thin_cap:rod", False), jnp.float64)
 
-    def exact_on(at):
-        shares = hull_oracle.shares(hull_oracle.cylinder_outline(at, axis, RADIUS, LENGTH), FOCAL, DISTANCE, WIDTH,
-                                    HEIGHT)
-        return np.stack([aggregates(shares * mask) for mask in (crease, ~crease)])
+    def aggregates_of(image):
+        return np.stack([aggregates(np.asarray(image, np.float64) * mask) for mask in masks])
 
-    values = jax.jit(aggregates_on)
-    tangents = jax.jit(lambda at, e: jax.jvp(aggregates_on, (at,), (e,))[1])
-    scale = np.abs(np.asarray(values(jnp.asarray(centre))))
+    def aggregates_moved(image, tangent):
+        # The aggregates' derivative from the image's (they are made from it): the radius's, then the centroid's.
+        rows = []
+        for mask in masks:
+            covered, moved = image * mask, tangent * mask
+            radius, cu, cv = aggregates(covered)
+            total = covered.sum()
+            rows.append([moved.sum() / (2 * math.pi * radius), ((u - cu) * moved).sum() / total,
+                         ((v - cv) * moved).sum() / total])
+        return np.asarray(rows)
+
+    values = jax.jit(dark)
+    tangents = jax.jit(lambda at, e: jax.jvp(dark, (at,), (e,))[1][0])
+    image, flag = (np.asarray(x, np.float64) for x in values(jnp.asarray(centre)))
+    scale = np.abs(aggregates_of(image))
     floor = 64 * float(np.finfo(np.float64).eps) * scale / (PIXEL * STEPS[-1])
-    worst = 0.0
+    worst, moved = 0.0, {}
     for axis_index in (0, 2):
         e = np.zeros(3)
         e[axis_index] = 1.0
-        tangent = np.asarray(tangents(jnp.asarray(centre), jnp.asarray(e))) * PIXEL
-        differences = [(np.asarray(values(jnp.asarray(centre + PIXEL * step * e)))
-                        - np.asarray(values(jnp.asarray(centre - PIXEL * step * e)))) / (2 * step)
+        moved[axis_index] = np.asarray(tangents(jnp.asarray(centre), jnp.asarray(e)), np.float64) * PIXEL
+        tangent = aggregates_moved(image, moved[axis_index])
+        differences = [(aggregates_of(values(jnp.asarray(centre + PIXEL * step * e))[0])
+                        - aggregates_of(values(jnp.asarray(centre - PIXEL * step * e))[0])) / (2 * step)
                        for step in STEPS]
-        exact = (exact_on(centre + PIXEL * EXACT_STEP * e) - exact_on(centre - PIXEL * EXACT_STEP * e)) / (2 * EXACT_STEP)
         for mask, name in enumerate(("crease", "rest")):
             held = [difference[mask] for difference in differences]
             line = derivative_line(held, floor[mask] * PIXEL)
             apart = float(np.linalg.norm(tangent[mask] - held[-1]))
             worst = max(worst, apart / line)
             print(f"\n{_view_id(view)}, axis {axis_index}, {name}: jvp {tangent[mask]} (px a px)\n"
-                  f"  differences {np.asarray(held)}\n  apart {apart:.3g}, line {line:.3g} ({apart / line:.3g} of it); "
-                  f"the image's term {float(np.linalg.norm(held[-1] - exact[mask])):.3g} (the exact image's "
-                  f"{exact[mask]})")
-    print(f"\n{_view_id(view)}: the jvp's largest distance from the central difference, as a share of the line "
-          f"{worst:.3g}")
-    assert worst <= 1.0
+                  f"  differences {np.asarray(held)}\n  apart {apart:.3g}, line {line:.3g} ({apart / line:.3g} of it)")
+    problems, image_worst = image_check(turn, centre, axis, moved, bool(flag))
+    print(f"\n{_view_id(view)}: the jvp's largest distance from the central difference, as a share of its line "
+          f"{worst:.3g}; the image's largest error as a share of its band's line {image_worst:.3g}")
+    assert worst <= 1.0 and not problems, (worst, problems)
+
+
+@pytest.mark.parametrize("view", IMAGE_TAILS, ids=_view_id)
+def test_g17_the_image_error_is_within_its_band_at_the_bands_tails(float64, view, monkeypatch):
+    """The image check (``image_check``) at the scan's poses that set each band's lines: each class's largest about
+    0.8 of its line there (1 over the declared margin), so a growth of more than a quarter where it was largest fails.
+    **Controls** (``CAMERA_PLANT``): ``grown-ripple`` and ``grown-sliver`` (the image's own error grown, ``PLANT_SIZE``
+    px^2 a px)."""
+    plant_scheme(monkeypatch)
+    turn, roll, offset = view
+    axis = axis_of(turn, roll)
+    centre = CENTRE + np.array([offset[0], 0.0, -offset[1]]) * PIXEL
+    _view_centre[0] = centre
+    body = rod(axis)
+
+    def dark(at):
+        found = render([body], CAMERA, POSE, {"rod": (at, jnp.asarray(IDENTITY))})
+        return 1.0 - found.transmission, jnp.asarray(found.flags.get("thin_cap:rod", False), jnp.float64)
+
+    moving = jax.jit(lambda at, e: jax.jvp(dark, (at,), (e,)))
+    moved, flag = {}, False
+    for axis_index in (0, 2):
+        e = np.zeros(3)
+        e[axis_index] = 1.0
+        (_, held_flag), (tangent, _) = moving(jnp.asarray(centre), jnp.asarray(e))
+        moved[axis_index], flag = np.asarray(tangent, np.float64) * PIXEL, bool(held_flag)
+    print(f"\n{_view_id(view)}:")
+    problems, worst = image_check(turn, centre, axis, moved, flag)
+    print(f"  the image's largest error as a share of its band's line {worst:.3g}")
+    assert not problems, problems
