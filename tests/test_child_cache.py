@@ -192,9 +192,9 @@ def test_a_test_without_the_mark_keeps_the_shared_directory(tmp_path):
 
 def test_the_tests_that_require_a_clean_child_are_marked():
     """The terminal tests failed on a damaged entry's warning, and the import-interrupt tests require the same standard
-    error."""
+    error; so do the tests that run ``mime`` for a range warning's line (CI run 43768923041, the same warning)."""
     import re
-    for name in ("tests/cli/test_terminal.py", "tests/cli/test_import_interrupt.py"):
+    for name in ("tests/cli/test_terminal.py", "tests/cli/test_import_interrupt.py", "tests/unit/test_warning_lines.py"):
         assert re.search(r"^pytestmark = .*pytest\.mark\.own_child_cache", (TESTS.parent / name).read_text(
             encoding="utf-8"), re.MULTILINE), name
 
