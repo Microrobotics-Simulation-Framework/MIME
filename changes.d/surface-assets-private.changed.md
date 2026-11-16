@@ -1,4 +1,4 @@
-- The public surface of `mime.assets` is smaller (SURFACE-REDUCTION's assets step, with the one `asset()`): 108 names
+- The public surface of `mime.assets` is smaller (SURFACE-REDUCTION's assets step, with the one `asset()`): 105 names
   that only MIME's own modules, its tests and its scripts used left its `__all__`, with no shim (the soft-tissue plugin
   imports `reference` and `resolve`, both kept); they are now internal. Public now: `asset`, `Asset`, `AssetRef`,
   `AssetRecord`, `Resolver`, `reference`, `resolve`, `check`, `CheckResult`, `Manifest`,
