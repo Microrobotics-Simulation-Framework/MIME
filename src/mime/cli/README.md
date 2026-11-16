@@ -37,7 +37,7 @@
   `mime serve` use it by default, prune its oldest entries at their start once it passes its cap, and take
   `--no-xla-cache`; `mime verify` never uses it. A cache JAX was already given (`JAX_COMPILATION_CACHE_DIR`) is left
   alone, and one that cannot be written is said once and the command goes on without it.
-- `mime registry [--json]`: every registered entry, MIME's and each installed namespace's; with `--json`, the registry
+- `mime registry [--json] [--entry NAME]`: every registered entry, MIME's and each installed namespace's (`--entry` only the entries called NAME, every version and kind of it; a name no entry has is refused, naming the nearest); with `--json`, the registry
   export the docs are generated from (see [`mime.docs`](../docs/README.md)). It runs on a base install, where a
   namespace that needs the `verify` extra is listed as not loaded.
 - `mime docs check [--root <checkout>] [--base <revision>]`: every check of the documentation's sources over a
@@ -74,7 +74,7 @@
   the terminal. The thresholds are named in `mime.assets._gates`. On a terminal the questions are drawn by the display;
   under `--plain`, `NO_COLOR`, `TERM=dumb`, or with standard output piped but a terminal to answer at, they are asked in
   plain lines (the licence's, in the same words) on the terminal, and the line about the drive is not said.
-- `mime assets list`, `mime assets fetch <name-or-folder>... | --all` and `mime assets check`: the large files MIME references
+- `mime assets list [--namespace SOURCE]` (only the records of one source: `mime`, or an installed package's `mime.assets` entry point), `mime assets fetch <name-or-folder>... | --all` and `mime assets check`: the large files MIME references
   by sha256, in the cache (see [`mime.assets`](../assets/README.md)). `fetch` takes an experiment folder too, and stores exactly the assets its lock references,
   then places each file of the folder that travels as a reference at its path (copied from the cache and hashed,
   never over another file); it exits zero, or two
