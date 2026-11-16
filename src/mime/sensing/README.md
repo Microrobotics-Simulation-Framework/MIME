@@ -115,10 +115,13 @@ stages:
 
   These are an **acceptance of a known error, not an accuracy claim**: CI pins each class by band of the turn (`IMAGE_BANDS`
   in `tests/sensing/test_crease.py`, from `crease_image_line.py --bands`), at G17's views and at the poses that set each
-  line, so neither can grow unseen. The ripple's line in each band is 1.25 times the scan's largest there. The sliver's
+  line. The ripple's line in each band is 1.25 times the scan's largest there. The sliver's
   is the same from 8 degrees up; under 8 degrees it is one line for every band, 1.25 times its largest over those turns
   (at turn 6, roll 75), because one pose's sliver moves by about a quarter between machines (ill-conditioned, as the
-  sweep found), so a line set by one pose a band would flake:
+  sweep found), so a line set by one pose a band would flake. **That line is a machine-robust placeholder, not a tight
+  bound**: the sliver's growth there is caught only past about 4 px² a px at turn 6 (28 % of its value; the line's one
+  control, a plant confined to the class, 8 of 8 on runners, clean 0 of 8), with none of its own at the other poses
+  under 8 degrees, where the catches of a grown sliver are the ripple class's:
 
   | turn (degrees) | 0 to 1 | 1 to 2 | 2 to 4 | 4 to 8 | 8 to 15 | 15 to 30 |
   |---|---|---|---|---|---|---|

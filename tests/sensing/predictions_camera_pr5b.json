@@ -1428,6 +1428,15 @@
    "grown_ripple_1.5": "caught 8 of 8 on the whole band-tails test, clean 0 of 8",
    "grown_sliver_2": "caught 8 of 8 on the whole band-tails test, clean 0 of 8, by the ripple class under 8 degrees and by the sliver class from 8 up (the review's reading, which this round corrects in the text)"
   },
-  "outcomes": null
+  "outcomes": {
+   "run": "the fourteenth probe (probe/cam-pr5b-i14, run 43950601628, head 6c761969 = a0b369d9 with the probe's files; one process a run, 4-vCPU runners; detection_rate.py, 8 planted runs and 8 clean each)",
+   "confined_sliver": "at the turn-6 tail alone: sizes 5, 8 and 12 each caught 8 of 8 (95% lower bound 0.69), clean 0 of 8, no run inconclusive. Prediction: 8 and 12 at 8 of 8 (hit), 5 'not necessarily' (it was caught 8 of 8). Read locally at the same tail (image error along x at the sliver pixel v59 u43, line 18.55): the sliver 14.39 alone, 19.39 at size 5 (1.05 of the line, a hair above), 22.39 at size 8 (1.21). The control's size is 12 (about 1.45 of the line locally), not the smallest size caught: at size 5 a quarter less sliver on another machine (3.6) would pass, at 8 it would sit at 1.02, at 12 it stays above 1.23. The prediction named 8 as the size to add; 12 is the choice, recorded as a departure from the prediction's sentence for that reason",
+   "held_caps": "MET: 8 of 8, clean 0 of 8, on the view turned 15",
+   "near_axis": "MET: 8 of 8, clean 0 of 8, on the singular view turned 6",
+   "single_edge_crease": "MET: 8 of 8, clean 0 of 8, on the whole band-tails test in its two-program form",
+   "grown_ripple_1.5": "MET: 8 of 8, clean 0 of 8",
+   "grown_sliver_2": "MET: 8 of 8, clean 0 of 8 (by the ripple class under 8 degrees, as the review read it)",
+   "memory": "each arm's peak exceeded the probe estimator's bound (it estimates one frame's program, not a test's process): a known mismatch of the estimator, not a result"
+  }
  }
 }

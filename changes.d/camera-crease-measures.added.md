@@ -16,8 +16,9 @@
   degrees (up to 0.88; 0.49 px a px on G17's aggregates), thin caps by their flag wherever the axis passes; CI holds
   the ripple to a line by band of the turn (1.25 times the 360-pose scan's largest in the band) and the sliver to one
   line under 8 degrees (its largest there times 1.25, since one pose's sliver moves by about a quarter between
-  machines) and by band above, so neither can grow unseen. The follow-up "creased image accuracy" (the route to exact)
-  removes the sliver, after which these lines tighten. New switches:
+  machines) and by band above. Under 8 degrees the sliver's line is a machine-robust placeholder with a control of its
+  own at one pose only (a sliver grown past about 4 px² a px at turn 6); the follow-up "creased image accuracy" (the
+  route to exact) removes the sliver, after which these lines tighten. New switches:
   `camera.composed.{end,low,high,empty}`, `camera.sampled.body`, `cylinder.cap_side`. Known gap, recorded and not
   changed: camera PR 5a's `union_covered` reads 0.125 more than the exact share for a line repeated along a cell's side
   (a case of measure zero; `composed_covered` is exact there).

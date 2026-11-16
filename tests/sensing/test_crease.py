@@ -31,7 +31,12 @@ the march's branches and their regions, each corner cell the exact share of that
   first failure (the jvp 2.56 and 3.44 times the difference's own error at turns 4 and 15, the held march's term) and
   was settled by fixing the derivative, not by widening the line; the views it is confirmed on were drawn after.
   **Controls** (``CAMERA_PLANT=held-caps``, the caps' derivative in the body's place gone; ``CAMERA_PLANT=near-axis``, the
-  read points of sub-rays passing the side's axis moved in the derivative only).
+  read points of sub-rays passing the side's axis moved in the derivative only). **The gate's power, as a refuting review
+  measured it:** it catches a whole crease tangent's error (19 of 19 views), but the held point's derivative only at
+  some views: each read place's derivative scaled by 1.01 (its value unchanged) is caught at turn 3 (roll 0) and at the
+  turn-11.26 view and passes at turns 0 and 15, so a one per cent error of that term is not what this gate holds. At the
+  singular views the line's own premise (the central difference's error falling at second order in the step) fails, so
+  there it is not a bound by its own rule: Richardson's extrapolation matches the jvp to 1e-4.
 - **The image's own derivative error, pinned by band** (the maintainer's decision, 2026-11-16): the rendered image's
   derivative (the jvp, which G17 holds to it) against the exact image's, a pixel at a time, in two classes with a line
   for each in each band of the turn (``IMAGE_BANDS``, ``scripts/camera_route2/crease_image_line.py --bands``: 1.25 times
@@ -41,11 +46,17 @@ the march's branches and their regions, each corner cell the exact share of that
   turned under about 8 degrees, under 0.16 from 15 up). Thin caps are judged by their flag wherever the axis passes
   (thin first, the maintainer's word after a fresh view's thin cap's pixel crossed the sliver's line), and under 8
   degrees the sliver has one line for every band (the scan's largest there, at turn 6, times 1.25): one pose's sliver
-  moves by about a quarter between machines. A known error of the image, carried and bounded so neither class can grow
-  unseen, not a bound on the image's accuracy; the follow-up "creased image accuracy" (the route to exact) removes the
-  sliver, after which these lines tighten. Checked at G17's views and at each band's tails (the scan's poses that set
-  its lines). **Controls** (``CAMERA_PLANT=grown-ripple``, ``grown-sliver``: the error grown by ``PLANT_SIZE`` px² a px
-  in the image itself, which the jvp gate cannot see; ``single-edge-crease``)."""
+  moves by about a quarter between machines. A known error of the image, carried and bounded, not a bound on the image's
+  accuracy. **Under 8 degrees the sliver's line (18.5) is a machine-robust placeholder, not a tight bound** (the
+  maintainer's word, F0 record item 103): ``grown-sliver``'s catches there are all the ripple class's (the plant reaches
+  four times the class's own reach, ``WIDENED``), and the one control of the sliver's own is ``confined-sliver`` (reach
+  one) at the turn-6 tail, the pose that sets the line, where the sliver reads 14.4: a sliver grown by more than about
+  4 px² a px (28 %) fails, caught 8 of 8 on runners at sizes 5, 8 and 12 with clean 0 of 8 (12 is the control's size,
+  for the quarter a pose's sliver moves between machines). The other tails under 8 degrees have no control of the
+  sliver's own. The follow-up "creased image accuracy" (the route to exact, item 96) removes the sliver, after which
+  these lines tighten. Checked at G17's views and at each band's tails (the scan's poses that set its lines).
+  **Controls** (``CAMERA_PLANT=grown-ripple``, ``grown-sliver``, ``confined-sliver``: the error grown by ``PLANT_SIZE``
+  px² a px in the image itself, which the jvp gate cannot see; ``single-edge-crease``)."""
 
 from __future__ import annotations
 
@@ -736,7 +747,7 @@ def test_g17_the_creased_derivative_is_the_images(float64, view, monkeypatch):
 def test_g17_the_image_error_is_within_its_band_at_the_bands_tails(float64, view, monkeypatch):
     """The image check (``image_check``) at the scan's poses that set each band's lines: each class's largest about
     0.8 of its line there (1 over the declared margin), so a growth of more than a quarter where it was largest fails.
-    **Controls** (``CAMERA_PLANT``): ``grown-ripple`` and ``grown-sliver`` (the image's own error grown, ``PLANT_SIZE``
+    **Controls** (``CAMERA_PLANT``): ``grown-ripple``, ``grown-sliver`` and ``confined-sliver`` (the image's own error grown, ``PLANT_SIZE``
     px^2 a px)."""
     plant_scheme(monkeypatch)
     turn, roll, offset = view
