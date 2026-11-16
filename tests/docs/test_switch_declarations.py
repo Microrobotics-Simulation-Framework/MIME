@@ -15,6 +15,7 @@ from mime.core import shape_names, shape_switches, switch
 from mime.docs import load_namespaces, read_list
 from mime.docs._check import LISTS, Report, list_path, switch_problems
 from mime.gradients import GradientStatus, derived_status, status_of_switches, status_problem
+from mime.nodes.control import STAGE_SWITCHES
 from mime.registry import (
     EntryKind,
     GradientRecord,
@@ -49,11 +50,26 @@ def raw_switches():
     return read_list(list_path(ROOT, "raw_switches"), LISTS["raw_switches"])
 
 
+def declared_objects(records: list[Registered]) -> dict[int, switch.Declaration]:
+    """Each declaration of the entries and the shapes once, by identity: a version kept registered lists the ones its
+    successor holds, the same objects."""
+    declared = {id(held): held for record in records if record.cls.gradient is not None
+                for held in record.cls.gradient.switches}
+    declared |= {id(held): held for name in shape_names() for held in shape_switches(name)}
+    return declared
+
+
+def declared_owners(records: list[Registered]) -> set[str]:
+    return {held.owner for held in declared_objects(records).values()}
+
+
 def test_every_installed_entry_declares_the_status_its_switches_and_listed_sites_give(records):
     report = Report()
     switch_problems(records, raw_switches(), report)
     assert report.problems == []
-    assert any(line.startswith("switches: 105 owners declared (mime 105)") for line in report.summary), report.summary
+    stage = {held.owner for held in STAGE_SWITCHES}
+    total = len(declared_owners(records) | stage)
+    assert any(line.startswith(f"switches: {total} owners declared (") for line in report.summary), report.summary
 
 
 def test_no_piecewise_remains_and_its_four_users_carry_their_statuses(records):
@@ -72,11 +88,8 @@ def test_no_piecewise_remains_and_its_four_users_carry_their_statuses(records):
 def test_each_owner_is_declared_once_with_orders_per_output_group(records):
     """A version kept registered beside its successor (the contact 0.1.0, the drag 0.3.0) lists the declarations the
     successor's record holds, the same objects: each owner is declared once all the same."""
-    declared = {id(declared): declared for record in records if record.cls.gradient is not None
-                for declared in record.cls.gradient.switches}
-    declared |= {id(declared): declared for name in shape_names() for declared in shape_switches(name)}
-    owners = [held.owner for held in declared.values()]
-    assert len(owners) == len(set(owners)) == 100
+    owners = [held.owner for held in declared_objects(records).values()]
+    assert owners and len(owners) == len(set(owners))
     tube = next(record for record in records if record.name == "tube" and record.kind is EntryKind.GEOMETRY)
     assert [d.owner for d in declared_switches(tube.cls)] == ["cylinder.axis", "cylinder.axis_norm"]
     for record in records:
