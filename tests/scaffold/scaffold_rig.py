@@ -40,7 +40,7 @@ import yaml
 
 from mime import scaffold
 from mime.cli import main as mime_main
-from mime.push import _check, _draft
+from mime.push import _check, _defaults, _draft
 from mime.scaffold import _templates
 from push_cases import saved_toy
 from study_rigs import write_study
@@ -230,6 +230,12 @@ CHOSEN = {"plugin": [f"plugin.namespace={NAMESPACE}"], "experiment": ["experimen
           "block": ["block.id=scafx.probe", "block.licence=CC-BY-4.0"]}
 
 
+def chosen_content_licence() -> None:
+    """The person's content licence, which a plugin's example, benchmark manifest and record take from their defaults
+    (nothing else gives it, and ``--yes`` writes a marker that a build refuses), in the private home the test runs in."""
+    _defaults.write_defaults({}, licences={"content": "CC-BY-4.0"})
+
+
 def failures_of(kind: str, root: Path, name: str | None = None, sets: list[str] | None = None, lanes: bool = True) -> list[str]:
     """Scaffold ``kind`` with ``--yes`` at a path in ``root`` (``name`` its folder, ``sets`` its ``--set`` words: for a plugin
     the namespace ``scafx``) and run its check: every failure, empty when it passes. ``lanes`` false stops a plugin's check
@@ -237,6 +243,8 @@ def failures_of(kind: str, root: Path, name: str | None = None, sets: list[str] 
     path = made(kind, root, name)
     try:
         sets = sets if sets is not None else CHOSEN.get(kind, [])
+        if kind == "plugin":
+            chosen_content_licence()
         scaffold.scaffold(kind, path, yes=True, sets=sets, say=lambda line: None)
         if kind == "experiment":
             return verified(path / "saved")
@@ -384,6 +392,7 @@ def plugin_base(root: Path) -> PluginBase:
     """Scaffold the plugin with ``--yes`` in ``root``, unpack its wheel and run the stages up to the listing."""
     before = environment()
     folder = root / "scafx-probes"
+    chosen_content_licence()
     scaffold.scaffold("plugin", folder, yes=True, sets=[f"plugin.namespace={NAMESPACE}"], say=lambda line: None)
     project, failures = plugin_static(folder)
     target = root / "target"
