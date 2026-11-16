@@ -29,6 +29,7 @@ import pytest
 from assets_rig import Rig
 
 from mime import assets
+from mime.assets import _fetch
 from mime.assets import AssetRef, _acceptances, _cache, _fetch, _gates, _manifest
 from mime.assets._gates import Licence
 from mime.build import BuildRefused
@@ -569,11 +570,11 @@ def test_the_thresholds_are_named_in_one_place():
 def test_a_bundle_of_a_stated_size_is_held_to_the_same_gate(rig: Rig):
     rig.server.files["/bundle"] = b"b" * 400
     with space(free=2_300_000_000), _gates.asking(None):
-        assert codes(lambda: assets.retrieve(rig.server.url("/bundle"), name="bundle", size=400 * 10**6)) == [
+        assert codes(lambda: _fetch.retrieve(rig.server.url("/bundle"), name="bundle", size=400 * 10**6)) == [
             "asset.disk-low"]
     assert rig.requests == 0
     with space(free=300 * GB), _gates.asking(None):
-        assert codes(lambda: assets.retrieve(rig.server.url("/bundle"), name="bundle", size=2 * GB,
+        assert codes(lambda: _fetch.retrieve(rig.server.url("/bundle"), name="bundle", size=2 * GB,
                                              max_bytes=3 * GB)) == ["asset.download-large"]
     assert rig.requests == 0
 
@@ -983,22 +984,22 @@ def test_a_bundle_with_no_stated_size_is_stopped_by_its_cap_and_never_asked_abou
     """The review's S4: ``mime pull <url>`` states no size, and was the one download the stop did not see."""
     rig.server.files["/bundle"] = b"b" * 400
     with space(free=1_000_000, total=GB), _gates.asking(None):
-        assert codes(lambda: assets.retrieve(rig.server.url("/bundle"), name="bundle")) == ["asset.disk-low"]
-        text = refusal_text(lambda: assets.retrieve(rig.server.url("/bundle"), name="bundle"))
+        assert codes(lambda: _fetch.retrieve(rig.server.url("/bundle"), name="bundle")) == ["asset.disk-low"]
+        text = refusal_text(lambda: _fetch.retrieve(rig.server.url("/bundle"), name="bundle"))
         assert "up to 500 MB" in text and "--force" in text
-        assert codes(lambda: assets.retrieve(rig.server.url("/bundle"), name="bundle", yes=True)) == ["asset.disk-low"]
+        assert codes(lambda: _fetch.retrieve(rig.server.url("/bundle"), name="bundle", yes=True)) == ["asset.disk-low"]
     assert rig.requests == 0
     with space(free=1_000_000, total=GB), _gates.asking(None):
-        assets.retrieve(rig.server.url("/bundle"), name="bundle", force=True)
+        _fetch.retrieve(rig.server.url("/bundle"), name="bundle", force=True)
     assert rig.requests == 1
     rig.server.files["/second"] = b"s" * 400
     asker = Scripted()
     with space(free=400 * GB, total=500 * GB), _gates.asking(asker):
-        assets.retrieve(rig.server.url("/second"), name="bundle")
+        _fetch.retrieve(rig.server.url("/second"), name="bundle")
     assert asker.questions == [] and asker.lines and asker.lines[0].startswith("Download up to 500 MB")
     with space(free=3_000_000_000, total=20 * GB), _gates.asking(None):
         # 500 MB is over a tenth of 3 GB and would be asked about were it a stated size; it leaves 2.5 GB, so no stop
-        assets.retrieve(rig.server.url("/second"), name="bundle")
+        _fetch.retrieve(rig.server.url("/second"), name="bundle")
 
 
 # --- the controls: each fails on every run ----------------------------------------------------------------------------

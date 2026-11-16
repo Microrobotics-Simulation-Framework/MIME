@@ -20,6 +20,7 @@ from assets_rig import Rig, reference
 from fake_zenodo import DOI, RECORD, zenodo
 
 from mime import assets
+from mime.assets import _fetch
 from mime.assets import _cache, _fetch
 from mime.build import BuildRefused
 from mime.experiment import Experiment
@@ -153,10 +154,10 @@ def test_a_bare_url_bundle_flipped_in_place_is_repaired_by_the_download_that_run
     payload = os.urandom(4000)
     rig.server.files["/bundle"] = payload
     address = rig.server.url("/bundle")
-    held = rig.cache / assets.retrieve(address, name="bundle").sha256
+    held = rig.cache / _fetch.retrieve(address, name="bundle").sha256
     flip_in_place(held)
     assert held.read_bytes() != payload
-    assets.retrieve(address, name="bundle")
+    _fetch.retrieve(address, name="bundle")
     assert rig.requests == 2 and held.read_bytes() == payload
 
 

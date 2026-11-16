@@ -18,9 +18,8 @@ sources that disagree.
 locations, this machine's locations file's first, each opened by its :class:`Adapter` (``https``, ``doi:``,
 ``package:``, ``file://`` mirrors, and any a package or a script registers, :func:`register_adapter`), the stream held
 to the record's size and hash, redirects followed with a credential bound to its host, retries and resuming the
-resolver's own; :func:`approved` asks a batch's questions once. :func:`retrieve` stores a file whose hash is not yet
-known (a bundle named by its DOI). :func:`check` re-hashes a cached file in full. A derived asset's derivation record
-is a :class:`DerivationRecord`. See the README.
+resolver's own; :func:`approved` asks a batch's questions once. :func:`check` re-hashes a cached file in full. See the
+README.
 """
 
 from mime.assets._acceptances import Acceptance
@@ -38,8 +37,8 @@ from mime.assets._adapters import (
 )
 from mime.assets._asset import Asset, asset
 from mime.assets._cache import check
-from mime.assets._derivation import CheckResult, DerivationRecord
-from mime.assets._fetch import resolve, retrieve
+from mime.assets._derivation import CheckResult
+from mime.assets._fetch import resolve
 from mime.assets._gates import approved
 from mime.assets._known import reference
 from mime.assets._manifest import MANIFEST_FORMAT, Manifest, read_manifest
@@ -55,7 +54,6 @@ __all__ = [
     "AssetRef",
     "CheckResult",
     "Credential",
-    "DerivationRecord",
     "LoginRefused",
     "MANIFEST_FORMAT",
     "Manifest",
@@ -72,5 +70,4 @@ __all__ = [
     "reference",
     "register_adapter",
     "resolve",
-    "retrieve",
 ]

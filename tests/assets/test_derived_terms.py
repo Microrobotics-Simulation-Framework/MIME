@@ -17,7 +17,8 @@ from pathlib import Path
 import pytest
 
 from mime import assets, terms
-from mime.assets import DerivationRecord, _audit, _derivation, _manifest
+from mime.assets import _audit, _derivation, _manifest
+from mime.assets._derivation import DerivationRecord
 from mime.assets._derivation import DerivationInput
 from mime.terms import Scope, derived_verdict, freest, licence_verdict, permission_verdict
 

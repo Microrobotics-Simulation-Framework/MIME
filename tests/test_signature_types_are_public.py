@@ -177,9 +177,7 @@ UNDECIDED = {
     "mime.assets._reference.Kind": "AssetRef.kind: a record's vocabulary, decided with AssetRef's fields (deferred to DUPLICATES)",
     "mime.assets._cache.Cached": "check's return: decided with check (deferred to DUPLICATES, the check family)",
     "mime.assets._manifest.ManifestFile": "Manifest.files: decided with Manifest (deferred to DUPLICATES, the Manifest family)",
-    "mime.assets._derivation.DerivationInput": "DerivationRecord.inputs: decided with DerivationRecord, kept on changelog evidence alone",
-    "mime.assets._derivation.Json": "DerivationRecord's and CheckResult's JSON values: decided with DerivationRecord",
-    "mime.assets._fetch.Fetcher": "retrieve(fetcher): decided with retrieve, kept on changelog evidence alone",
+    "mime.assets._derivation.Json": "CheckResult's JSON values: decided with CheckResult (deferred to DUPLICATES, the check family)",
     "mime.assets._gates.Approval": "approved's return: approved is held public (the README and mime modal's script teach it); decided with it",
 }
 

@@ -18,6 +18,7 @@ import pooch
 import pytest
 
 from mime import assets
+from mime.assets import _fetch
 from mime.assets import _cache, _fetch, _known, _reference
 from mime.build import BuildRefused
 from assets_rig import Rig, dead_url, reference, run_with_rig
@@ -144,9 +145,9 @@ def test_the_control_where_the_network_is_the_cause_the_words_are_the_networks(r
 
 
 def test_a_bundle_at_a_404_address_is_not_blamed_on_the_network_and_one_at_a_dead_address_is(rig: Rig):
-    gone = refusal_of(lambda: assets.retrieve(rig.server.url("/gone"), name="bundle"))
+    gone = refusal_of(lambda: _fetch.retrieve(rig.server.url("/gone"), name="bundle"))
     assert gone.code == "asset.unreachable" and "is not at" in gone.message and "network" not in gone.action
-    dead = refusal_of(lambda: assets.retrieve(dead_url(), name="bundle"))
+    dead = refusal_of(lambda: _fetch.retrieve(dead_url(), name="bundle"))
     assert "could not be downloaded from" in dead.message and "check the network" in dead.action
 
 

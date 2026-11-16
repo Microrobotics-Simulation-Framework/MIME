@@ -241,7 +241,7 @@ def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_b
     if _cache.offline():
         raise _offline_refusal(redacted(source.value))
     if source.kind == "url":
-        return [Fetched(locate_bundle_container(assets.retrieve(source.value, name="bundle", max_bytes=max_bundle_bytes,
+        return [Fetched(locate_bundle_container(_fetch.retrieve(source.value, name="bundle", max_bytes=max_bundle_bytes,
                                                           exceeded_action=_RAISE_LIMIT, report=say, yes=yes,
                                                           force=force)),
                         unquote(source.value.split("?", 1)[0].rstrip("/").rpartition("/")[2]))], None
@@ -254,7 +254,7 @@ def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_b
     fetched: list[Fetched] = []
     for file, checksum, stated in files:
         limit = _limit(stated, max_bundle_bytes)
-        fetched.append(Fetched(locate_bundle_container(assets.retrieve(
+        fetched.append(Fetched(locate_bundle_container(_fetch.retrieve(
             f"doi:{source.value}/{file}", name=_kind_word(file),
             known_hash=checksum, max_bytes=limit, exceeded_action=_RAISE_LIMIT, report=say, size=stated, yes=yes,
             force=force)), file))
@@ -293,7 +293,7 @@ def _from_service(service_name: str, record: str, say: Callable[[str], None] | N
     held = found.containers or (_records.RecordContainer(found.bundle, found.url, found.md5, found.size),)
     if len(held) > 1 and not into_given:
         raise _several_refused(len(held), f"the record {found.record} on {service.name}")
-    return [Fetched(locate_bundle_container(assets.retrieve(
+    return [Fetched(locate_bundle_container(_fetch.retrieve(
         each.url, name=_kind_word(each.key), known_hash=f"md5:{each.md5}",
         max_bytes=_limit(each.size, max_bundle_bytes), exceeded_action=_RAISE_LIMIT, report=say, size=each.size,
         yes=yes, force=force, fetcher=downloader(service, found.record, access) if access is not None else None)),
@@ -755,7 +755,7 @@ def pulled_parent(source: str | os.PathLike[str], *, accept_licences: Collection
     that holds anything else is refused as pull refuses it (``pull.destination``).
 
     A call run again reads the DOI's record (its metadata, which names the bundle's checksum) and downloads no bundle
-    bytes: the asset cache keeps a note of which file that checksum named (:func:`mime.assets.retrieve`), and the bundle
+    bytes: the asset cache keeps a note of which file that checksum named (:func:`mime.assets._fetch.retrieve`), and the bundle
     is read from the cache. The folder is still judged by the input hashes, never by the checksum: a folder that holds
     another experiment is refused as before. With the cache cleared, or a new version of the record, the bundle is
     downloaded."""

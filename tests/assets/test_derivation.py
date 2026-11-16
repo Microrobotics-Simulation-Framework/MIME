@@ -31,7 +31,8 @@ import pytest
 import tube_asset
 
 from mime import assets
-from mime.assets import AssetRef, CheckResult, DerivationRecord, _derivation, _known
+from mime.assets import AssetRef, CheckResult, _derivation, _known
+from mime.assets._derivation import DerivationRecord
 from mime.assets._derivation import DerivationInput, Json, Produced
 from mime.build import BuildRefused
 from mime.assets import asset

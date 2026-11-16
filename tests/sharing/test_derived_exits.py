@@ -35,7 +35,8 @@ from zenodo_records import FakeRecords
 from mime import assets, push
 from mime.assets import _audit, _derivation, _fetch, _gates
 from mime.assets._acceptances import remember
-from mime.assets import AssetRef, DerivationRecord, _derivation, _sources
+from mime.assets import AssetRef, _derivation, _sources
+from mime.assets._derivation import DerivationRecord
 from mime.assets._derivation import DerivationInput
 from mime.build import BuildRefused
 from mime.experiment import Experiment
