@@ -431,7 +431,7 @@ def sign_rows(declared) -> list[SwitchRow]:
         origin = (jnp.asarray([150e-6]), jnp.asarray([-400e-6]), jnp.asarray([1000e-6 + o]))
         direction = (jnp.asarray([0.0]), jnp.asarray([0.8]), jnp.asarray([0.6]))
         return {"crease_measure": cap(origin, direction, held["axis"], held["length"] / 2.0,
-                                      lambda vx, vy, vz: held["radius"], "cylinder.cap_side", held["radius"])}
+                                      lambda vx, vy, vz: held["radius"], owner="cylinder.cap_side", scale=held["radius"])}
 
     return [*(SwitchRow(declared[f"helix.end.{end}"], lambda o, end=end: value(o, end), 1e-3) for end in ("low", "high")),
             SwitchRow(declared["cylinder.cap_side"], cap_side, 1e-4)]

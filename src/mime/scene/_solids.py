@@ -202,7 +202,8 @@ class Cylinder(Solid):
         axis = signs.unit(parameters["axis"])
         radius, half = parameters["radius"], parameters["length"] / 2.0
         ends = (-half, half)
-        caps = tuple(creases.cap(o, d, axis, z, lambda vx, vy, vz: radius, "cylinder.cap_side", radius) for z in ends)
+        caps = tuple(creases.cap(o, d, axis, z, lambda vx, vy, vz: radius, owner="cylinder.cap_side", scale=radius)
+                     for z in ends)
         centres = tuple(tuple(z * axis[i] for i in range(3)) for z in ends)
         balls = tuple(creases.ball(o, d, centre, radius, radius) for centre in centres)
         return CreaseMeasure((*caps, *balls), creases.capped,

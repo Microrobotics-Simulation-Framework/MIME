@@ -39,7 +39,7 @@ def cap_side(kind: str) -> switch.Declaration:
               "function changes by twice its facing term")
 
 
-def cap(o: Vector, d: Vector, axis: Vector, z: Any, rim: Callable[[Any, Any, Any], Any], owner: str,
+def cap(o: Vector, d: Vector, axis: Vector, z: Any, rim: Callable[[Any, Any, Any], Any], *, owner: str,
         scale: Any) -> Any:
     """The cap in the plane ``x . axis = z`` on the rays ``o + t d``: ``|V| - rho f`` (the module's notes), ``rim(vx, vy,
     vz)`` the rim's radius in the direction of the in-plane vector ``V`` (homogeneous of degree zero in it), ``scale``
