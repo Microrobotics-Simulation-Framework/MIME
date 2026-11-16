@@ -268,3 +268,18 @@ def test_the_placeholders_are_refused_wherever_a_licence_or_a_namespace_is_read(
     assert "placeholder" in (namespace_problem(PLACEHOLDER_NAMESPACE) or "")
     assert "placeholder" in (id_problem(f"{PLACEHOLDER_NAMESPACE}.probe") or "")
     assert licence_problem("LicenseRef-Mine") is None and id_problem("labx.probe") is None
+
+
+# -- (ab) verify ends with an acceptance paragraph for an experiment, a run, a study and a block alike --------------------
+
+
+def test_verify_of_an_experiment_ends_with_an_acceptance_as_a_study_and_a_block_do(saved, capsys):
+    from mime.blocks._card import ACCEPTANCE as BLOCK
+    from mime.saved._studies import ACCEPTANCE as STUDY
+
+    assert mime_main(["verify", str(saved)]) == 0
+    last = capsys.readouterr().out.rstrip().splitlines()[-1]
+    assert last.startswith("An acceptance: the experiment's saved form loads and rebuilds here")
+    for other in (BLOCK, STUDY):
+        assert other.startswith("An acceptance: ") and "It bounds nothing about physics" in other
+        assert "It bounds nothing about physics" in last

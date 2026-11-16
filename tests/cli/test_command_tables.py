@@ -215,7 +215,8 @@ def test_verify_on_a_terminal_is_a_table_of_its_checks_with_every_word_of_the_pl
     assert code == 0, text
     assert holds_every_word_of(old, text)
     lines = [line for line in text.splitlines() if line.strip()]
-    assert lines[-1] == verdict, "the verdict is one line, under the table"
+    assert lines[-2] == verdict, "the verdict is one line, under the table"
+    assert lines[-1].startswith("An acceptance: "), "and MIME's words on what it is come last, as a study's do"
     assert not any(line.startswith("verify:") for line in lines[:-1])
     cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
     for check in ("saved form", "input hash", "environment", "derived graph", "rerun", "held to", "probe.x", "probe.v"):

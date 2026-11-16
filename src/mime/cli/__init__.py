@@ -162,6 +162,15 @@ def _not_a_saved_experiment(folder: Path, command: str) -> BuildRefused:
         "run from")])
 
 
+#: MIME's words after a saved experiment's verification and a run folder's, as a study's and a block's end theirs
+#: (``mime.saved._studies.ACCEPTANCE``, ``mime.blocks._card.ACCEPTANCE``): what it is, and what it is not.
+_EXPERIMENT_ACCEPTANCE = ("An acceptance: the experiment's saved form loads and rebuilds here, and its reference steps "
+                          "reproduce. It bounds nothing about physics, and says nothing of whether the model applies to "
+                          "your problem.")
+_RUN_ACCEPTANCE = ("An acceptance: the run's saved form made its outputs again here. It bounds nothing about physics, and "
+                   "says nothing of whether the model applies to your problem.")
+
+
 def _verify(folder: Path, run: bool = False) -> int:
     from mime.blocks import is_block_folder
     from mime.saved._studies import BLOCK_SUFFIX, is_publishing_folder, is_study_folder
@@ -197,6 +206,7 @@ def _verified(folder: Path) -> int:
         if load is not None:
             print(for_terminal(load))
         print(for_terminal(report.text()))
+    print(_EXPERIMENT_ACCEPTANCE)
     return 0 if report.reproduced else 1
 
 
@@ -250,6 +260,7 @@ def _verified_run(folder: Path) -> int:
 
     report = verify_run(folder)
     print(for_terminal(report.text()))
+    print(_RUN_ACCEPTANCE)
     return 0 if report.reproduced else 1
 
 
