@@ -14,18 +14,20 @@ PLANTS = ("short", "stale", "early")
 bound = T.NEWTON_ULPS
 out = {"arm": arm, "draws": draws, "new": {p: 0 for p in (*PLANTS, "clean")}, "old": {p: 0 for p in PLANTS},
        "lost": {p: 0 for p in PLANTS}, "unresolved_groups": 0, "groups": 0}
-planted = {p: T.planted_search("cylinder", "float32", p) for p in PLANTS}
+kinds = ["cylinder"] if arm.startswith("cyl") else sorted(T.SUPPORTED)
+planted = {(k, p): T.planted_search(k, "float32", p) for k in kinds for p in PLANTS}
 for i in range(draws):
+    kind = kinds[rng.integers(len(kinds))]
     spin, about, towards = rng.uniform(0, 2 * np.pi, 3)
     tilt, share = rng.uniform(0, 1.5), rng.uniform(-0.5, 1.0)
-    pose = T.placed("cylinder", spin, tilt, about, towards, share * T.MARGIN)
-    clean = T.searched_against_0_4_0("cylinder", "float32", pose)
+    pose = T.placed(kind, spin, tilt, about, towards, share * T.MARGIN)
+    clean = T.searched_against_0_4_0(kind, "float32", pose)
     out["unresolved_groups"] += int(np.sum(~clean.resolved))
     out["groups"] += len(clean.resolved)
     out["new"]["clean"] += int(np.max(clean.missed) > bound)
     for p in PLANTS:
-        new = np.max(T.searched_against_0_4_0("cylinder", "float32", pose, planted=planted[p]).missed) > bound
-        base = T.searched_against_0_4_0("cylinder", "float32", pose, planted=planted[p], rattles=0)
+        new = np.max(T.searched_against_0_4_0(kind, "float32", pose, planted=planted[kind, p]).missed) > bound
+        base = T.searched_against_0_4_0(kind, "float32", pose, planted=planted[kind, p], rattles=0)
         old = np.max(np.where(base.spread <= bound, base.alone, 0.0)) > bound
         out["new"][p] += int(new)
         out["old"][p] += int(old)

@@ -10,14 +10,14 @@
     "dtype": ["float32"],
     "platform": "CPU, a GitHub runner of 4 vCPU (the probe workflow)",
     "sizes_and_parameters": "the cylinder of tests/oracles/test_contact_loops.py (radius 1 mm, length 6 mm) in script A's tube at spacing 4e-4, twelve Newton steps",
-    "seeds_and_draws": "6 arms of 3,000 cylinder draws (spin, about, towards 0 to 2 pi, tilt 0 to 1.5, share -0.5 to 1.0 of the margin), seeds 1 to 6"
+    "seeds_and_draws": "arms cyl_1 to cyl_4: 3,000 cylinder draws each; arms mix_1 to mix_4: 3,000 draws each over the five kinds with a support (spin, about, towards 0 to 2 pi, tilt 0 to 1.5, share -0.5 to 1.0 of the margin); seeds by the arm number"
   },
   "gate_1_cylinder_plants_caught": {
     "claim": "no draw a planted loop defect is caught on under the base's rule (poses alone) is missed under the pull request's rule, and the clean looped arm is never flagged",
     "kind": "acceptance",
     "case": "probe/rates.py through tests/oracles/test_contact_loops.py: searched_against_0_4_0 with planted_search plants short (7 steps), stale (carry from two steps back), early (stop at 1e-5 of the hull's size)",
-    "prediction": {"value": "lost 0 of the base's catches for each plant over the 18,000 draws; clean flagged 0 of 18,000", "basis": "derived", "why": "a short or stale loop leaves a group unconverged where all of 0.4.0's arms converge, an early stop leaves a converged flag over a residual of up to 84 units against a floor of a few; the base's catches on these plants are about 5 and 40 of 1,500 draws"},
-    "control": {"plant": "short, stale, early as above", "expected_rate": "every draw the base catches", "runs": 18000, "clean_expected": "0/18000", "resolution": "the property's own bound of 128 units; the plants' misses are infinite (unconverged) or over the floor"},
+    "prediction": {"value": "lost 0 of the base's catches for each plant over the 12,000 cylinder draws and again over the 12,000 mixed draws; clean flagged 0 of 12,000 in each", "basis": "derived", "why": "a short or stale loop leaves a group unconverged where all of 0.4.0's arms converge, an early stop leaves a converged flag over a residual of up to 84 units against a floor of a few; the base's catches on these plants are about 5 and 40 of 1,500 draws"},
+    "control": {"plant": "short, stale, early as above", "expected_rate": "every draw the base catches", "runs": 24000, "clean_expected": "0/24000", "resolution": "the property's own bound of 128 units; the plants' misses are infinite (unconverged) or over the floor"},
     "if_wrong": "a lost catch names the draw; the judgement of unresolved groups is blind there and the rule is not yet ready"
   },
   "outcomes": null
