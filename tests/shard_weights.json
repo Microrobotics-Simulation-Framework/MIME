@@ -1,5 +1,5 @@
 {
- "source": "CI runs 43195010672 (44abfc8), 43215038644 (047b4cf), 43218907334 (0df416c) and 43226475718 (74d7354), pushes with every shard cold, the median over their twenty lanes (every file was in all four runs); the 3.12 lane of 74d7354's shard 17, cancelled at 30 minutes and so without a report, takes the 3.13 lane's report of that shard from the same run",
+ "source": "CI runs 43195010672 (44abfc8), 43215038644 (047b4cf), 43218907334 (0df416c) and 43226475718 (74d7354), pushes with every shard cold, the median over their twenty lanes (every file was in all four runs); the 3.12 lane of 74d7354's shard 17, cancelled at 30 minutes and so without a report, takes the 3.13 lane's report of that shard from the same run; the rows of tests/control/test_iterative_allocation.py, test_iterative_controller.py, test_exact_allocation.py and test_controller_flags.py are from ONE lane, maddening-main of run 43869107419 (not a median), added with the first change that has them, and the by-test split of the first two is that run's tests of one second or more",
  "over": 0.0,
  "tests_over": 1.0,
  "seconds": {
@@ -63,8 +63,12 @@
   "tests/cli/test_terminal.py": 106,
   "tests/cli/test_version.py": 1,
   "tests/control/test_callback.py": 69,
+  "tests/control/test_controller_flags.py": 60,
   "tests/control/test_declaration.py": 21,
+  "tests/control/test_exact_allocation.py": 484,
   "tests/control/test_in_graph.py": 494,
+  "tests/control/test_iterative_allocation.py": 988,
+  "tests/control/test_iterative_controller.py": 1134,
   "tests/credentials/test_credentials.py": 17,
   "tests/differential/test_a0.py": 176,
   "tests/differential/test_a0_armature.py": 170,
@@ -582,6 +586,34 @@
   "tests/oracles/test_arm_dynamics_battery.py": "nine tests of 15 to 320 s on CI, the three longest (params_effective, params_gradient_finite, gradient_finite) each a worker's share of the shard: beside other files they start last and leave three workers idle; measured on run 42538025458 the shard keeps 2.6 of its 4 workers busy against 3.7 for the other shards, and ends at 9 to 14 minutes against their 9 to 24, so the idle workers cost one shard's slot and the slowest shard is never this one"
  },
  "split": {
+  "tests/control/test_iterative_allocation.py": {
+   "test_a_solve_that_cannot_converge_in_its_cap_says_so": 1,
+   "test_a_solve_whose_tolerance_cannot_be_met_ends_within_its_cap_and_says_so[nonlinear]": 1,
+   "test_a_warm_start_near_the_minimiser_gives_the_minimisers_derivative": 99,
+   "test_float32_is_judged_against_float64": 207,
+   "test_iterative_inverse_kinematics_meets_the_librarys_on_reachable_poses": 72,
+   "test_the_implicit_derivative_is_central_differences_and_reverse_mode_is_forward[reachable]": 225,
+   "test_the_implicit_derivative_is_central_differences_and_reverse_mode_is_forward[unreachable]": 206,
+   "test_the_iterative_path_meets_bvls_above_the_exact_paths_size[float32]": 46,
+   "test_the_iterative_path_meets_bvls_above_the_exact_paths_size[float64]": 47,
+   "test_the_iterative_path_meets_the_exact_path_where_both_apply[float32]": 36,
+   "test_the_iterative_path_meets_the_exact_path_where_both_apply[float64]": 42,
+   "test_the_plants_of_the_claim_are_each_caught_at_one_problem": 4
+  },
+  "tests/control/test_iterative_controller.py": {
+   "test_a_study_sweeps_a_setting_of_a_controller_on_the_iterative_path": 104,
+   "test_an_unconverged_solve_raises_its_flag_counted_and_warned_and_a_converged_one_none[callback]": 64,
+   "test_an_unconverged_solve_raises_its_flag_counted_and_warned_and_a_converged_one_none[graph]": 153,
+   "test_the_coil_sphere_on_the_iterative_path_writes_the_exact_paths_currents[callback-float32]": 20,
+   "test_the_coil_sphere_on_the_iterative_path_writes_the_exact_paths_currents[callback-float64]": 25,
+   "test_the_coil_sphere_on_the_iterative_path_writes_the_exact_paths_currents[graph-float32]": 8,
+   "test_the_coil_sphere_on_the_iterative_path_writes_the_exact_paths_currents[graph-float64]": 6,
+   "test_the_derivative_of_the_follower_in_its_standoff_is_central_differences": 391,
+   "test_the_derivative_through_the_iterative_path_is_central_differences": 31,
+   "test_the_follower_is_one_function_in_both_modes_and_holds_the_flange_above_the_body[float32]": 146,
+   "test_the_follower_is_one_function_in_both_modes_and_holds_the_flange_above_the_body[float64]": 155,
+   "test_the_follower_on_the_iterative_path_says_so_in_its_report_and_lays_out_its_flag": 31
+  },
   "tests/oracles/test_lubrication.py": {
    "test_a_body_past_the_films_window_is_the_coarse_mrss_by_the_builds_rule_and_reported": 23,
    "test_a_shared_flowing_medium_collects_both_refusals_at_once": 1,
