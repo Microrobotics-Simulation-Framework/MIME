@@ -28,5 +28,5 @@ def factory() -> tuple[Any, tuple[Any, ...]]:
         return h.lax.scan(tick, jnp.int32(-1), targets)[1]
 
     compiled = jax.jit(program)
-    compiled(jnp.asarray(spec.w0[None, :] * jnp.ones((50, 1)), dtype=dtype))  # run once: the compile's peak is the factory's
+    compiled(jnp.asarray(spec.w0[None, :] * jnp.ones((90000, 1)), dtype=dtype))  # run once at full size: the run's resident set is the factory's
     return compiled, (jax.ShapeDtypeStruct((90000, 8), dtype),)
