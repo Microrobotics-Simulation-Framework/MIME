@@ -330,17 +330,21 @@ class InternalError(MimeError):
 
 
 def entry_defect(cls: type, problem: str, *, label: str | None = None, context: str = "",
-                 where: str | None = None, owner: str | None = None) -> Refusal:
+                 where: str | None = None, owner: str | None = None, code: str = "entry.defect",
+                 fix: str | None = None) -> Refusal:
     """The refusal of an entry's defect (``entry.defect``): the entry ``cls`` (shown as ``label``) did what its
     contract forbids, ``context`` saying where. It is the defect of the package that defines ``cls``, which is named
     as its owner (or ``owner``, the package whose code was found at fault), and ``where`` is the entry's own line that
-    raised (or the problem's, when it is :class:`Explained` with one), where there is one."""
+    raised (or the problem's, when it is :class:`Explained` with one), where there is one. ``code`` is another code of
+    the internal class for a check that names its own page (a post-build check of a node the entry built), and ``fix``
+    is what the entry's author changes, put before the report-it line."""
     name = label or cast(Any, cls).label()
     package = owner or cls.__module__.split(".", 1)[0]
     where = where or getattr(problem, "where", None)
-    return Refusal("entry.defect", RefusalClass.INTERNAL, f"{name} ({cls.__module__}){context}: {problem}",
-                   f"a defect in {name}, defined in {cls.__module__}: report it to that package. If that package is "
-                   f"MIME: {MIME_DEFECT}", where=where, owner=package)
+    lead = f"{fix.rstrip('. ')}. It is a" if fix else "a"
+    return Refusal(code, RefusalClass.INTERNAL, f"{name} ({cls.__module__}){context}: {problem}",
+                   f"{lead} defect in {name}, defined in {cls.__module__}: report it to "
+                   f"that package. If that package is MIME: {MIME_DEFECT}", where=where, owner=package)
 
 
 def kept_when_wrapped(error: BaseException) -> bool:

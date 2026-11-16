@@ -53,6 +53,7 @@ from mime.things import ThingKind
 from mime.units import SAY_THE_ANGLE, TIME, Dimension, Quantity, UnitError, says_its_angle, si
 from mime.vocabulary import MIME_NAMESPACE, Capability, EnergyClass, ReadKind, namespace_of, port_kind
 from mime.vocabulary import lookup as interface_named
+from mime.vocabulary._versions import parsed, version_order, version_problem
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 #: A controller's read or write label.
@@ -486,8 +487,8 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
     elif namespace_of(name) == MIME_NAMESPACE and not cls.__module__.split(".")[0] == "mime":
         found.append(f"name {name!r} is in MIME's namespace; register your own with "
                      f"mime.vocabulary.register_namespace and prefix the name with it")
-    if not (isinstance(version, str) and version):
-        found.append(f"version {version!r}: a non-empty string")
+    if (problem := version_problem(version)) is not None:
+        found.append(problem)
     if not isinstance(getattr(held, "differentiability", None), GradientStatus):
         found.append("differentiability: declare a mime.gradients.GradientStatus")
     else:
@@ -771,6 +772,12 @@ def _register[E: type[Entry]](kind: EntryKind, cls: E) -> E:
         if held.defined_in != f"{cls.__module__}.{cls.__qualname__}":
             raise ValueError(f"{kind.value} {cls.name} {cls.version} is already registered by {held.defined_in}")
         del _by_class[held.cls]
+    for other in versions_of(kind, cls.name):
+        same = other != cls.version and parsed(other) == parsed(cls.version)
+        if same and _by_key[(kind, cls.name, other)].defined_in != f"{cls.__module__}.{cls.__qualname__}":
+            raise ValueError(f"{kind.value} {cls.name} {cls.version} is the version {other} of "
+                             f"{_by_key[(kind, cls.name, other)].defined_in} in another spelling: one version has one "
+                             f"spelling, so write {other}")
     record = Registered(kind, cls.name, cls.version, cls, settings, declared_roles(cls))
     _by_key[key] = record
     _by_class[cls] = record
@@ -863,9 +870,9 @@ def lookup(kind: EntryKind, name: str, version: str) -> Registered | None:
 
 
 def versions_of(kind: EntryKind, name: str) -> list[str]:
-    return sorted(v for (k, n, v) in _by_key if k is kind and n == name)
+    return sorted((v for (k, n, v) in _by_key if k is kind and n == name), key=version_order)
 
 
 def registered(kind: EntryKind | None = None) -> list[Registered]:
     return sorted((r for r in _by_key.values() if kind is None or r.kind is kind),
-                  key=lambda r: (r.kind.value, r.name, r.version))
+                  key=lambda r: (r.kind.value, r.name, version_order(r.version)))
