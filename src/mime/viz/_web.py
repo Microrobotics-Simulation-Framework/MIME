@@ -87,11 +87,6 @@ model-viewer { position: absolute; inset: 0; display: block; width: 100%; height
 #scale-line { height: 6px; width: 0; border: 2px solid var(--fg); border-top: none; }
 #scale-label { font-variant-numeric: tabular-nums; }
 #legend { right: 12px; top: 12px; max-width: min(34em, 60%); }
-#fields { left: 12px; top: 12px; width: min(22em, 45%); pointer-events: auto; }
-#fields select { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--edge);
-  border-radius: 6px; padding: 1px 6px; }
-.ramp { height: 10px; border-radius: 2px; margin: 4px 0 2px; border: 1px solid var(--edge); }
-.ramp-labels { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
 #legend ul { list-style: none; margin: 2px 0 0; padding: 0; }
 #legend li { margin: 2px 0; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
@@ -269,8 +264,30 @@ view.addEventListener("load", () => {
   requestAnimationFrame(tick);
 });
 view.addEventListener("error", (event) => { document.body.dataset.error = JSON.stringify(event.detail ?? null); });
+if (play) play.addEventListener("click", () => { if (view.paused) view.play(); else view.pause(); label(); });
+if (speed) speed.addEventListener("change", () => { view.timeScale = Number(speed.value); });
+if (time) time.addEventListener("input", () => {
+  view.pause();
+  view.currentTime = Number(time.value);
+  label();
+  show();
+});
+"""
+
+#: The field legend's style and its picker's script: a page carries them only where it draws a surface's field, so a
+#: page with none is the same bytes as before surfaces were drawn.
+_FIELDS_STYLE = """
+#fields { left: 12px; top: 12px; width: min(22em, 45%); pointer-events: auto; }
+#fields select { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--edge);
+  border-radius: 6px; padding: 1px 6px; }
+.ramp { height: 10px; border-radius: 2px; margin: 4px 0 2px; border: 1px solid var(--edge); }
+.ramp-labels { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+"""
+
+_FIELDS_SCRIPT = """
 // The field picker: each field is its own animation (the same motion, its colours), so choosing one plays that animation
-// from the time the view was at, playing or paused as it was.
+// from the time the view was at, playing or paused as it was. The viewer sets its time to zero when the animation
+// changes, so the time is put back once it has taken the new one.
 const picker = document.getElementById("field");
 function rampFor(index) {
   const chosen = config.fields[index];
@@ -290,14 +307,6 @@ if (picker) picker.addEventListener("change", async () => {
   rampFor(picker.selectedIndex);
   document.body.dataset.field = config.fields[picker.selectedIndex].name;
   label();
-});
-if (play) play.addEventListener("click", () => { if (view.paused) view.play(); else view.pause(); label(); });
-if (speed) speed.addEventListener("change", () => { view.timeScale = Number(speed.value); });
-if (time) time.addEventListener("input", () => {
-  view.pause();
-  view.currentTime = Number(time.value);
-  label();
-  show();
 });
 """
 
@@ -435,24 +444,28 @@ def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None, s
                   "radius": FOCUS_FACTOR * focused.extent if focused.extent else None}
         if focused is not None and focus is not None else None}
     keys = field_keys(result)
-    settings["fields"] = keys
+    if keys:
+        settings["fields"] = keys
     config = json.dumps(settings)
     title = html.escape(result.name)
     play = ' autoplay animation-name="run"' if animated else ""
+    # The viewer would blend one animation into the next when the picker switches field; a field's colours are shown
+    # at once instead.
+    crossfade = ' animation-crossfade-duration="0"' if keys else ""
     parts = [
         "<!doctype html>", '<html lang="en">', "<head>", '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">', f"<title>{title}</title>",
-        f"<style>{_STYLE}</style>", _viewer_tag(cdn), "</head>", "<body>",
+        f"<style>{_STYLE}{_FIELDS_STYLE if keys else ''}</style>", _viewer_tag(cdn), "</head>", "<body>",
         '<div class="stage" id="stage">',
         f'<model-viewer id="view" src="data:model/gltf-binary;base64,{glb}" alt="{title}, drawn from its USD stage" '
-        f'camera-controls{play} animation-crossfade-duration="0" interaction-prompt="none" shadow-intensity="0" '
-        'exposure="1"></model-viewer>']
+        f'camera-controls{play}{crossfade} interaction-prompt="none" shadow-intensity="0" exposure="1"></model-viewer>']
     if scale_bar:
         parts.append('<div class="overlay" id="scale-bar" aria-label="scale bar"><div id="scale-line"></div>'
                      '<span id="scale-label"></span></div>')
     if legend:
         parts.append(_legend(result))
-        parts.append(_fields(keys))
+        if keys:
+            parts.append(_fields(keys))
     parts += ['</div>',
               '<div class="grip" id="grip" role="separator" aria-orientation="horizontal" tabindex="0" '
               'aria-label="Resize the notes below the view" '
@@ -480,11 +493,13 @@ def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None, s
         _toggle("scale_bar", scale_bar, "Scale bar: " + ("on. A round length in SI units, true at the point the camera "
                 "orbits, redrawn as you zoom." if scale_bar else "off."),
                 "scale_bar=False or --no-scale-bar hides it" if scale_bar else "scale_bar=True shows it"),
-        _toggle("legend", legend, "Legends: " + ((("on. What each arrow is, its colour, the scale it is drawn at and "
-                "its cap." if result.arrows else "on; this scene draws no arrows.") + (
+        _toggle("legend", legend, ("Legends: " + ((("on. What each arrow is, its colour, the scale it is drawn at and "
+                "its cap." if result.arrows else "on; this scene draws no arrows.") +
                 f" Each surface field's colours ({COLOUR_MAP}) over its range, with a picker where there are several: "
                 "colour is the view's, the recording holds the values; the light shades the colours, so a colour "
-                "matches the ramp where the surface faces the light." if keys else "")) if legend else "off."),
+                "matches the ramp where the surface faces the light.") if legend else "off.")) if keys else
+                ("Arrow legend: " + (("on. What each arrow is, its colour, the scale it is drawn at and its cap."
+                 if result.arrows else "on, but this scene draws no arrows.") if legend else "off.")),
                 "legend=False or --no-legend hides it" if legend else "legend=True shows it"),
         _toggle("apparatus_shapes", result.apparatus_shapes, "Apparatus shapes: " + (
                 f"on. The motor and magnet of an apparatus are drawn for this view alone, never in the stage ({drawn})."
@@ -501,12 +516,47 @@ def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None, s
                 "follow=None or no --follow turns it off" if follow is not None else "follow='<body>' or --follow <body>")]
     notes.append(f'<ul class="toggles" id="toggles">{"".join(toggles)}</ul>')
     notes += [f'<p class="muted">{html.escape(line)}</p>' for line in result.lines()]
+    if result.morphs:
+        notes.append(f'<p class="muted" id="surface-size">{html.escape(_surface_sizes(result))} {_PAGE_SIZE}</p>')
     where = ("The viewer is loaded from jsDelivr, held to its hash; the scene is inside this page." if cdn else
              "The viewer and the scene are both inside this page: it needs no network.")
     notes.append(f'<p class="muted">{CREDIT} {where}</p>')
+    script = _SCRIPT.replace("CONFIG", config) + (_FIELDS_SCRIPT if keys else "")
     parts += ['<div class="notes" id="notes"><div class="notes-body">', *notes, "</div></div>",
-              f'<script type="module">{_LOGIC}{_SCRIPT.replace("CONFIG", config)}</script>', "</body>", "</html>"]
-    return "\n".join(parts) + "\n"
+              f'<script type="module">{_LOGIC}{script}</script>', "</body>", "</html>"]
+    text = "\n".join(parts) + "\n"
+    return _sized(text) if result.morphs else text
+
+
+#: A page of about this many bytes holds about :data:`PAGE_VERTEX_FRAMES` vertex-frames of a surface with one moving
+#: field (measured: about 28.5 bytes a vertex-frame of the GLB, 4/3 of it in the page's base64, beside 1.44 MB of an
+#: inlined viewer); ``docs/recordings.md`` gives the rows it was measured on.
+PAGE_BYTES_MEASURED = 15_000_000
+PAGE_VERTEX_FRAMES = 350_000
+_PAGE_SIZE = "<!--page-size-->"
+
+
+def _surface_sizes(result: GltfResult) -> str:
+    """What the page's surfaces hold, in vertex-frames, against the measured bound."""
+    held = "; ".join(f"{str(morph['prim']).removeprefix('/World/')} has {int(morph['vertices']):,} vertices drawn at "
+                     f"{int(morph['drawn'])} samples, {int(morph['vertices']) * int(morph['drawn']):,} vertex-frames"
+                     for morph in result.morphs)
+    return (f"Surfaces: {held}. A page of about {PAGE_BYTES_MEASURED / 1e6:g} MB holds about {PAGE_VERTEX_FRAMES:,} "
+            "vertex-frames of a surface with one moving field: record more coarsely (stage_every=) for a smaller "
+            "page.")
+
+
+def _sized(text: str) -> str:
+    """``text`` with its own size said where it holds :data:`_PAGE_SIZE`: the size of the page that says it."""
+    said = ""
+    written = text
+    for _ in range(4):
+        written = text.replace(_PAGE_SIZE, said)
+        now = f"This page is {len(written.encode('utf-8')) / 1e6:.2f} MB."
+        if now == said:
+            break
+        said = now
+    return written
 
 
 @dataclass(frozen=True)

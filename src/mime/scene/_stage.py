@@ -416,12 +416,12 @@ def _thing(stage: Any, thing: ThingPrim, scale: float) -> None:
     prim.CreateAttribute("mime:name", Sdf.ValueTypeNames.String).Set(thing.name)
     for name, value in sorted(thing.attributes.items()):
         prim.CreateAttribute(f"mime:{name}", Sdf.ValueTypeNames.String).Set(value)
+    for surface in sorted(thing.meshes, key=lambda held: held.name):
+        _surface(stage, f"{thing.path}/{surface.name}", surface, scale)
     if thing.bound:
         return
     for name, part in sorted(thing.parts.items()):
         _kind(stage, f"{thing.path}/{name}", part, scale, _BODY_COLOUR)
-    for surface in sorted(thing.meshes, key=lambda held: held.name):
-        _surface(stage, f"{thing.path}/{surface.name}", surface, scale)
     if thing.extent is not None and not thing.parts:
         sphere = UsdGeom.Sphere.Define(stage, f"{thing.path}/extent")
         radius = thing.extent / scale

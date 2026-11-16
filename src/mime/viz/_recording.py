@@ -6,7 +6,8 @@ moved. It holds overs on the bound prims (``BuiltExperiment.binding``): a pose's
 precision: a float32 state's values exactly), and a vector's ``mime:vector:value`` with its arrow (a metre long in the
 stage) placed at the body, turned along the vector and scaled, whole, to its length; a surface's ``points`` (float32, its
 thing's frame, in the stage's units) with its ``extent``, and each of its fields' values (float32) in its vertex primvar
-``primvars:mime:<field>``, physics values, never colours. Its time code is the sample's
+``primvars:mime:<field>``, physics values, never colours, at the vertices the stage draws (a decimated surface's each
+sample reduced over its clusters, ``Bound.drawn``). Its time code is the sample's
 index; ``timeCodesPerSecond`` and ``framesPerSecond`` are the samples per simulated second, so within one
 uninterrupted stretch of samples a time code over ``timeCodesPerSecond`` is the simulated seconds since the layer's
 first sample (the state where recording began), and ``customLayerData`` holds ``mime:recording`` with every sample's
@@ -25,6 +26,7 @@ from typing import Any, cast
 import numpy as np
 
 from mime.build import StageBinding
+from mime.build._binding import FIELD, POINTS
 from mime.scene import STAGE_FILE, VECTOR_SCALE, VECTOR_VALUE, mesh_field_attribute, up_axis
 from mime.scene._pxr import Gf, Sdf, Vt
 
@@ -104,18 +106,18 @@ def write_entries(layer: Any, entries: Any, held: Mapping[tuple[str, str], np.nd
         values = held[(entry.node, entry.field)]
         rows = values if entry.index is None else values[:, entry.index]
         prim = _prim_spec(layer, entry.prim if path_of is None else path_of(entry.prim))
-        if entry.kind == "points":
+        if entry.kind == POINTS:
             points = _attribute(prim, "points", Sdf.ValueTypeNames.Point3fArray)
             extent = _attribute(prim, "extent", Sdf.ValueTypeNames.Float3Array)
-            for code, row in enumerate(np.asarray(rows, dtype=np.float64)):
+            for code, row in enumerate(np.asarray(entry.drawn(rows), dtype=np.float64)):
                 held32 = (row / scale).astype(np.float32)
                 layer.SetTimeSample(points.path, float(code), Vt.Vec3fArray.FromNumpy(held32))
                 layer.SetTimeSample(extent.path, float(code), Vt.Vec3fArray.FromNumpy(
                     np.stack([held32.min(axis=0), held32.max(axis=0)])))
             continue
-        if entry.kind == "field":
+        if entry.kind == FIELD:
             values = _attribute(prim, mesh_field_attribute(str(entry.surface_field)), Sdf.ValueTypeNames.FloatArray)
-            for code, row in enumerate(np.asarray(rows)):
+            for code, row in enumerate(np.asarray(entry.drawn(rows))):
                 layer.SetTimeSample(values.path, float(code), Vt.FloatArray.FromNumpy(np.asarray(row, dtype=np.float32)))
             continue
         if entry.kind == "pose":

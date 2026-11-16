@@ -21,6 +21,7 @@ from typing import cast
 
 from mime.build._plan import PlanSet, composed
 from mime.build._refusals import BuildRefused, described, entry_defect, passed_through
+from mime.build._surfaces import Clustered, clustered
 from mime.registry import (
     ChainSegment,
     Direction,
@@ -166,7 +167,7 @@ def stage_spec(plans: PlanSet, *, segments: int = DRAWING_SEGMENTS, writer: int 
                ThingKind.BODY and plan.initial}
     extents = {line.path.partition(".")[0]: line.value for line in plans.values if line.path.endswith(".extent")}
     things: list[ThingPrim] = []
-    surfaces = mesh_sources(plans)
+    surfaces = mesh_sources(plans) if writer >= 2 else []
     for name, kind in plans.things.items():
         start = initial.get(name, {})
         position = start.get("position")
@@ -178,9 +179,9 @@ def stage_spec(plans: PlanSet, *, segments: int = DRAWING_SEGMENTS, writer: int 
                              regions=True, budget=budget) if planned is not None else None
         bound = name in plans.scene.bound
         parts = _parts(plans, name, segments, budget) if kind is ThingKind.BODY and not bound else {}
-        drawn = tuple(MeshPrim(held.surface.name, held.surface.rest, held.surface.faces, held.owner,
-                                  tuple((f.name, f.unit, f.range) for f in held.surface.fields), held.surface.display)
-                      for held in surfaces if held.thing == name) if writer >= 2 else ()
+        drawn = tuple(MeshPrim(held.surface.name, held.drawn.rest, held.drawn.faces, held.owner,
+                               tuple((f.name, f.unit, f.range) for f in held.surface.fields), held.surface.display)
+                      for held in surfaces if held.thing == name)
         things.append(ThingPrim(
             plans.scene.prims[name], name, kind.value, bound,
             cast(tuple[float, float, float], tuple(position)) if position is not None else None,
@@ -334,7 +335,7 @@ def vector_sources(plans: PlanSet) -> list[VectorSource]:
 class MeshSource:
     """A surface an entry declares, as the stage draws it and a recording moves it: its prim below its thing's, the
     entry's label (``owner``), the thing, the node that holds its points and each field (by the declaration's ports),
-    and the declaration."""
+    the declaration, and the surface as drawn (whole, or clustered over :data:`SURFACE_TRIANGLES`)."""
 
     prim: str
     owner: str
@@ -342,16 +343,20 @@ class MeshSource:
     surface: SurfaceMesh
     points: tuple[str, str] | None
     fields: tuple[tuple[str, str], ...]
+    drawn: Clustered
 
 
 def mesh_sources(plans: PlanSet) -> list[MeshSource]:
     """Every surface the experiment's entries declare (:meth:`mime.registry.Entry.surface_meshes`), from their settings in SI,
-    in the plans' order. Raises ``BuildRefused`` naming the entry for a declaration that is not usable, or two surfaces
-    of one thing with one name."""
+    in the plans' order. Raises ``BuildRefused`` naming the entry for a declaration that is not usable (its rest far
+    from its thing's origin among them), or two surfaces of one thing with one name."""
     found: list[MeshSource] = []
     taken: set[str] = set()
     for plan in plans.entries:
         declared = _called(plan.registered, "surface_meshes()", lambda plan=plan: plan.entry.surface_meshes(plan.settings))
+        if not isinstance(cast(object, declared), tuple):
+            raise _defect(plan.registered, f"surface_meshes() gave {type(declared).__name__}, not a tuple of "
+                                           "mime.registry.SurfaceMesh")
         for surface in declared:
             if not isinstance(cast(object, surface), SurfaceMesh):
                 raise _defect(plan.registered, f"surface_meshes() gave {type(surface).__name__}, not a mime.registry.SurfaceMesh")
@@ -370,9 +375,10 @@ def mesh_sources(plans: PlanSet) -> list[MeshSource]:
                 raise _defect(plan.registered, "; ".join(problems))
             taken.add(prim)
             found.append(MeshSource(prim, f"{plan.registered.name} {plan.registered.version}", thing, surface,
-                                       (plan.node_name(surface.points.node), surface.points.field)
-                                       if surface.points is not None else None,
-                                       tuple((plan.node_name(f.port.node), f.port.field) for f in surface.fields)))
+                                    (plan.node_name(surface.points.node), surface.points.field)
+                                    if surface.points is not None else None,
+                                    tuple((plan.node_name(f.port.node), f.port.field) for f in surface.fields),
+                                    clustered(surface.rest, surface.faces)))
     return found
 
 
