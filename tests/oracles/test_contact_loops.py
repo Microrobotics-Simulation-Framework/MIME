@@ -10,28 +10,48 @@ last place of the scale each result came from (CLAUDE.md: no absolute part), com
 - **The Newton steps** (``_contact.climbed``), on every kind with a support (the sphere, the capsule, the cylinder,
   the ellipsoid and FL-9's screw; the box has none and is held by its samples, no search), at drawn poses within the
   wall's reach, from each group's kept start, judged against 0.4.0's own resolution there: on each group whose end
-  0.4.0 resolves (its own ends from the pose's entries one ulp up and down stay within ``NEWTON_ULPS`` of the hull's
-  size of its end at the pose, and its converged flag outside a band of that width), the steps' point and the support
-  there within ``NEWTON_ULPS`` of 0.4.0's where the search converged, and the converged flag the same off the band.
-  0.4.0's own ends are also taken from ``RATTLES`` copies of its search whose every step's point is moved by up to the
-  rounding that step's solve may leave (its matrix's condition number times the dtype's resolution times the point's
-  size), because a pose's last place does not reach the rounding a differently compiled program makes inside the
-  iteration: at ``SHALLOW_BASIN`` the first step overshoots to 50 hull sizes, its rounding is amplified a thousandfold
-  by the second, and 0.4.0 ends at the deepest point from every pose one ulp away and at a point 1 mm shallower from one
-  in ten of its rattled copies. Where 0.4.0 does not resolve a group the looped end is not compared with its end but
-  judged by its own stationarity: a converged end's residual must stand within ``BEHIND`` times the largest 0.4.0's arms
-  leave and the rounding of the step's solve (the condition number of its matrix times the sizes, in units of the
-  dtype's resolution), and its converged flag must be the flag all of 0.4.0's arms give where they agree, so that a loop
-  too short or a carry from two steps back, which leave the iterate unconverged or stopped early, are caught without
-  asking for the same endpoint. A group seeded far off the wall may end anywhere on the body
-  (``_contact.shallower``), and there 0.4.0's own end
-  moves by millimetres under a change of one ulp: neither its point nor its value is resolved, and it is reported, not
-  judged. Two draws on which the versions ended 1.7 mm apart on CI's runners are checked on every run, with a
-  control: the looped search from each group's neighbour's start. A third (``SHALLOW_BASIN``) is checked with its own
-  control: the poses alone read its group as resolved, the rattled searches do not. The property counts the groups it
-  leaves unjudged and all it drew, per dtype, reports both (``record_property``, printed) and fails above ``UNJUDGED_CEILING`` of them; its
+  0.4.0 resolves (its own ends from the pose's entries one ulp up and down, and from ``RATTLES`` copies of its search
+  whose every step's point is moved by up to the rounding that step's solve may leave, its matrix's condition number
+  times the dtype's resolution times the point's size, stay within ``NEWTON_ULPS`` of the hull's size of its end at
+  the pose, and its converged flag outside a band of that width), the steps' point and the support there within
+  ``NEWTON_ULPS`` of 0.4.0's where the search converged, and the converged flag the same off the band. The rattled
+  copies are there because a pose's last place does not reach the rounding a differently compiled program makes inside
+  the iteration: at ``SHALLOW_BASIN`` the first step overshoots to 50 hull sizes, its rounding is amplified a
+  thousandfold by the second, and 0.4.0 ends at the deepest point from every pose one ulp away and at a point 1 mm
+  shallower from one in ten of its rattled copies. A group 0.4.0 does not resolve is **not judged**, and is counted:
+  nothing of its end is the law's against the rounding of another program. The converged flag admits any residual up
+  to the search's tolerance (the square root of the dtype's resolution, of the hull's size: 2,896 units of
+  ``eps * size`` in float32), and a search whose rounding takes it into another basin late ends one or two steps short
+  of that basin's floor, where none of 0.4.0's 79 arms ends: on CI's runners the clean looped end stood converged one
+  step short of a stationary point 4.1 mm from 0.4.0's, at 23 units (an AMD EPYC 7763, run 43862787891; one more step
+  takes it to 0.7, its floor ``cond (|x| / size + 1)`` being 3.4), and unconverged two steps short of another, at
+  210,100 units, where all 79 arms converged (an Intel Xeon 8573C, run 43871832051). Every judgement of such a group
+  measured flagged the clean search on run 43871832051 (1,498,465 draws, uniform, at the strategy's bounds and simple
+  values, and from the property's own strategy, on five CPU models): the converged flag against the arms' where they
+  all agree (1 of 695,744 float32 draws, and 1 run of this property in 600, run 43872190302), the residual against 8
+  times the arms' largest (the same draw), and the residual against the end's own rounding floor, ``c cond (|x| / size
+  + 1)`` (c = 8: 1,280 float32 draws and 3,070 float64; c = 64: 638 and 2,665, at groups where 0.4.0's own end stands
+  one step short). Judged only where 0.4.0 resolves the group, none of the 1,498,465 was flagged. A group seeded far
+  off the wall may end anywhere on the body (``_contact.shallower``), and there 0.4.0's own end moves by millimetres
+  under a change of one ulp: neither its point nor its value is resolved, and it is reported, not judged. Two draws on
+  which the versions ended 1.7 mm apart on CI's runners are checked on every run, with a control: the looped search
+  from each group's neighbour's start. A third (``SHALLOW_BASIN``) is checked with its own control: the poses alone
+  read its group as resolved, the rattled searches do not. The property counts the groups it leaves unjudged and all
+  it drew, per dtype, reports both (``record_property``, printed) and fails above ``UNJUDGED_CEILING`` of them; its
   control sets the rule's width to zero, so that most groups read unresolved. It does not hold the Newton count to the
   last step: a search one step short of ``CONTACT_NEWTON`` (11 of 12) passes, as searches converge in 9 to 11.
+
+  **What it bounds and what it samples.** It bounds the looped search to 0.4.0's on the groups 0.4.0 resolves at the
+  poses it draws; a defect elsewhere is sampled, and how often a run sees one is measured, not bounded. The property
+  as committed (100 examples a dtype) failed, of 200 runs a row (run 43877350461), with a defect of
+  ``planted_search`` on every kind / on the cylinder alone: a loop of 7 steps, float32 190 / 3, float64 200 / 9; a
+  carry from two steps back, 195 / 3 and 200 / 119; a stop at 1e-5 of the hull's size, 196 / 64 and 200 / 195; clean,
+  0 of 600 runs in each dtype. A defect of one kind is seen by the draws of that kind, about a fifth of a run's,
+  and 30 of 1,200 clean runs drew no cylinder at all, so no defect of one kind fails every run. On the cylinder a
+  short loop or a stale carry changes the end only where its search needs more than six steps, and in float32 a stop
+  at 1e-5 of the size leaves the end within 84 units of its fixed point, under the bound wherever the step's matrix is
+  well conditioned (3 of 133,600 cylinder draws stood past four times the bound). Each defect is caught on every run
+  by its pinned control (``PLANT_DRAWS``), in both dtypes.
 - **The whole step**, the contact active: script A's FL-9 held from its first step (``hull_cases.hull_contact``, 20
   steps) and the tube demo (``examples/sphere_settling_tube.py``, 40), each built fresh on each version and run, in
   float32 and float64, by the history scan and by one-step chunks (the tube demo's own run): the pose's position and
@@ -353,22 +373,10 @@ def searches(name: str, dtype: str):
         within = contact.search_tolerance(x.dtype, node._size) - jnp.sqrt(jnp.sum((x - reached) ** 2, axis=-1))
         return x, reached, within
 
-    def conditioned(q, pose, x):
-        """The condition number of the step's matrix at ``x``: what the solve's rounding is a multiple of."""
-        found = pair(q, pose, False)
-        return jnp.linalg.cond(contact._supported(found, x, found.body.pose, found.body.parameters, found.other)[1])
-
     return (p, node._size, jax.jit(seeds), jax.jit(partial(search, loops=False)),
-            jax.jit(jax.vmap(rattle, in_axes=(None, None, None, 0))), jax.jit(conditioned),
-            jax.jit(partial(search, loops=True)))
+            jax.jit(jax.vmap(rattle, in_axes=(None, None, None, 0))), jax.jit(partial(search, loops=True)))
 
 
-#: How many times 0.4.0's largest residual (over its arms) a converged looped end may stand at in a group 0.4.0 does not
-#: resolve: a search converging linearly halves its residual a step, so eight is three steps behind. Measured on the
-#: pull request's probes: the clean looped arm at another converged point of an unresolved group stood at 4.6 times (23 units
-#: against 5, on AMD EPYC runners; with twice, it was flagged), a loop of seven steps at 30 to 80 times and a stop at
-#: 1e-5 of the hull's size at 15 times.
-BEHIND = 8.0
 #: How many rattled copies of 0.4.0's search (``searches``) stand beside the one-ulp poses in judging whether 0.4.0
 #: resolves a group. One copy moves a group that sits at a basin's edge about one time in ten (FL-9's group 1 at the draw
 #: of ``SHALLOW_BASIN``: 43 of 400 copies), so 64 leave it unmoved about one time in a thousand.
@@ -399,20 +407,15 @@ class Searched(NamedTuple):
     size: ``alone``, how far its point and its support stand from 0.4.0's at the pose (zero where neither converged;
     infinite where their converged flags differ off the flag's band); ``spread``, how far 0.4.0's own ends from the
     poses one ulp away (``one_ulp_away``) and from its rattled searches (``RATTLES``) stand from its end at the pose, on
-    the same measure; ``missed``, ``alone`` on
-    the groups 0.4.0 resolves (``resolved``), and on the rest, where 0.4.0 alone ends elsewhere under a change of one
-    ulp or of its rounding, zero or infinite as the looped end is stationary or not (``unstationary``); ``resolved``, the groups whose ``spread`` is within the rule's width (``NEWTON_ULPS``);
-    and ``value``, how far
-    the wall's gap at its support stands from the gap at 0.4.0's (the support's value there)."""
+    the same measure; ``resolved``, the groups whose ``spread`` is within the rule's width (``NEWTON_ULPS``);
+    ``missed``, ``alone`` on the groups 0.4.0 resolves and zero on the rest, which are not judged; and ``value``, how
+    far the wall's gap at its support stands from the gap at 0.4.0's (the support's value there)."""
 
     missed: np.ndarray
     alone: np.ndarray
     spread: np.ndarray
     value: np.ndarray
     resolved: np.ndarray
-    unstationary: np.ndarray
-    flag_wrong: np.ndarray
-    off_bound: np.ndarray
 
 
 def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: Any = None,
@@ -422,7 +425,7 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
     (``rattles`` of them, ``RATTLES``; none to judge by the poses alone), may stand from its end at the pose for a
     group to be judged (``NEWTON_ULPS``; the rule's widening is the control of ``UNJUDGED_CEILING``)."""
     with jax.enable_x64(DTYPES[dtype]):
-        p, size, seeds, unrolled, rattled, conditioned, looped = searches(name, dtype)
+        p, size, seeds, unrolled, rattled, looped = searches(name, dtype)
         q, at = traced(p, dtype), np.asarray(jnp.asarray(pose, dtype=dtype))
         kept = seeds(q, jnp.asarray(at))
         ends = [[np.asarray(v, dtype=np.float64) for v in unrolled(q, jnp.asarray(moved), kept)]
@@ -433,7 +436,6 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
             ends += [[v[k] for v in rattled_ends] for k in range(rattles)]
         found = (planted or looped)(q, jnp.asarray(at), kept)
         x_l, s_l, w_l = (np.asarray(v, dtype=np.float64) for v in found)
-        cond = np.asarray(conditioned(q, jnp.asarray(at), found[0]), dtype=np.float64)
     (x_u, *x_moved), (s_u, *s_moved), (w_u, *w_moved) = zip(*ends, strict=True)
     unit = float(np.finfo(dtype).eps) * size
     band = NEWTON_ULPS * unit
@@ -451,33 +453,20 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
     alone = apart(x_l, s_l, w_l, x_u, s_u, w_u)
     spread = np.max([apart(x_k, s_k, w_k, x_u, s_u, w_u) for x_k, s_k, w_k in zip(x_moved, s_moved, w_moved)], axis=0)
     resolved = spread <= width
-    # Where 0.4.0 does not resolve a group the looped end is judged by its own stationarity: a converged end's residual must
-    # stand within what 0.4.0's arms leave, ``BEHIND`` times their largest, and the rounding of the step's solve (the
-    # condition number of its matrix times the point's size and the hull's, in units of the dtype's resolution), and its
-    # converged flag must be the one all of 0.4.0's arms give where they agree.
-    flags = np.stack([w_u, *w_moved])
-    flag_wrong = (np.all(flags >= 0, axis=0) & (w_l < -band)) | (np.all(flags < 0, axis=0) & (w_l >= band))
-    residuals = np.linalg.norm(np.stack([x_u, *x_moved]) - np.stack([s_u, *s_moved]), axis=-1) / unit
-    allowed = BEHIND * np.max(residuals, axis=0) + cond * (np.linalg.norm(x_l, axis=-1) / size + 1.0)
-    off_floor = (w_l >= 0) & (np.linalg.norm(x_l - s_l, axis=-1) / unit > allowed)
-    unstationary = ~resolved & (flag_wrong | off_floor)
-    reasons = (flag_wrong, off_floor)
-    missed = np.where(resolved, alone, np.where(unstationary, np.inf, 0.0))
-    return Searched(missed, alone, spread, np.abs(gaps(s_l) - gaps(s_u)) / unit, resolved, unstationary, *reasons)
+    return Searched(np.where(resolved, alone, 0.0), alone, spread, np.abs(gaps(s_l) - gaps(s_u)) / unit, resolved)
 
 
 #: The most groups of a run, in a dtype, that the Newton steps' property may leave unjudged against 0.4.0's end (its groups
 #: where 0.4.0's own ends one ulp away, or from its rattled searches, stand past ``NEWTON_ULPS``): a share of all the groups
-#: its draws held. These groups are judged by the looped end's own stationarity instead (``Searched.unstationary``). The
-#: ceiling is a monitor of the rule's own premise, how often 0.4.0 does not resolve a group: it is computed from 0.4.0's
-#: arms alone, so that a defect of the looped search cannot raise it.
-#: Measured on the pull request's own head, the committed property replayed under twelve Hypothesis seeds of 100 draws (800
-#: groups a dtype), the first the seed of the stress run that read 22 and 19 past the first ceiling of 2 %: float32 0.5 to
-#: 3.0 % (mean 1.4 %), float64 0.25 to 2.4 % (mean 1.0 %). The rule judging by the poses alone (the pull request's base)
-#: left, under four of those seeds, float32 0.1 to 0.5 % and float64 none: the rattled searches move 0.4.0's end where a
-#: pose's last place does not, which Hypothesis's targeting finds. The ceiling is about three times the worst of those, so
-#: that the set can grow a little before anything shows and cannot grow unseen; each run reports its own count
-#: (``record_property``, and printed).
+#: its draws held. These groups are not judged (the module's docstring says why). The ceiling is a monitor of the rule's
+#: own premise, how often 0.4.0 does not resolve a group: it is computed from 0.4.0's arms alone, so that a defect of the
+#: looped search cannot raise it. Measured: the committed property under twelve Hypothesis seeds of 100 draws (800
+#: groups a dtype), the first the seed of a stress run that read 22 and 19 past a first ceiling of 2 %: float32 0.5 to
+#: 3.0 %, float64 0.25 to 2.4 %; over 600 runs a dtype on CI's runners (run 43877350461), at most 4.6 % in float32 and
+#: 3.9 % in float64. The rule judging by the poses alone (the pull request's base) left, under four of those seeds,
+#: float32 0.1 to 0.5 % and float64 none: the rattled searches move 0.4.0's end where a pose's last place does not,
+#: which Hypothesis's targeting finds. The ceiling is about twice the worst of those, so that the set can grow a little
+#: before anything shows and cannot grow unseen; each run reports its own count (``record_property``, and printed).
 UNJUDGED_CEILING = 0.10
 
 
@@ -503,8 +492,7 @@ def test_the_looped_newton_steps_are_the_unrolled_ones_to_rounding_where_0_4_0_r
         target(min(missed, 1e30), label="units of the hull's size apart where 0.4.0 resolves them")
         assert missed <= NEWTON_ULPS, (f"{name}: groups {np.flatnonzero(found.missed > NEWTON_ULPS)}, where 0.4.0's "
                                        f"end stays within one ulp of the pose or its rounding, end {missed:.3g} units "
-                                       f"of the hull's size apart, or where it does not, a looped end that is not "
-                                       f"stationary (groups {np.flatnonzero(found.unstationary)})")
+                                       f"of the hull's size apart")
 
     draws()
     left, groups = (sum(counts[i] for counts in unjudged.values()) for i in (0, 1))
@@ -615,16 +603,8 @@ def test_control_the_poses_alone_read_the_shallow_basin_group_as_resolved_and_th
     assert not rattled.resolved[SHALLOW_GROUP] and rattled.spread[SHALLOW_GROUP] > PLANT_FACTOR * NEWTON_ULPS
 
 
-#: Draws of FL-9's cylinder (the spin, tilt, about, towards and share of the property above) on which a group is one 0.4.0
-#: does not resolve (its end moves under its rounding, rattled), found by the pull request's review: on each a loop one
-#: short of what the search needs, or a carry that hands each step the iterate from two steps back, leaves the group
-#: unconverged where 0.4.0's arms all converge (the groups were judged, and caught, before the rattled searches left
-#: them unjudged), and the last, a stop at a residual of 1e-5 of the hull's size, leaves a converged flag over a residual
-#: far above the step's rounding.
-UNRESOLVED_CYLINDER_DRAWS = ((6.273, 0.421, 4.781, 0.71, 0.622), (4.533, 0.457, 3.983, 2.29, 0.44),
-                             (0.722, 0.423, 1.673, 0.232, 0.766))
-EARLY_STOP_DRAW = (1.509, 0.434, 2.109, 4.08, 0.268)
-EARLY_STOP = 1e-5  # of the hull's size
+#: A stop's residual, the ``early`` plant of ``planted_search``: a share of the hull's size.
+EARLY_STOP = 1e-5
 
 
 def planted_search(name: str, dtype: str, plant: str):
@@ -663,21 +643,33 @@ def planted_search(name: str, dtype: str, plant: str):
     return jax.jit(run)
 
 
-@pytest.mark.parametrize("plant", ("short", "stale"))
-@pytest.mark.parametrize("draw", UNRESOLVED_CYLINDER_DRAWS)
-def test_control_a_short_or_stale_loop_is_caught_where_0_4_0_does_not_resolve_the_group(draw, plant):
-    spin, tilt, about, towards, share = draw
-    pose = placed("cylinder", spin, tilt, about, towards, share * MARGIN)
-    found = searched_against_0_4_0("cylinder", "float32", pose, planted=planted_search("cylinder", "float32", plant))
-    assert np.any(~found.resolved) and np.any(found.unstationary)
-    assert float(np.max(found.missed)) > PLANT_FACTOR * NEWTON_ULPS
+#: The pinned controls: for each plant of ``planted_search`` and each dtype, draws (the spin, tilt, about, towards and
+#: share of the property above) at which the plant is caught, on every run. Chosen from run 43871832051's draws (a group
+#: 0.4.0 resolves to within 16 units, the clean looped end within 16, the plant's past 64 times the bound) and judged on
+#: nine runner arms of four CPU models a dtype (run 43877350461): on the two cylinder draws every plant is infinitely
+#: apart (its end unconverged where 0.4.0's resolved end converged, or the reverse) in float64, and the short loop and
+#: the stale carry in float32, every group resolved, the clean search at 0 units. A stop at 1e-5 of the size is under
+#: the bound at both in float32 (7 and 24 units) and at all but 3 of the 133,600 cylinder draws of run 43871832051 past
+#: four times it: its float32 controls are FL-9's, where it stood at least 1,440 and 1,473 units apart on every arm (the
+#: clean search within 5 and 7).
+PINNED_CYLINDER = (("cylinder", (3.85659060848782, 0.4300469233088282, 5.195302023152226, 0.4300469233088282,
+                                 -0.2660959494337816)),
+                   ("cylinder", (5.14871469598194, 0.44253834367545297, 1.1295627824972891, 5.81562520775212,
+                                 -0.2248737720168823)))
+PINNED_SCREW = (("screw", (0.0, 0.25, 1.5, 4.0, 0.7285262466692002)),
+                ("screw", (3.5967220181521684, 0.9208618346550588, 0.9208618346550588, 3.5967220181521684,
+                           0.9208618346550588)))
+PLANT_DRAWS = {("short", "float32"): PINNED_CYLINDER, ("stale", "float32"): PINNED_CYLINDER,
+               ("early", "float32"): PINNED_SCREW, ("short", "float64"): PINNED_CYLINDER,
+               ("stale", "float64"): PINNED_CYLINDER, ("early", "float64"): PINNED_CYLINDER}
 
 
-def test_control_a_stop_at_a_residual_far_above_the_steps_rounding_is_caught():
-    spin, tilt, about, towards, share = EARLY_STOP_DRAW
-    pose = placed("cylinder", spin, tilt, about, towards, share * MARGIN)
-    found = searched_against_0_4_0("cylinder", "float32", pose, planted=planted_search("cylinder", "float32", "early"))
-    assert float(np.max(found.missed)) > PLANT_FACTOR * NEWTON_ULPS
+@pytest.mark.parametrize("plant, dtype", PLANT_DRAWS)
+def test_control_each_plant_is_caught_at_its_pinned_draws(plant, dtype):
+    for kind, (spin, tilt, about, towards, share) in PLANT_DRAWS[plant, dtype]:
+        pose = placed(kind, spin, tilt, about, towards, share * MARGIN)
+        found = searched_against_0_4_0(kind, dtype, pose, planted=planted_search(kind, dtype, plant))
+        assert float(np.max(found.missed)) > NEWTON_ULPS, f"{plant} {dtype} at {kind} {spin, tilt, about, towards, share}"
 
 
 #: Two draws of FL-9 on which stress runs of the pull request read a looped end not stationary against a floor of the
@@ -687,12 +679,29 @@ SLOW_CONVERGING_DRAWS = ((0.0, 1.0, 4.882796315068688, 0.0, 0.0), (0.0, 1.0, 2.3
 
 
 @pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("kind, draw", (*(("cylinder", d) for d in (*UNRESOLVED_CYLINDER_DRAWS, EARLY_STOP_DRAW)),
-                                        *(("screw", d) for d in SLOW_CONVERGING_DRAWS)))
-def test_the_clean_looped_search_is_stationary_at_the_draws_the_controls_plant_into(kind, draw, dtype):
+@pytest.mark.parametrize("kind, draw", (*PINNED_CYLINDER, *PINNED_SCREW, *(("screw", d) for d in SLOW_CONVERGING_DRAWS)))
+def test_the_clean_looped_search_passes_at_the_draws_the_controls_plant_into(kind, draw, dtype):
     spin, tilt, about, towards, share = draw
     found = searched_against_0_4_0(kind, dtype, placed(kind, spin, tilt, about, towards, share * MARGIN))
-    assert not np.any(found.unstationary) and float(np.max(found.missed)) <= NEWTON_ULPS
+    assert float(np.max(found.missed)) <= NEWTON_ULPS
+
+
+#: FL-9's draws on which a judgement of a group 0.4.0 does not resolve flagged the clean looped search on CI's runners,
+#: float32, and the group: the looped end converged one step short of another stationary point (23 units of the size's
+#: resolution, an AMD EPYC 7763, run 43862787891), and unconverged two steps short of another where all of 0.4.0's arms
+#: converged (210,100 units, an Intel Xeon 8573C, run 43871832051). On nine runner arms of four CPU models (run
+#: 43877350461) 0.4.0 resolved neither group in float32, and both in float64.
+FLAGGED_CLEAN = {"one step short": ((4.87705747991847, 0.35266508542049807, 1.6715090783522921, 2.7785117170337896,
+                                     0.971075033193801), 2),
+                 "unconverged": ((3.1642171208849503, 0.4550519353221549, 1.5530031407758926, 0.5,
+                                  0.0854266099205776), 3)}
+
+
+@pytest.mark.parametrize("case", FLAGGED_CLEAN)
+def test_the_groups_a_judgement_of_unresolved_groups_flagged_clean_are_unresolved_and_left_unjudged(case):
+    (spin, tilt, about, towards, share), group = FLAGGED_CLEAN[case]
+    found = searched_against_0_4_0("screw", "float32", placed("screw", spin, tilt, about, towards, share * MARGIN))
+    assert not found.resolved[group] and float(np.max(found.missed)) <= NEWTON_ULPS
 
 
 # -- the whole step ----------------------------------------------------------------------------------------------------
