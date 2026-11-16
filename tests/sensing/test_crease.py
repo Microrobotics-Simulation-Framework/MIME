@@ -3,27 +3,32 @@ the march's branches and their regions, each corner cell the exact share of that
 
 - **The composition's share** (``coverage.composed_covered``): a union of intersections of half-planes in a cell, by
   inclusion and exclusion of each subset's convex polygon's boundary integral, against the same polygons clipped
-  exactly (Sutherland-Hodgman) on drawn lines, coinciding lines and lines along a cell's side included. **Control** (``CAMERA_PLANT=composed-sign``): one subset's sign flipped fails, every run.
+  exactly (Sutherland-Hodgman) on drawn lines, coinciding lines and lines along a cell's side included. **Control**
+  (``CAMERA_PLANT=composed-sign``): one subset's sign flipped fails, every run. A known gap of camera PR 5a's
+  ``union_covered`` (a line repeated along a cell's side) is recorded, not fixed.
 - **G17, the crease measure's conformance** (``mime.testing.crease_measure_problems``): the cylinder's caps on drawn
   rays have the body's sign at their planes' crossings and vanish on its drawing's rims. **Control**
   (``CAMERA_PLANT=wide-cap``): the measure's caps one per cent wide are caught on every run.
 - **G18, the cylinder on the sampled route** (``route="sampled"``; its default stays the closed form): every pixel
   against the exact image (the hull of the rims' images, ``hull_oracle``) within ``PIXEL_LINE``, and the silhouette's
-  motion (the secant over one pixel of the body's motion along x and z of the darkness's total and centroid) within
-  ``MOTION_LINE`` of the exact image's, rods turned 0 to 30 degrees towards the line of sight, rolled and moved by a
-  fraction of a pixel, in both dtypes; caps narrower than two sub-pixels raise ``thin_cap`` and the pixels about them
-  are judged by the flag. Both lines are ``scripts/camera_route2/crease_line.py``'s, derived before any of these draws
-  from the scheme's own arithmetic on the exact geometry (``predictions_camera_pr5b.json``). Against route 1 the swap
-  holds each route to its line against the same exact image. **Controls**, on the pinned views (turns 0, 2 and 4,
-  edge-on to nearly so, where the side meets a cap at about a right angle): ``CAMERA_PLANT=single-edge-crease`` (each
-  pixel one straight edge, the composed line's, no sub-samples: cycle 4's corner error) and
-  ``CAMERA_PLANT=no-crease-measure`` (the body's first-order distance, the greatest of its regions', marched alone,
-  the crease without its measure: camera truth 1's defect) fail, every run.
-- **G17, the derivative**: the jvp of the darkness's total and centroid in the body's x and z against the central
-  difference of the same renderer, judged on the pixels about the caps' rims and on the rest apart; the line is the
-  central difference's own error at its step, stated by the step sweep (``derivative_line``: the difference between
-  the central differences at the step and at half of it, twice, and their rounding), never a round number.
-  **Control** (``CAMERA_PLANT=no-crease-measure``) fails, every run."""
+  motion (the secant over one pixel of the body's motion along x and z of the darkness's equivalent radius and
+  centroid) within ``MOTION_LINE`` of the exact image's, rods turned 0 to 30 degrees towards the line of sight, rolled
+  and moved by a fraction of a pixel, in both dtypes; caps narrower than two sub-pixels raise ``thin_cap`` and the
+  pixels about them are judged by the flag. Both lines are ``scripts/camera_route2/crease_line.py``'s, fixed before any
+  of these draws (``predictions_camera_pr5b.json``): the scan's largest error at its 360 poses, by an exact numpy
+  re-implementation of the scheme, times 1.25, a margin declared, not derived, for the poses between the scan's points,
+  which the drawn views test. Against route 1 the swap holds each route to its line against the same exact image.
+  **Controls**, on the pinned views (turns 0, 2 and 4, edge-on to nearly so, where the side meets a cap at about a
+  right angle): ``CAMERA_PLANT=single-edge-crease`` (each pixel one straight edge, the composed line's, no sub-samples:
+  cycle 4's corner error) and ``CAMERA_PLANT=no-crease-measure`` (the body's first-order distance, the greatest of its
+  regions', marched alone, the crease without its measure: camera truth 1's defect) fail the pixel line, every run;
+  ``CAMERA_PLANT=crease-lag`` (the caps placed ``LAG`` of the body's step behind it in each moved image, the view's own
+  image unchanged) fails the motion line, every run, the pixel line passing.
+- **G17, the derivative**: the jvp of the darkness's equivalent radius and centroid in the body's x and z against the
+  central difference of the same renderer, judged on the pixels about the caps' rims and on the rest apart; the line is
+  the central difference's own error at its last step, stated by the step sweep (``derivative_line``), and the held
+  march's own derivative error, camera PR 5a's committed band (``ENVELOPE_BAND``), never a round number of this file's.
+  **Control** (``CAMERA_PLANT=held-caps``): the crease measure's pieces held, their values with no derivative.""" 
 
 from __future__ import annotations
 
@@ -235,10 +240,18 @@ def plant_scheme(monkeypatch) -> None:
             object.__setattr__(self, "placed", placed)
 
         monkeypatch.setattr(Subject, "_place_sampled", unmeasured)
-    if planted("held-least"):
-        # The regions read at each branch's held least with no derivative of its place: the span's distance at a point
-        # that does not move with the body along the ray.
-        monkeypatch.setattr(sampled_route, "_moving", lambda sampled, p, o, d, at, spacing: at)
+    if planted("held-caps"):
+        # The crease measure's pieces held: their values, with no derivative (the caps' outlines standing still in the
+        # jvp while the body moves).
+        kind_cls = cylinder_kind()
+        measured = kind_cls.crease_measure
+
+        def held(self, parameters, o, d):
+            found = measured(self, parameters, o, d)
+            return CreaseMeasure(tuple(jax.lax.stop_gradient(piece) for piece in found.pieces), found.compose,
+                                 found.faces)
+
+        monkeypatch.setattr(kind_cls, "crease_measure", held)
 
 
 def rod(axis, route: str | None = "sampled") -> Subject:
@@ -368,8 +381,8 @@ def crease_mask(centre: np.ndarray, axis: np.ndarray) -> np.ndarray:
 def test_g17_the_creased_derivative_is_the_images(float64, turn, monkeypatch):
     """The jvp of the darkness's equivalent radius and centroid, on the pixels about the caps' rims and on the rest
     apart, in the body's x and z, against the central difference of the same renderer at the sweep's last step, within
-    ``derivative_line``. **Control** (``CAMERA_PLANT=held-least``): the regions read at each branch's least with no
-    derivative of its place."""
+    ``derivative_line``. **Control** (``CAMERA_PLANT=held-caps``): the crease measure's pieces held, their values with no
+    derivative."""
     plant_scheme(monkeypatch)
     axis = axis_of(turn, 20.0)
     body = rod(axis)

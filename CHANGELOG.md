@@ -15,9 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each branch of the march read with its other regions at its least, each corner cell the exact share of their composition
   (`composed_covered`). `camera.crease-unmeasured` now refuses only a creased kind without the measure (the box; the
   screw until its measure comes). The cylinder declares its measure; its default stays the closed form, and
-  `route="sampled"` images it by the march (against the exact image within lines derived before the gate's draws,
-  `scripts/camera_route2/crease_line.py`). A face narrower than two sub-pixels raises `thin_cap`. New switches:
-  `camera.composed.{end,low,high,empty}`, `camera.sampled.body`, `cylinder.cap_side`.
+  `route="sampled"` images it by the march (against the exact image within lines fixed before the gate's draws,
+  `scripts/camera_route2/crease_line.py`: the scan's largest error at its 360 poses, by an exact numpy re-implementation
+  of the scheme, times 1.25, a margin declared, not derived, which the drawn views test). A face narrower than two
+  sub-pixels raises `thin_cap`. New switches: `camera.composed.{end,low,high,empty}`, `camera.sampled.body`,
+  `cylinder.cap_side`. Known gap, recorded and not changed: camera PR 5a's `union_covered` reads 0.125 more than the
+  exact share for a line repeated along a cell's side (a case of measure zero; `composed_covered` is exact there).
 - **The camera's sampled route: any kind with a cheap sign function** (`mime.sensing`, route 2; `Geometry.sign_function`,
   `SignValue`, `sign_zone`; `Geometry.crease_measure`, `CreaseMeasure`; dev2, camera PR 5a). A kind whose geometry declares a
   cheap sign function is imaged without a closed form: each ray's line through its enclosing ball is sampled (32 samples by

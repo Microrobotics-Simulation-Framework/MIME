@@ -45,5 +45,10 @@
   "drawn": "the probe draws 200 fresh views per dtype (turn 0 to 30 degrees, roll 0 to 90, offsets 0 to 1 px; seeds from fresh entropy, recorded): every view within the pixel line and the motion line, thin_cap exactly where a cap is that thin, the largest pixel ratio at most 0.8 of the line; the tails (the worst views by each line) are pinned afterwards and single-edge-crease, no-crease-measure and crease-lag each fail every pinned tail",
   "control_rates": "wide-cap and composed-sign each caught on 20 of 20 fresh-seeded runs (detection_rate.py; lower bound 0.86), their clean arms quiet",
   "scan": "the switch scan passes on the head with the camera/creased configuration (a test-only creased kind in the in-loop camera) and the raw lines its output names; every new owner passed by a node's step"
+ },
+ "third_predictions": {
+  "written": "2026-11-16, after CAMERA_PLANT=held-least ran (its outcome below), before CAMERA_PLANT=held-caps ran",
+  "why": "held-least left G17's derivative bit-identical at all four views: the span's least's place reaches the image only where the span's line is the outline (a cap seen edge-on, turns near 0), and there the place's derivative in the body's motion is the axis's tilt in depth times the motion, about sin(turn): zero at turn 0, under 0.07 at turn 4; where the caps open, their outlines hide the span's. It cannot discriminate on the cylinder, so it is no control of this test",
+  "g17_derivative_control": "CAMERA_PLANT=held-caps (the crease measure's pieces held: values without derivative) fails G17's derivative at turns 4 and 15, where the caps' outlines are the crease pixels' outline, by many times its line; at turns 0 and 2 (caps narrower than two sub-pixels) its outcome is stated per view"
  }
 }
