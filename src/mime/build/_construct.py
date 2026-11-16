@@ -280,10 +280,8 @@ def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -
     """Every output an observation declares, and every flag an entry raises on the rung attached, that its node does
     not hold in its state as declared: a declaration a run's result could not read."""
     cls = plan.registered.cls
-    rung = getattr(plan.entry, "rung", None)
     held: list[tuple[str, str, str, tuple[int, ...] | None]] = [
-        ("flag", flag.node, flag.field, None) for flag in cls.raises
-        if flag.raised_by(rung, bool(plan.members), plan.entry)]
+        ("flag", flag.node, flag.field, None) for flag in plan.raised_flags()]
     if issubclass(cls, Observation):
         held += [("output", output.node, output.field, cast(Observation, plan.entry).output_shape(output))
                  for output in cls.outputs]

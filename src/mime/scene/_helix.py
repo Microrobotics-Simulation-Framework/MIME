@@ -10,7 +10,8 @@ from typing import Annotated, Any, override
 import jax
 import numpy as np
 
-from mime.core import jnp
+from mime.core import jnp, switch
+from mime.core.switch import Declaration
 from mime.gradients import GradientStatus
 from mime.registry import PHYSICAL
 from mime.registry import (
@@ -24,11 +25,13 @@ from mime.registry import (
     RegionPrimitive,
     Samples,
     Sampling,
+    SignValue,
     Solid,
     Tensor,
     register_geometry,
     uniform,
 )
+from mime.scene import _signs as signs
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.scene._sampling import quasi_uniform
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity
@@ -45,6 +48,22 @@ REACH_POINTS = 4096
 #: The turns a helix whose turn count JAX traces is taken to make at most, where the hull query counts the roots the
 #: farthest point can be at.
 TRACED_TURNS = 64
+#: Newton's steps the sign function takes to the centreline's nearest angle, from the turn the point's angle and axial
+#: place name. The sign is right after any number: a point outside the body is farther from every centreline point
+#: than the filament's radius, and inside it the start lies on the turn whose point is nearest (the turns are apart by
+#: more than two radii, as the kind refuses otherwise), where the steps converge.
+SIGN_NEWTON_STEPS = 3
+#: The switches of the sign function's nearest angle clamped to the centreline's arc, at its lower end (zero) and its
+#: upper (the sweep): past an end the nearest point is the end's, about which the cap is a hemisphere, so the distance is
+#: continuously differentiable across it.
+HELIX_END = tuple(Declaration(
+    owner=f"helix.end.{end}",
+    indicator=f"the distance inside the arc from its {side} end of a point's nearest angle on the helix carried past "
+              f"its ends, in radians, positive inside",
+    orders={"sign_function": 1},
+    route="none needed: a hemispherical cap meets the filament's tube tangentially, so the distance from the arc is "
+          "continuously differentiable across the plane through an end") for end, side in (("low", "lower"),
+                                                                                           ("high", "upper")))
 
 
 def _gauss_legendre(count: int) -> tuple[np.ndarray, np.ndarray]:
@@ -117,6 +136,21 @@ class HelixTurn:
         return (lateral + caps) / volume
 
 
+def _nearest_angle(at: tuple[Any, Any, Any], radius: Any, b: Any, sweep: Any) -> Any:
+    """The centreline's angle nearest each point ``at`` (in the axis frame), free of the arc's ends: Newton's steps
+    on the squared distance from the turn the point's angle and axial place name (a search whose result is held, so
+    none of its choices reaches a derivative)."""
+    angle = jnp.arctan2(at[2], at[1])
+    theta = angle + 2.0 * math.pi * jnp.round((at[0] / b + 0.5 * sweep - angle) / (2.0 * math.pi))
+    for _ in range(SIGN_NEWTON_STEPS):
+        cos, sin = jnp.cos(theta), jnp.sin(theta)
+        gx, gy, gz = b * (theta - 0.5 * sweep) - at[0], radius * cos - at[1], radius * sin - at[2]
+        slope = gx * b - gy * radius * sin + gz * radius * cos
+        bend = b * b + radius * radius - (gy * radius * cos + gz * radius * sin)
+        theta = theta - slope / jnp.maximum(bend, b * b)
+    return theta
+
+
 def _length(parameters: Mapping[str, Any]) -> Any:
     return HelixTurn(parameters).length
 
@@ -181,7 +215,7 @@ class Helix(Solid):
     version = "0.1.0"
     setting_roles = dict.fromkeys(("radius", "pitch", "turns", "filament_radius"), PHYSICAL)
     differentiability = GradientStatus.EXACT
-    gradient = GradientRecord()
+    gradient = GradientRecord(switches=HELIX_END)
     references = ("Bishop1975",)
     builds = {"": ()}
     regions = ("solid",)
@@ -376,6 +410,23 @@ class Helix(Solid):
         candidates = jnp.concatenate([inside, jnp.stack([jnp.zeros_like(turn.sweep), turn.sweep])])
         points = turn.curve(candidates)[0] - turn.centroid()
         return jnp.max(points @ d) + turn.filament * jnp.sqrt(jnp.sum(d * d))
+
+    @override
+    def sign_function(self, parameters: Mapping[str, Any], region: str, point: tuple[Any, Any, Any]) -> SignValue:
+        """The distance from the centreline's arc less the filament's radius: the nearest angle found by Newton's steps
+        from the turn the point's angle and axial place name, held (at a stationary angle the distance does not move
+        with it), then clamped to the arc with the sweep's own derivative (the switch ``helix.end``)."""
+        names = ("radius", "pitch", "turns", "filament_radius")
+        turn = HelixTurn({name: jnp.asarray(parameters[name]) for name in names})
+        centroid = turn.centroid()
+        at = tuple(point[i] + centroid[i] for i in range(3))
+        held = jax.lax.stop_gradient((at, turn.radius, turn.b, turn.sweep))
+        theta = _nearest_angle(*held)
+        theta = switch.clip(theta, 0.0, turn.sweep, owner="helix.end", resolution=lambda: switch.rounding(turn.sweep),
+                            indicator=theta)
+        value = signs.length(at[0] - turn.b * (theta - 0.5 * turn.sweep), at[1] - turn.radius * jnp.cos(theta),
+                             at[2] - turn.radius * jnp.sin(theta), scale=turn.filament) - turn.filament
+        return SignValue(value, jnp.ones_like(value))
 
     @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:

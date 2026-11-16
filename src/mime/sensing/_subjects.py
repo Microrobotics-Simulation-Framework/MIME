@@ -16,16 +16,21 @@ which backlit transmission does not see, and are kept for the display view."""
 
 from __future__ import annotations
 
+import dataclasses
+import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
+from mime.registry import Solid, implements
 from mime.scene import display_primvars
+from mime.sensing import _sampled as sampled_route
 from mime.sensing._forms import CAPSULE, CYLINDER, SPHERE, Form
+from mime.sensing._sampled import Sampled
 
 
 class AppearanceSource(Enum):
@@ -89,13 +94,17 @@ TUBE_REGIONS = ("wall", "lumen")
 
 @dataclass(frozen=True)
 class Placed:
-    """A closed form placed in its subject's frame: the form, its parameters (JAX leaves), the offset of its own origin
-    and the rotation turning its own +z onto its axis (fixed at declaration: no frame across every axis is continuous)."""
+    """A form placed in its subject's frame: the form, its parameters (JAX leaves), the offset of its own origin and
+    the rotation turning its own frame into the subject's (a closed form's own +z onto its axis; fixed at declaration:
+    no frame across every axis is continuous). A body on route 2 holds what its march needs (``sampled``) and its
+    smallest feature (``feature``)."""
 
     form: Form
     parameters: Mapping[str, Any]
     centre: tuple[float, float, float]
     turn: tuple[tuple[float, ...], ...]
+    sampled: Sampled | None = None
+    feature: float | None = None
 
 
 def turn_onto(axis: Sequence[float]) -> tuple[tuple[float, ...], ...]:
@@ -143,14 +152,14 @@ type ClosedForm = Callable[[Mapping[str, Any], str], Placed]
 
 _closed_forms: dict[str, tuple[ClosedForm, tuple[str, ...]]] = {}
 
-#: Why each of MIME's kinds without a closed form is refused, and what comes instead.
+#: Why each of MIME's kinds without a closed form takes no route yet, and what comes instead: the creased ones until
+#: their crease measure (camera PR 5b).
 NO_CLOSED_FORM = {
-    "ellipsoid": "the ellipsoid has no run-time shape yet, so no chord to take in closed form; it gains one with its "
-                 "run-time shape",
-    "box": "the box has no run-time shape yet, so no chord to take in closed form; it gains one with its run-time shape",
-    "screw": "the screw's surface has no closed-form chord; it is imaged by the sampled route, which needs a cheap sign "
-             "function and the measure of its caps' crease, and is not built yet",
-    "helix": "the helix has no closed-form chord; it is imaged by the sampled route, which is not built yet",
+    "box": "the box's body is three slabs' intersection, creased at its edges, and declares no crease measure; it gains "
+           "route 1 with its run-time shape",
+    "screw": "the screw's body is its thread's region and the span between its caps, creased at the caps' rims, and the "
+             "sampled route needs the rims' exact measure (the first-order march alone is 40 % off in motion at a "
+             "tilted pose there, at any sample count), which comes with the next piece of the camera",
 }
 
 
@@ -168,24 +177,76 @@ register_closed_form("capsule", _capsule)
 register_closed_form("cylinder", _cylinder)
 register_closed_form("tube", _tube, TUBE_REGIONS)
 
-ROUTES = ("closed form",)
+ROUTES = ("closed form", "sampled")
+
+
+def _sampled_refusal(kind: str) -> Refusal | None:
+    """Why ``kind`` cannot take route 2, or ``None``."""
+    found = sampled_route.kind_named(kind)
+    if found is None or (not sampled_route.has_sign(found) and not sampled_route.creased(found)):
+        reason = f"no closed form is registered for the kind {kind!r} and it declares no cheap sign function"
+        return Refusal(
+            "camera.no-route", RefusalClass.USER, f"a {kind} cannot be imaged: {reason}",
+            "image a kind with a closed form (a sphere, a capsule, a cylinder, a straight tube) or one that declares a "
+            "cheap sign function (Geometry.sign_function: the ellipsoid, the helix), or register the kind's closed form: "
+            "register_closed_form(kind, closed_form)")
+    if implements(found, "crease_measure"):
+        return Refusal(
+            "camera.crease-unmeasured", RefusalClass.USER,
+            f"a {kind} cannot be imaged by the sampled route yet: it declares a crease measure, which the route does "
+            f"not read until the next piece of the camera, and its march takes only its first region "
+            f"({found.regions[0]!r}), so its creases would be imaged wrongly",
+            "image it once the sampled route reads crease measures, give it a closed form "
+            "(register_closed_form(kind, closed_form)), or hide it: hide=(...)",
+            why="the sampled route marches one region and does not yet read a crease measure")
+    if sampled_route.creased(found):
+        reason = NO_CLOSED_FORM.get(kind, f"the {kind}'s body is the intersection of its regions "
+                                          f"{', '.join(found.regions)}, creased where they meet")
+        return Refusal(
+            "camera.crease-unmeasured", RefusalClass.USER,
+            f"a {kind} cannot be imaged by the sampled route without its crease measure: {reason}",
+            f"give the kind its crease measure (Geometry.crease_measure), or hide it: hide=(...)",
+            why="the first-order march reads a crease's edge wrongly at any sample count (camera truth 1)")
+    return None
 
 
 def route_of(kind: str, route: str | None = None) -> str:
-    """The route a subject of ``kind`` takes: chosen by its capability, ``route`` an override; refused (with its reason)
-    where the kind has none, or the override names a route not built."""
+    """The route a subject of ``kind`` takes: chosen by its capability (route 1 where a closed form is registered,
+    else route 2 where its kind declares a cheap sign function and, if creased, its crease measure), ``route`` an
+    override; refused, with its reason, where it has neither, or the override names a route it cannot take."""
     if route is not None and route not in ROUTES:
         raise ArgumentRefused([Refusal(
-            "camera.route", RefusalClass.USER, f"the route {route!r} is not built: only route 1 ({ROUTES[0]!r}) is",
-            "leave route= out: the route is chosen by the kind's capability",
-            why="the sampled route (route 2) comes later")])
-    if kind not in _closed_forms:
-        reason = NO_CLOSED_FORM.get(kind, f"no closed form is registered for the kind {kind!r}")
+            "camera.route", RefusalClass.USER, f"the route {route!r} is not a route: they are {', '.join(map(repr, ROUTES))}",
+            "leave route= out: the route is chosen by the kind's capability")])
+    if route == ROUTES[0] and kind not in _closed_forms:
         raise ArgumentRefused([Refusal(
-            "camera.no-closed-form", RefusalClass.USER, f"a {kind} cannot be imaged yet: {reason}",
-            "image a sphere, a capsule, a cylinder or a straight tube (Subject(name, \"sphere\", {\"radius\": ...})), "
-            "or register the kind's closed form: register_closed_form(kind, closed_form)")])
-    return ROUTES[0]
+            "camera.no-closed-form", RefusalClass.USER, f"a {kind} has no closed form registered (route 1)",
+            "leave route= out: the route is chosen by the kind's capability, or register_closed_form(kind, ...)")])
+    if route == ROUTES[0] or (route is None and kind in _closed_forms):
+        return ROUTES[0]
+    refused = _sampled_refusal(kind)
+    if refused is not None:
+        raise ArgumentRefused([refused])
+    return ROUTES[1]
+
+
+def _sampled(kind: str, settings: Mapping[str, Any], region: str) -> Placed:
+    """A route-2 body placed in its subject's frame: its kind made from its settings, its region (a kind's only one,
+    an uncreased body), its frame's offset (``centre``) and its rotation into the subject's frame (``rotation``, rows),
+    and its march's numbers."""
+    found = sampled_route.kind_named(kind)
+    assert found is not None
+    settings = {name: tuple(cast(list[Any], value)) if isinstance(value, list) else value
+                for name, value in settings.items()}
+    made = sampled_route.made_kind(found, settings)
+    names = {item.name for item in dataclasses.fields(cast(Any, found))}
+    parameters = {name: settings[name] for name in names}
+    enclosing = float(made.enclosing_radius(settings)) if isinstance(made, Solid) else math.inf
+    feature = sampled_route.smallest_length(found, settings)
+    rotation = settings.get("rotation", ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)))
+    marched = Sampled(made, found.regions[0], feature, enclosing, sampled_route.samples_for(enclosing, feature))
+    return Placed(sampled_route.form(marched), parameters, _vector(settings, "centre", (0.0, 0.0, 0.0)),
+                  tuple(tuple(float(x) for x in row) for row in rotation), marched, feature)
 
 
 @dataclass(frozen=True)
@@ -221,7 +282,9 @@ class Subject:
     placed: Placed = field(init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
-        route_of(self.kind, self.route)
+        if route_of(self.kind, self.route) == ROUTES[1]:
+            self._place_sampled()
+            return
         forms, regions = _closed_forms[self.kind]
         problems: list[str] = []
         if self.region not in regions:
@@ -239,14 +302,39 @@ class Subject:
                                    for problem in problems])
         object.__setattr__(self, "placed", forms(self.settings, self.region))
 
+    def _place_sampled(self) -> None:
+        problems: list[str] = []
+        if self.region != "solid":
+            problems.append(f"a {self.kind} images its body, region \"solid\", not {self.region!r}")
+        if not self.coverage:
+            object.__setattr__(self, "coverage", "box_edge")
+        if self.coverage != "box_edge":
+            problems.append(f"coverage {self.coverage!r}: the sampled route takes the box edge, \"box_edge\"")
+        if self.window is not None and self.window < 1:
+            problems.append("a window is at least one pixel")
+        found = sampled_route.kind_named(self.kind)
+        missing = [] if found is None else [item.name for item in dataclasses.fields(cast(Any, found))
+                                            if item.name not in self.settings]
+        if missing:
+            problems.append(f"its settings lack {', '.join(missing)}, which the {self.kind} takes")
+        if problems:
+            raise ArgumentRefused([Refusal("camera.subject", RefusalClass.USER, f"subject {self.name!r}: {problem}",
+                                           "write it as its kind declares it: Subject(name, kind, settings in SI, "
+                                           "window=)") for problem in problems])
+        object.__setattr__(self, "placed", _sampled(self.kind, self.settings, self.region))
+
     def enclosing(self) -> float:
         """The radius of the smallest ball about the subject's frame's origin that holds it."""
         placed = self.placed
+        if placed.sampled is not None:
+            return float(np.linalg.norm(placed.centre)) + placed.sampled.enclosing
         return float(np.linalg.norm(placed.centre)) + placed.form.enclosing(
             {k: float(v) for k, v in placed.parameters.items()})
 
     def feature(self) -> float:
         """The subject's smallest silhouette radius: what the small-silhouette flag reads."""
+        if self.placed.feature is not None:
+            return self.placed.feature
         return float(self.placed.parameters["radius"])
 
 

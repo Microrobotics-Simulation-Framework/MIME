@@ -72,6 +72,7 @@ _EPSILON = float(np.finfo(np.float64).eps)
 _vmap: Any = cast(Any, jax).vmap
 _jit: Any = cast(Any, jax).jit
 _jacfwd: Any = cast(Any, jax).jacfwd
+_grad: Any = cast(Any, jax).grad
 
 
 def _at_samples(shape: Any, parameters: Mapping[str, Any], points: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -461,6 +462,68 @@ def drawing_problems(kind: Geometry, settings: Mapping[str, Magnitude], segments
     return found
 
 
+#: A sign function's gradient's length against the length of its value's gradient by autodiff, in units in the last
+#: place of their sum: both are a few operations from the point's coordinates.
+SIGN_SLOPE_ULPS = 64.0
+
+
+def sign_function_problems(kind: Geometry, settings: Mapping[str, Magnitude], points: np.ndarray,
+                           slope_band: float, dtype: Any = None) -> list[str]:
+    """Every way ``kind``'s cheap sign function (``Geometry.sign_function``), with its ``settings`` in SI, fails at
+    ``points`` (``(n, 3)``, the frame its samples are in), region by region: its sign differs from the region's own
+    (its registered shape's signed distance, or the harness's level set) at a point farther from the boundary than the
+    kind's ``sign_zone`` of its enclosing size and the comparison's rounding; or, at a point within ``slope_band`` (m)
+    of the boundary (off the region's medial set, where the gradient has no length to give), its gradient's length
+    differs from the length of its value's gradient by autodiff beyond rounding. The sign function is evaluated in
+    ``dtype`` (float64 by default), at the points and settings rounded to it, against the region's own in float64 at
+    those points, and the rounding is that dtype's. None for a kind that declares none."""
+    if not implements(kind, "sign_function"):
+        return []
+    label = kind.label()
+    found: list[str] = []
+    dtype = jnp.float64 if dtype is None else dtype
+    parameters = {name: (jnp.asarray(value, dtype=dtype) if isinstance(value, (float, tuple)) else value)
+                  for name, value in settings.items()}
+    held = jnp.asarray(points, dtype=dtype)
+    points = np.asarray(held, dtype=np.float64)
+    epsilon = float(jnp.finfo(dtype).eps)
+    size = float(np.max(np.linalg.norm(points, axis=1)))
+    enclosing = float(kind.enclosing_radius(settings)) if isinstance(kind, Solid) else size
+    floor = KIND_ROUNDING_ULPS * epsilon * size + kind.sign_zone * enclosing
+    for region in kind.regions:
+        shape = _region_shape(kind, region)
+        if shape is None:
+            found.append(f"{label}: region {region!r} is evaluated by no registered shape and the harness holds no "
+                         f"level set of it (_LEVELS), so its sign function cannot be checked")
+            continue
+
+        def value(point: Any, region: str = region) -> Any:
+            return kind.sign_function(parameters, region, (point[0], point[1], point[2])).value
+
+        def both(point: Any, region: str = region) -> tuple[Any, Any]:
+            sign = kind.sign_function(parameters, region, (point[0], point[1], point[2]))
+            return sign.value, sign.slope
+
+        values, slopes = (np.asarray(x, dtype=np.float64) for x in _jit(_vmap(both))(held))
+        gradients = np.asarray(_jit(_vmap(_grad(value)))(held), dtype=np.float64)
+        exact = _distances(shape, kind.region_parameters(region, settings), points)
+        decided = np.abs(exact) > floor
+        wrong = decided & (np.sign(values) != np.sign(exact))
+        if np.any(wrong):
+            worst = int(np.argmax(np.where(wrong, np.abs(exact), -1.0)))
+            found.append(f"{label}: region {region!r}'s sign function has the wrong sign at {int(wrong.sum())} of "
+                         f"{len(points)} points, the farthest {float(exact[worst]):.3g} m from its boundary "
+                         f"(value {float(values[worst]):.3g})")
+        length = np.linalg.norm(gradients, axis=1)
+        apart = np.where(np.abs(exact) <= slope_band, np.abs(slopes - length), 0.0)
+        allowed = SIGN_SLOPE_ULPS * epsilon * (slopes + length)
+        if not np.all(apart <= allowed):
+            worst = int(np.argmax(apart / allowed))
+            found.append(f"{label}: region {region!r}'s sign function gives its gradient's length as "
+                         f"{float(slopes[worst]):.6g}, and autodiff {float(length[worst]):.6g}")
+    return found
+
+
 def sampling_kinds(kinds: list[type[Geometry]]) -> list[type[Geometry]]:
     """The kinds among ``kinds`` that sample their surface: those the harness checks."""
     return [kind for kind in kinds if implements(kind, "samples")]
@@ -473,5 +536,5 @@ def drawing_kinds(kinds: list[type[Geometry]]) -> list[type[Geometry]]:
     return [kind for kind in kinds if implements(kind, "drawing")]
 
 
-__all__ = ["KIND_ROUNDING_ULPS", "NORMAL_ROUNDING_ULPS", "VOLUME_CONVERGENCE", "drawing_checks", "drawing_kinds",
-           "drawing_problems", "kind_problems", "sampling_kinds"]
+__all__ = ["KIND_ROUNDING_ULPS", "NORMAL_ROUNDING_ULPS", "SIGN_SLOPE_ULPS", "VOLUME_CONVERGENCE", "drawing_checks",
+           "drawing_kinds", "drawing_problems", "kind_problems", "sampling_kinds", "sign_function_problems"]

@@ -3,10 +3,12 @@ camera's subjects, nothing listed by the user. Bodies are moving (their pose is 
 structures are static. ``hide`` names what the camera leaves out, and ``absorbers`` the attenuation per metre of what is
 not opaque; every other subject takes the stated default (opaque, with the build note ``appearance defaulted for:``).
 
-A subject without a closed form (route 1) is refused with its reason, as the offline renderer refuses it
-(:func:`mime.sensing.route_of`), until the sampled route lands; nothing is dropped silently. The exceptions are static:
-a scenery mesh the stage holds and a structure of a kind the stage draws (an ellipsoid, a box, a helix, a screw) are
-traced as meshes (:class:`TracedMesh`, ``mime.sensing._mesh``), once a run, in the static structure."""
+A subject takes route 1 where its kind has a closed form and route 2 (sampled) where it declares a cheap sign
+function; one with neither, or a creased one without its crease measure, is refused with its reason, as the offline
+renderer refuses it (:func:`mime.sensing.route_of`); nothing is dropped silently. The exceptions are static: a scenery
+mesh the stage holds and a structure of a kind the stage draws with no closed form (an ellipsoid, a box, a helix, a
+screw) are traced as meshes (:class:`TracedMesh`, ``mime.sensing._mesh``), once a run, in the static structure, before
+route 2: a drawn structure stays the mesh the tracer measured."""
 
 from __future__ import annotations
 
@@ -23,10 +25,8 @@ from mime.build._refusals import ArgumentRefused
 from mime.registry import Roster, RosterDrawing
 from mime.scene import SceneryMesh
 from mime.sensing._mesh import closed_problem, inside, signed_volume, triangles_of
-from mime.sensing._subjects import Appearance, Display, Look, Subject, from_stage, route_of
+from mime.sensing._subjects import ROUTES, Appearance, Display, Look, Subject, from_stage, route_of
 
-#: The first line of the camera's refusal of a subject without a closed form, and the code it carries.
-NO_FORM = "camera.no-closed-form"
 #: The code of the refusal of an unowned gprim that is not a mesh (a cube, a capsule, curves): the camera traces the
 #: stage's meshes, and reads no other gprim.
 MESH_UNTRACED = "camera.mesh-untraced"
@@ -152,6 +152,16 @@ def _in_body(part_settings: Mapping[str, Any], rotation: Sequence[Sequence[float
     return settings
 
 
+def _placed_in_body(part_settings: Mapping[str, Any], rotation: Sequence[Sequence[float]],
+                    centre: Sequence[float]) -> dict[str, Any]:
+    """A sampled part's settings, in its own frame as its kind takes them, with where its frame sits in the body's: its
+    centroid (``centre``) and the rotation from its frame to the body's (``rotation``, rows)."""
+    settings = {k: _list(v) for k, v in part_settings.items()}
+    settings["centre"] = [float(c) for c in centre]
+    settings["rotation"] = [[float(x) for x in row] for row in rotation]
+    return settings
+
+
 def _appearance(name: str, absorbers: Mapping[str, float]) -> Appearance | None:
     return Appearance.attenuating(absorbers[name]) if name in absorbers else None
 
@@ -176,12 +186,14 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
         for part in body.parts:
             subject_name = name if len(body.parts) == 1 else f"{name}.{part.name}"
             try:
-                route_of(part.kind)
+                route = route_of(part.kind)
             except ArgumentRefused as error:
                 refuse(subject_name, part.kind, error)
                 continue
-            subjects.append(Subject(subject_name, part.kind, _in_body(part.settings, part.rotation, part.centre),
-                                    appearance=_appearance(subject_name, absorbers), moving=True))
+            settings = _in_body(part.settings, part.rotation, part.centre) if route == ROUTES[0] else \
+                _placed_in_body(part.settings, part.rotation, part.centre)
+            subjects.append(Subject(subject_name, part.kind, settings, appearance=_appearance(subject_name, absorbers),
+                                    moving=True))
             made.append(subject_name)
             if part.display is not None and part.display != (None, None) and subject_name not in absorbers:
                 display[subject_name] = Display(*part.display)
@@ -194,12 +206,14 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
             hidden.append(name)
             continue
         try:
-            route_of(structure.kind)
+            route = route_of(structure.kind)
         except ArgumentRefused as error:
-            if structure.drawn is not None:
-                meshes.append(drawn_mesh(name, structure.kind, structure.drawn, _appearance(name, absorbers)))
-            else:
+            if structure.drawn is None:
                 refuse(name, structure.kind, error)
+                continue
+            route = None
+        if route != ROUTES[0] and structure.drawn is not None:
+            meshes.append(drawn_mesh(name, structure.kind, structure.drawn, _appearance(name, absorbers)))
             continue
         settings = {k: _list(v) for k, v in structure.settings.items()}
         region = "wall" if structure.kind == "tube" else "solid"

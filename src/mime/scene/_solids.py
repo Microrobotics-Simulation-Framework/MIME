@@ -27,12 +27,14 @@ from mime.registry import (
     RegionPrimitive,
     Samples,
     Sampling,
+    SignValue,
     Solid,
     Support,
     Tensor,
     register_geometry,
     uniform,
 )
+from mime.scene import _signs as signs
 from mime.scene._caps import cap_rings, ring_floor
 from mime.scene._centreline import straight
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
@@ -175,6 +177,16 @@ class Cylinder(Solid):
 
         return (entry(0, 0), entry(0, 1), entry(0, 2)), (entry(1, 0), entry(1, 1), entry(1, 2)), \
             (entry(2, 0), entry(2, 1), entry(2, 2))
+
+    @override
+    def sign_function(self, parameters: Mapping[str, Any], region: str, point: tuple[Any, Any, Any]) -> SignValue:
+        """Its regions' signed distances: the ``side``'s from the axis, the ``span``'s from its mid-plane."""
+        axis = signs.unit(parameters["axis"])
+        if region == "side":
+            value = signs.across(point, axis, signs.along(point, axis), parameters["radius"]) - parameters["radius"]
+        else:
+            value = signs.slab(point, axis, parameters["length"] / 2.0)
+        return SignValue(value, jnp.ones_like(value))
 
     @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
@@ -337,6 +349,15 @@ class Ellipsoid(Solid):
         """``(b^2 + c^2) / 5`` about x, and so on."""
         a, b, c = _lengths(settings, "semi_axes")
         return _diagonal((b * b + c * c) / 5.0, (a * a + c * c) / 5.0, (a * a + b * b) / 5.0)
+
+    @override
+    def sign_function(self, parameters: Mapping[str, Any], region: str, point: tuple[Any, Any, Any]) -> SignValue:
+        """``q - 1``, ``q`` the point's length in units of the semi-axes, and its gradient's length: its first-order
+        distance is exact on the surface and of the right sign everywhere."""
+        a, b, c = (parameters["semi_axes"][i] for i in range(3))
+        x, y, z = point
+        q = signs.length(x / a, y / b, z / c, scale=1.0)
+        return SignValue(q - 1.0, signs.length(x / (a * a), y / (b * b), z / (c * c), scale=1.0 / a) / q)
 
     @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
@@ -707,6 +728,12 @@ class Sphere(Solid):
         return _length(settings, "radius")
 
     @override
+    def sign_function(self, parameters: Mapping[str, Any], region: str, point: tuple[Any, Any, Any]) -> SignValue:
+        """Its signed distance, the distance from its centre less its radius."""
+        value = signs.length(*point, scale=parameters["radius"]) - parameters["radius"]
+        return SignValue(value, jnp.ones_like(value))
+
+    @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
         return _length(settings, "radius")
 
@@ -899,6 +926,13 @@ class Capsule(Solid):
             lambda parameters: -(parameters["height"] / 2.0 + parameters["radius"]) * jnp.asarray(axis), axis,
             lambda parameters: parameters["height"] + 2.0 * parameters["radius"],
             filament_radius=lambda parameters: jnp.asarray(parameters["radius"])),))
+
+    @override
+    def sign_function(self, parameters: Mapping[str, Any], region: str, point: tuple[Any, Any, Any]) -> SignValue:
+        """Its signed distance, the distance from its segment less its radius."""
+        radius = parameters["radius"]
+        value = signs.segment(point, signs.unit(parameters["axis"]), parameters["height"] / 2.0, radius) - radius
+        return SignValue(value, jnp.ones_like(value))
 
     @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
