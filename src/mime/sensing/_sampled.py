@@ -501,8 +501,10 @@ def _leasts(sampled: Sampled, held: March, p: Mapping[str, Any], o: Vec, d: Vec,
     first, second = jnp.where(swapped, b, a), jnp.where(b_merged, a, b)
     made = None
     if recipes:
-        # Each read point's making follows its choice: a merged branch's is the other's.
-        steps = (centre - start) / spacing
+        # Each read point's making follows its choice: a merged branch's is the other's. A ray that misses the widened
+        # ball has no spacing (its samples are one point, its descent's centre its start): its moves are none, never 0/0,
+        # which the read point's derivative would carry (``_place``: the start plus the moves times the spacing).
+        steps = (centre - start) / jnp.where(spacing > 0.0, spacing, 1.0)
         made = ((jnp.where(swapped, steps[rays:], steps[:rays]), swapped, jnp.zeros_like(swapped)),
                 (jnp.where(b_merged, steps[:rays], steps[rays:]), ~b_merged, jnp.zeros_like(swapped)))
     bound = jnp.zeros_like(first)

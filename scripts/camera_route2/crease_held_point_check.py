@@ -114,6 +114,27 @@ def plant_near_axis() -> None:
     sampled_route._place = planted
 
 
+def image_error(tangent: np.ndarray, exact: np.ndarray, judged: np.ndarray, centre: np.ndarray,
+                axis: np.ndarray) -> dict:
+    """The image's error at each band pixel (the jvp, the rendered image's derivative on its branch, less the exact
+    image's at 1e-4 px), by ``crease_image_line``'s classes: its largest outside them and in each, and the five
+    largest pixels with their sub-rays' least distance from the side's axis."""
+    import crease_image_line as I
+
+    error = np.abs(tangent - exact)
+    near = I.axis_distance(centre, axis)
+    classes = I.classes(judged, near, I.flagged(centre, axis))
+    found: dict = {}
+    for name, mask in classes.items():
+        if mask.any():
+            at = np.unravel_index(int(np.argmax(np.where(mask, error, -1.0))), error.shape)
+            found[name] = {"error": float(error[at]), "at_v_u": [int(at[0]), int(at[1])], "near_px": float(near[at])}
+    order = np.argsort(np.where(judged, error, -1.0).ravel())[::-1][:5]
+    found["largest"] = [{"at_v_u": [int(k // error.shape[1]), int(k % error.shape[1])], "error": float(error.ravel()[k]),
+                         "near_px": float(near.ravel()[k])} for k in order]
+    return found
+
+
 def renderer_arm(pose: tuple, pixel: tuple[int, int]) -> dict:
     """The jvp and the rendered difference sweep, at the pixel and on the band and the crease aggregates."""
     import jax
@@ -154,7 +175,8 @@ def renderer_arm(pose: tuple, pixel: tuple[int, int]) -> dict:
         apart = np.abs(tangent - differences[-1])
         others = judged.copy()
         others[v, u] = False
-        ratio = np.where(others, apart / line, 0.0)
+        # A pixel whose jvp is not finite fails the control (the line is never zero: its floor is positive).
+        ratio = np.where(others, np.where(np.isfinite(apart), apart / line, np.inf), 0.0)
         worst = np.unravel_index(int(np.argmax(ratio)), ratio.shape)
         dark0 = np.asarray(values(at))
         exact = {}
@@ -182,6 +204,8 @@ def renderer_arm(pose: tuple, pixel: tuple[int, int]) -> dict:
                            "rendered_less_exact": float(np.linalg.norm(rendered_aggregate[-1] - exact[EXACT_STEPS[0]][1]))},
             "other_pixels": {"largest_share_of_line": float(ratio[worst]), "at_v_u": [int(worst[0]), int(worst[1])],
                              "within": bool(ratio[worst] <= 1.0), "count": int(others.sum())},
+            "nonfinite_jvp_pixels": int((~np.isfinite(tangent)).sum()),
+            "image": image_error(tangent, exact[EXACT_STEPS[0]][0], judged, centre, axis),
         }
     return row
 
