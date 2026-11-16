@@ -21,6 +21,7 @@ from typing import NamedTuple, cast
 
 from packaging.version import Version
 
+from mime._placeholders import PLACEHOLDER_LICENCE
 from mime.push._defaults import Defaults
 from mime.push._manifest import BUNDLE, manifest_text
 from mime.push._sharing import DEFAULT_LICENCE
@@ -36,7 +37,6 @@ from mime.scaffold._values import (
     mime_range,
     person_name,
 )
-from mime.terms import PLACEHOLDER_LICENCE
 
 #: The licence whose full text ships with the template; any other gets a file that names it and says to put its text there.
 SHIPPED_LICENCE = "Apache-2.0"

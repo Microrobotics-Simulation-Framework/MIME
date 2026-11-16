@@ -34,11 +34,11 @@ from mime.assets import AssetRef
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._sharing import Problem, Reader, Sharing, as_text, record_of
 from mime.saved._versions import newer_form_refusal
+from mime._placeholders import PLACEHOLDER_NAMESPACE
 from mime.terms import (
     CUSTOM_STATUSES,
     CustomLicence,
     Evidence,
-    PLACEHOLDER_NAMESPACE,
     Permission,
     Scope,
     Verdict,

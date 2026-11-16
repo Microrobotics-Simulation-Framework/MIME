@@ -32,9 +32,9 @@ from mime.scene import (
     VISUAL_ROLE,
     VISUAL_SHA256,
     manifest_beside,
-    shipped_visual_sets,
     visual_sets,
 )
+from mime.scene._visual_sets import shipped_visual_sets
 from mime.terms import derived_verdict
 from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom, Vt
 from mime.viz._meshes import Mesh, TriangleBudget, decimate, one_sided_distances, read_stl, write_mesh

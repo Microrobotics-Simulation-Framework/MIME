@@ -6,7 +6,7 @@ saved or study folder, written by :func:`mime.push._draft.new_manifest`, the wri
 file comes from ``--set``, else the person's ``defaults.toml``, else scaffold's own, and the walk asks only where none
 of ``--set``, ``--yes`` or ``--dry-run`` is given: Enter keeps the value shown. Scaffold never overwrites (``scaffold.exists``),
 asks nothing under ``--yes`` and chooses no licence and no namespace (where none is given it writes a marker every check
-refuses, ``mime.terms.PLACEHOLDER_LICENCE`` and ``PLACEHOLDER_NAMESPACE``), searches everything it writes for a token MIME holds
+refuses, ``mime._placeholders``), searches everything it writes for a token MIME holds
 before writing a byte, and writes nothing under ``--dry-run``, which draws the tree and where each value came from."""
 
 from __future__ import annotations
@@ -24,10 +24,10 @@ from mime._shell import quoted
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials import held_tokens
+from mime._placeholders import PLACEHOLDER_LICENCE, PLACEHOLDER_NAMESPACE
 from mime.push._defaults import DEFAULT_KEYS, Defaults, read_all, write_defaults
 from mime.push._manifest import MANIFEST_FILE, OLD_FILE, STUDY, record_lines
 from mime.push._setup import Walk, asked, filled, folder_facts
-from mime.terms import PLACEHOLDER_LICENCE, PLACEHOLDER_NAMESPACE
 from mime.push._toml import value_text
 from mime.scaffold._templates import fill
 from mime.scaffold._values import (
@@ -69,7 +69,7 @@ type Say = Callable[[str], None]
 type Typed = Callable[[str], str]
 type Ask = Callable[[str], bool]
 #: What ``--yes`` writes where a namespace or a licence is wanted that neither ``--set`` nor the person's defaults gave: a
-#: marker every check refuses (:data:`mime.terms.PLACEHOLDER_NAMESPACE`), never a name or a licence chosen for them.
+#: marker every check refuses (:data:`mime._placeholders.PLACEHOLDER_NAMESPACE`), never a name or a licence chosen for them.
 OWN_NAMESPACE = PLACEHOLDER_NAMESPACE
 OWN_CODE_LICENCE = PLACEHOLDER_LICENCE
 #: The keys a walk keeps the value shown of at Enter: a record always has each.

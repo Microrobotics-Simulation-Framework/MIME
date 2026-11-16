@@ -37,17 +37,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
+from mime._placeholders import PLACEHOLDER_LICENCE
+
 #: The longest line of a custom licence's conditions: they are shown as short lines, and the licence's text is behind
 #: its link.
 CONDITION_LINE_LIMIT = 160
 #: SPDX's word for a licence nobody stated: accepted alone as a licence, and read as unknown.
 NO_ASSERTION = "NOASSERTION"
 CUSTOM_PREFIX = "LicenseRef-"
-#: What ``mime scaffold --yes`` writes where a licence or a namespace is wanted and neither ``--set`` nor the person's
-#: defaults gave one: a marker, never a choice (a licence is the person's, and a real-looking namespace is a name in
-#: the registry). Every check that reads a licence, a block's id or a plugin's namespace refuses it, naming this.
-PLACEHOLDER_LICENCE = "LicenseRef-CHOOSE-A-LICENCE"
-PLACEHOLDER_NAMESPACE = "choose_a_namespace"
 #: A custom licence's id after its prefix, as SPDX's ``idstring`` allows it: letters, digits, ``.`` and ``-``.
 _CUSTOM_ID = re.compile(r"LicenseRef-[A-Za-z0-9.\-]+")
 _TOKEN = re.compile(r"\(|\)|[^\s()]+")
@@ -508,7 +505,7 @@ def freest(verdicts: Sequence[Verdict]) -> Verdict:
     return min(verdicts, key=_rank)
 
 
-__all__ = ["PLACEHOLDER_LICENCE", "PLACEHOLDER_NAMESPACE", "CONDITIONAL", "CONDITION_LINE_LIMIT", "CUSTOM_PREFIX", "CUSTOM_STATUSES", "DERIVED_BY",
+__all__ = ["CONDITIONAL", "CONDITION_LINE_LIMIT", "CUSTOM_PREFIX", "CUSTOM_STATUSES", "DERIVED_BY",
            "DIFFERING_CONDITIONS_BY", "EVIDENCE_KINDS", "NON_COMMERCIAL", "NOTICE_TEXT_REQUIRED", "NO_ASSERTION", "NO_DERIVATIVES", "OPEN",
            "ROLES", "SHARE_ALIKE", "CustomLicence", "Evidence", "EvidenceKind", "LicenceGiven", "Permission", "Role",
            "Scope", "Status", "Terms", "Tier", "Verdict", "canonical", "derived_verdict", "expression_of", "freest",

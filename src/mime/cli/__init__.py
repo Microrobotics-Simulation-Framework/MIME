@@ -696,7 +696,8 @@ def _serve(arguments: argparse.Namespace) -> int:
 
 def _visuals(arguments: argparse.Namespace) -> int:
     from mime import viz
-    from mime.scene import shipped_visual_sets, visual_sets
+    from mime.scene import visual_sets
+    from mime.scene._visual_sets import shipped_visual_sets
 
     if arguments.visuals_command == "list":
         baked = {name for name, _ in viz.baked_layers()}

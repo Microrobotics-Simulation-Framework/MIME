@@ -29,12 +29,13 @@ from typing import cast
 import platformdirs
 import yaml
 
+from mime._placeholders import PLACEHOLDER_NAMESPACE
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._sharing import Reader, funding_of, keyword_list, people, uploader_of
 from mime.push._toml import key_lines, value_text
 from mime.saved._versions import newer_form_refusal
-from mime.terms import PLACEHOLDER_NAMESPACE, licence_problem
+from mime.terms import licence_problem
 
 type Say = Callable[[str], None]
 

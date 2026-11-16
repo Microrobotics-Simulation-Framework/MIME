@@ -262,7 +262,8 @@ def test_an_experiment_scaffolded_with_yes_declares_no_licence_and_says_where_to
 def test_the_placeholders_are_refused_wherever_a_licence_or_a_namespace_is_read():
     from mime.blocks._definition import id_problem
     from mime.push._defaults import namespace_problem
-    from mime.terms import PLACEHOLDER_LICENCE, PLACEHOLDER_NAMESPACE, licence_problem
+    from mime._placeholders import PLACEHOLDER_LICENCE, PLACEHOLDER_NAMESPACE
+    from mime.terms import licence_problem
 
     assert "placeholder" in (licence_problem(PLACEHOLDER_LICENCE) or "")
     assert "placeholder" in (namespace_problem(PLACEHOLDER_NAMESPACE) or "")
