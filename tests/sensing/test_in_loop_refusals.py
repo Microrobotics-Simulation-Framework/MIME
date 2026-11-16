@@ -2,7 +2,7 @@
 case is not refused for another reason).
 
 frame_period not a whole number of base steps (naming the nearest two), more sub-frames than the period, ``rate=``, a
-body or structure without a closed form (until the sampled route), a ``hide`` or an absorber that names nothing (in
+body or structure with no route (a creased one without its crease measure), a ``hide`` or an absorber that names nothing (in
 ``test_in_loop_scene.py``), a mount naming no frame, recording frames (``record=``; ``history=True`` is the all-fields verification path and is not refused), reverse mode
 through the camera past the memory a run can have, and a batched study.
 
@@ -74,9 +74,9 @@ def with_box(hide=()):
     return exp
 
 
-def test_a_body_without_a_closed_form_is_refused_with_its_reason_until_it_is_hidden(dtype):
+def test_a_creased_body_without_its_crease_measure_is_refused_with_its_reason_until_it_is_hidden(dtype):
     text = refused(lambda: with_box().build())
-    assert "camera.no-closed-form" in text and "box" in text
+    assert "camera.crease-unmeasured" in text and "box" in text
     with_box(hide=("crate",)).build()
 
 

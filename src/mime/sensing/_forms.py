@@ -107,7 +107,11 @@ class Form:
     piece ``j``'s (a cap inside its bounding ball), so that ``i``'s line is taken as the greater of the two: the same
     outline, and ``j``'s distance where ``i``'s first-order one falls short (beyond a thin cap's ends, where a cap's
     edge function changes fastest across its ellipse, not towards its end). Pieces named only as bounds are not
-    composed."""
+    composed. ``cover``: where given, a cell's share from the pieces' lines (``cover(lines, size)``), in place of one
+    straight edge, the composed line's: route 2's exact union of its two branches. ``at_corners``: where given, the form
+    a frame's corner sub-samples take, told which rays' pixels are corners and the ray table's derivatives along ``u``
+    and ``v`` (``at_corners(corner, du, dv)``); that form's ``pieces`` end in ``unverified`` numbers a ray that are not
+    pieces (held, no derivative): route 2's bound on a corner sub-cell's share where its reading is not verified."""
 
     interval: Callable[[Mapping[str, Any], Vec, Vec], Interval]
     pieces: Callable[[Mapping[str, Any], Vec, Vec], tuple[Any, ...]]
@@ -116,6 +120,9 @@ class Form:
     corners: bool = False
     turning: tuple[int, ...] = ()
     bounds: tuple[tuple[int, int], ...] = ()
+    cover: Callable[[Sequence[Any], float], Any] | None = None
+    at_corners: Callable[[Any, Vec, Vec], Form] | None = None
+    unverified: int = 0
 
     def edge(self, p: Mapping[str, Any], o: Vec, d: Vec) -> Any:
         """The composed edge function of raw values: its sign and its zero set are the body's."""

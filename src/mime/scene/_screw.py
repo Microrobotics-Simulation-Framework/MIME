@@ -22,12 +22,14 @@ from mime.registry import (
     RegionPrimitive,
     Samples,
     Sampling,
+    SignValue,
     Solid,
     Support,
     Tensor,
     register_geometry,
     uniform,
 )
+from mime.scene import _signs as signs
 from mime.scene._caps import any_closer, cap_rings, ring_floor, symmetric_total
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.scene._sampling import counted, length_of, magnitude_of, quasi_uniform
@@ -441,6 +443,31 @@ class Screw(Solid):
         """``R (1 + modulation)``: the crests' radius."""
         radius, _, _, epsilon = self._section(settings)
         return radius * (1.0 + epsilon)
+
+    @override
+    def sign_function(self, parameters: Mapping[str, Any], region: str, point: tuple[Any, Any, Any]) -> SignValue:
+        """The ``screw`` region's ``r - R (1 + modulation sin(starts theta))``, ``theta`` the point's angle in the
+        cross-section turned to its place on the axis (its sine from the identity ``Im(((u + i v) / r)^starts)``, no
+        angle taken), of the right sign everywhere, and its gradient's length in closed form (radially one, round the
+        section ``R m n cos(n theta) / r`` and along the axis that times the turn's rate); the ``span``'s, the slab's
+        signed distance."""
+        x, y, z = point
+        radius, length = parameters["radius"], parameters["length"]
+        if region == "span":
+            value = signs.slab(point, (1.0, 0.0, 0.0), length / 2.0)
+            return SignValue(value, jnp.ones_like(value))
+        turn = parameters["wavenumber"] * (x + length / 2.0) / radius
+        cos, sin = jnp.cos(turn), jnp.sin(turn)
+        u, v = cos * y + sin * z, cos * z - sin * y
+        r = signs.length(u, v, scale=radius)
+        wr, wi = u / r, v / r
+        real, imaginary = wr, wi
+        for _ in range(self.starts - 1):
+            real, imaginary = real * wr - imaginary * wi, real * wi + imaginary * wr
+        slope = radius * parameters["modulation"] * self.starts * real
+        value = r - radius * (1.0 + parameters["modulation"] * imaginary)
+        return SignValue(value, signs.length(jnp.ones_like(r), slope / r, slope * parameters["wavenumber"] / radius,
+                                             scale=1.0))
 
     @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
