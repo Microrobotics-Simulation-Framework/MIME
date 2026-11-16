@@ -30,7 +30,8 @@ from planted_nodes import AFTER_FIRST_FREE, FIRST_FREE, ROWS, KeeperNode, NamedL
     TakesNextNode, UsurperNode
 
 from mime.core import switch
-from mime.docs import read_list, row_key
+from mime.docs._lists import read_list
+from mime.docs._symbols import row_key
 from mime.docs._check import LISTS, Report, bibliography_keys, entry_problems, list_path, node_classes, read_lists
 from mime.docs._export import load_namespaces
 from mime.docs._walk import is_documented

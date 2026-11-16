@@ -182,7 +182,7 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
     if problems:
         raise ArgumentRefused(problems)
     launcher = None if outlive_launcher else LauncherWatch()
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
     from mime.experiment import Experiment
 
     try:

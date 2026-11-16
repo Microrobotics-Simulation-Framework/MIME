@@ -100,7 +100,7 @@ def test_control_a_plugin_that_registers_a_namespace_of_its_own_is_listed_and_th
 
 def test_load_namespaces_with_no_list_to_collect_into_raises_the_refusal_naming_the_distribution(tmp_path):
     distribution(tmp_path, "colliding-plugin", "helix", COLLIDES)
-    program = ("from mime.build import BuildRefused\nfrom mime.docs import load_namespaces\n"
+    program = ("from mime.build import BuildRefused\nfrom mime.docs._export import load_namespaces\n"
                "try:\n    load_namespaces()\nexcept BuildRefused as error:\n"
                "    print(error.codes(), error.refusals[0].message)\n")
     done = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True, check=False,

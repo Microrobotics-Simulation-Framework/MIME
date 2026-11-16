@@ -115,7 +115,8 @@ def _xla_cache_and_its_note(arguments: argparse.Namespace) -> Generator[None]:
 
 
 def _cache_clear() -> int:
-    from mime.env import clear_user_xla_cache, user_xla_cache_root
+    from mime.env import user_xla_cache_root
+    from mime.env._xla_cache import clear_user_xla_cache
 
     from mime.assets import bytes_text
 
@@ -140,7 +141,8 @@ def _deterministic(on: bool) -> None:
     (``mime.env.deterministic_mode``); on the CPU, a line saying it changes nothing there."""
     if not on:
         return
-    from mime.env import CPU_DETERMINISTIC, deterministic_mode
+    from mime.env import deterministic_mode
+    from mime.env._host import CPU_DETERMINISTIC
 
     if not deterministic_mode():
         _warn(CPU_DETERMINISTIC)
@@ -195,7 +197,7 @@ def _verify(folder: Path, run: bool = False) -> int:
 
 
 def _verified(folder: Path) -> int:
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
 
     apply_lock_precision(folder)
     experiment = Experiment.load(folder)
@@ -287,7 +289,7 @@ def _pending(folder: Path) -> int:
     defect or an error MIME does not recognise. ``folder`` may be a
     document instead (``experiment.mime.yaml``, edited to seal it), which is planned as it is, with no lock to check:
     the route a sealed document takes before it is built and saved again."""
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
 
     if _is_run_folder(folder):
         raise _not_a_saved_experiment(folder, "pending")
@@ -332,7 +334,7 @@ def _show(folder: Path, graph: bool, tree: bool, as_json: bool, out: Path | None
     one page to pan and zoom, instead of printing it, as ``mime visuals web --out`` writes the 3-D view (the default name
     is ``<experiment>.graph.html``, never the 3-D page's; never inside a saved or run folder, ``visuals.web-out``)."""
     from mime.blocks._definition import is_block_folder
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
 
     from mime.saved._studies import BLOCK_SUFFIX
 
@@ -495,7 +497,7 @@ def _ran(folder: Path, duration: float | None, out: Path, history: bool, record:
         refuse_unwritable(_document_of(folder), parsed)  # the names and units, read from the document: before it loads
     override = dict(parsed)
 
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
     from mime.units import TIME, s, si
 
     started = time.perf_counter()
@@ -799,14 +801,14 @@ def _write_record(path: Path | None, record: dict[str, object]) -> None:
 
 
 def _modal(arguments: argparse.Namespace) -> int:
-    from mime import env
+    from mime.env._modal_script import modal_script
 
-    written = env.modal_script(arguments.folder, gpu=arguments.gpu, deterministic=arguments.deterministic,
-                               python=arguments.python, out=arguments.out, checkout=arguments.checkout,
-                               lab_requirements=arguments.lab_requirements, xla_cache=not arguments.no_xla_cache,
-                               timeout=arguments.timeout, max_containers=arguments.max_containers,
-                               cpu=arguments.cpu, memory=arguments.memory, study=arguments.study,
-                               shards=arguments.shards, force=arguments.force)
+    written = modal_script(arguments.folder, gpu=arguments.gpu, deterministic=arguments.deterministic,
+                           python=arguments.python, out=arguments.out, checkout=arguments.checkout,
+                           lab_requirements=arguments.lab_requirements, xla_cache=not arguments.no_xla_cache,
+                           timeout=arguments.timeout, max_containers=arguments.max_containers,
+                           cpu=arguments.cpu, memory=arguments.memory, study=arguments.study,
+                           shards=arguments.shards, force=arguments.force)
     print(written.text())
     return 0
 
@@ -823,7 +825,7 @@ def _shard(text: str | None) -> tuple[int, int] | None:
 
 
 def _study(arguments: argparse.Namespace) -> int:
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
     from mime.study._spec import read_spec, study_from_spec
 
     if arguments.study_command == "run":
@@ -2051,7 +2053,8 @@ def build_parser() -> _guide.MimeParser:
                        help="a row of the live view's table of values, <node>.<field> or <node>.<field>[0:3] (repeat "
                             "it; all, or none to hide the table; default: each scalar output, each flag and each "
                             "body's position). It chooses what is shown and adds nothing to the frames")
-    from mime.env import EXACT_GPUS, VARIANTS
+    from mime.env import EXACT_GPUS
+    from mime.env._pins import VARIANTS
 
     held_env = commands.add_parser("env", help="the environment a run is made in")
     env_commands = held_env.add_subparsers(dest="env_command", required=True)

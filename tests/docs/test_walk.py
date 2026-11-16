@@ -21,7 +21,7 @@ import pytest
 from checkout import ROOT, copy_checkout, docs_check, failures
 from planted_nodes import ROWS, PlantedMimeNode
 
-from mime.docs import row_key
+from mime.docs._symbols import row_key
 from mime.docs._check import list_path, node_classes
 from mime.docs._export import load_namespaces
 from mime.docs._walk import docs_walk

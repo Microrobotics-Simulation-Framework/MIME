@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from mime.docs import load_namespaces
+from mime.docs._export import load_namespaces
 from mime.registry import Dynamics, register_dynamics, register_interaction, registered
 from mime.testing.toys import ToyDrag
 from mime.vocabulary import register_namespace

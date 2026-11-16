@@ -19,7 +19,7 @@ from mrs_cases import BALL, mrs, free_space
 import mime.saved._record as saved_record
 from mime.core import switch
 from mime.data import asset
-from mime.docs import read_list
+from mime.docs._lists import read_list
 from mime.docs._check import LISTS, Report, switch_problems
 from mime.gradients import GradientStatus
 from mime.interactions import Drag

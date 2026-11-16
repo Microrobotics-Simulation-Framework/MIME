@@ -28,7 +28,8 @@ from switch_configurations import PACKAGE, configurations, traced_steps, tree_sc
 import mime.docs._switches as switch_scan_module
 from mime.build._maddening import node_state, parameter_leaves, resolved_inputs, zero_inputs
 from mime.core import switch
-from mime.docs import load_namespaces, read_list
+from mime.docs._export import load_namespaces
+from mime.docs._lists import read_list
 from mime.docs._check import LISTS, list_path
 from mime.docs._switches import (
     SwitchScan,

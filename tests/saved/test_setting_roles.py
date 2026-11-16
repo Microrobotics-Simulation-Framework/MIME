@@ -20,7 +20,8 @@ import tube_cases  # noqa: F401 - registers the tube oracle's wall kind, which t
 from cases import CASES
 
 from mime.build import BuildRefused
-from mime.docs import load_namespaces, read_list
+from mime.docs._export import load_namespaces
+from mime.docs._lists import read_list
 from mime.docs._check import LISTS, list_path
 from mime.registry import (
     DefaultKind,

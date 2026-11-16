@@ -81,7 +81,7 @@ def unloaded(tmp_path, monkeypatch) -> Path:
     def load(_) -> None:
         raise Loaded
 
-    monkeypatch.setattr("mime.env.apply_lock_precision", load)
+    monkeypatch.setattr("mime.env._check.apply_lock_precision", load)
     return tmp_path
 
 
