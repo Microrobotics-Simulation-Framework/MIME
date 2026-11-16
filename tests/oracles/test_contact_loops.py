@@ -404,6 +404,8 @@ class Searched(NamedTuple):
     value: np.ndarray
     resolved: np.ndarray
     unstationary: np.ndarray
+    flag_wrong: np.ndarray
+    off_bound: np.ndarray
 
 
 def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: Any = None,
@@ -453,8 +455,9 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
     allowed = 2.0 * np.max(residuals, axis=0) + cond * (np.linalg.norm(x_l, axis=-1) / size + 1.0)
     off_floor = np.linalg.norm(x_l - s_l, axis=-1) / unit > allowed
     unstationary = ~resolved & (flag_wrong | off_floor)
+    reasons = (flag_wrong, off_floor)
     missed = np.where(resolved, alone, np.where(unstationary, np.inf, 0.0))
-    return Searched(missed, alone, spread, np.abs(gaps(s_l) - gaps(s_u)) / unit, resolved, unstationary)
+    return Searched(missed, alone, spread, np.abs(gaps(s_l) - gaps(s_u)) / unit, resolved, unstationary, *reasons)
 
 
 #: The most groups of a run, in a dtype, that the Newton steps' property may leave unjudged against 0.4.0's end (its groups
