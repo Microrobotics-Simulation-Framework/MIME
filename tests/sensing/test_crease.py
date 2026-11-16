@@ -53,6 +53,7 @@ import json
 import math
 from pathlib import Path
 
+import _cache_ceiling
 import hull_oracle
 import jax
 import jax.numpy as jnp
@@ -70,6 +71,26 @@ from mime.sensing import Appearance, CameraPose, Pinhole, Subject, render
 from mime.testing import crease_measure_problems
 
 PREDICTIONS = json.loads((Path(__file__).parent / "predictions_camera_pr5b.json").read_text())
+
+#: How far above where a worker stands after giving its compiled programs back this file lets its resident memory grow
+#: before it gives them back again (tests/_cache_ceiling.py). Each view compiles its renders afresh (the rod's axis is
+#: a static setting) and none is called again, so a worker kept them all: one process running G17's 26 ids held 5.5
+#: GiB at its end, G18's 80 drawn views 10.5 GiB; four such workers is more than CI's runner holds (16 GB), and pull
+#: request 358's first run lost the runners of this file's shard and stress jobs with no test failing.
+HEADROOM_MIB = 1024
+LIMIT_MIB: list[float] = []  # one worker's limit: where it stood after the last give-back, plus the headroom
+
+
+@pytest.fixture(autouse=True)
+def programs_given_back():
+    """As ``test_lubrication.py``'s: give JAX's compiled programs back once a worker grows past its headroom."""
+    yield
+    now = _cache_ceiling.resident_mib()
+    if now is None:
+        return
+    if not LIMIT_MIB or now > LIMIT_MIB[0]:
+        _cache_ceiling.give_back_programs()
+        LIMIT_MIB[:] = [(_cache_ceiling.resident_mib() or now) + HEADROOM_MIB]
 #: The lines ``scripts/camera_route2/crease_line.py`` derived (its ``pixel_line`` and ``motion_line``), held in the
 #: predictions file before any draw of these gates ran; never fitted.
 PIXEL_LINE = PREDICTIONS["lines"]["pixel_line"]
@@ -725,13 +746,17 @@ def test_g17_the_image_error_is_within_its_band_at_the_bands_tails(float64, view
         found = render([body], CAMERA, POSE, {"rod": (at, jnp.asarray(IDENTITY))})
         return 1.0 - found.transmission, jnp.asarray(found.flags.get("thin_cap:rod", False), jnp.float64)
 
-    moving = jax.jit(lambda at, e: jax.jvp(dark, (at,), (e,)))
-    moved, flag = {}, False
+    # The flag from the image's program and the tangents from one of the image alone, as G17's views take them: one
+    # program of both, primal and tangent, peaked at 5.0 GiB alone in a process, these two at 2.2 to 2.3 (a laptop,
+    # /usr/bin/time, the turn-20 and turn-6 tails).
+    values = jax.jit(dark)
+    tangents = jax.jit(lambda at, e: jax.jvp(dark, (at,), (e,))[1][0])
+    flag = bool(np.asarray(values(jnp.asarray(centre))[1]))
+    moved = {}
     for axis_index in (0, 2):
         e = np.zeros(3)
         e[axis_index] = 1.0
-        (_, held_flag), (tangent, _) = moving(jnp.asarray(centre), jnp.asarray(e))
-        moved[axis_index], flag = np.asarray(tangent, np.float64) * PIXEL, bool(held_flag)
+        moved[axis_index] = np.asarray(tangents(jnp.asarray(centre), jnp.asarray(e)), np.float64) * PIXEL
     print(f"\n{_view_id(view)}:")
     problems, worst = image_check(turn, centre, axis, moved, flag)
     print(f"  the image's largest error as a share of its band's line {worst:.3g}")
