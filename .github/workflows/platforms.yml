@@ -4,7 +4,9 @@ name: Platforms
 # workflow runs on ubuntu-latest alone, so those platforms were untested, not known broken. This is a selection, not the
 # lane: the test files tests/platforms.txt names (a free-space experiment built, run, saved, loaded and verified; the
 # command's `run`, `verify` and `modal` on it; the saved form's round trips), then `mime docs check`. None of it needs
-# an asset. Nothing here sets PYTHONUTF8 or PYTHONIOENCODING: the job must meet what a user's machine meets, and Python
+# an asset. A second job runs the live tests (tests/live) on macOS: where a listener binds, BSD's sockets differ from
+# Linux's (SO_REUSEADDR there lets a second server bind 127.0.0.1:P while a first holds 0.0.0.0:P, so MIME's listeners
+# set none), and the bind tests read the real sockets' options on the platform they run on. Nothing here sets PYTHONUTF8 or PYTHONIOENCODING: the job must meet what a user's machine meets, and Python
 # before 3.15 does not default to UTF-8 output on Windows (docs/platforms.md). It is no required check: release/v0.3.0's branch
 # protection names none of these jobs (it runs on every `release/**` branch, as ci.yml does), and the maintainer decides later whether to require them. Every step runs even
 # when an earlier one failed, so one run lists everything that breaks on a platform.
@@ -121,3 +123,35 @@ jobs:
           # The guides' output blocks are a Linux run's printed text: the scripts they name run in the default lane
           # (tests/docs/test_tutorials.py) and in ci.yml's docs check, not here.
           uv run --no-sync mime docs check --base "$base" --skip-example-runs
+
+  # The live tests on macOS, on the default lane's Python: the live sessions' sockets, served and checked on BSD's own.
+  # Like the smoke jobs it runs in the full matrix, every step even after a failure, and is no required check.
+  live:
+    name: live (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    needs: mode
+    if: needs.mode.outputs.full == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
+      - name: Install the locked PyPI releases
+        run: uv sync --locked --extra verify
+      - name: Build and install the lab fixture package, registered from outside MIME
+        run: uv pip install --no-deps ./lab_fixture
+      - name: The live tests
+        if: ${{ !cancelled() }}
+        env:
+          MIME_ASSETS_DIR: ${{ runner.temp }}/mime-assets
+        run: uv run --no-sync python -m pytest tests/live -n auto --dist worksteal -p no:cacheprovider

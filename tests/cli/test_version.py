@@ -34,8 +34,6 @@ def test_the_flag_is_in_the_help_and_in_the_generated_reference(capsys):
 
 
 def test_control_a_parser_without_the_flag_refuses_it(capsys):
-    with pytest.raises(SystemExit) as stopped:
-        mime_main(["registry", "--version"])
-    assert stopped.value.code == 2
+    assert mime_main(["registry", "--version"]) == 2
     captured = capsys.readouterr()
     assert captured.out == "" and "unrecognized arguments: --version" in captured.err

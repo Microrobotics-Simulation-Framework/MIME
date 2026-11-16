@@ -3,12 +3,20 @@ batch run's state at its steps bit for bit, the session keeping pace; its live s
 folder's stage; A0's saved folder and a live session's run folder pack, and no byte of an AR4 mesh is in what either
 pack carries, nor anywhere in the run folder, with the visual set's stand-in baked in the cache and drawn; and A0's
 controller, called back, steered by its live input. The controls: a mesh planted in a copy of the run folder is found by
-the same scan, and a session that sets nothing leaves the magnet where it was."""
+the same scan, and a session that sets nothing leaves the magnet where it was.
 
+``hello`` and ``stop`` name no path of the machine that serves the session (his item 106): the stage relative to the run
+folder, the asset cache's overlay by its id, the fetch command's folder relative to the run folder, and the run folder
+by its name. The control: the stage as ``hello`` named it before, an absolute path, is found by the same scan."""
+
+import os
+import shlex
 import shutil
+import tempfile
 import time
 import warnings
 import zipfile
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -22,7 +30,7 @@ from mime.saved import pack, read_folder
 from mime.saved._folder import named_files
 from mime.scene import check_stage
 from mime.units import ms, s
-from mime.viz import RECORDING_FILE
+from mime.viz import RECORDING_FILE, visuals_dir
 
 
 @pytest.fixture(scope="module")
@@ -103,7 +111,7 @@ def test_no_byte_of_an_ar4_mesh_in_a0s_packed_folder_or_a_live_run_folder(folder
         warnings.simplefilter("ignore")
         session = Experiment.load(folder).build().live(pace=None, out=tmp_path / "run")
     hello = session.hello()
-    assert hello["visuals"]["drawn"] == 18 and hello["visuals"]["overlay"].startswith(str(tmp_path / "cache"))
+    assert hello["visuals"]["drawn"] == 18 and (visuals_dir() / "overlays" / hello["visuals"]["overlay"]).is_file()
     session.record(True)
     frames = session.step(4)
     run = session.stop()
@@ -160,3 +168,46 @@ def test_a0s_controller_called_back_is_steered_by_its_live_input():
         warnings.simplefilter("ignore")
         batch = a0(mode="callback", rate=ms(10)).build().run(s(1.0))
     assert np.asarray(batch.final["umr"]["pose"]).tobytes() == np.asarray(after_plain[-1].values["umr.pose"]).tobytes()
+
+
+def strings_of(value) -> list[str]:
+    if isinstance(value, dict):
+        return [text for key, held in value.items() for text in (*strings_of(key), *strings_of(held))]
+    if isinstance(value, (list, tuple)):
+        return [text for held in value for text in strings_of(held)]
+    return [value] if isinstance(value, str) else []
+
+
+def machine_paths(message, roots) -> list[str]:
+    """Each string of ``message`` that names a path of this machine: it holds one of ``roots``, or it is an absolute
+    path that exists here (a prim's path, ``/World/...``, exists on no disk)."""
+    return [text for text in strings_of(message)
+            if any(str(root) in text for root in roots) or (os.path.isabs(text) and Path(text).exists())]
+
+
+@pytest.mark.parametrize("meshes", ["missing", "drawn"])
+def test_hello_and_stop_name_no_path_of_the_machine_that_serves(folder, tmp_path, monkeypatch, meshes):
+    cache = tmp_path / "cache"
+    monkeypatch.setenv("MIME_ASSETS_DIR", str(cache))
+    if meshes == "drawn":
+        planted()
+    out = tmp_path / "run"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        session = Experiment.load(folder).build().live(pace=None, out=out)
+    hello = session.hello()
+    stopped = session.command({"command": "stop"})
+    roots = {folder, folder.resolve(), tmp_path, tmp_path.resolve(), cache, Path.home(), Path(tempfile.gettempdir()),
+             Path.cwd()}
+    assert machine_paths(hello, roots) == [] and machine_paths(stopped, roots) == []
+    assert hello["stage"] == "experiment/scene/scene.usda" and (out / hello["stage"]).is_file()
+    assert stopped["ok"] and stopped["folder"] == "run"
+    if meshes == "drawn":
+        assert hello["visuals"]["fetch"] == {} and (visuals_dir() / "overlays" / hello["visuals"]["overlay"]).is_file()
+    else:
+        (command,) = hello["visuals"]["fetch"].values()
+        assert hello["visuals"]["overlay"] is None and shlex.split(command)[:3] == ["mime", "visuals", "fetch"]
+        assert (out / shlex.split(command)[3] / "mime.lock").is_file(), "run in the run folder: its experiment/"
+    # The control: the stage as hello named it before is found, and so is the overlay's path in the cache.
+    assert machine_paths({**hello, "stage": str((folder / "scene" / "scene.usda").resolve())}, roots) != []
+    assert machine_paths({"overlay": str(visuals_dir() / "overlays" / "x.usda")}, roots) != []

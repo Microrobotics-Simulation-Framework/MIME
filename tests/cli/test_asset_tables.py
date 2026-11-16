@@ -191,11 +191,13 @@ def test_visuals_list_on_a_terminal_is_a_table(ar4_sets: None, monkeypatch: pyte
                                text)
 
 
-def test_visuals_list_with_nothing_says_what_it_always_said(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
-                                                            capsys: pytest.CaptureFixture[str]):
+def test_visuals_list_with_nothing_says_how_to_get_a_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+                                                        capsys: pytest.CaptureFixture[str]):
     monkeypatch.setenv("MIME_ASSETS_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr("mime.scene._visual_sets.shipped_visual_sets", lambda: {})
     out, _, code = piped(capsys, "visuals", "list")
-    assert code == 0 and out.startswith("no set: a description's manifest is beside it (visuals.json)")
+    assert code == 0 and out.startswith("no set is installed or shipped. A description's manifest sits beside it (visuals.json)")
+    assert "`mime visuals fetch <its folder>`" in out
 
 
 # --- mime assets licences -------------------------------------------------------------------------------------------------------
@@ -321,10 +323,10 @@ def test_cache_clear_piped_says_what_it_always_said(monkeypatch: pytest.MonkeyPa
                                                   tmp_path: Path):
     root = tmp_path / "xla"
     monkeypatch.setattr("mime.env.user_xla_cache_root", lambda: root)
-    monkeypatch.setattr("mime.env.clear_user_xla_cache", lambda path: 3_000_000)
+    monkeypatch.setattr("mime.env._xla_cache.clear_user_xla_cache", lambda path: 3_000_000)
     out, err, code = piped(capsys, "cache", "clear")
     assert (out, code) == (f"removed 3000000 bytes of XLA's compilation cache from {root}\n", 0)
-    monkeypatch.setattr("mime.env.clear_user_xla_cache", lambda path: 0)
+    monkeypatch.setattr("mime.env._xla_cache.clear_user_xla_cache", lambda path: 0)
     out, _, _ = piped(capsys, "cache", "clear")
     assert out == f"no XLA compilation cache to remove at {root}\n"
 
@@ -333,7 +335,7 @@ def test_cache_clear_piped_says_what_it_always_said(monkeypatch: pytest.MonkeyPa
 def test_cache_clear_says_how_much_it_freed_on_a_terminal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     root = tmp_path / "xla"
     monkeypatch.setattr("mime.env.user_xla_cache_root", lambda: root)
-    monkeypatch.setattr("mime.env.clear_user_xla_cache", lambda path: 3_000_000)
+    monkeypatch.setattr("mime.env._xla_cache.clear_user_xla_cache", lambda path: 3_000_000)
     with terminal(COLUMNS) as held, monkeypatch.context() as inside:
         inside.setattr(sys, "stdout", held.stream)
         assert main(["cache", "clear"]) == 0

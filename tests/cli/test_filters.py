@@ -49,7 +49,8 @@ def test_a_plugin_entry_is_found_by_its_prefixed_name(capsys):
 def test_the_plain_listing_is_filtered_the_same_way(capsys):
     code, out, err = run(capsys, "registry", "--entry", "drag")
     assert code == 0, err
-    lines = [line for line in out.splitlines() if line.strip()]
+    header, *lines = [line for line in out.splitlines() if line.strip()]
+    assert header == "kind  name  version  from"
     assert lines and all(line.split()[1] == "drag" for line in lines), lines
 
 

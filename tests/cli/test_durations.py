@@ -182,10 +182,9 @@ def test_a_unit_written_apart_is_refused_with_the_two_ways_to_write_it(words, ca
     arguments: s". It now says how to write it: as one word, or in quotes. The quoted form runs."""
     from mime.cli import main
 
-    with pytest.raises(SystemExit) as refused:
-        main(["run", "x", *words, "--out", "y"])
+    assert main(["run", "x", *words, "--out", "y"]) == 2
     err = capsys.readouterr().err
-    assert refused.value.code == 2 and "unrecognized arguments" in err
+    assert "unrecognized arguments" in err
     assert f"{words[0].split('=')[0]} 3s, or {words[0].split('=')[0]} \"3 s\"" in err
     assert option_seconds("--duration", "3 s") == 3.0
 
@@ -194,6 +193,5 @@ def test_the_unit_hint_is_only_for_a_unit(capsys):
     """The control: a stray word that is no unit gets no such hint."""
     from mime.cli import main
 
-    with pytest.raises(SystemExit):
-        main(["run", "x", "--duration", "3s", "stray", "--out", "y"])
+    assert main(["run", "x", "--duration", "3s", "stray", "--out", "y"]) == 2
     assert "written as one word" not in capsys.readouterr().err

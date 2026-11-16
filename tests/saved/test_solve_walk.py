@@ -36,7 +36,7 @@ import mime.nodes.flow.fvm  # noqa: E402, F401
 import mime.nodes.hydro  # noqa: E402, F401
 import mime.nodes.hydro.mrs  # noqa: E402, F401
 import mime.nodes.hydro.near_field  # noqa: E402, F401
-from mime.docs import load_namespaces  # noqa: E402
+from mime.docs._export import load_namespaces  # noqa: E402
 from mime.core.solves import SOLVE_PRIMITIVES, SOLVE_SITES, sites_of  # noqa: E402
 from mime.registry import EntryKind, lookup  # noqa: E402
 from mime.testing import installed_entries  # noqa: E402

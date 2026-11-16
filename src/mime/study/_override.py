@@ -241,7 +241,40 @@ def _no_effect(axis: Axis, value: object, own: object | None) -> Refusal:
         "the entry: a node holds every value it consumes in a leaf or a declared static")
 
 
-__all__ = ["Overridden", "base_point", "overridden", "replayed"]
+def refuse_unwritable(document: Any, overrides: Sequence[tuple[str, object]]) -> None:
+    """What ``mime run --override`` can be told wrong from the saved document alone, before anything loads or compiles: a
+    path that names nothing the experiment declares (``study.unknown-path``), a value its thing does not have
+    (``value.unknown``), and a value in units its kind does not take, a bare number where units are wanted included
+    (``value.units``), each refused once with the refusals the build would give it. What only the build can judge (a
+    value a law reads, a range) is left to it. A value's direction a magnet gives (``magnetic_moment``) is left too: a
+    document alone does not say it."""
+    from mime.build import ThingDeclaration
+    from mime.experiment import Experiment
+    from mime.things import Apparatus, Body
+    from mime.errors import MimeError
+    from mime.materials._values import Declared, declaration_problems
+
+    _, declarations, _ = Experiment.from_document(document).declared_as()
+    things = {d.thing.name: d.thing for d in declarations if isinstance(d, ThingDeclaration)}
+    kinds = {name: thing.kind for name, thing in things.items()}
+    parts = {name: frozenset(thing.parts) for name, thing in things.items() if isinstance(thing, (Body, Apparatus))}
+    refusals: list[Refusal] = []
+    for path, value in overrides:
+        try:
+            axis = resolve(path, declarations)
+        except MimeError as error:
+            refusals += error.refusals
+            continue
+        if axis.kind is not AxisKind.VALUE or not isinstance(value, Quantity) or path.endswith(".magnetic_moment"):
+            continue
+        held = Declared(axis.path, value, OVERRIDE_REASON)
+        refusals += [Refusal(code, RefusalClass.USER, message, action)
+                     for code, message, action in declaration_problems(held, kinds, None, parts)]
+    if refusals:
+        raise BuildRefused(refusals)
+
+
+__all__ = ["Overridden", "base_point", "overridden", "refuse_unwritable", "replayed"]
 
 
 _NUMBER = r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?"
@@ -303,7 +336,7 @@ def verify_run(folder: Any) -> Any:
     import json
     from pathlib import Path
 
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
     from mime.experiment import Experiment
     from mime.experiment._experiment import RUN_EXPERIMENT, RUN_RECORD
     from mime.results import RunResult, Series

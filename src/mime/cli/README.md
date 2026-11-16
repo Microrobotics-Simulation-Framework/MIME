@@ -159,7 +159,7 @@
   into a folder of its own below it, all or none, their assets gated once. `doi:<doi>/<file>.mimestudy` pulls one.
 - `mime push <folder> --to zenodo|zenodo-sandbox [--init | --setup | --status | --discard | --publish [--confirm
   <DOI>[@<fingerprint>]]] [--yes] [--full-plan] [--keep-site-edits | --overwrite-site-edits]`, and `mime push
-  --defaults`: the experiment as a record on Zenodo (see
+  <folder> --init`, which needs no `--to`: the experiment as a record on Zenodo (see
   [`mime.push`](../push/README.md)). A push shows the plan, computed offline, short (what goes up, what travels as a
   reference, the title, the licences, creators and contributors, warnings on lines of their own that start `!`; the full plan, every file with
   its tier and verdict and every field sent, with `--full-plan`), then makes or updates the private draft without a
@@ -183,10 +183,10 @@
   place, every line outside the replaced key's own lines kept as it was (a comment inside its old value goes), through its link where it is one, and a read-only one, or a key
   written as dotted keys or a table of its own, is refused, `manifest.write`; with both outputs redirected to files its
   questions go to the terminal), then asks whether to save the person's own values as their defaults, which live in
-  MIME's config directory and never in a folder (`mime push --defaults`, an alias of `mime defaults`, shows them and
-  where); `--setup` and `--defaults` take no flag of a push or a publish; `--status` reads the draft as the service holds
-  it; `--discard` deletes it, after asking. Each ends with a link. `--to` is required, but for `--setup` and
-  `--defaults`. A push stopped at any request is resumed by running it again. Exits zero, two when refused, three when
+  MIME's config directory and never in a folder (`mime defaults` shows them and
+  where); `--setup` takes no flag of a push or a publish; `--status` reads the draft as the service holds
+  it; `--discard` deletes it, after asking. Each ends with a link. `--to` is required, but for `--init` and
+  `--setup`. A push stopped at any request is resumed by running it again. Exits zero, two when refused, three when
   the service refuses a field MIME builds: that is a MIME defect (`push.rejected`, classed internal), the exit every
   command gives one (below).
 - `mime scaffold <kind> <path> [--yes] [--set <key>=<value>]... [--dry-run] [--from <saved folder> --socket <name>=<thing>]...`:

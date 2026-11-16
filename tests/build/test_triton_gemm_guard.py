@@ -100,11 +100,11 @@ def test_the_real_cpu_path_builds_without_the_warning(monkeypatch):
 
 READS_ONLY = """
 import os, sys
-import mime.env
+import mime.env._host as host
 from jax._src import xla_bridge
 os.environ["XLA_FLAGS"] = sys.argv[1]
-text = mime.env.triton_gemm_warning("gpu", mime.env.xla_flags())
-none = mime.env.triton_gemm_warning("cpu", mime.env.xla_flags())
+text = host.triton_gemm_warning("gpu", host.xla_flags())
+none = host.triton_gemm_warning("cpu", host.xla_flags())
 print(xla_bridge.backends_are_initialized(), text is not None, none is None)
 """
 

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import cast
 
 from mime._manifest_file import MANIFEST_FILE
+from mime._shell import shown
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._manifest import BUNDLE, folder_kind, manifest_problems, read_toml
@@ -83,7 +84,7 @@ class Checked:
                            if self.of(verdict) or verdict == FINDING)
         whose = ("given" if self.given else "the experiment's" if self.kind == BUNDLE else
                  "the default: a block declares none" if self.kind == "block" else "its base experiment's")
-        lines = [f"{self.path}, a {self.kind}'s manifest, checked under the {self.profile.value} profile ({whose}): "
+        lines = [f"{shown(self.path)}, a {self.kind}'s manifest, checked under the {self.profile.value} profile ({whose}): "
                  f"{counts}.", *self.notes]
         for verdict in (FINDING, TO_DO, LISTED):
             held = self.of(verdict)

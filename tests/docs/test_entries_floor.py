@@ -24,7 +24,7 @@ import pytest
 from checkout import ROOT, edit
 from sorted_lists import entry_key, order_problems
 
-from mime.docs import RatchetList
+from mime.docs._lists import RatchetList
 from mime.docs._export import load_namespaces
 from mime.docs._lists import list_from_text, read_list
 from mime.testing import installed_entries

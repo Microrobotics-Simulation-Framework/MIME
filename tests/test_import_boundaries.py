@@ -118,7 +118,7 @@ def test_the_scan_finds_a_planted_modal_import():
     for source in ("import modal", "from modal import App", "import modal.experimental as x",
                    "import importlib\nm = importlib.import_module('modal')"):
         assert imports_api(source, "modal"), source
-    assert not imports_api("import modality\nfrom mime.env import modal_script", "modal")
+    assert not imports_api("import modality\nfrom mime.env._modal_script import modal_script", "modal")
 
 
 IMPORT_EVERY_MODULE = """

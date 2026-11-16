@@ -14,7 +14,7 @@ import pytest
 
 from mime.build import BuildRefused
 import mime.saved._folder as folder_module
-from mime.env import CpuRecord, GpuRecord, deterministic, runner_info, runner_record, with_deterministic
+from mime.env._host import CpuRecord, GpuRecord, deterministic, runner_info, runner_record, with_deterministic
 from mime.experiment import Experiment
 from mime.saved import LOCK_FILE, environment, environment_differences, read_folder
 from mime.saved._schema import CpuRecordDoc, GpuRecordDoc, typed_dict_fields

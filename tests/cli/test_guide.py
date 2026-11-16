@@ -19,9 +19,7 @@ def said(capsys):
 
 
 def refused_parse(capsys, *words):
-    with pytest.raises(SystemExit) as stopped:
-        mime_main(list(words))
-    assert stopped.value.code == 2
+    assert mime_main(list(words)) == 2
     return said(capsys)[1]
 
 
@@ -87,7 +85,7 @@ def test_a_suggestion_never_repeats_the_word_that_was_typed(capsys):
     """A token typed where a flag belongs is not written out by the suggestion (argparse's own line is its business)."""
     err = refused_parse(capsys, "run", "folder", "--out", "o", "--duraton", "1s")
     hint = [line for line in err.splitlines() if "did you mean" in line]
-    assert hint == ["  did you mean --duration?"]
+    assert len(hint) == 1 and "did you mean --duration? " in hint[0] and "duraton" not in err.replace("--duraton 1s", "")
 
 
 def test_bare_mime_says_what_one_can_do_and_exits_zero(capsys, tmp_path, monkeypatch):

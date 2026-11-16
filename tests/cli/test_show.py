@@ -160,9 +160,7 @@ def test_a_folder_that_is_not_there_is_refused_naming_the_code(tmp_path, capsys)
 
 
 def test_json_and_graph_do_not_go_together(saved, capsys):
-    with pytest.raises(SystemExit) as stopped:
-        mime_main(["show", str(saved), "--json", "--graph"])
-    assert stopped.value.code == 2
+    assert mime_main(["show", str(saved), "--json", "--graph"]) == 2
     assert "--json" in capsys.readouterr().err
 
 
@@ -292,23 +290,20 @@ def test_out_is_refused_inside_the_saved_folder_and_writes_nothing_there(saved, 
 
 @pytest.mark.parametrize("words", [("--json",), ("--tree",)])
 def test_out_does_not_go_with_the_tree_or_json(saved, tmp_path, capsys, words):
-    with pytest.raises(SystemExit) as stopped:
-        mime_main(["show", str(saved), "--out", str(tmp_path / "x.html"), *words])
-    assert stopped.value.code == 2 and not (tmp_path / "x.html").exists()
+    assert mime_main(["show", str(saved), "--out", str(tmp_path / "x.html"), *words]) == 2
+    assert not (tmp_path / "x.html").exists()
     assert "--out" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("flag", [("--cdn",), ("--caption", "x"), ("--open",)])
 def test_the_page_flags_need_out(saved, capsys, flag):
-    with pytest.raises(SystemExit) as stopped:
-        mime_main(["show", str(saved), *flag])
-    assert stopped.value.code == 2 and f"{flag[0]} goes with the page --out writes" in capsys.readouterr().err
+    assert mime_main(["show", str(saved), *flag]) == 2
+    assert f"{flag[0]} goes with the page --out writes" in capsys.readouterr().err
 
 
 def test_the_old_flag_is_gone(saved, tmp_path, capsys):
-    with pytest.raises(SystemExit) as stopped:
-        mime_main(["show", str(saved), "--html", str(tmp_path / "x.html")])
-    assert stopped.value.code == 2 and not (tmp_path / "x.html").exists()
+    assert mime_main(["show", str(saved), "--html", str(tmp_path / "x.html")]) == 2
+    assert not (tmp_path / "x.html").exists()
 
 
 # --- nothing is written into the folder ------------------------------------------------------------------------------

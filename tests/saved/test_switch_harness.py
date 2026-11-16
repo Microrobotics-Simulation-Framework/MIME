@@ -94,7 +94,7 @@ from mime.nodes.flow.fvm._band import plug_depth
 from mime.nodes.body import ExposureNode, PhaseLagNode
 from mime.scene import Cylinder, Ellipsoid, Screw, Sphere
 from mime.units import dimensionless, mm
-from mime.docs import load_namespaces
+from mime.docs._export import load_namespaces
 from mime.nodes.hydro.mrs import frame_across, tube_correction, tube_reads, tube_table_from
 from mime.nodes.hydro.mrs._tube import pair_block
 from mime.registry import EntryKind, declared_switches, lookup

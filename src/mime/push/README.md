@@ -10,9 +10,8 @@ concept DOI.**
 ```
 mime push <folder> --to zenodo|zenodo-sandbox            # the plan, then the draft and its files (no question)
 mime push <folder> --to <service> --publish [--confirm <DOI>[@<fingerprint>]]   # publish the draft: cannot be undone
-mime push <folder> --to <service> --init                 # write mime.toml, the record's manifest (= mime scaffold bundle|study <folder> --yes)
+mime push <folder> --init                                # write mime.toml, the record's manifest (= mime scaffold bundle|study <folder> --yes)
 mime push <folder> --setup                               # make or edit mime.toml a field at a time, in a terminal
-mime push --defaults                                     # your defaults, and where they live (= mime defaults)
 mime check <folder> [--profile research]                 # mime.toml checked offline, on the profile workflow
 mime defaults [show | edit]                              # your defaults: shown, or walked a field at a time
 mime push <folder> --to <service> --status               # the draft as the service holds it
@@ -113,8 +112,7 @@ written as an inline table, as dotted keys at the top (`record = { ... }`) or as
 ... }`, and run again. A file that is a link is edited through its link, which stays a link, and a read-only one is
 refused before anything is asked (`manifest.write`): it is never replaced. With standard output and standard error both
 redirected to files, the questions go to the terminal (`/dev/tty`), never into the file. Defaults are offered for a new
-file only. `--setup` takes no flag of a push or a publish (`--confirm`, `--yes`, `--full-plan`, the site-edit flags), nor
-does `--defaults`. What push would refuse in it as it stands is said, not refused.
+file only. `--setup` takes no flag of a push or a publish (`--confirm`, `--yes`, `--full-plan`, the site-edit flags). What push would refuse in it as it stands is said, not refused.
 
 **`mime check <folder> [--profile exploratory|research]`** checks `mime.toml` offline, nothing built, packed or sent,
 on the profile workflow (the one a build follows from exploratory to research): each item has a class, and the profile says what the class is, as the profile
@@ -145,7 +143,7 @@ the licence a new record's `content` takes where its experiment declares none an
 by its check digit), a licence to SPDX's, a namespace to the registry's form; a problem is `defaults.file`, and a token
 MIME holds is never saved in them, nor licence acceptances or asset mirrors, which keep their own files. `--init` fills
 a new `mime.toml` from them, `--setup` offers each for a new one and asks at its end whether to save what it set
-(`[y/N]`), **`mime defaults`** (or `mime defaults show`; `mime push --defaults` is its alias, the same bytes) shows them
+(`[y/N]`), **`mime defaults`** (or `mime defaults show`, the same bytes) shows them
 and where they live, and **`mime defaults edit`** walks them a field at a time, in a terminal (`defaults.no-terminal`
 otherwise), and writes them whole or not at all. **Moved once from `sharing-defaults.yaml`**: with `defaults.toml`
 absent and the old file present, the first read writes `defaults.toml` from it (checked, whole or not at all) and says

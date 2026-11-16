@@ -2,7 +2,7 @@
 licence of its own (a declared permission lets it travel, and one whose licence forbids redistribution travels as a
 reference), pushed to the offline fake, edited on its "site", published (refused first with the DOI alone, which the push that
 kept the site's edit made stale, then with the fingerprint that push printed beside it) and pulled, command after
-command; then ``mime check`` of the toy, the person's defaults shown, none and some (by ``mime push --defaults`` and by
+command; then ``mime check`` of the toy, the person's defaults shown, none and some (by ``mime defaults`` and by
 ``mime defaults``), ``--setup`` with no terminal, ``--init`` from the defaults, and the record restricted on its site and pulled with no token, signed in, and by its share link read from
 ``MIME_SHARE_LINK`` (whose key no line holds).
 
@@ -128,9 +128,9 @@ def session(work: Path, fake: FakeRecords, run: Run) -> str:
         lambda: ["pull", "--from", "zenodo-sandbox", "629525", "--into", str(work / "pulled")],
         lambda: ["push", str(toy), *to, "--init"],
         lambda: ["check", str(toy)],
-        lambda: ["push", "--defaults"],
+        lambda: ["defaults"],
         lambda: ["push", str(toy), "--setup"],
-        lambda: (saved_defaults(), ["push", "--defaults"])[1],
+        lambda: (saved_defaults(), ["defaults"])[1],
         lambda: ["defaults"],
         lambda: ["push", str(without_manifest(toy, work / "mime_sandbox_new")), *to, "--init"],
         lambda: (restricted_on_site(fake, "629525"),

@@ -7,7 +7,7 @@ name), pauses and leaves, and Ctrl+C stops the server. The screen is read as a p
 the strip, the strip's step the status's, no line wider than the terminal, no escape of the client's reaching it, and, after
 the stop, no live region and the block that says how it stopped.
 
-Everywhere else it prints what it always printed: its two lines on standard output (after the load report), byte for byte
+Everywhere else it prints what it always printed: its lines on standard output (after the load report), byte for byte
 an oracle written out here from the objects the command holds, with a pipe, a pipe and ``FORCE_COLOR``/``CI``, standard
 output a pipe with standard error a terminal (the view is drawn on standard error and standard output stays the
 launcher's), and a terminal asked to be plain three ways (``NO_COLOR``, ``TERM=dumb``, ``--plain``), where nothing is drawn
@@ -269,7 +269,7 @@ def what_the_terminal_had(child: Served, raw: str, final: list[str]) -> str:
 @pytest.fixture(scope="module")
 def load_text(folder) -> str:
     """The load report as the command prints it, read once from the objects the command holds."""
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
     from mime.experiment import Experiment
 
     apply_lock_precision(folder)
@@ -280,10 +280,15 @@ def load_text(folder) -> str:
 
 def oracle(load_text: str, ready: dict) -> str:
     """Standard output as ``mime serve`` wrote it before the view existed, for a session stopped at step 0: the load
-    report, the line when it listens, the line when it stops."""
+    report, the line when it listens, the line with the ssh command that reaches it, the line when it stops."""
+    from mime.live._serve import tunnel
+
+    command = tunnel({"REP": ready["commands"], "PUB": ready["frames"]})
     return (f"{load_text}\n"
-            f"mime serve: tracked ready (mime.live/1); commands on {ready['commands']}, frames on {ready['frames']}; its run "
+            f"mime serve: tracked ready (mime.live/2); commands on {ready['commands']}, frames on {ready['frames']}; its run "
             f"folder will be {ready['out']}\n"
+            f"mime serve: from another machine, run there {command} (with the name it knows this machine by, if "
+            "another), and connect to the same endpoints\n"
             f"mime serve: stopped at step 0; wrote {ready['out']}\n")
 
 

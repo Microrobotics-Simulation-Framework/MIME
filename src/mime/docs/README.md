@@ -7,6 +7,10 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
 
 ## What goes here
 
+What the package exports is `claim` (and its `Claim`), which a test reads a record's number with (see
+`docs/validation/README.md`). Everything below is what `mime docs check`, `mime docs build` and `mime registry --json`
+run, and lives in the package's private modules.
+
 - **The registry export**, `mime registry --json`: every registered entry, MIME's and each installed `mime.entries`
   package's, with every `ClassVar` and dataclass field it declares, each with its type, its default and its value.
   It runs in a fresh process, so an entry a test registered on its own never appears. A namespace that needs the
