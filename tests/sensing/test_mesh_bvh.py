@@ -12,7 +12,10 @@ rays whose barycentric margin (``Crossings.margin``) is below ``MARGIN`` in the 
 rays that ``tied``: an origin on a triangle (a camera on a wall; a draw puts a mesh's vertex at the origin) crosses it at a
 ``t`` of zero, whose sign is below the rounding of the crossing test, bounded in ``mesh_cases.t_rounding``. (The renderer
 itself counts a crossing at ``t`` of about 2e-12 in float32 when a ray starts on a surface: a degenerate pose, the camera on
-the wall, which the derived band leaves out of the judged set; it is not fixed in ``src/``.) The rest must
+the wall, which the derived band leaves out of the judged set; it is not fixed in ``src/``.) So are the rays that pass an
+edge of a triangle in front of them within the rounding of its barycentric coordinates (``mesh_cases.b_rounding``): that
+rounding is of the size of the triangle's distance from the origin, not of the triangle, so a far, thin, grazing fold may
+lose or keep both its crossings together, and the fixed ``MARGIN`` is only the floor. The rest must
 have the oracle's crossings exactly, its chord within rounding on the scale it came from (each crossing's ``t``, its
 inputs' size over the cosine of incidence, summed: not the chord, since the signed sum cancels, and not ``t`` alone,
 since a grazing crossing's ``t`` is ill-conditioned), its nearest ``t`` within the same rounding and its triangle where
@@ -115,6 +118,29 @@ def on_the_wall() -> tuple[list[tuple[np.ndarray, np.ndarray]], np.ndarray, int]
     return [(placed(points, np.array([size, 0.0, 0.0]), rotation((1.0, 0.0, 0.0, 0.0))), faces)], np.zeros(3), 0
 
 
+def far_and_grazing() -> tuple[list[tuple[np.ndarray, np.ndarray]], np.ndarray, int]:
+    """The second draw that failed in CI: a thin 30 um tube 3 mm from the origin (a hundred times its own length), among two
+    larger meshes, its folded triangles crossed at a grazing angle within 3e-4 of their shared edge: the float32 test, whose
+    corner coordinates carry the error of the distance and not of the triangle, lost both crossings of the fold."""
+    def turned(axis: tuple[float, float, float], angle: float) -> np.ndarray:
+        unit = np.array(axis) + np.array([0.0, 0.0, 1e-3])
+        unit = unit / np.linalg.norm(unit)
+        return rotation((math.cos(angle / 2), *(math.sin(angle / 2) * unit)))
+
+    small, faces_small = tube(3.017198714815784e-05 * 0.6461487436425816, 3.017198714815784e-05,
+                              2 * 3.017198714815784e-05 * 0.99999, 32)
+    large, faces_large = tube(0.5512149444461878e-3 * 0.5, 0.5512149444461878e-3, 2 * 0.5512149444461878e-3, 32)
+    cube, faces_cube = box((0.10054979417291318e-3,) * 3)
+    zero = np.zeros(3)
+    meshes = [
+        (placed(small, np.array([-0.0012107175345038683, 0.000758537218262845, 0.0019243552369448405]),
+                turned((0.0, -0.9370537164963859, -0.8760815421384325), 1.7886821923264888)), faces_small),
+        (placed(large, zero, turned((0.0, 0.0, 0.0), 0.0)), faces_large),
+        (placed(cube, zero, turned((0.0, 0.0, 0.0), 0.0)), faces_cube)]
+    return meshes, np.array([0.0, -0.00307711041268762, 0.0]), 29168
+
+
+@example(scene=far_and_grazing())
 @example(scene=on_the_wall())
 @settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture,
                                                                  HealthCheck.too_slow], print_blob=True)
