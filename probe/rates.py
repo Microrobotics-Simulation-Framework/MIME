@@ -1,43 +1,46 @@
-"""Replays of two draws on which the clean looped arm was flagged on a runner (round 3), with the reason."""
+"""Detection rates of the cylinder plants of the contact-loops pull request, under the rule with the rattled searches and
+the stationarity judgement, beside the rule the pull request's base holds (the poses alone)."""
 import json
 import os
 import sys
 
 sys.path[:0] = ["tests", "tests/oracles"]
-import jax
-import jax.numpy as jnp
 import numpy as np
 import test_contact_loops as T
 
-arm = os.environ["PROBE_ARM"]
-DRAWS = [(4.87705747991847, 0.35266508542049807, 1.6715090783522921, 2.7785117170337896, 0.971075033193801),
-         (1.8290945297494494, 0.5406940802194558, 3.7627786792285014, 5.9225141303086035, 0.7581163517014757)]
-out = {"arm": arm, "cpu": T.cpu_model(), "replays": []}
-for d in DRAWS:
-    pose = T.placed("screw", *d[:4], d[4] * T.MARGIN)
-    f = T.searched_against_0_4_0("screw", "float32", pose)
-    g = int(np.argmin(f.resolved)) if not f.resolved.all() else -1
-    row = {"draw": d, "resolved": f.resolved.tolist(), "unstationary": f.unstationary.tolist(),
-           "flag_wrong": f.flag_wrong.tolist(), "off_bound": f.off_bound.tolist(), "alone": f.alone.tolist(),
-           "spread": f.spread.tolist()}
-    if g >= 0:
-        with jax.enable_x64(False):
-            p, size, seeds, unrolled, rattled, conditioned, looped = T.searches("screw", "float32")
-            q = T.traced(p, "float32")
-            at = jnp.asarray(pose, dtype="float32")
-            kept = seeds(q, at)
-            unit = float(np.finfo("float32").eps) * size
-            xl, sl, wl = (np.asarray(v, np.float64) for v in looped(q, at, kept))
-            xu, su, wu = (np.asarray(v, np.float64) for v in unrolled(q, at, kept))
-            xr, sr, wr = (np.asarray(v, np.float64) for v in rattled(q, at, kept, jnp.asarray(T.kicks_for(8, "float32"))))
-            res = lambda x, s: np.linalg.norm(x - s, axis=-1) / unit
-            row["group"] = g
-            row["looped"] = {"res": float(res(xl, sl)[g]), "w": float(wl[g] / unit), "x": xl[g].tolist()}
-            row["unrolled"] = {"res": float(res(xu, su)[g]), "w": float(wu[g] / unit), "x": xu[g].tolist()}
-            row["rattled_res"] = [float(v) for v in res(xr, sr)[:, g]]
-            row["rattled_w"] = [float(v) for v in wr[:, g] / unit]
-            row["cond_looped"] = float(np.asarray(conditioned(q, at, jnp.asarray(xl, dtype="float32")))[g])
-    out["replays"].append(row)
+arm, draws = os.environ["PROBE_ARM"], int(os.environ.get("PROBE_DRAWS", "6000" if os.environ["PROBE_ARM"].startswith("hunt") else "3000"))
+rng = np.random.default_rng(int(arm.rsplit("_", 1)[1]))
+PLANTS = ("short", "stale", "early")
+bound = T.NEWTON_ULPS
+out = {"arm": arm, "draws": draws, "new": {p: 0 for p in (*PLANTS, "clean")}, "old": {p: 0 for p in PLANTS},
+       "lost": {p: 0 for p in PLANTS}, "unresolved_groups": 0, "groups": 0}
+kinds = ["cylinder"] if arm.startswith("cyl") else sorted(T.SUPPORTED)
+HUNT = arm.startswith("hunt")
+planted = {} if arm.startswith("hunt") else {(k, p): T.planted_search(k, "float32", p) for k in kinds for p in PLANTS}
+for i in range(draws):
+    kind = kinds[rng.integers(len(kinds))]
+    spin, about, towards = rng.uniform(0, 2 * np.pi, 3)
+    tilt, share = rng.uniform(0, 1.5), rng.uniform(-0.5, 1.0)
+    pose = T.placed(kind, spin, tilt, about, towards, share * T.MARGIN)
+    clean = T.searched_against_0_4_0(kind, "float32", pose)
+    out["unresolved_groups"] += int(np.sum(~clean.resolved))
+    out["groups"] += len(clean.resolved)
+    out["new"]["clean"] += int(np.max(clean.missed) > bound)
+    if np.max(clean.missed) > bound:
+        out.setdefault("clean_flagged", []).append({"i": i, "kind": kind, "draw": [spin, tilt, about, towards, share],
+            "unstationary": clean.unstationary.tolist(), "resolved": clean.resolved.tolist(), "spread": clean.spread.tolist(),
+            "alone": clean.alone.tolist(), "missed": [float(v) for v in clean.missed]})
+    for p in () if HUNT else PLANTS:
+        new = np.max(T.searched_against_0_4_0(kind, "float32", pose, planted=planted[kind, p]).missed) > bound
+        base = T.searched_against_0_4_0(kind, "float32", pose, planted=planted[kind, p], rattles=0)
+        old = np.max(np.where(base.spread <= bound, base.alone, 0.0)) > bound
+        out["new"][p] += int(new)
+        out["old"][p] += int(old)
+        out["lost"][p] += int(old and not new)
+        if old and not new:
+            out.setdefault("lost_draws", []).append({"i": i, "plant": p, "kind": kind, "draw": [spin, tilt, about, towards, share]})
+    if i % 100 == 0:
+        print(i, out, flush=True)
 os.makedirs("probe/out", exist_ok=True)
-json.dump(out, open(f"probe/out/replay_{arm}.json", "w"))
-print(json.dumps(out))
+json.dump(out, open(f"probe/out/rates_{arm}.json", "w"))
+print("RESULT", json.dumps(out))

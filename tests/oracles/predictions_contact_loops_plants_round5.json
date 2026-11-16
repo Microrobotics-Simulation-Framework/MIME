@@ -1,0 +1,20 @@
+{
+  "written": "2026-11-16, committed before the fifth probe round ran: round 4 (run 43858109892) showed the clean looped arm flagged on AMD EPYC runners at one draw by the residual rule on a looped end that had not converged (residual 1.4e6 units, 80 times the largest of the rattled arms' 1.7e4, where 0.4.0's own converges at 247), the magnitude of an unconverged end being arbitrary",
+  "phase": "PR 337 fix round 2, the residual rule held to converged ends",
+  "labels": "predictions by the builder (Sonnet) from rounds 1 to 4",
+  "seen_before": [
+    "round 1: plants' catches (cylinder 12,000 draws: short 18 vs base 18, stale 39 vs 38, early 706 vs 317; mixed 12,000: short 691 vs 673, stale 1248 vs 1230, early 914 vs 841), lost per draw cylinder short 2 stale 3, mixed short 9 stale 7 early 1; clean flagged 1 of 24,000",
+    "round 3: clean flagged 2 of 72,000 mixed draws (arms hunt_11 to hunt_22)",
+    "round 4: draw 1 of the two replayed flags group 1 by the residual rule on 4 of 6 arms (AMD EPYC), not by the flag rule, and not on the Intel arm"
+  ],
+  "operating_point": {"dtype": ["float32"], "platform": "CPU, GitHub runners of 4 vCPU", "sizes_and_parameters": "as round 1", "seeds_and_draws": "arms cyl_1 to cyl_4, mix_1 to mix_4 (3,000 draws each), hunt_11 to hunt_22 (6,000 mixed draws each, clean arm only: the same seeds as round 3), replay_1 to replay_3"},
+  "gate_5_residual_rule_on_converged_ends": {
+    "claim": "with the residual rule applied to converged looped ends only, the clean arm is flagged on 0 of 72,000 hunt draws and 0 of 24,000 rate draws, the replayed draw 1 is not flagged, and the plants' catches stay at or above the base's per kind (cylinder short 18, stale 38, early 317; mixed short 673, stale 1230, early 841) as counts of draws",
+    "kind": "acceptance",
+    "case": "probe/rates.py and probe/replay.py through tests/oracles/test_contact_loops.py",
+    "prediction": {"value": "clean 0 of 96,000; plants' catches at or above the base's counts for every plant and kind; lost per draw may remain above zero (flag-rule catches replace residual-rule catches on other draws)", "basis": "derived", "why": "a converged-flag looped end cannot be unconverged; the short and stale plants leave their groups unconverged where all arms converge (the flag rule), the early stop leaves a converged end with a residual above twice the arms'"},
+    "control": {"plant": "short, stale, early", "expected_rate": "at least the base's catches", "runs": 24000, "clean_expected": "0/96000", "resolution": "the property's bound of 128 units, infinite for a group not stationary"},
+    "if_wrong": "a clean flag names the draw (clean_flagged records it); catches under the base's name the plant whose catches the rule lost"
+  },
+  "outcomes": null
+}
