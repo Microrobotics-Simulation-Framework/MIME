@@ -32,7 +32,7 @@ import jax
 import numpy as np
 import pytest
 from allocation_draws import SLACK, Problem, bvls, line, problems, residual_line, tie_window, unique
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 import mime.control._iterative as module
@@ -562,6 +562,7 @@ def stationary_within_the_limits(rows: Callable[[Any], Any], found: Any, lower: 
 
 @pytest.mark.memory_heavy
 @settings(max_examples=40, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
+@example(seed=510511, reachable=False)  # the stress run's draw (float32 stopped at 4 iterations by a premature stall)
 @given(seed=st.integers(0, 2 ** 32 - 1), reachable=st.booleans())
 def test_float32_is_judged_against_float64(seed, reachable):
     """The arm's solve in float32 converges where float64's does, its joints within 1e-3 rad of float64's and its
