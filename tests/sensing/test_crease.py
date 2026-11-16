@@ -495,7 +495,16 @@ EXACT_STEP = 1e-4
 #: (``predictions_camera_pr5b.json``, ``image_guard``).
 DERIVATIVE_SEEN = tuple((turn, 20.0, (0.0, 0.0)) for turn in (0.0, 2.0, 4.0, 15.0))
 DERIVATIVE_SINGULAR = ((6.0, 75.0, (0.3, 0.8)), (3.0, 0.0, (0.0, 0.0)), (2.0, 0.0, (0.0, 0.0)))
-DERIVATIVE_FRESH: tuple[tuple[float, float, tuple[float, float]], ...] = ()
+#: Drawn 2026-11-16 by ``numpy.random.default_rng(10666201688275216299)`` (the seed from fresh entropy): turn U(0, 30),
+#: roll U(0, 90), offsets U(0, 1).
+DERIVATIVE_FRESH: tuple[tuple[float, float, tuple[float, float]], ...] = (
+    (1.3482647412161108, 24.808128585345663, (0.7863700316759962, 0.129462421621917)),
+    (1.8428440541539104, 19.019379682163457, (0.8730422629648931, 0.21199331858582915)),
+    (29.36202677012414, 87.47250430703737, (0.7066187859364247, 0.34617106753450977)),
+    (2.5482240708320045, 52.449788818546224, (0.13916151897523987, 0.4291590510679173)),
+    (11.932991353146052, 18.46225045457095, (0.6634188681067769, 0.3227586724944974)),
+    (21.635710677105802, 66.65891259309886, (0.1369225864345428, 0.20859012790484321)),
+)
 
 
 def derivative_line(differences: list[np.ndarray], floor: np.ndarray) -> float:

@@ -939,13 +939,69 @@
   "predictions": {
    "seen_singular": "the jvp gate holds at the 7 seen and singular views as before (the derivative is unchanged); the image check holds at each: they are scan poses, so each class's largest is the scan's own there, at most 0.8 of its line where the pose set the line ((6, 75) the [4, 8] band's sliver: about 0.80; (3, 0) the [2, 4] band's: about 0.80 to 0.83, the renderer's 1.476 against the scan's 1.427), the rest under 0.8",
    "tails": "at each of the 10 tails the class that set the line reads about 0.8 of it (the renderer's against the scan's numpy re-implementation: equal to a few digits at ordinary pixels, within a few per cent at a sliver); every tail within both lines; thin_cap raised exactly where a cap is that thin",
-   "fresh": "6 fresh views (g17c/draw_fresh.py: turn U(0, 30), roll U(0, 90), offsets U(0, 1), seed from fresh entropy, recorded): each within the jvp gate and within both band lines, the flag right; no ratio above 1 (a view's error is a draw from its band's, the margin 1.25 declared for the poses between the scan's)",
+   "fresh": "6 fresh views (turn U(0, 30), roll U(0, 90), offsets U(0, 1), seed from fresh entropy, recorded): each within the jvp gate and within both band lines, the flag right; no ratio above 1 (a view's error is a draw from its band's, the margin 1.25 declared for the poses between the scan's)",
    "grown_ripple": "size 1.5: fails the image check at every view and tail (every band's ripple line is at most 1.10, and some partial pixel near half covered at each takes about 1.5 less the error already there); size 0.25: fails at the views and tails turned 8 degrees and more (lines 0.30 and 0.20), not predicted below; the jvp gate holds under both (the plant is the image's); the suite fails on every run at both sizes (deterministic views)",
    "grown_sliver": "size 2: fails at every view and tail with a band pixel whose sub-ray passes within 0.04 px of the axis (predicted: every one), by the sliver's line where its line is under 2 and the ripple's beside it (from 0.01 to 0.04 px, judged as the rest); size 0.25: fails at the views and tails in the bands [0, 1], [8, 15] and [15, 30] (sliver lines 0.038, 0.0018, 0.0019) where a pixel is within 0.01 px; the jvp gate holds; the suite fails every run at both sizes",
    "held_caps": "fails the jvp gate at every G17 view (as before: 2800 to 3550 times the line at the seen views); at the tails (the image check alone) fails at every tail turned 1 degree or more (the caps' outline still in the jvp, about 1 px^2 a px at a cap's rim pixels), not predicted at turn 0",
    "near_axis": "fails the jvp gate at the three singular views (as in check 1); at the others and the tails not predicted (it moves the jvp only where a sub-ray passes within 0.01 px and the share there is sensitive to its read point)",
    "single_edge_crease": "fails the image check at every view and tail turned 6 degrees or less, the jvp gate holding (both see the same image); at 8 and more it may pass (G18's pixel line missed it from 15.5 degrees); on G18's pinned tails it stays 7 of 8 (float32's turn 2.0, roll 87.2 escapes: both caps thinner than two sub-pixels, their pixels judged by the flag, which the plant leaves right; never loosened)",
    "power": "at each tail a growth of the judged class's error by more than a quarter (the margin) at its worst pixel fails, along the direction that set it; elsewhere the headroom (the line less the largest) printed per view is the smallest growth seen there"
+  },
+  "fresh_drawn": {
+   "when": "2026-11-16, after 369830af (the bands, lines and predictions committed) and before any run of them",
+   "seed": 10666201688275216299,
+   "generator": "numpy.random.default_rng(seed), turn U(0, 30), roll U(0, 90), offsets U(0, 1), the seed from secrets.randbits(64)",
+   "views": [
+    [
+     1.3482647412161108,
+     24.808128585345663,
+     [
+      0.7863700316759962,
+      0.129462421621917
+     ]
+    ],
+    [
+     1.8428440541539104,
+     19.019379682163457,
+     [
+      0.8730422629648931,
+      0.21199331858582915
+     ]
+    ],
+    [
+     29.36202677012414,
+     87.47250430703737,
+     [
+      0.7066187859364247,
+      0.34617106753450977
+     ]
+    ],
+    [
+     2.5482240708320045,
+     52.449788818546224,
+     [
+      0.13916151897523987,
+      0.4291590510679173
+     ]
+    ],
+    [
+     11.932991353146052,
+     18.46225045457095,
+     [
+      0.6634188681067769,
+      0.3227586724944974
+     ]
+    ],
+    [
+     21.635710677105802,
+     66.65891259309886,
+     [
+      0.1369225864345428,
+      0.20859012790484321
+     ]
+    ]
+   ],
+   "bands": "turns 1.35 and 1.84 in [1, 2], 2.55 in [2, 4], 11.9 in [8, 15], 21.6 and 29.4 in [15, 30]"
   }
  }
 }
