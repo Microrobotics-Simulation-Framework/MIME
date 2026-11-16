@@ -106,6 +106,8 @@ def planted(names: tuple[str, ...]) -> Iterator[None]:
                 patch.setattr(module, "ACCELERATION", np.inf)
             elif PLANT == "bend_sign":
                 patch.setattr(module, "_bend", lambda *args: -TRUE_BEND(*args))
+            elif PLANT == "nan_step":
+                patch.setattr(module, "_finite_or", lambda step, fallback: step)
         yield
 
 
@@ -787,6 +789,28 @@ def rosenbrock_rows(u: Any) -> Any:
 
 #: The Rosenbrock starts that meet the cap with the acceptance, measured (of 300; start 75 in both dtypes).
 ROSENBROCK_AT_CAP = {"float64": 1, "float32": 1}
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_a_step_whose_solve_is_not_a_number_does_not_end_the_solve(dtype):
+    """On AMD runners the float32 follower's normal matrix, singular to its rounding, solved to NaN: seed 25 on EPYC 9V74
+    (the bend, so a NaN trial and the solve's stop at iteration 1, stationarity 1.8e-4) and seed 657325 on EPYC 7763 (the
+    step, in the local phase, which left the start as the best point: stationarity 0.03, four iterations), where Intel
+    solved both. Here the solves of the far points' systems (a right-hand side over 5 in the scaled gradient: the first
+    iterations of Rosenbrock's valley) are NaN on every processor, and the solve still reaches the valley's floor. Without
+    the steepest descent that stands in (``nan_step``) it stops at its start, unconverged."""
+    real = module.dense_solve
+
+    def broken(matrix: Any, rhs: Any) -> Any:
+        return jnp.where(jnp.max(jnp.abs(rhs)) > 5.0, jnp.nan, 1.0) * real(matrix, rhs)
+
+    plant = PLANT if PLANT == "nan_step" else ""
+    with in_dtype(dtype), planted((plant,) if plant else ()), pytest.MonkeyPatch.context() as patch:
+        patch.setattr(module, "dense_solve", broken)
+        solve = jax.jit(lambda start: iterative_allocation(rosenbrock_rows, start, lower=-5.0, upper=5.0, owner=OWNER))
+        starts = [jnp.asarray(np.random.default_rng(seed).uniform(-2.0, 2.0, size=6), dtype=dtype) for seed in range(8)]
+        results = [solve(start) for start in starts]
+    assert all(bool(r.converged) for r in results), [(float(r.stationarity), int(r.iterations)) for r in results]
 
 
 #: The bend's rounding against the fit, in units in the last place times the scaled columns' condition squared, on the

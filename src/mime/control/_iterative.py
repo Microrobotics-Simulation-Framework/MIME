@@ -247,6 +247,11 @@ def _held(at: _At, u: Any, lower: Any, upper: Any, band: Any) -> tuple[Any, Any]
             (at.columns * (upper - u) <= band) & (scaled < 0.0))
 
 
+def _finite_or(step: Any, fallback: Any) -> Any:
+    """``step`` where every entry is finite, ``fallback`` where not."""
+    return jnp.where(jnp.all(jnp.isfinite(step)), step, fallback)
+
+
 def _singular(matrix: Any) -> tuple[Any, Any]:
     """The least and the largest singular values of ``matrix`` (``M x K``, ``M >= K``), as the eigenvalues of the
     symmetric ``[[0, A], [A^T, 0]]``, which are ``+-`` each singular value and ``M - K`` zeros (Jordan and Wielandt): a
@@ -324,6 +329,11 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         # be trusted that far: a curved valley's floor) and lowered where it was taken whole; none in the local phase.
         damped = jnp.where(polishing, 0.0, damping) * jnp.diag(mask)
         newton = -dense_solve(jnp.where(definite, exact, normal) + damped, mask * at.gradient / at.columns)
+        # A solve of a matrix that float32 cannot tell from singular (the normal matrix squares the rows' condition: the
+        # follower's 1e8 is past 1/eps) returns non-finite entries on some processors and finite ones on others; the
+        # steepest descent step stands in, under the line search, and never a NaN the solve then stops on with its
+        # start as the best point.
+        newton = _finite_or(newton, -mask * at.gradient / at.columns)
         step = jnp.where(free, newton, -at.gradient / at.columns) / at.columns
         # The step's path bends with the rows (geodesic acceleration, Transtrum and Sethna): along ``u + alpha step +
         # alpha^2 bend / 2``, ``bend`` the least-squares fit of ``J bend = -r''``, the rows' second derivative along
@@ -340,8 +350,10 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         # step, at a step of 1/32: 8 of 300 solves met the cap, against none with no bend. Their own rule rejects the
         # whole step and raises the damping; here, where the damping only follows the line search, that crawled: 171
         # of the same 300 met the cap.
-        long = 2.0 * jnp.sqrt(jnp.sum((at.columns * bend) ** 2)) > ACCELERATION * jnp.sqrt(
-            jnp.sum((at.columns * moving) ** 2))
+        # A bend that is not a number is left out too (the comparison reads false on a NaN, so it is written as the
+        # acceptance's negation).
+        long = ~(2.0 * jnp.sqrt(jnp.sum((at.columns * bend) ** 2)) <= ACCELERATION * jnp.sqrt(
+            jnp.sum((at.columns * moving) ** 2)))
         bend = jnp.where(long, 0.0, bend)
         # What the objective resolves, judged on the scale the rows came from: a row is a difference of terms (a
         # frame's position and its goal, a field and its target) whose rounding is eps of the terms, not of the row,
