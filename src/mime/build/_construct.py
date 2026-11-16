@@ -82,8 +82,10 @@ _REFUSED_ISSUES = {"ERROR": "maddening.error", "WARNING[units]": "maddening.unit
 def _remake(plans: PlanSet, law: ControlLaw | None = None) -> tuple[Callable[[Mapping[str, Any]], Any] | None,
                                                                     dict[str, Any]]:
     """Where a study's axis names settings of a controller inside the compiled step, or its law read believed models
-    (``ctx.believed``, which ``law`` records): its law made from settings and believed numbers given by name, and their
-    values in SI (each believed number as ``believed:<key>:<parameter>``); ``None`` and none otherwise."""
+    (``ctx.believed``, which ``law`` records, and which every allocation reads): its law made from settings, believed
+    numbers and command ports' numbers given by name, and their values in SI (each believed number as
+    ``believed:<key>:<parameter>``, each port's as ``port:<apparatus>.<command>:<number>``); ``None`` and none
+    otherwise. Those its step does not read are no leaves (``controller_nodes``)."""
     controller = plans.controller
     believed = tuple(getattr(law, "believed", ()))
     if controller is None or not (controller.leaves or believed):
@@ -95,7 +97,9 @@ def _remake(plans: PlanSet, law: ControlLaw | None = None) -> tuple[Callable[[Ma
         return controller.entry.law(control_context(plans, given))
 
     settings = control_context(plans).settings
-    return remake, {**{name: settings[name] for name in controller.leaves}, **ControlModels(plans).leaves(believed)}
+    models = ControlModels(plans)
+    return remake, {**{name: settings[name] for name in controller.leaves}, **models.leaves(believed),
+                    **(models.port_leaves() if believed else {})}
 
 
 def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] = (),

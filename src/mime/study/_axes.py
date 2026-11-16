@@ -5,9 +5,13 @@ An axis is named by a typed path from a handle (``field.commands.frequency``, ``
 saves; a geometry's number is named as ``exp.source`` names it (``"ball.parts.shell.radius"``, ``"tube.inner_radius"``).
 A kind's setting that is not one number (a vector of numbers, a count, a direction) is an axis too, whole or one
 component by its index (``"vessel.radii[3]"``, ``"egg.parts.shell.semi_axes[0]"``): the nodes built from the kind hold
-it as built, so each of its values is a build of its own (:attr:`Axis.built`). A point is, by definition, the base experiment with the point's values declared in it: a command's drive set to the
-value, a thing's value declared, a law's setting written, a body's initial state set, a kind's setting written, the
-run's step changed. Its plan judges every build-time check of that experiment, as it would judge the experiment
+it as built, so each of its values is a build of its own (:attr:`Axis.built`). A command port's declared numbers are
+axes by the port's command (``"coils.ports.currents.high"``: its ``bounds``, ``low``, ``high`` or ``slew``, and
+``[i]`` for one element where it declares one per element); its stage holds each as a leaf, and so does a controller
+inside the compiled step whose allocation reads it, so a sweep of one is one program. A point is, by definition, the
+base experiment with the point's values declared in it: a command's drive set to the value, a thing's value declared,
+a law's setting written, a body's initial state set, a kind's setting written, a port's number written (its reason the
+port's own and the point's, :func:`port_reason`), the run's step changed. Its plan judges every build-time check of that experiment, as it would judge the experiment
 written so. The experiment's declared ranges are part of it (``exp.declare_range``), so a point inside a range is built
 over the range; a point outside one is the experiment with that range taken out (:func:`declared`), built for its own
 value."""
@@ -41,6 +45,7 @@ from mime.things import (
     Apparatus,
     Body,
     CommandPath,
+    CommandPort,
     InitialPath,
     Part,
     SettingPath,
@@ -73,6 +78,7 @@ class AxisKind(Enum):
     INITIAL = "initial"
     GEOMETRY = "geometry"
     CONTROLLER = "controller"
+    PORT = "port"
     DT = "dt"
     PRECISION = "precision"
 
@@ -130,12 +136,14 @@ def _laws(declarations: Sequence[Declaration]) -> dict[str, EntryDeclaration]:
 
 def candidates(declarations: Sequence[Declaration]) -> list[str]:
     """Every axis path the experiment offers by name: each apparatus's commands, each body's initial values, each
-    attached law's settings, ``dt`` and ``precision``. A thing's value (``umr.mass``) is named as ``declare`` takes it,
-    and the plan checks it."""
+    attached law's settings, each command port's declared numbers (:data:`PORT_NUMBERS`), ``dt`` and ``precision``. A
+    thing's value (``umr.mass``) is named as ``declare`` takes it, and the plan checks it."""
     found = ["dt", "precision"]
     for name, thing in _things(declarations).items():
         if isinstance(thing, Apparatus):
             found += [f"{name}.commands.{command}" for command in thing.commands]
+            found += [f"{name}.{PORTS}.{command}.{number}" for command, port in thing.ports.items()
+                      if isinstance(port, CommandPort) for number in _port_numbers(port)]
         if isinstance(thing, Body):
             found += [f"{name}.initial.{key}" for key in getattr(type(thing.dynamics), "initial_state", {})]
         if isinstance(thing, Body):
@@ -237,6 +245,8 @@ def resolve(path: object, declarations: Sequence[Declaration]) -> Axis:
     middle, _, last = rest.partition(".")
     if middle == "commands" and last:
         return _command(path, head, last, declarations)
+    if middle == PORTS and last and isinstance(_things(declarations).get(head), Apparatus):
+        return _port(path, head, last, declarations)
     if middle == "initial" and last:
         return _initial(path, head, last, declarations)
     if head not in _things(declarations):
@@ -282,7 +292,7 @@ def _geometry(path: str, declarations: Sequence[Declaration]) -> Axis | None:
 _WHOLE = {AxisKind.COMMAND: "an apparatus's command", AxisKind.VALUE: "a thing's declared value",
           AxisKind.SETTING: "a law's setting", AxisKind.INITIAL: "a body's initial value",
           AxisKind.CONTROLLER: "a controller's setting", AxisKind.DT: "the run's step", AxisKind.PRECISION: "the precision",
-          AxisKind.GEOMETRY: "a kind's setting"}
+          AxisKind.GEOMETRY: "a kind's setting", AxisKind.PORT: "a command port's number"}
 
 
 def _component(path: str, whole: str, written: str, declarations: Sequence[Declaration]) -> Axis:
@@ -309,10 +319,12 @@ def _component(path: str, whole: str, written: str, declarations: Sequence[Decla
             f"names one number of a kind's vector setting by one index into the numbers it holds",
             f"name the number by its one index into {setting}'s numbers, `{setting}[i]`",
             why="a second index would read into the setting again, so it would silently name another of its numbers")])
-    held = geometry_value(axis, declarations) if axis.kind is AxisKind.GEOMETRY else None
+    held = geometry_value(axis, declarations) if axis.kind is AxisKind.GEOMETRY else \
+        port_value(axis, declarations) if axis.kind is AxisKind.PORT and port_parts(axis)[1] != BOUNDS else None
     count = length(held)
     if count is None:
         what = (f"{value_text(held)}, which is not a vector of numbers" if axis.kind is AxisKind.GEOMETRY else
+                f"{value_text(held)}, one number for every element" if held is not None else
                 f"{_WHOLE[axis.kind]}, which a study varies whole")
         raise ArgumentRefused([Refusal(
             "study.component-path", RefusalClass.USER,
@@ -326,7 +338,8 @@ def _component(path: str, whole: str, written: str, declarations: Sequence[Decla
             "study.component-index", RefusalClass.USER,
             f"{path} names component {index} of {whole}, which holds {count} numbers (components 0 to {count - 1})",
             f"name a component from {whole}[0] to {whole}[{count - 1}]")])
-    return dataclasses.replace(axis, path=f"{axis.path}[{index}]", component=index, built=True)
+    return dataclasses.replace(axis, path=f"{axis.path}[{index}]", component=index,
+                               built=axis.kind is not AxisKind.PORT)
 
 
 def _controller_setting(path: str, setting: str, declarations: Sequence[Declaration]) -> Axis:
@@ -356,6 +369,49 @@ def _command(path: str, owner: str, command: str, declarations: Sequence[Declara
     if not isinstance(thing, Apparatus) or command not in thing.commands:
         raise _unknown(path, declarations, f"no apparatus {owner!r} with a command {command!r}")
     return Axis(path, AxisKind.COMMAND, owner, command)
+
+
+#: The middle of a command port's path, ``<apparatus>.ports.<command>.<number>``.
+PORTS = "ports"
+#: A command port's numbers an axis names: its bounds whole (one quantity ``q`` for ``(-q, q)``, or a pair), one side,
+#: and its slew.
+BOUNDS = "bounds"
+PORT_NUMBERS = (BOUNDS, "low", "high", "slew")
+
+
+def _port_numbers(port: CommandPort) -> tuple[str, ...]:
+    """The numbers of ``port`` an axis can name: those it declares."""
+    return (*((BOUNDS, "low", "high") if port.bounds is not None else ()), *(("slew",) if port.slew is not None else ()))
+
+
+def port_parts(axis: Axis) -> tuple[str, str]:
+    """A port axis's command and number (``("arm.joint_positions", "high")``)."""
+    command, _, number = axis.name.rpartition(".")
+    return command, number
+
+
+def _port(path: str, owner: str, rest: str, declarations: Sequence[Declaration]) -> Axis:
+    """A command port's declared number (``coils.ports.currents.high``): its bounds, one side of them, or its slew. The
+    stage holds each as a leaf, so a point writes it into one program. Refused where the port declares no such number
+    (``study.port-undeclared``): bounds its receiver states (a joint's limits) are no port's declaration, and a slew a
+    port leaves out is a rung the stage does not build."""
+    command, _, number = rest.rpartition(".")
+    apparatus = cast(Apparatus, _things(declarations)[owner])
+    port = apparatus.ports.get(command)
+    if not command or number not in PORT_NUMBERS or not isinstance(port, CommandPort):
+        raise _unknown(path, declarations, f"no command port of {owner!r} on {command or rest!r} with a number "
+                                           f"{number!r} (a port's are {', '.join(PORT_NUMBERS)})")
+    if number not in _port_numbers(port):
+        what, given = ("its slew", "slew=A(4000.0) / s(1.0)") if number == "slew" else ("its bounds", "bounds=...")
+        raise ArgumentRefused([Refusal(
+            "study.port-undeclared", RefusalClass.USER,
+            f"{path} names {what}, and the port on {command!r} declares none: "
+            + ("the stage builds no slew for it, so no value of one is a leaf of this program" if number == "slew" else
+               "its stage holds its receiver's stated bounds, if any, which are the receiver's, not the port's"),
+            f"declare the hardware's {'slew' if number == 'slew' else 'bounds'} on its port, Apparatus({owner!r}, "
+            f"ports={{{command!r}: CommandPort({given}, reason=...)}}), then vary them",
+            why="a port's numbers are declared from a datasheet or a measurement, and an axis varies what is declared")])
+    return Axis(path, AxisKind.PORT, owner, f"{command}.{number}")
 
 
 def _initial(path: str, owner: str, name: str, declarations: Sequence[Declaration]) -> Axis:
@@ -441,11 +497,56 @@ def declared(settings: RunSettings, declarations: Sequence[Declaration], values:
                 held.append(declaration)
             else:
                 held[at] = declaration
+        elif axis.kind is AxisKind.PORT:
+            given = cast(object, getattr(value, "reason", None))
+            held = [_ported(d, axis, value, given if isinstance(given, str) else (reasons or {}).get(axis.path, reason))
+                    for d in held]
         else:
             held = [_replaced(d, axis, value) for d in held]
     outside = {axis.path for axis, value in values.items() if outside_range(axis, value, held)}
     held = [d for d in held if not (isinstance(d, RangeDeclaration) and str(d.path) in outside)]
     return Declared(settings, tuple(held), x64, tuple(sorted(outside)))
+
+
+def port_reason(port: CommandPort, axis: Axis, value: object, reason: str) -> str:
+    """The reason a point's port carries, which a port holding a number needs: the port's own, for what the point
+    leaves as declared, and the point's, for the number it writes."""
+    return f"{port.reason}; {axis.path} = {value_text(value)}: {reason}"
+
+
+def _side(port: CommandPort, number: str) -> object:
+    """One of a port's declared numbers: its bounds as declared, one side of them, or its slew."""
+    if number in (BOUNDS, "slew"):
+        return port.bounds if number == BOUNDS else port.slew
+    bounds = port.bounds
+    pair = bounds if isinstance(bounds, tuple) else (-cast(Quantity, bounds), bounds)
+    return pair[0] if number == "low" else pair[1]
+
+
+def port_value(axis: Axis, declarations: Sequence[Declaration]) -> object | None:
+    """The number a port axis names, whole (a component's whole side), as ``declarations`` declare it."""
+    thing = _things(declarations).get(axis.owner)
+    command, number = port_parts(axis)
+    port = thing.ports.get(command) if isinstance(thing, Apparatus) else None
+    return _side(port, number) if isinstance(port, CommandPort) else None
+
+
+def _ported(declaration: Declaration, axis: Axis, value: object, reason: str) -> Declaration:
+    """``declaration`` with the port number ``axis`` names written ``value``, where it declares the axis's apparatus."""
+    if not isinstance(declaration, ThingDeclaration) or declaration.thing.name != axis.owner or \
+            not isinstance(declaration.thing, Apparatus):
+        return declaration
+    thing = declaration.thing
+    command, number = port_parts(axis)
+    port = cast(CommandPort, thing.ports[command])
+    held = written_value(axis, _side(port, number), value) if axis.component is not None else value
+    if number in ("low", "high"):
+        low, high = _side(port, "low"), _side(port, "high")
+        written = dataclasses.replace(port, bounds=(held, high) if number == "low" else (low, held))
+    else:
+        written = dataclasses.replace(port, **{number: held})
+    written = dataclasses.replace(written, reason=port_reason(port, axis, value, reason))
+    return ThingDeclaration(dataclasses.replace(thing, ports={**thing.ports, command: written}))
 
 
 def range_of(axis: Axis, declarations: Sequence[Declaration]) -> RangeDeclaration | None:
@@ -615,6 +716,11 @@ def base_value(axis: Axis, settings: RunSettings, declarations: Sequence[Declara
     if axis.kind is AxisKind.CONTROLLER:
         declaration = _controller(declarations)
         return getattr(declaration.controller, axis.name, None) if declaration is not None else None
+    if axis.kind is AxisKind.PORT:
+        held = port_value(axis, declarations)
+        if axis.component is None or not isinstance(held, Quantity):
+            return held
+        return dataclasses.replace(held, value=cast(tuple[float, ...], held.value)[axis.component])
     if axis.kind is AxisKind.SETTING:
         held: object = getattr(_laws(declarations).get(axis.owner), "entry", None)
         for part in axis.name.split("."):
@@ -629,6 +735,7 @@ def base_value(axis: Axis, settings: RunSettings, declarations: Sequence[Declara
     return None
 
 
-__all__ = ["BUILT_CUT", "CONTROLLER", "DT", "OVERRIDE_REASON", "PRECISION", "PRECISIONS", "STUDY_REASON", "Axis", "AxisKind", "Declared", "RunPath",
-           "base_value", "built_values", "candidates", "declared", "differ", "geometry_value", "length", "outside_range",
-           "range_of", "resolve", "value_text", "written_value"]
+__all__ = ["BOUNDS", "BUILT_CUT", "CONTROLLER", "DT", "OVERRIDE_REASON", "PORTS", "PORT_NUMBERS", "PRECISION", "PRECISIONS",
+           "STUDY_REASON", "Axis", "AxisKind", "Declared", "RunPath", "base_value", "built_values", "candidates", "declared",
+           "differ", "geometry_value", "length", "outside_range", "port_parts", "port_reason", "port_value", "range_of",
+           "resolve", "value_text", "written_value"]

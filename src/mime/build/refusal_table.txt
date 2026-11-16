@@ -629,6 +629,7 @@ study.not-a-member            user
 study.not-a-study-folder      user
 study.order                   user
 study.other-study             user
+study.port-undeclared         user
 study.precision               user
 study.protocol-command        user
 study.protocol-folder         user

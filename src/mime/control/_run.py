@@ -160,18 +160,19 @@ def control_context(plans: PlanSet, given: Mapping[str, Any] | None = None) -> B
     base step, its control period as ``timestep``, the built tree of each segment that carries mass, what is mounted
     on it grafted on (a :class:`ReadModels`, which records the trees the law reads), and its models of what it drives
     and observes (``ctx.believed``, ``ctx.allocator``: ``mime.control._models.ControlModels``, which records the
-    models the law reads). ``given`` replaces settings by name, and believed numbers by ``believed:<key>:<parameter>``:
-    each held as a leaf of the controller's node, read inside its traced step."""
-    from mime.control._models import BELIEVED, ControlModels
+    models the law reads). ``given`` replaces settings by name, believed numbers by ``believed:<key>:<parameter>`` and a
+    command port's numbers by ``port:<apparatus>.<command>:<number>``: each held as a leaf of the controller's node, read
+    inside its traced step."""
+    from mime.control._models import BELIEVED, PORT, ControlModels
 
     plan = cast(ControllerPlan, plans.controller)
     held = dict(given or {})
-    believed = {name: value for name, value in held.items() if name.startswith(BELIEVED)}
+    modelled = {name: value for name, value in held.items() if name.startswith((BELIEVED, PORT))}
     settings = {**numeric_settings(plan.entry), **dict(plan.settings),
-                **{name: value for name, value in held.items() if not name.startswith(BELIEVED)}}
+                **{name: value for name, value in held.items() if name not in modelled}}
     return BuildContext(plan.owner, plans.dt, plans.dt * plan.period, plan.owner, settings=settings,
                         up=plans.frame.up, gravity=plans.frame.gravity, models=ReadModels(plans.models),
-                        control=ControlModels(plans, believed))
+                        control=ControlModels(plans, modelled))
 
 
 @dataclass(frozen=True)

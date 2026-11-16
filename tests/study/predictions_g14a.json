@@ -1,0 +1,107 @@
+{
+  "written": "2026-11-16, committed before any probe arm of G14a ran (the commit that adds this file is the timestamp): a command port's bounds and slew as study axes (coils.ports.currents.high), each a leaf of the port's stage and of an in-graph controller whose allocation reads it, one axis writing both",
+  "phase": "G14a: a command port's numbers as study axes, differentiable through the stage and the allocator",
+  "labels": "the G14a agent (Opus). Gate 1's line is derived (the module docstring of tests/study/test_port_axes.py), not fitted; the bands below are fits to the laptop development runs listed under seen_before where they say so, and derivations otherwise",
+  "seen_before": [
+    "laptop (shared), scratch script, draw-free (bounds 0.4 A allocating, 0.5 A driven), float64: |g - D(h)| / |g| over h = 1e-1..1e-7: allocating 1.8e-10, 1.8e-12, 5.2e-14, 8.6e-12, 1.5e-10, 3.8e-10, 5.6e-9; driven 9.9e-10, 1.0e-11, 1.1e-13, 1.6e-11, 7.3e-12, 4.8e-10, 1.5e-9",
+    "the same, float32: allocating 5.4e-6, 6.6e-6, 3.6e-4, 4.0e-4, 4.4e-4, 4.9e-2, 2.6e-1; driven 1.1e-5, 1.1e-4, 2.3e-4, 2.8e-4, 1.0e-2, 7.9e-2, 6.2e-2",
+    "laptop, tests/study/test_port_axes.py at seed 0 (bounds 0.4911 A allocating, 0.4349 A driven): gates 1 and 2 passed once in each dtype before this file (no numbers read beyond pass); no plant had run",
+    "a 3-value sweep of .high on the allocating rig: one group, one compile (laptop)"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "GitHub runner, 4 vCPU, CPU (probe/g14a-gates, one arm a job)",
+    "sizes_and_parameters": "believed_cases.believed_sphere: Navion_2 at the origin, a 1 mm sphere of 4e-6 kg with a 2.8e-4 A m^2 moment, the force alone, no gravity, no medium, dt 1 ms, 30 base steps; allocating: BelievedPD in GRAPH mode every 5 ms, latency 1 ms, allocating a PD force within the coils' port bounds (-0.5 A low as declared at the base where .high alone moves); driven: no controller, a constant 1 A in the first coil, clipped by the stage; objective: the sphere's final z; ladder h = 1e-1..1e-7 relative",
+    "seeds_and_draws": "MIME_PORT_SEED 0..49 (detection arms) and 0..29 (the numbers arm): allocating bound uniform 0.3-0.6 A, driven bound uniform 0.3-0.8 A (numpy default_rng(seed), drawn in that order); every draw saturates (checked in each test: a coil delivered at its bound)"
+  },
+  "gate_1_central_differences": {
+    "claim": "Study.gradient in coils.ports.currents.high meets the central difference within four times the difference's own floor, read from the step sweep, in float64 and float32, through the stage alone (driven) and through the stage and the allocation (allocating)",
+    "kind": "bounds",
+    "case": "tests/study/test_port_axes.py::test_gate1_the_derivative_through_the_stage_and_the_allocation_meets_central_differences and ::test_gate1_the_derivative_through_the_stage_alone_meets_central_differences; probe/g14a_gate1.py for the numbers",
+    "prediction": {
+      "value": "every clean draw passes (0 failures in 50 x 2 dtypes x 2 rigs); miss / line at most 0.5 on every draw; the floor's rung h* at 1e-2 or 1e-3 in float64 and 1e-1 in float32; the resolution (line / |g|) 1e-12 to 1e-9 in float64, 1e-6 to 1e-3 in float32",
+      "band": [0, 0.5],
+      "unit": "miss / line",
+      "basis": "derived for the line; the rungs and resolutions fit to seen_before",
+      "why": "the response of z to the bound is smooth away from an active-set change (the saturated coil's current is the bound; the others re-solve linearly), so the truncation is small at large h and the rounding sets the floor below it"
+    },
+    "metric": "|g - D(h*)| against 4 (T(h*) + R(h*)), T the next rung's change, R = 64 eps |J| / (h t)",
+    "control": {
+      "plant": "constant (the allocation reads the declared bound, a constant, not the controller's leaf): allocating; flip_controller (the controller leaf's derivative negated): allocating; flip_stage (the stage leaf's derivative negated): driven; one_leaf_controller / one_leaf_stage (an axis's derivative writes only the stage's / only the controller's leaf): allocating / driven",
+      "environment_variable": "MIME_PLANT_PORT (draw: MIME_PORT_SEED)",
+      "expected_rate": "50/50 each",
+      "runs": 50,
+      "clean_expected": "0/50",
+      "resolution": "each plant moves g by at least the allocator's share (at least 10 % of g) or by 2 g (flip_stage on driven): five orders above the float32 resolution, ten above float64's"
+    },
+    "if_wrong": "a clean failure: read the draw's ladder; an active-set change within h* t of the bound would show as a large T at every rung (the sweep cannot resolve it, and the gate says so rather than passing)",
+    "cannot_discriminate_if": "the line is above a tenth of |g| (the floor larger than the plants' effect); the probe reports the resolution per draw"
+  },
+  "gate_1_allocator_share": {
+    "claim": "on the allocating rig the derivative through the controller's leaf alone (the stage's held) is at least a tenth of the whole, so a controller reading a constant bound is far outside gate 1's line",
+    "kind": "estimates",
+    "case": "test_gate1_..._stage_and_the_allocation_... (share line); probe/g14a_gate1.py reports both shares and their sum against g",
+    "prediction": {
+      "value": "allocator share 0.5 to 1.0 of g; stage share 0 to 0.5 of g; their sum g to rounding",
+      "band": [0.5, 1.0],
+      "unit": "share of g",
+      "basis": "derived, a guess at its size: the allocation holds the saturated coil exactly at its bound, so the stage's clip meets it at a tie, where jnp.clip's derivative splits the direct effect half to the bound and half to the value; the re-allocation of the other coils passes through the allocation alone",
+      "why": "the allocation chooses within the bound, so the stage clips nothing beyond what the allocation already holds"
+    },
+    "metric": "g with only the controller's port leaf moved, over g",
+    "control": {"plant": "constant", "environment_variable": "MIME_PLANT_PORT", "expected_rate": "50/50", "runs": 50, "clean_expected": "0/50", "resolution": "the share line is 0.10 against a predicted 0.5 or more"},
+    "if_wrong": "a share under 0.10 means the allocation is not where the derivative lives: read the run's writes against the bound",
+    "cannot_discriminate_if": "no coil saturates (the test checks it does)"
+  },
+  "gate_2_zero_control": {
+    "claim": "where no coil reaches its bound (200 A) the derivative in the bound is exactly 0.0, in both dtypes; at the drawn bound it is not",
+    "kind": "equality",
+    "case": "tests/study/test_port_axes.py::test_gate2_the_derivative_in_a_bound_no_coil_reaches_is_zero_and_not_where_one_does",
+    "prediction": {"value": "0.0 exactly at 200 A; nonzero at the drawn bound; the largest current under half of 200 A", "band": [0, 0], "unit": "m/A", "basis": "derived", "why": "no clip, box or active set touches the bound: the enumeration selects the free solution and the stage's clip passes its value"},
+    "metric": "the gradient's value",
+    "control": {"plant": "the bound lowered into saturation (the test's second half)", "environment_variable": "none", "expected_rate": "every run", "runs": 1, "clean_expected": "n/a", "resolution": "exact zero"},
+    "if_wrong": "a nonzero value at 200 A: a path from the bound that is not a clip at a reached bound (a box clipped with it, a weighted selection of active sets)",
+    "cannot_discriminate_if": "a coil reaches 200 A (checked)"
+  },
+  "gate_3_every_path_sets_both": {
+    "claim": "a study's point, a run's override and what an axis writes for a derivative or a fit each set the stage's leaf and the controller's to the value; the override runs as the experiment built at the value",
+    "kind": "equality",
+    "case": "tests/study/test_port_axes.py::test_every_path_that_sets_a_ports_bound_sets_the_stages_leaf_and_the_controllers",
+    "prediction": {"value": "both leaves equal the value on every path; override and build within rtol 1e-12", "band": [0, 1e-12], "unit": "relative", "basis": "derived", "why": "both leaves are made from the point's plan; written() finds every leaf the probe moves"},
+    "metric": "the leaves' values; the final pose",
+    "control": {"plant": "one_leaf_controller, one_leaf_stage", "environment_variable": "MIME_PLANT_PORT", "expected_rate": "50/50 each", "runs": 50, "clean_expected": "0/50", "resolution": "the value is 0.9 of the bound: a leaf held at the base differs by 10 %"},
+    "if_wrong": "a path that writes one leaf: name it, and the believed-limit seam it would open in silence",
+    "cannot_discriminate_if": "the value equals the base (it is 0.9 of it)"
+  },
+  "gate_4_base_unchanged": {
+    "claim": "at the declared bound every in-graph allocating loop of the repo runs as on the release tip: its outputs within 4 ulp of their scale (predicted bit-identical), while its derived hash moves (the controller node holds the port's numbers as leaves)",
+    "kind": "equality",
+    "case": "probe/g4_dump.py through .github/probe/bit_compare.py, base origin/release/v0.3.0 against the head, one CPU, one thread, float64 and float32: believed_sphere default (BelievedPD, 25 A), slewed with an effort (40 A/s, smooth 1 A), GlitchedPD at a tripping port, a miscalibrated belief, the believed camera probe, camera_loop's camera and state arms; controls: the callback mode (hash and outputs unchanged), the allocating probe whose step reads no bound (unchanged), and one ulp of the bound (outputs differ)",
+    "prediction": {"value": "every array bit-identical except the one-ulp control; derived hash moved for every GRAPH loop whose step allocates, unchanged for the two controls", "band": [0, 4], "unit": "ulp of the array's scale", "basis": "guess for bit identity (a parameter for a constant can reorder XLA's fusion; nothing here folds the bound into arithmetic)", "why": "the bound enters only comparisons and selections, so a leaf and a constant of the same value give the same bits unless XLA folds the constant into a fused expression"},
+    "metric": "max |head - base| over max |base| eps, per array",
+    "control": {"plant": "control_one_ulp: the bound one ulp up in the head's tree only", "environment_variable": "none (the program's name)", "expected_rate": "differs, every run", "runs": 1, "clean_expected": "the repeat control: equal", "resolution": "one ulp of the bound"},
+    "if_wrong": "a difference over 4 ulp: read which node's output moves first; a moved hash in a callback or unread case is a leaf the step does not read",
+    "cannot_discriminate_if": "the one-ulp control comes back equal (the comparison cannot fail)"
+  },
+  "gate_5_one_compile": {
+    "claim": "a three-value sweep of .high is one group and one compile in the plan, each member the experiment built at its value",
+    "kind": "equality",
+    "case": "tests/study/test_port_axes.py::test_a_sweep_of_the_bound_is_one_group_and_one_compile_and_each_member_is_its_own_build",
+    "prediction": {"value": "1 group, 1 compile; members within rtol 1e-12 of their builds", "band": [1, 1], "unit": "groups", "basis": "seen before (laptop)", "why": "the bound is a leaf of the stage and of the controller, so the structure key does not hold it"},
+    "metric": "plan.groups, plan.compiles",
+    "control": {"plant": "constant (the controller's program holds the bound: one group a value)", "environment_variable": "MIME_PLANT_PORT", "expected_rate": "every run", "runs": 1, "clean_expected": "pass", "resolution": "n/a"},
+    "if_wrong": "the split reason names what holds the value",
+    "cannot_discriminate_if": "n/a"
+  },
+  "gate_6_trip": {
+    "claim": "a port that trips declares its derivative in the bound a jump (piecewise_jump) in the gradient's path, never a silent zero",
+    "kind": "acceptance",
+    "case": "tests/study/test_port_axes.py::test_a_trip_declares_the_jump_of_its_derivative_in_the_bound",
+    "prediction": {"value": "path['ports:coils'] = piecewise_jump; a clipping port's piecewise_kink", "band": [0, 0], "unit": "", "basis": "derived", "why": "the stage's status composes its trip's switch of order -1"},
+    "metric": "GradientResult.path",
+    "control": {"plant": "the clipping port beside it", "environment_variable": "none", "expected_rate": "every run", "runs": 1, "clean_expected": "pass", "resolution": "n/a"},
+    "if_wrong": "the stage off the path: the derivative's sources would not include it",
+    "cannot_discriminate_if": "n/a"
+  },
+  "outcomes": null
+}
