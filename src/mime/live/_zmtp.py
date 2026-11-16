@@ -38,7 +38,6 @@ MORE, LONG, COMMAND = 0x01, 0x02, 0x04
 QUEUE_LIMIT = 1000
 #: The peer socket types each of ours speaks with.
 PEERS = {"PUB": {"SUB", "XSUB"}, "REP": {"REQ", "DEALER"}, "SUB": {"PUB", "XPUB"}, "REQ": {"REP", "ROUTER"}}
-LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
 #: The most bytes a request (its parts together) may hold, and a subscriber's message: commands are small JSON objects,
 #: a subscription a topic.
 REQUEST_LIMIT = 1 << 20
@@ -225,12 +224,28 @@ def parse_endpoint(endpoint: str) -> tuple[str, int]:
 
 
 def is_loopback(host: str) -> bool:
-    if host in LOOPBACK:
-        return True
+    """Whether a socket bound to ``host`` is reached from this machine only: an address in 127.0.0.0/8 or ``::1``, or
+    ``localhost`` where every IPv4 address it resolves to is one, as the bind resolves it. Any other name is not, whatever
+    it resolves to now: what it resolves to when bound may differ."""
+    if host.lower() == "localhost":
+        try:
+            found = socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)
+        except OSError:
+            return False
+        return bool(found) and all(ipaddress.ip_address(info[4][0]).is_loopback for info in found)
     try:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
+
+
+class ListenError(OSError):
+    """A socket of :class:`Server`'s that could not listen: which (``REP`` or ``PUB``), on what endpoint, and the
+    system's error (its ``errno``, ``EADDRINUSE`` for a port in use)."""
+
+    def __init__(self, kind: str, endpoint: str, error: OSError) -> None:
+        super().__init__(error.errno, error.strerror or str(error))
+        self.kind, self.endpoint = kind, endpoint
 
 
 class Server:
@@ -258,16 +273,18 @@ class Server:
         for kind, endpoint in (("REP", commands), ("PUB", frames)):
             host, port = parse_endpoint(endpoint)
             family = socket.AF_INET6 if ":" in host else socket.AF_INET
-            listener = socket.socket(family, socket.SOCK_STREAM)
-            if sys.platform != "win32":  # Windows' SO_REUSEADDR would let a second server take a port in use
-                listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener: socket.socket | None = None
             try:
+                listener = socket.socket(family, socket.SOCK_STREAM)
+                if sys.platform != "win32":  # Windows' SO_REUSEADDR would let a second server take a port in use
+                    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 listener.bind((host, port))
-            except OSError:
-                listener.close()
+                listener.listen(16)
+            except OSError as error:
+                if listener is not None:
+                    listener.close()
                 self.close()
-                raise
-            listener.listen(16)
+                raise ListenError(kind, endpoint, error) from error
             listener.setblocking(False)
             self.selector.register(listener, selectors.EVENT_READ)
             self.listeners[listener.fileno()] = (listener, kind)
@@ -619,6 +636,6 @@ class Client:
         self.sock.close()
 
 
-__all__ = ["ACCEPT_REST_SECONDS", "GREETING", "HANDSHAKE_SECONDS", "LOOPBACK", "PARTS_LIMIT", "PENDING_LIMIT",
-           "QUEUE_LIMIT", "REPLY_BUFFER_LIMIT", "REQUEST_LIMIT", "SUBSCRIPTION_LIMIT", "Client", "PeerEvent",
+__all__ = ["ACCEPT_REST_SECONDS", "GREETING", "HANDSHAKE_SECONDS", "PARTS_LIMIT", "PENDING_LIMIT", "QUEUE_LIMIT",
+           "REPLY_BUFFER_LIMIT", "REQUEST_LIMIT", "SUBSCRIPTION_LIMIT", "Client", "ListenError", "PeerEvent",
            "ProtocolError", "Server", "frame", "is_loopback", "message", "parse_endpoint", "ready"]

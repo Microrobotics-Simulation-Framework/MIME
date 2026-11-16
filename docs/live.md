@@ -103,9 +103,14 @@ process is gone (a viewer that crashed, a test runner killed), the session stops
 and the server exits. On Linux the kernel signals it (`PR_SET_PDEATHSIG`); on every platform the loop also looks between
 chunks at whether its launcher is alive (on POSIX its parent's pid changes when it is adopted; on Windows the
 launcher's process handle is signalled). `--outlive-launcher` serves on regardless, for a server started to run
-detached (with `nohup`, say). **It binds to localhost.** A session has no authentication of its
-own: reach a remote one through an SSH tunnel, which authenticates and encrypts; `--remote` binds another address all
-the same.
+detached (with `nohup`, say). **It binds to loopback.** A session has no authentication of its
+own: reach a remote one through an SSH tunnel, which authenticates and encrypts. An address that is not loopback
+(IPv4's loopback block or IPv6's loopback address, or `localhost` where it resolves to loopback only; a host name is
+not resolved for this) is refused before anything binds, `live.commands-not-loopback` for the command socket and
+`live.frames-not-loopback` for the frame socket. `--allow-remote-commands` binds it all the same and warns on
+standard error, naming each such address: whoever reaches the command socket can start, stop and step the session and
+set its live inputs. A port in use, by another `mime serve` say, is refused, naming it (`live.address-in-use`):
+`tcp://127.0.0.1:0` takes a free port, which the ready line and the ready file below give.
 
 <!-- mime-fragment: an ssh line for the reader's own host -->
 ```sh

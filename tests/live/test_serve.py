@@ -183,7 +183,8 @@ def test_a_request_that_is_not_json_is_refused_in_the_coded_shape(launch, folder
 def test_an_address_that_is_not_loopback_is_refused_before_the_build(folder, tmp_path):
     done = subprocess.run([*MIME, "serve", str(folder), "--commands", "tcp://0.0.0.0:0"], capture_output=True,
                           text=True, timeout=120, env={**os.environ, "MIME_TRACEBACK": ""})
-    assert done.returncode == 2 and "live.remote-bind" in done.stderr and "load report" not in done.stdout
+    assert done.returncode == 2 and "live.commands-not-loopback" in done.stderr and "load report" not in done.stdout
+    assert "--allow-remote-commands" in done.stderr
 
 
 def test_a_port_in_use_and_an_address_not_of_this_machine_are_refused(folder):
@@ -198,7 +199,8 @@ def test_a_port_in_use_and_an_address_not_of_this_machine_are_refused(folder):
     finally:
         held.close()
     with pytest.raises(BuildRefused, match="live.transport"):
-        serve(folder, commands="tcp://192.0.2.1:0", frames="tcp://127.0.0.1:0", remote=True, say=lambda line: None)
+        serve(folder, commands="tcp://192.0.2.1:0", frames="tcp://127.0.0.1:0", allow_remote_commands=True,
+              say=lambda line: None)
 
 
 def test_a_malformed_argument_is_refused_over_the_wire_and_the_server_goes_on(launch, folder, tmp_path):
