@@ -20,11 +20,10 @@ from jax import Array
 from jaxtyping import Float
 from maddening.core.compliance.metadata import DiscretizationOrder, NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
-from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, quaternion, \
-    switch, typed_view
+from mime.core import NodeFields, ParamSpec, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
+    quaternion, switch, typed_view
 from mime.core import ledger as books
 from mime.core.multibody import ROOT, Articulation, cholesky_factor, cholesky_solve, compose, forward_kinematics, \
     frame_angular_jacobians, frame_forces, frame_motions, inverse_dynamics, mass_matrix

@@ -193,8 +193,9 @@ def make_law(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusal]]:
 def law_and_models(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusal], tuple[str, ...]]:
     """:func:`make_law`, and the segments whose built trees (``ctx.models``) the law read while it was made, in
     order. A refusal the law meets while it is made (``ctx.allocator``'s, ``ctx.believed``'s, or any MIME refusal it
-    raises) is a problem with its own code; any other error it raises is the entry's defect. A law that read believed
-    models is a :class:`_MadeLaw` naming them."""
+    raises, except a unit error: it is a bug in the law's own arithmetic, :attr:`MimeError.kept_when_wrapped`) is a
+    problem with its own code; any other error it raises, a unit error included, is the entry's defect. A law that read
+    believed models is a :class:`_MadeLaw` naming them."""
     plan = plans.controller
     if plan is None:
         return None, [], ()
@@ -202,9 +203,9 @@ def law_and_models(plans: PlanSet) -> tuple[ControlLaw | None, list[str | Refusa
     models = cast(ReadModels, context.models)
     try:
         law = plan.entry.law(context)
-    except MimeError as refused:
-        return None, list(refused.refusals), tuple(sorted(models.read))
     except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+        if isinstance(error, MimeError) and error.kept_when_wrapped:
+            return None, list(error.refusals), tuple(sorted(models.read))
         return None, [f"law() raised {error!r}"], tuple(sorted(models.read))
     if not isinstance(cast(object, law), ControlLaw):
         return None, [f"law() returned {law!r}, not a mime.registry.ControlLaw"], tuple(sorted(models.read))

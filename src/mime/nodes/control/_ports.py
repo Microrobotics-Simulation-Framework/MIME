@@ -35,10 +35,9 @@ from jax import Array
 from jaxtyping import Int
 from maddening.core.compliance.metadata import NodeMeta
 from maddening.core.node import BoundaryInputSpec
-from maddening.core.params import ParamSpec
 from typing_extensions import ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Units, as_run_array, jnp, node_fields, node_input, switch
+from mime.core import MimeNode, NodeFields, ParamSpec, Units, as_run_array, jnp, node_fields, node_input, switch
 
 #: The local names of the two stages beside an apparatus's id: ``ports:<apparatus>``, ``measure:<apparatus>``.
 COMMAND_STAGE, MEASURE_STAGE = "ports", "measure"

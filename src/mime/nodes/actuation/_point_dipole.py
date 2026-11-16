@@ -11,10 +11,10 @@ from jax import Array
 from jaxtyping import Float
 from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
-from maddening.core.params import ParamSpec
 from typing_extensions import ReadOnly, TypedDict
 
-from mime.core import NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_input, quaternion, switch, typed_view
+from mime.core import NodeFields, ParamSpec, Symbol, SymbolKind, as_run_array, jnp, node_input, quaternion, switch, \
+    typed_view
 from mime.nodes.actuation._chain import POSE_UNITS, MountedNode, MountInputs, flattened
 from mime.units import VACUUM_PERMEABILITY
 

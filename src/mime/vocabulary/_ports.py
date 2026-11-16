@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
 
-from mime.units import CURRENT, DIMENSIONLESS, FORCE, LENGTH, MASS, TIME, Dimension
+from mime.units import ENERGY, POWER, Dimension, parse_label
 from mime.vocabulary._mime import (
     APPLIED_WRENCH,
     BACKGROUND_LOAD,
@@ -82,31 +82,10 @@ class Definiteness(Enum):
     STATE = "state"
 
 
-#: Watts and joules, what a flow paired with a delivery gives over a unit of time and over a step.
-POWER = FORCE * LENGTH / TIME
-ENERGY = FORCE * LENGTH
-#: The symbols the vocabulary's units are written in, each a dimension; a radian is a dimensionless count.
-_SYMBOLS = {"1": DIMENSIONLESS, "rad": DIMENSIONLESS, "m": LENGTH, "kg": MASS, "s": TIME, "A": CURRENT, "N": FORCE,
-            "T": MASS / (CURRENT * TIME**2), "Pa": FORCE / LENGTH**2, "J": ENERGY, "W": POWER}
-
-
-def _dimension(written: str) -> Dimension:
-    """The dimension of units as the vocabulary writes them: symbols separated by spaces, each ``/`` dividing by what
-    follows it, each symbol with an optional integer power (``N s/m``, ``m/s^2``, ``kg m^2``)."""
-    found = DIMENSIONLESS
-    for word in written.split():
-        for index, term in enumerate(word.split("/")):
-            symbol, _, power = term.partition("^")
-            if symbol not in _SYMBOLS or (power and not power.lstrip("-").isdigit()):
-                raise ValueError(f"{written!r} names {term!r}, which is not one of {sorted(_SYMBOLS)} with a power")
-            factor = _SYMBOLS[symbol] ** (int(power) if power else 1)
-            found = found * factor if index == 0 else found / factor
-    return found
-
-
 def _parts(units: str) -> list[Dimension]:
-    """The dimension of each part of a composite unit (``N; N m``)."""
-    return [_dimension(part.strip()) for part in units.split(";")]
+    """The dimension of each part of a composite unit (``N; N m``): :func:`mime.units.parse_label`'s, which reads every
+    unit label MIME writes."""
+    return list(parse_label(units))
 
 
 def _paired_dimensions(flow: list[Dimension], delivered: list[Dimension],

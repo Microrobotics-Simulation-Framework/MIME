@@ -36,10 +36,10 @@ import numpy as np
 from jax import Array
 from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta, Reference
-from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, run_dtype
+from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, \
+    run_dtype
 from mime.core import ledger as books
 from mime.nodes.flow._waveform import waveform_at
 from mime.nodes.flow.fvm import _rk3

@@ -13,10 +13,9 @@ from jax import Array
 from jaxtyping import Bool, Float
 from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
-from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_input, \
+from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_input, \
     run_constants_given, run_dtype
 from mime.core._node import FLOOR_LIMITED, STAGNATED, rechecked
 from mime.nodes.hydro.mrs._node import (
