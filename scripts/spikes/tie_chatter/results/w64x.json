@@ -1,0 +1,403 @@
+{
+ "arm": "w64x",
+ "ties": 34359738368,
+ "sticky": false,
+ "tolerance": 0.001,
+ "problems": {
+  "octomag": {
+   "float64": {
+    "fast": {
+     "bottom": {
+      "ticks": 27000,
+      "max_relative_move": 0.0009778620974112491,
+      "all_moves_under_tolerance": true,
+      "max_jump": 10.0,
+      "switches_1A": 6,
+      "switch_u_1A": [
+       0.5851,
+       0.5841,
+       0.5851,
+       0.5841,
+       0.5851,
+       0.5841
+      ],
+      "switches_0.03A": 6,
+      "switch_u_0.03A": [
+       0.5851,
+       0.5841,
+       0.5851,
+       0.5841,
+       0.5851,
+       0.5841
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 12,
+      "traced": [
+       [
+        "plain",
+        34359738368
+       ]
+      ],
+      "seconds": 10.2
+     },
+     "top": {
+      "ticks": 27000,
+      "max_relative_move": 0.0009778620974147975,
+      "all_moves_under_tolerance": true,
+      "max_jump": 10.0,
+      "switches_1A": 6,
+      "switch_u_1A": [
+       0.5841,
+       0.5851,
+       0.5841,
+       0.5851,
+       0.5841,
+       0.5851
+      ],
+      "switches_0.03A": 6,
+      "switch_u_0.03A": [
+       0.5841,
+       0.5851,
+       0.5841,
+       0.5851,
+       0.5841,
+       0.5851
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 12,
+      "traced": [
+       [
+        "plain",
+        34359738368
+       ]
+      ],
+      "seconds": 20.4
+     }
+    },
+    "slow": {
+     "bottom": {
+      "ticks": 90000,
+      "max_relative_move": 9.774321458940491e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 10.0,
+      "switches_1A": 2,
+      "switch_u_1A": [
+       0.5849,
+       0.5848
+      ],
+      "switches_0.03A": 2,
+      "switch_u_0.03A": [
+       0.5849,
+       0.5848
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 4,
+      "traced": [
+       [
+        "plain",
+        34359738368
+       ]
+      ],
+      "seconds": 53.4
+     },
+     "top": {
+      "ticks": 90000,
+      "max_relative_move": 9.77432145886882e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 10.0,
+      "switches_1A": 2,
+      "switch_u_1A": [
+       0.5848,
+       0.5849
+      ],
+      "switches_0.03A": 2,
+      "switch_u_0.03A": [
+       0.5848,
+       0.5849
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 4,
+      "traced": [
+       [
+        "plain",
+        34359738368
+       ]
+      ],
+      "seconds": 86.7
+     }
+    }
+   }
+  },
+  "cardiomag": {
+   "float64": {
+    "fast": {
+     "bottom": {
+      "ticks": 6000,
+      "max_relative_move": 0.0009429205160612654,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.09046708974479323,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 318,
+      "switch_u_0.03A": [
+       -0.0516,
+       0.0846,
+       0.09,
+       0.0909,
+       0.0918,
+       0.0927,
+       0.0936,
+       0.0945,
+       0.0954,
+       0.0963,
+       0.0972,
+       0.0981,
+       0.099,
+       0.0998,
+       0.1007,
+       0.1016,
+       0.1025,
+       0.1034,
+       0.1043,
+       0.1052,
+       0.106,
+       0.1069,
+       0.1078,
+       0.1087,
+       0.1096,
+       0.1104,
+       0.1113,
+       0.1122,
+       0.1131,
+       0.1139,
+       0.1148,
+       0.1157,
+       0.1165,
+       0.1174,
+       0.1183,
+       0.1191,
+       0.12,
+       0.1209,
+       0.1217,
+       0.1226
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 72,
+      "traced": [
+       [
+        "plain",
+        34359738368
+       ]
+      ],
+      "seconds": 89.2
+     },
+     "top": {
+      "ticks": 6000,
+      "max_relative_move": 0.0009429205160618624,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.09046708974480566,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 318,
+      "switch_u_0.03A": [
+       0.1354,
+       0.132,
+       0.1311,
+       0.1303,
+       0.1294,
+       0.1286,
+       0.1277,
+       0.1269,
+       0.126,
+       0.1252,
+       0.1243,
+       0.1235,
+       0.1226,
+       0.1217,
+       0.1209,
+       0.12,
+       0.1191,
+       0.1183,
+       0.1174,
+       0.1165,
+       0.1157,
+       0.1148,
+       0.1139,
+       0.1131,
+       0.1122,
+       0.1113,
+       0.1104,
+       0.1096,
+       0.1087,
+       0.1078,
+       0.1069,
+       0.106,
+       0.1052,
+       0.1043,
+       0.1034,
+       0.1025,
+       0.1016,
+       0.1007,
+       0.0998,
+       0.099
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 72,
+      "traced": [
+       [
+        "plain",
+        34359738368
+       ]
+      ],
+      "seconds": 91.7
+     }
+    },
+    "slow": {
+     "bottom": {
+      "ticks": 20000,
+      "max_relative_move": 9.42522195189549e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.09986487321604454,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 6,
+      "switch_u_0.03A": [
+       -0.0522,
+       0.0841,
+       0.1362,
+       0.1361,
+       0.084,
+       -0.0523
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 26,
+      "traced": [
+       [
+        "plain",
+        34359738368
+       ]
+      ],
+      "seconds": 99.3
+     },
+     "top": {
+      "ticks": 20000,
+      "max_relative_move": 9.42522195192026e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.09986487321604454,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 6,
+      "switch_u_0.03A": [
+       0.1361,
+       0.084,
+       -0.0523,
+       -0.0522,
+       0.0841,
+       0.1362
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 26,
+      "traced": [
+       [
+        "plain",
+        34359738368
+       ]
+      ],
+      "seconds": 107.1
+     }
+    }
+   }
+  },
+  "octo_field": {
+   "float64": {
+    "fast": {
+     "bottom": {
+      "ticks": 12000,
+      "max_relative_move": 0.0007857063460610344,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.002567776829576651,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 0,
+      "traced": [
+       [
+        "plain",
+        34359738368
+       ]
+      ],
+      "seconds": 111.9
+     },
+     "top": {
+      "ticks": 12000,
+      "max_relative_move": 0.0007857063460610345,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.002567776829576651,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 0,
+      "traced": [
+       [
+        "plain",
+        34359738368
+       ]
+      ],
+      "seconds": 116.9
+     }
+    },
+    "slow": {
+     "bottom": {
+      "ticks": 40000,
+      "max_relative_move": 7.854290034897973e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.00025677778625832204,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 0,
+      "traced": [
+       [
+        "plain",
+        34359738368
+       ]
+      ],
+      "seconds": 132.0
+     },
+     "top": {
+      "ticks": 40000,
+      "max_relative_move": 7.85429003489849e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.0002567777862596543,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 0,
+      "traced": [
+       [
+        "plain",
+        34359738368
+       ]
+      ],
+      "seconds": 147.0
+     }
+    }
+   }
+  }
+ },
+ "controls": {
+  "runs": 20,
+  "alternating_law_caught_every_tick": 20,
+  "under_threshold_jump_not_counted": 20,
+  "under_threshold_jump_counted_at_0.03A": 20,
+  "fast_target_not_counted": 20
+ }
+}

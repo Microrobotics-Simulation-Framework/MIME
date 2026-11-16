@@ -1,33 +1,33 @@
 {
- "written": "2026-11-16, second launch, committed before it runs (the first launch's six arms have read; this adds one arm the first read suggested)",
- "phase": "spike/tie-chatter, arm last64: the law's own reference= argument set to the previous tick's commands (what the Allocator passes as toward='last'), window 64: a hysteresis that needs no new state seam",
- "seen_before": [
-  "the first launch: tie64 chatters on OctoMag in float32 (18 and 70 per fast and slow run), sticky64 does not (0 or 1), octo_field is chatter-free at every window but 0"
- ],
- "operating_point": {
-  "dtype": [
-   "float32",
-   "float64"
+  "written": "2026-11-16, second launch, committed before it runs (the first launch's six arms have read; this adds one arm the first read suggested)",
+  "phase": "spike/tie-chatter, arm last64: the law's own reference= argument set to the previous tick's commands (what the Allocator passes as toward='last'), window 64: a hysteresis that needs no new state seam",
+  "seen_before": [
+    "the first launch: tie64 chatters on OctoMag in float32 (18 and 70 per fast and slow run), sticky64 does not (0 or 1), octo_field is chatter-free at every window but 0"
   ],
-  "platform": "a GitHub runner, CPU (JAX_PLATFORMS=cpu); one job per arm; the allocator called through lax.scan, one tick a call, in the dtype's own arithmetic",
-  "sizes_and_parameters": "OctoMag at the centre of its region, kind both (3 field rows over 10 mT, 5 gradient rows over 1 T/m), limits +-5 A, target = (field along y at the 5 A reach) x e^u, u(k) = 1.0 + 1.4 sin(2 pi k / T + phi), phi = -pi/2 (start at u=-0.4, the optimum face's side) or +pi/2 (start at u=2.4, inside the tied band); CardioMag at the centre, the second draw's wanted vector x e^u, u(k) = 0.3 sin(2 pi k / T + phi). Fast T = 9000 (OctoMag), 2000 (CardioMag), 3 periods; slow T = 90000 (OctoMag), 20000 (CardioMag), 1 period: the target's relative move per tick is at most 9.4e-4 (fast) and 9.4e-5 (slow), under the tolerance 1e-3 (0.1 % of |target|). A switch is chatter when the largest command jump between consecutive ticks exceeds 1 A while the relative move of the scaled target is under the tolerance. 1 A is a fifth of the 5 A limit and a tenth of the 10 A box; a legitimate command move on this path is at most 5 A x 1e-3 x the problem's gain (about 0.005 to 0.01 A a tick, measured by the scans), and float32's rounding of a 5 A command is 6e-7 A.",
-  "arms": "TIE_ULPS 0, 16, 64, 128 (a patched module constant, a fresh jit per arm, the traced value recorded); sticky64 (window 64, the previous tick's face kept if inside the window, prototyped in the spike); w64x (float64 only, the window 64 x 2^29 so that it is as wide in absolute terms as float32's 64: the noise-free control of the edge crossings)",
-  "extra_problem": "octo_field: OctoMag, field rows only (3 rows, 8 coils: wide, non-unique), target 0.3 x the 5 A reach x e^u, u in [-0.5, 0.5], T = 9000 x 3 periods: the problem the window is for, where faces tie in exact arithmetic and the least-effort rule must break the tie. Not F0's draws; read apart"
- },
- "gate_1_last64_is_as_quiet_as_sticky": {
-  "claim": "last64 counts at most 1 switch per run at 1 A on OctoMag and 0 on CardioMag and octo_field in float32, 0 in float64",
-  "kind": "range",
-  "prediction": {
-   "value": "OctoMag: bottom start 0, top start 1 or 0 (the first tick's reference is zero, which ties to the lowest index; a start in the tied band holds the face it began on and leaves it once, at the band's edge); others 0",
-   "band": [
-    0,
-    1
-   ],
-   "unit": "switches per run at 1 A",
-   "basis": "derived: among faces tied in residual the law takes the least |u - reference|^2, the reference the previous commands, so the face held has effort ~0 and any other a whole box squared",
-   "why": "the tie-break itself becomes the hysteresis"
+  "operating_point": {
+    "dtype": [
+      "float32",
+      "float64"
+    ],
+    "platform": "a GitHub runner, CPU (JAX_PLATFORMS=cpu); one job per arm; the allocator called through lax.scan, one tick a call, in the dtype's own arithmetic",
+    "sizes_and_parameters": "OctoMag at the centre of its region, kind both (3 field rows over 10 mT, 5 gradient rows over 1 T/m), limits +-5 A, target = (field along y at the 5 A reach) x e^u, u(k) = 1.0 + 1.4 sin(2 pi k / T + phi), phi = -pi/2 (start at u=-0.4, the optimum face's side) or +pi/2 (start at u=2.4, inside the tied band); CardioMag at the centre, the second draw's wanted vector x e^u, u(k) = 0.3 sin(2 pi k / T + phi). Fast T = 9000 (OctoMag), 2000 (CardioMag), 3 periods; slow T = 90000 (OctoMag), 20000 (CardioMag), 1 period: the target's relative move per tick is at most 9.4e-4 (fast) and 9.4e-5 (slow), under the tolerance 1e-3 (0.1 % of |target|). A switch is chatter when the largest command jump between consecutive ticks exceeds 1 A while the relative move of the scaled target is under the tolerance. 1 A is a fifth of the 5 A limit and a tenth of the 10 A box; a legitimate command move on this path is at most 5 A x 1e-3 x the problem's gain (about 0.005 to 0.01 A a tick, measured by the scans), and float32's rounding of a 5 A command is 6e-7 A.",
+    "arms": "TIE_ULPS 0, 16, 64, 128 (a patched module constant, a fresh jit per arm, the traced value recorded); sticky64 (window 64, the previous tick's face kept if inside the window, prototyped in the spike); w64x (float64 only, the window 64 x 2^29 so that it is as wide in absolute terms as float32's 64: the noise-free control of the edge crossings)",
+    "extra_problem": "octo_field: OctoMag, field rows only (3 rows, 8 coils: wide, non-unique), target 0.3 x the 5 A reach x e^u, u in [-0.5, 0.5], T = 9000 x 3 periods: the problem the window is for, where faces tie in exact arithmetic and the least-effort rule must break the tie. Not F0's draws; read apart"
   },
-  "if_wrong": "the reference changes the minimiser of non-unique problems (octo_field): if last64 chatters there it is the reference's drift (commands follow their own last value), not a tie"
- },
- "outcomes": null
+  "gate_1_last64_is_as_quiet_as_sticky": {
+    "claim": "last64 counts at most 1 switch per run at 1 A on OctoMag and 0 on CardioMag and octo_field in float32, 0 in float64",
+    "kind": "range",
+    "prediction": {
+      "value": "OctoMag: bottom start 0, top start 1 or 0 (the first tick's reference is zero, which ties to the lowest index; a start in the tied band holds the face it began on and leaves it once, at the band's edge); others 0",
+      "band": [
+        0,
+        1
+      ],
+      "unit": "switches per run at 1 A",
+      "basis": "derived: among faces tied in residual the law takes the least |u - reference|^2, the reference the previous commands, so the face held has effort ~0 and any other a whole box squared",
+      "why": "the tie-break itself becomes the hysteresis"
+    },
+    "if_wrong": "the reference changes the minimiser of non-unique problems (octo_field): if last64 chatters there it is the reference's drift (commands follow their own last value), not a tie"
+  },
+  "outcomes": "held: 0 / 1 at 1 A on OctoMag float32, 0 elsewhere; see RESULT.md"
 }

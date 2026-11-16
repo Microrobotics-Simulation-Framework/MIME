@@ -1,0 +1,811 @@
+{
+ "arm": "tie128",
+ "ties": 128,
+ "sticky": false,
+ "tolerance": 0.001,
+ "problems": {
+  "octomag": {
+   "float32": {
+    "fast": {
+     "bottom": {
+      "ticks": 27000,
+      "max_relative_move": 0.0009779184735028128,
+      "all_moves_under_tolerance": true,
+      "max_jump": 10.0,
+      "switches_1A": 12,
+      "switch_u_1A": [
+       0.1906,
+       2.1451,
+       2.1446,
+       0.1898,
+       0.1906,
+       2.1451,
+       2.1446,
+       0.1898,
+       0.1906,
+       2.1451,
+       2.1446,
+       0.1898
+      ],
+      "switches_0.03A": 12,
+      "switch_u_0.03A": [
+       0.1906,
+       2.1451,
+       2.1446,
+       0.1898,
+       0.1906,
+       2.1451,
+       2.1446,
+       0.1898,
+       0.1906,
+       2.1451,
+       2.1446,
+       0.1898
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 12,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 11.5
+     },
+     "top": {
+      "ticks": 27000,
+      "max_relative_move": 0.0009779184735028128,
+      "all_moves_under_tolerance": true,
+      "max_jump": 10.0,
+      "switches_1A": 12,
+      "switch_u_1A": [
+       2.1446,
+       0.1898,
+       0.1906,
+       2.1451,
+       2.1446,
+       0.1898,
+       0.1906,
+       2.1451,
+       2.1446,
+       0.1898,
+       0.1906,
+       2.1451
+      ],
+      "switches_0.03A": 12,
+      "switch_u_0.03A": [
+       2.1446,
+       0.1898,
+       0.1906,
+       2.1451,
+       2.1446,
+       0.1898,
+       0.1906,
+       2.1451,
+       2.1446,
+       0.1898,
+       0.1906,
+       2.1451
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 12,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 23.0
+     }
+    },
+    "slow": {
+     "bottom": {
+      "ticks": 90000,
+      "max_relative_move": 9.780893009729859e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 10.0,
+      "switches_1A": 16,
+      "switch_u_1A": [
+       0.1899,
+       2.1421,
+       2.1422,
+       2.1433,
+       2.1433,
+       2.1446,
+       2.1447,
+       2.145,
+       2.1449,
+       2.1446,
+       2.1446,
+       2.1433,
+       2.1432,
+       2.1421,
+       2.1421,
+       0.1898
+      ],
+      "switches_0.03A": 16,
+      "switch_u_0.03A": [
+       0.1899,
+       2.1421,
+       2.1422,
+       2.1433,
+       2.1433,
+       2.1446,
+       2.1447,
+       2.145,
+       2.1449,
+       2.1446,
+       2.1446,
+       2.1433,
+       2.1432,
+       2.1421,
+       2.1421,
+       0.1898
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 16,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 60.6
+     },
+     "top": {
+      "ticks": 90000,
+      "max_relative_move": 9.780893009729859e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 10.0,
+      "switches_1A": 16,
+      "switch_u_1A": [
+       2.1449,
+       2.1446,
+       2.1446,
+       2.1433,
+       2.1432,
+       2.1421,
+       2.1421,
+       0.1898,
+       0.1899,
+       2.1421,
+       2.1422,
+       2.1433,
+       2.1433,
+       2.1446,
+       2.1447,
+       2.145
+      ],
+      "switches_0.03A": 16,
+      "switch_u_0.03A": [
+       2.1449,
+       2.1446,
+       2.1446,
+       2.1433,
+       2.1432,
+       2.1421,
+       2.1421,
+       0.1898,
+       0.1899,
+       2.1421,
+       2.1422,
+       2.1433,
+       2.1433,
+       2.1446,
+       2.1447,
+       2.145
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 16,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 98.0
+     }
+    }
+   },
+   "float64": {
+    "fast": {
+     "bottom": {
+      "ticks": 27000,
+      "max_relative_move": 0.0009778620974112491,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.003887005786690878,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 6,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 112.0
+     },
+     "top": {
+      "ticks": 27000,
+      "max_relative_move": 0.0009778620974147975,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.0038870057867033125,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 6,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 125.8
+     }
+    },
+    "slow": {
+     "bottom": {
+      "ticks": 90000,
+      "max_relative_move": 9.774321458940491e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.0003889267157886067,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 2,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 171.7
+     },
+     "top": {
+      "ticks": 90000,
+      "max_relative_move": 9.77432145886882e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.00038892671579038307,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 2,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 217.8
+     }
+    }
+   }
+  },
+  "cardiomag": {
+   "float32": {
+    "fast": {
+     "bottom": {
+      "ticks": 6000,
+      "max_relative_move": 0.0009429634443899266,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.16591501235961914,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 318,
+      "switch_u_0.03A": [
+       -0.0525,
+       0.0801,
+       0.09,
+       0.0909,
+       0.0918,
+       0.0927,
+       0.0936,
+       0.0945,
+       0.0954,
+       0.0963,
+       0.0972,
+       0.0981,
+       0.099,
+       0.0998,
+       0.1007,
+       0.1016,
+       0.1025,
+       0.1034,
+       0.1043,
+       0.1052,
+       0.106,
+       0.1069,
+       0.1078,
+       0.1087,
+       0.1096,
+       0.1104,
+       0.1113,
+       0.1122,
+       0.1131,
+       0.1139,
+       0.1148,
+       0.1157,
+       0.1165,
+       0.1174,
+       0.1183,
+       0.1191,
+       0.12,
+       0.1209,
+       0.1217,
+       0.1226
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 72,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 220.6
+     },
+     "top": {
+      "ticks": 6000,
+      "max_relative_move": 0.0009429634443899266,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.16591501235961914,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 318,
+      "switch_u_0.03A": [
+       0.1395,
+       0.132,
+       0.1311,
+       0.1303,
+       0.1294,
+       0.1286,
+       0.1277,
+       0.1269,
+       0.126,
+       0.1252,
+       0.1243,
+       0.1235,
+       0.1226,
+       0.1217,
+       0.1209,
+       0.12,
+       0.1191,
+       0.1183,
+       0.1174,
+       0.1165,
+       0.1157,
+       0.1148,
+       0.1139,
+       0.1131,
+       0.1122,
+       0.1113,
+       0.1104,
+       0.1096,
+       0.1087,
+       0.1078,
+       0.1069,
+       0.106,
+       0.1052,
+       0.1043,
+       0.1034,
+       0.1025,
+       0.1016,
+       0.1007,
+       0.0998,
+       0.099
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 72,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 223.5
+     }
+    },
+    "slow": {
+     "bottom": {
+      "ticks": 20000,
+      "max_relative_move": 9.434638880991625e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.1539134979248047,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 6,
+      "switch_u_0.03A": [
+       -0.0525,
+       0.0799,
+       0.1399,
+       0.1398,
+       0.0798,
+       -0.0526
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 26,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 232.1
+     },
+     "top": {
+      "ticks": 20000,
+      "max_relative_move": 9.434638880991625e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.1539134979248047,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 6,
+      "switch_u_0.03A": [
+       0.1398,
+       0.0798,
+       -0.0526,
+       -0.0525,
+       0.0799,
+       0.1399
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 26,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 240.8
+     }
+    }
+   },
+   "float64": {
+    "fast": {
+     "bottom": {
+      "ticks": 6000,
+      "max_relative_move": 0.0009429205160612654,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.03987896542949354,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 306,
+      "switch_u_0.03A": [
+       0.09,
+       0.0909,
+       0.0918,
+       0.0927,
+       0.0936,
+       0.0945,
+       0.0954,
+       0.0963,
+       0.0972,
+       0.0981,
+       0.099,
+       0.0998,
+       0.1007,
+       0.1016,
+       0.1025,
+       0.1034,
+       0.1043,
+       0.1052,
+       0.106,
+       0.1069,
+       0.1078,
+       0.1087,
+       0.1096,
+       0.1104,
+       0.1113,
+       0.1122,
+       0.1131,
+       0.1139,
+       0.1148,
+       0.1157,
+       0.1165,
+       0.1174,
+       0.1183,
+       0.1191,
+       0.12,
+       0.1209,
+       0.1217,
+       0.1226,
+       0.1235,
+       0.1243
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 66,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 244.2
+     },
+     "top": {
+      "ticks": 6000,
+      "max_relative_move": 0.0009429205160618624,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.03987896542948555,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 306,
+      "switch_u_0.03A": [
+       0.1337,
+       0.132,
+       0.1311,
+       0.1303,
+       0.1294,
+       0.1286,
+       0.1277,
+       0.1269,
+       0.126,
+       0.1252,
+       0.1243,
+       0.1235,
+       0.1226,
+       0.1217,
+       0.1209,
+       0.12,
+       0.1191,
+       0.1183,
+       0.1174,
+       0.1165,
+       0.1157,
+       0.1148,
+       0.1139,
+       0.1131,
+       0.1122,
+       0.1113,
+       0.1104,
+       0.1096,
+       0.1087,
+       0.1078,
+       0.1069,
+       0.106,
+       0.1052,
+       0.1043,
+       0.1034,
+       0.1025,
+       0.1016,
+       0.1007,
+       0.0998,
+       0.099
+      ],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 66,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 247.5
+     }
+    },
+    "slow": {
+     "bottom": {
+      "ticks": 20000,
+      "max_relative_move": 9.42522195189549e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.00399034302084722,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 24,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 257.9
+     },
+     "top": {
+      "ticks": 20000,
+      "max_relative_move": 9.42522195192026e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.003990343020862319,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 24,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 268.4
+     }
+    }
+   }
+  },
+  "octo_field": {
+   "float32": {
+    "fast": {
+     "bottom": {
+      "ticks": 12000,
+      "max_relative_move": 0.000785768867019381,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.0025680065155029297,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 0,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 274.1
+     },
+     "top": {
+      "ticks": 12000,
+      "max_relative_move": 0.000785768867019381,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.0025680065155029297,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 0,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 279.8
+     }
+    },
+    "slow": {
+     "bottom": {
+      "ticks": 40000,
+      "max_relative_move": 7.860229176942872e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.00025725364685058594,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 0,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 297.5
+     },
+     "top": {
+      "ticks": 40000,
+      "max_relative_move": 7.860229176942872e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.00025725364685058594,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 0,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 315.3
+     }
+    }
+   },
+   "float64": {
+    "fast": {
+     "bottom": {
+      "ticks": 12000,
+      "max_relative_move": 0.0007857063460610344,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.002567776829576651,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 0,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 322.0
+     },
+     "top": {
+      "ticks": 12000,
+      "max_relative_move": 0.0007857063460610345,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.002567776829576651,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 0,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 328.7
+     }
+    },
+    "slow": {
+     "bottom": {
+      "ticks": 40000,
+      "max_relative_move": 7.854290034897973e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.00025677778625832204,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 0,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 349.8
+     },
+     "top": {
+      "ticks": 40000,
+      "max_relative_move": 7.85429003489849e-05,
+      "all_moves_under_tolerance": true,
+      "max_jump": 0.0002567777862596543,
+      "switches_1A": 0,
+      "switch_u_1A": [],
+      "switches_0.03A": 0,
+      "switch_u_0.03A": [],
+      "jumps_over_1A_with_the_target_moving_over_tolerance": 0,
+      "face_changes": 0,
+      "traced": [
+       [
+        "plain",
+        128
+       ]
+      ],
+      "seconds": 370.9
+     }
+    }
+   }
+  }
+ },
+ "controls": {
+  "runs": 20,
+  "alternating_law_caught_every_tick": 20,
+  "under_threshold_jump_not_counted": 20,
+  "under_threshold_jump_counted_at_0.03A": 20,
+  "fast_target_not_counted": 20
+ }
+}
