@@ -275,21 +275,21 @@ def _from_service(service_name: str, record: str, say: Callable[[str], None] | N
     there); with ``access``, let in by the token stored for the service or a share link's key, which go to the
     service's own host alone. A record of several studies without ``into_given`` is refused before anything is
     downloaded."""
-    from mime import push
+    from mime.push import _records, _service
     from mime.push._records import downloader
 
-    service = push.SERVICES[service_name]
+    service = _service.SERVICES[service_name]
     if assets.offline():
         raise _offline_refusal(f"the record {record} on {service.name}")
     assets.downloads_doing(f"reading the record {record} on {service.name}")
-    found = push.public_record(service, record, access)
+    found = _records.public_record(service, record, access)
     if say is not None:
         say(f"the record: {found.words()}")
         if found.latest is not None:
             say(f"! it is not the latest version: `mime pull --from {service.name} {quoted(found.latest)}` pulls the latest"
                 if found.latest else f"! it is not the latest version: the record's page, {service.site}/records/"
                                      f"{found.record}, names the latest")
-    held = found.containers or (push.RecordContainer(found.bundle, found.url, found.md5, found.size),)
+    held = found.containers or (_records.RecordContainer(found.bundle, found.url, found.md5, found.size),)
     if len(held) > 1 and not into_given:
         raise _several_refused(len(held), f"the record {found.record} on {service.name}")
     return [Fetched(locate_bundle_container(assets.retrieve(
@@ -301,11 +301,12 @@ def _from_service(service_name: str, record: str, say: Callable[[str], None] | N
 
 def _signed_in(service_name: str) -> Access:
     """The token ``mime credentials`` stored for the service, for ``--signed-in``; refused where none is."""
-    from mime import credentials, push
+    from mime.credentials import _store
+    from mime.push import _service
     from mime.push._client import Access
 
-    service = push.SERVICES[service_name]
-    found = credentials.token(service.credential)
+    service = _service.SERVICES[service_name]
+    found = _store.token(service.credential)
     if found is None:
         raise _refuse("pull.token", RefusalClass.ENVIRONMENT,
                       f"--signed-in sends the token `mime credentials` stored for {service.name}, and none is stored; "

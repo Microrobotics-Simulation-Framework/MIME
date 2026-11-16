@@ -12,7 +12,7 @@ from pathlib import Path
 import platformdirs
 import pytest
 
-from mime import credentials
+from mime.credentials import _store
 
 #: Where platformdirs reads a user's directories from: XDG's variables on Linux, the home on macOS (``~/Library``), and
 #: on Windows its own overrides first, then the profile's variables.
@@ -31,7 +31,7 @@ def isolate(patch: pytest.MonkeyPatch, home: Path) -> Path:
         patch.setenv(variable, str(home / below))
     for variable in _WINDOWS:
         patch.setenv(variable, str(home / "AppData"))  # Windows: platformdirs reads its overrides first
-    for variable in (*credentials.SERVICES.values(), *_GIT):
+    for variable in (*_store.SERVICES.values(), *_GIT):
         patch.delenv(variable, raising=False)
     patch.setenv("GIT_CONFIG_GLOBAL", str(home / "gitconfig"))  # a token's store asks git, which reads the user's
     patch.setenv("GIT_CONFIG_NOSYSTEM", "1")

@@ -60,7 +60,7 @@ also_cite = [{ identifier = "10.1234/paper", text = "A. Author et al., 2027" }]
 | table | key | what |
 |---|---|---|
 | top | `format` | its form, `mime.push.MANIFEST_FORMAT`; a later one is `load.newer-form` |
-| `[bundle]` | `licence` | a saved folder's: equal to the licence the experiment declares (`exp.licence(...)`, bound to its files); `--init` pre-fills it from your `[licences] content`, else the Creative Commons Attribution licence (`mime.push.DEFAULT_LICENCE`), where the experiment declares none, and push asks the experiment to declare it too |
+| `[bundle]` | `licence` | a saved folder's: equal to the licence the experiment declares (`exp.licence(...)`, bound to its files); `--init` pre-fills it from your `[licences] content`, else the Creative Commons Attribution licence (`mime.push._sharing.DEFAULT_LICENCE`), where the experiment declares none, and push asks the experiment to declare it too |
 | `[study]` | `licence` | a study folder's, or a publishing folder's (study folders beside it): equal to the licence every saved experiment of every study declares (each base, each group's own build). The study folder's layout holds `mime.toml` (an older MIME refuses such a folder as a stray, `study.stray-file`) |
 | `[record]` | `title`, `description` | the record's title, and a paragraph shown above the card |
 | | `creators` | each person (`family`, `given`) or `organisation`, with an ORCID iD (held to its form and check digit), an affiliation and its ROR identifier; one inline table a line |
@@ -181,7 +181,7 @@ as a reference is not in the record, so its rights holder is credited beside it 
 contributor of the record. Funding, the conference and `fields` are sent as `[record]` holds them (`metadata.funding`, the custom fields
 `meeting:meeting` and those `fields` names, and the metadata fields it names), and the version's number as
 `metadata.version`. A field the service refuses, in any answer (a success that lists `errors`, or a refusal),
-is said by who owns it (`mime.push.field_owner`): one the author writes (`[record]`, or the experiment's terms) is
+is said by who owns it (`mime.push._owners.field_owner`): one the author writes (`[record]`, or the experiment's terms) is
 theirs to correct; one MIME builds (the publisher, the date, the resource type, the description, MIME's keyword
 `mime-experiment`, the rights holders it adds, its related identifiers) is MIME's defect, and the refusal says so, as
 does one that names no field.

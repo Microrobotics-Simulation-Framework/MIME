@@ -151,7 +151,7 @@ def _push_refusals(root: Path, kind: str, held: Mapping[str, object]) -> list[It
     (``push.sandbox-location``). That is why a clean check says the manifest, not the folder, would pass."""
     import json
 
-    from mime.credentials import held_tokens
+    from mime.credentials._store import held_tokens
     from mime.push._plan import grantee_problems
     from mime.push._sharing import Reader, uploader_of
     from mime.saved._bundle import scan_text

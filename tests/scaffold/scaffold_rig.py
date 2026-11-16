@@ -38,7 +38,7 @@ import hatchling.build
 import pytest
 import yaml
 
-from mime import scaffold
+from mime.scaffold import _scaffold
 from mime.cli import main as mime_main
 from mime.push import _check, _draft
 from mime.scaffold import _templates
@@ -231,7 +231,7 @@ def failures_of(kind: str, root: Path, name: str | None = None, sets: list[str] 
     path = made(kind, root, name)
     try:
         sets = sets if sets is not None else [f"plugin.namespace={NAMESPACE}"] if kind == "plugin" else []
-        scaffold.scaffold(kind, path, yes=True, sets=sets, say=lambda line: None)
+        _scaffold.scaffold(kind, path, yes=True, sets=sets, say=lambda line: None)
         if kind == "experiment":
             return verified(path / "saved")
         if kind == "plugin":
@@ -378,7 +378,7 @@ def plugin_base(root: Path) -> PluginBase:
     """Scaffold the plugin with ``--yes`` in ``root``, unpack its wheel and run the stages up to the listing."""
     before = environment()
     folder = root / "scafx-probes"
-    scaffold.scaffold("plugin", folder, yes=True, sets=[f"plugin.namespace={NAMESPACE}"], say=lambda line: None)
+    _scaffold.scaffold("plugin", folder, yes=True, sets=[f"plugin.namespace={NAMESPACE}"], say=lambda line: None)
     project, failures = plugin_static(folder)
     target = root / "target"
     return PluginBase(folder, target, failures or plugin_listing(folder, target, project), before)

@@ -18,17 +18,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "blocks"))
 from blocks import block_copy, own_cache  # noqa: E402
 from test_block_container import with_case  # noqa: E402
 
-from mime import push  # noqa: E402
+from mime.push import _client, _draft, _publish, _service  # noqa: E402
 from mime.cli import main  # noqa: E402
 
 
 @pytest.fixture
 def sandbox(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRecords]:
     token = with_token(monkeypatch)
-    monkeypatch.setattr(push._client, "PAUSE_SECONDS", 0.0)
+    monkeypatch.setattr(_client, "PAUSE_SECONDS", 0.0)
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     with served(token) as fake:
-        monkeypatch.setitem(push.SERVICES, "zenodo-sandbox", fake.service())  # type: ignore[index]
+        monkeypatch.setitem(_service.SERVICES, "zenodo-sandbox", fake.service())  # type: ignore[index]
         yield fake
 
 
@@ -38,8 +38,8 @@ def test_a_block_is_drafted_uploaded_published_and_pulled_back_whole(
     with own_cache(tmp_path):
         with_case(tmp_path, folder)
         monkeypatch.delenv("MIME_OFFLINE")  # push goes online, to the fake on this machine only
-        service = push.SERVICES["zenodo-sandbox"]
-        drafted = push.push(folder, service, pause=0)
+        service = _service.SERVICES["zenodo-sandbox"]
+        drafted = _draft.push(folder, service, pause=0)
         record = sandbox.records[drafted.record]
         assert sorted(record.files) == ["NOTICE.txt", "labx.nudged_probe-0.1.0.mimeblock"]
         metadata = record.body["metadata"]
@@ -47,9 +47,9 @@ def test_a_block_is_drafted_uploaded_published_and_pulled_back_whole(
         subjects = [each["subject"] for each in metadata["subjects"]]  # type: ignore[index, union-attr]
         assert "mime-block" in subjects and "mime-block:labx.nudged_probe" in subjects
         assert "mime-study" not in subjects and "mime-experiment" not in subjects
-        again = push.push(folder, service, pause=0)
+        again = _draft.push(folder, service, pause=0)
         assert again.uploaded == (), "a second push finds every file uploaded and verified"
-        push.publish(folder, service, confirm=drafted.doi, pause=0)
+        _publish.publish(folder, service, confirm=drafted.doi, pause=0)
         into = tmp_path / "pulled"
         assert main(["pull", "--from", "zenodo-sandbox", drafted.record, "--into", str(into)]) == 0
         assert "Block labx.nudged_probe 0.1.0 unpacked to" in capsys.readouterr().out

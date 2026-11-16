@@ -23,7 +23,8 @@ from push_cases import saved_toy, write_manifest
 from study_plants import PLANT_VARIABLE, PLANTS, SEED_VARIABLE, SOURCE_VARIABLE, rewritten
 from study_rigs import write_study
 
-from mime import credentials, push
+from mime import push
+from mime.credentials import _store
 from mime.build import BuildRefused, MimeError
 from mime.cli import main
 from mime.results import StudyResult
@@ -92,7 +93,7 @@ def test_each_planted_defect_is_refused_with_its_code(study: Path, tmp_path: Pat
 def test_a_planted_token_is_refused_naming_the_study_container_and_never_the_token(
         study: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     secret = "zt" + os.urandom(19).hex()
-    monkeypatch.setenv(credentials.SERVICES["zenodo"], secret)
+    monkeypatch.setenv(_store.SERVICES["zenodo"], secret)
     with (study / "study.mime.yaml").open("a", encoding="utf-8") as file:
         file.write(f"# token={secret}\n")
     with pytest.raises(BuildRefused) as refused:

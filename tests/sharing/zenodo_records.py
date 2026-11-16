@@ -79,7 +79,8 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from packaging.licenses import InvalidLicenseExpression, canonicalize_license_expression
 
 from mime.credentials import Token
-from mime.push import RDM_TYPE, ZENODO, ZENODO_SANDBOX, Answer, Dropped, Service
+from mime.push._client import Answer, Dropped, RDM_TYPE
+from mime.push._service import Service, ZENODO, ZENODO_SANDBOX
 
 FAKE_SITE = "https://zenodo-records.invalid"
 FAKE_API = FAKE_SITE + "/api"
