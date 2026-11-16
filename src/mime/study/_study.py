@@ -75,6 +75,11 @@ def _values(axes: Mapping[object, Sequence[object]], what: str) -> dict[object, 
                 "study.axis-values", RefusalClass.USER,
                 f"{what} takes each axis's values as a list, one per point; {path} is given {values!r}",
                 f"list them: {what}({{{path}: [Hz(10.0), Hz(20.0)]}}), or [Hz(f) for f in ...]")])
+        if len(values) == 0:
+            raise ArgumentRefused([Refusal(
+                "study.axis-values", RefusalClass.USER,
+                f"{what} is given no values for the axis {path}, so the study would have no points",
+                f"list at least one value: {what}({{{path}: [Hz(10.0)]}}); where the list is computed, it came out empty")])
         found[path] = tuple(values)
     if not found:
         raise ArgumentRefused([Refusal("study.axis-values", RefusalClass.USER, f"{what} is given no axis",
@@ -317,6 +322,21 @@ class StudyPlan:
         return self.text()
 
 
+def refuse_no_members(plan: StudyPlan, doing: str) -> None:
+    """Refuse a study with no member left to ``doing``: no points, or every point refused and dropped (a refusal that
+    applies to every point is a mistake in the experiment, not a bad point)."""
+    if len(plan.points) > len(plan.refused):
+        return
+    why = (f"all {len(plan.points)} of the study's points are refused, and drop_refused leaves none to {doing}:\n"
+           + "\n".join(f"  point {point.index} ({_coordinates(plan.axes, point)}): "
+                       + "; ".join(f"[{r.code}] {r.message}" for r in point.refusals) for point in plan.refused)
+           if plan.points else f"the study has no points to {doing}")
+    raise BuildRefused([Refusal(
+        "study.no-member", RefusalClass.USER, why,
+        "a refusal that applies to every point is a mistake in the base experiment or an axis: fix that first "
+        "(Study.plan() lists each reason); a sweep takes at least one point the experiment allows")])
+
+
 def _coordinates(axes: Sequence[Axis], point: Point) -> str:
     return ", ".join(f"{axis.path} = {value_text(point.values[axis])}" for axis in axes)
 
@@ -466,6 +486,7 @@ class Study:
                         f"[{r.code}] {r.message}" for r in point.refusals) for point in plan.refused),
                 "change the axes' values so that every point is one the experiment allows, or sweep(..., "
                 "drop_refused=True) to run the rest, the dropped points recorded on the result")])
+        refuse_no_members(plan, "run")
         assert self._duration is not None
         return run_study(plan, self._record, self._every)
 
@@ -535,7 +556,7 @@ class Study:
         chunk of the first group this run runs, before the rest."""
         from mime.study._folder_run import run_study_to
 
-        self.plan()
+        refuse_no_members(self.plan(), "run")
         assert self._points is not None
         return run_study_to(self, self._experiment, self._points, Path(out), shard=shard, pilot=pilot, say=say)
 

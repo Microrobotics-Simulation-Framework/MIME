@@ -153,8 +153,8 @@ def run_experiment(duration: float, runner: dict, info: dict, record: str = "", 
     out = f"{RUNS_DIR}/{NAME}/{run_id}"
     _check(EXPERIMENT_DIR, f"{out}/env-check.json")
     recording = [part for path in record.split(",") if path.strip() for part in ("--record", path.strip())]
-    spacing = ["--every", repr(float(every))] if every > 0 else []
-    _mime("run", EXPERIMENT_DIR, "--duration", repr(float(duration)), "--out", out, *recording, *spacing)
+    spacing = ["--every", f"{float(every)!r}s"] if every > 0 else []
+    _mime("run", EXPERIMENT_DIR, "--duration", f"{float(duration)!r}s", "--out", out, *recording, *spacing)
     runs.commit()
     return run_id
 

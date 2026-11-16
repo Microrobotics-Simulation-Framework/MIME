@@ -4003,7 +4003,9 @@ class _Planner:
                 self.refused_problems.add(problem)
                 self.refuse(problem[0], RefusalClass.USER, problem[1], problem[2])
 
-    def value(self, plan: EntryPlan, label: str, thing: str, name: str) -> None:
+    def value(self, plan: EntryPlan, label: str, thing: str, name: str, inertial: bool = False) -> None:
+        """The value ``name`` of ``thing`` as ``plan`` reads it; ``inertial`` where the reader is a dynamics, which
+        divides by a mass."""
         held = self.things.get(thing)
         if held is None:
             return
@@ -4030,8 +4032,10 @@ class _Planner:
                         f"{sources + ', and ' if sources else ''}the experiment declares no value",
                         f"declare it with its reason: exp.declare({path!r}, {quantity}, reason=\"...\")")
             return
-        below = materials.not_above_zero(path, materials.VALUE_KINDS[held.kind][name], found.value.value,
-                                         found.value.source)
+        judged = path in self.values and found.value.value != 0.0  # at its declaration, but for a zero a reader judges
+        below = None if judged else materials.not_above_zero(
+            path, materials.VALUE_KINDS[held.kind][name], found.value.value, found.value.source,
+            str(plan.registered.cls.name) if inertial else None)
         if below is not None:
             self.refuse_problems([below])
         plan.values[label] = found.value
@@ -4039,7 +4043,7 @@ class _Planner:
     def resolve_values(self) -> None:
         for plan in self.dynamics.values():
             for label, name in cast(type[Dynamics], plan.registered.cls).values.items():
-                self.value(plan, label, plan.thing or "", name)
+                self.value(plan, label, plan.thing or "", name, inertial=True)
             self.dynamics_value_problems(plan)
         for plan in self.providers.values():
             for label, name in cast(type[FieldProvider], plan.registered.cls).values.items():
