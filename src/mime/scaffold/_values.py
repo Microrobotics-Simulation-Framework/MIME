@@ -164,7 +164,7 @@ def package_problem(given: str) -> str | None:
 def taken_namespaces() -> dict[str, str]:
     """Every namespace a plugin may not take, each with who holds it: the first word of one of MIME's refusal codes or of
     one of MIME's registered entries (the words :func:`mime.vocabulary.register_namespace` refuses, read from the same
-    two places), a namespace registered in this process, and one an installed distribution declares in its
+    two places), the first word of one of MIME's own asset records (``navion`` of ``navion_2``), a namespace registered in this process, and one an installed distribution declares in its
     ``mime.entries`` entry points. Read from the registry and the environment at the time of asking, never listed here."""
     from mime.build import REFUSAL_TABLE
     from mime.registry import registered
@@ -177,6 +177,10 @@ def taken_namespaces() -> dict[str, str]:
     for record in registered():
         if record.namespace == MIME_NAMESPACE:
             taken[record.name.split(".", 1)[0]] = "the first word of MIME's entries"
+    from mime.assets._sources import own_namespaces
+
+    for first in sorted(own_namespaces()):
+        taken.setdefault(first, "the first word of one of MIME's own asset records")
     for name, point in namespace_providers().items():
         taken.setdefault(name, f"a namespace {point.dist.name if point.dist is not None else 'a package'} declares here")
     for name in versions():

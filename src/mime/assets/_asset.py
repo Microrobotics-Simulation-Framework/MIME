@@ -29,6 +29,7 @@ from typing import Literal, cast
 from mime._refusals import ArgumentRefused, ArgumentTypeRefused, BuildRefused, MimeError, Refusal, RefusalClass
 from mime.assets._adapters import MIME_SOURCE
 from mime.assets._reference import PACKAGE_PREFIX, AssetRef
+from mime.assets._sources import claims_an_own_name
 from mime.terms import NO_ASSERTION, CustomLicence, Terms, expression_of
 
 type Origin = Literal["named", "file", "record"]
@@ -58,6 +59,12 @@ class Asset:
     def __post_init__(self) -> None:
         if self.path is not None and self.name != self.path.name:
             object.__setattr__(self, "name", self.path.name)
+        if self.path is None and self.record is None and not (isinstance(cast(object, self.sha256), str)
+                                                              and _SHA256.fullmatch(self.sha256 or "")):
+            raise ArgumentRefused([Refusal(
+                "asset.source", RefusalClass.USER,
+                f"Asset({self.name!r}) names a record without the sha256 the experiment is written against",
+                f"write asset({self.name!r}) to take the record's sha256, or Asset({self.name!r}, \"<64 hex digits>\")")])
 
     @property
     def origin(self) -> Literal["named", "file", "record"]:
@@ -120,13 +127,24 @@ def refused_origin(held: Asset, setting: str, forms: str) -> ArgumentRefused:
         f"{setting} does not read {ORIGIN_WORDS[held.origin]}, asset({held.name!r})", f"write `{forms}`")])
 
 
+#: A string that starts as a location: a scheme of two letters or more and a colon (``https:``, ``DOI:``, ``s3:``;
+#: ``C:`` is a drive), or two slashes or backslashes (a host's share).
+_LOCATION = re.compile(r"[A-Za-z][A-Za-z0-9+.-]+:|//|\\\\")
+#: A path whose text starts as a URL: ``Path("https://x")`` reads ``https:/x``.
+_URL_PATH = re.compile(r"[A-Za-z][A-Za-z0-9+.-]+:/")
+
+
+def _location_refused(shown: object, text: str) -> ArgumentRefused:
+    return ArgumentRefused([Refusal(
+        "asset.source", RefusalClass.USER,
+        f"asset({shown!r}) names a location; a string names a record, and a remote file needs a record with its "
+        f"sha256", f"write asset(AssetRef(name=\"<name>\", sha256=\"<64 hex digits>\", size=<bytes>, "
+                  f"licence=\"<SPDX id>\", locations=({text!r},))), or give a record's name")])
+
+
 def _named(name: str, sha256: str | None, terms: Terms | None) -> Asset:
-    if "://" in name or name.split(":", 1)[0] in ("https", "http", "doi", "file", "package"):
-        raise ArgumentRefused([Refusal(
-            "asset.source", RefusalClass.USER,
-            f"asset({name!r}) names a location; a string names a record, and a remote file needs a record with its "
-            f"sha256", f"write asset(AssetRef(name=\"<name>\", sha256=\"<64 hex digits>\", size=<bytes>, "
-                      f"licence=\"<SPDX id>\", locations=({name!r},))), or a record's name")])
+    if _LOCATION.match(name) or "://" in name:
+        raise _location_refused(name, name)
     if terms is not None:
         raise ArgumentRefused([Refusal(
             "asset.source", RefusalClass.USER, f"asset({name!r}, terms=...) gives terms to a record, whose terms are its own",
@@ -161,6 +179,9 @@ def asset(source: str | os.PathLike[str] | AssetRef, *, sha256: str | None = Non
             "asset.source", RefusalClass.USER, f"sha256={sha256!r} is not 64 lowercase hex digits",
             "write the file's SHA-256 as 64 lowercase hex digits, or leave sha256= out")])
     if isinstance(source, AssetRef):
+        refused = claims_an_own_name(source)
+        if refused is not None:
+            raise refused
         if sha256 is not None or terms is not None:
             raise ArgumentRefused([Refusal(
                 "asset.source", RefusalClass.USER,
@@ -172,6 +193,8 @@ def asset(source: str | os.PathLike[str] | AssetRef, *, sha256: str | None = Non
         return _named(source, sha256, terms)
     if isinstance(cast(object, source), os.PathLike):
         path = Path(source)
+        if _URL_PATH.match(str(path)):
+            raise _location_refused(path, str(source))
         return Asset(path.name, sha256, path, terms)
     raise ArgumentTypeRefused([Refusal(
         "call.wrong-type", RefusalClass.USER, f"asset takes a record's name, a path or an AssetRef, not "

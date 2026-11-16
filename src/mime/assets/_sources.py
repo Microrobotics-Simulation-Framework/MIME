@@ -16,7 +16,10 @@ names the file, so the same bytes under the same terms in two sources are one re
 **Names.** A record's name is dotted like an entry's: a package's records are ``<source>.<name>`` (the source being its
 ``mime.assets`` entry point's name, its namespace), MIME's own have no namespace. The earlier spelling with an
 underscore, ``<source>_<name>``, is still found under either spelling for this release (:func:`spellings`), so a
-package that ships it keeps working while it moves.
+package that ships it keeps working while it moves, and written so it says once which spelling to use. A namespace a
+resolver owns is the resolver's: its dotted names are never respelled onto a record of another source, MIME's own
+included (``openmaterica.example_water`` asks the ``openmaterica`` resolver, never finds MIME's
+``openmaterica_example_water``).
 
 **Resolvers.** A ``mime.assets`` entry point whose value names an object (``module:object``) is a resolver, not a
 folder of records: asked for a name in its namespace that no pin and no folder holds, it answers with the record or
@@ -28,6 +31,7 @@ from __future__ import annotations
 import importlib.metadata
 import importlib.resources
 import json
+import re
 import warnings
 from collections.abc import Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager
@@ -143,7 +147,7 @@ def resolved_by_a_resolver(name: str) -> AssetRef | None:
         answer = cast(object, held.record(name))
     except MimeError:
         raise
-    except Exception as error:  # noqa: BLE001 - a package's resolver may fail in any way; it is refused by name
+    except (Exception, SystemExit) as error:  # noqa: BLE001 - a package's resolver may fail in any way; it is refused by name
         raise _resolver_refusal(source, name, f"failed: {type(error).__name__}: {error}") from error
     if answer is None:
         return None
@@ -155,19 +159,38 @@ def resolved_by_a_resolver(name: str) -> AssetRef | None:
 
 @cache
 def _namespaces() -> tuple[str, ...]:
-    """Every installed source's name but MIME's (a folder of records or a resolver), longest first."""
-    names = {point.name for point in importlib.metadata.entry_points(group=SOURCE_GROUP) if point.name != MIME_SOURCE}
+    """Every installed folder of records's source name but MIME's, longest first: the namespaces whose names have an
+    earlier spelling. A namespace a resolver owns is not among them: its names are the resolver's own."""
+    owned = {point.name for point in importlib.metadata.entry_points(group=SOURCE_GROUP) if ":" in point.value}
+    names = {point.name for point in importlib.metadata.entry_points(group=SOURCE_GROUP)
+             if point.name != MIME_SOURCE and point.name not in owned}
     return tuple(sorted(names, key=lambda name: (-len(name), name)))
 
 
 def spellings(name: str) -> tuple[str, ...]:
     """``name``, then its earlier spelling where it is in a source's namespace: ``<source>.<name>`` and
-    ``<source>_<name>`` find each other for this release, while packages move their records onto dots."""
+    ``<source>_<name>`` find each other for this release, while packages move their records onto dots. A namespace a
+    resolver owns has none (:func:`_namespaces`)."""
     for source in _namespaces():
         for written, other in ((f"{source}.", f"{source}_"), (f"{source}_", f"{source}.")):
             if name.startswith(written) and len(name) > len(written):
                 return name, other + name.removeprefix(written)
     return (name,)
+
+
+_WARNED: set[str] = set()
+
+
+def _earlier_spelling_said(name: str, found: str) -> None:
+    """Say once per name that a record found under its dotted spelling (``<source>.<name>``) was asked for under the
+    earlier one (``<source>_<name>``)."""
+    if name in _WARNED or not any(name.startswith(f"{source}_") and found.startswith(f"{source}.")
+                                  for source in _namespaces()):
+        return
+    _WARNED.add(name)
+    warnings.warn(f"the record {found!r} was asked for as {name!r}, the earlier spelling: write {found!r} (a package's "
+                  f"records are <namespace>.<name>; the underscore spelling is read for this release only)",
+                  FutureWarning, stacklevel=5)
 
 
 @cache
@@ -255,6 +278,44 @@ def conflict_refusal(name: str, held: Sequence[Sourced]) -> BuildRefused:
 # --- pins -----------------------------------------------------------------------------------------------------------
 
 
+def own_record(name: str) -> AssetRef | None:
+    """MIME's own record of ``name`` (``mime.data``'s ``assets/``), or ``None`` where it holds none."""
+    return next((each.ref for each in shared().records.get(name, ()) if each.source == MIME_SOURCE), None)
+
+
+def own_namespaces() -> frozenset[str]:
+    """The first word of every name of MIME's own records (``navion`` of ``navion_2``): words no plugin may take."""
+    return frozenset(re.split(r"[._]", name, maxsplit=1)[0] for name, held in shared().records.items()
+                     if any(each.source == MIME_SOURCE for each in held))
+
+
+def claims_an_own_name(ref: AssetRef) -> BuildRefused | None:
+    """The refusal (``asset.packaged-name``) of a record that claims a name MIME's own records hold as other bytes or
+    other terms: a lock, a pin or a script's record never stands in for what MIME ships under its name. A record that
+    restates MIME's own one changes nothing."""
+    own = own_record(ref.name)
+    if own is None or (own.sha256 == ref.sha256 and terms_of(own) == terms_of(ref)):
+        return None
+    return BuildRefused([Refusal(
+        "asset.packaged-name", RefusalClass.USER,
+        f"the record {ref.name!r} (sha256 {ref.sha256}, licence {ref.licence}) takes a name MIME's own records hold: "
+        f"MIME ships {ref.name!r} as sha256 {own.sha256} (licence {own.licence}), and no lock, pin or script replaces "
+        f"it", f"give the record a name of its own, <namespace>.<name>, and `mime assets fetch` it under that name")])
+
+
+def _without_own(refs: Iterable[AssetRef]) -> list[AssetRef]:
+    """``refs`` as pins: a record that restates MIME's own is no pin; one that claims its name for other bytes or terms
+    is refused (:func:`claims_an_own_name`)."""
+    kept: list[AssetRef] = []
+    for ref in refs:
+        refused = claims_an_own_name(ref)
+        if refused is not None:
+            raise refused
+        if own_record(ref.name) is None:
+            kept.append(ref)
+    return kept
+
+
 @dataclass
 class _Pins:
     refs: Mapping[str, AssetRef]
@@ -271,7 +332,7 @@ def pinned(refs: Iterable[AssetRef]) -> Generator[list[str]]:
     Pins nest: an inner block's records stand over an outer one's."""
     outer = _pins.get()
     held = dict(outer.refs) if outer is not None else {}
-    held.update({ref.name: ref for ref in refs})
+    held.update({ref.name: ref for ref in _without_own(refs)})
     notes: list[str] = outer.notes if outer is not None else []
     token = _pins.set(_Pins(MappingProxyType(held), notes))
     try:
@@ -299,6 +360,7 @@ def resolve_name(name: str, shared_now: Mapping[str, AssetRef]) -> AssetRef | No
     for spelling in spellings(name):
         found = _resolve_spelling(spelling, shared_now)
         if found is not None:
+            _earlier_spelling_said(name, spelling)
             return found
     return resolved_by_a_resolver(name)
 
@@ -332,6 +394,6 @@ def shared_manifests() -> tuple[tuple[str, Manifest], ...]:
     return shared().manifests
 
 
-__all__ = ["ASSETS_FOLDER", "TERMS_KEYS", "Resolver", "Shared", "Sourced", "active_pins", "agree", "conflict_refusal",
-           "conflicts", "merged", "pinned", "resolve_name", "resolved_by_a_resolver", "resolvers", "shared",
+__all__ = ["ASSETS_FOLDER", "TERMS_KEYS", "Resolver", "Shared", "Sourced", "active_pins", "agree", "claims_an_own_name",
+           "conflict_refusal", "conflicts", "own_namespaces", "own_record", "merged", "pinned", "resolve_name", "resolved_by_a_resolver", "resolvers", "shared",
            "shared_manifests", "shared_records", "spellings", "terms_of"]

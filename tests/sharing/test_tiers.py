@@ -332,7 +332,9 @@ def test_a_lock_that_restates_a_references_licence_or_locations_is_refused(tmp_p
 
 
 def test_a_lock_that_restates_a_shipped_assets_licence_is_refused(tmp_path: Path):
-    """An asset MIME ships, named in a lock (an entry's table), is held to the licence MIME ships it under."""
+    """An asset MIME ships, named in a lock (an entry's table), is held to the licence MIME ships it under: a lock that
+    restates it under another is refused where the lock is read (``asset.packaged-name``, which a record of its name with
+    other bytes meets too), before ``pack`` compares terms."""
     ref = next(iter(known().values()))
     with same_reference_run():
         folder, _ = saved(tmp_path, [Spec("yours", None, 900, False, False)])
@@ -346,7 +348,7 @@ def test_a_lock_that_restates_a_shipped_assets_licence_is_refused(tmp_path: Path
     edited_lock(folder, with_shipped(ref.licence))
     assert pack_or_codes(folder, tmp_path / "true.mimebundle")[1] == set()
     edited_lock(folder, with_shipped("MIT"))
-    assert pack_or_codes(folder, tmp_path / "false.mimebundle") == (None, {"bundle.lock-terms"})
+    assert pack_or_codes(folder, tmp_path / "false.mimebundle") == (None, {"asset.packaged-name"})
 
 
 def test_a_lock_that_lists_a_reference_no_terms_give_an_origin_is_refused(tmp_path: Path):

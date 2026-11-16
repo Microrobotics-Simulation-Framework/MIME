@@ -26,6 +26,7 @@ asset.manifest                user environment
 asset.missing                 environment
 asset.offline                 environment
 asset.offline-setting         user
+asset.packaged-name           user
 asset.placed-file             environment
 asset.reference               user
 asset.resolver                environment

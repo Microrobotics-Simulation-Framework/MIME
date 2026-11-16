@@ -97,12 +97,12 @@ def test_a_load_refuses_an_installation_that_ships_other_weights_under_the_same_
     is refused on load, naming both hashes. The control: the same folder loads with the packaged file."""
     import hashlib
 
-    import mime.data
+    from mime.assets import _asset
 
     script_a().build().save(tmp_path)
     Experiment.load(tmp_path)
     other = b"other weights"
-    monkeypatch.setattr(mime.data, "_contents", lambda file: (other, hashlib.sha256(other).hexdigest()))
+    monkeypatch.setattr(_asset, "_packaged_contents", lambda file: (other, hashlib.sha256(other).hexdigest()))
     with pytest.raises(BuildRefused) as refused:
         Experiment.load(tmp_path)
     print(f"\n{refused.value}")
