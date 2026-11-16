@@ -14,7 +14,7 @@ check`` read one offline; :func:`fragment_from` writes a fragment from a saved e
 sockets."""
 
 from mime.blocks._definition import MANIFEST_FILE
-from mime.blocks._from import fragment_from
+from mime.blocks._from import Drafted, fragment_from
 from mime.blocks._use import BlockHandle
 
-__all__ = ["MANIFEST_FILE", "BlockHandle", "fragment_from"]
+__all__ = ["MANIFEST_FILE", "BlockHandle", "Drafted", "fragment_from"]

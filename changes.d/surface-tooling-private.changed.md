@@ -1,7 +1,7 @@
 - The public surface of the tooling packages is smaller: 113 names that only the commands and MIME's own modules used left
   their package's `__all__`, with no shim (no plugin imported any of them). Kept public because a public signature names
-  them (a user annotates them): `mime.push.Checked` (what `check` returns), `mime.credentials.Token` (what `pull` takes for
-  a share link) and `mime.blocks.BlockHandle` (what `Experiment.use` returns), beside `mime.push.check`, `read_manifest`,
+  them (a user annotates them): `mime.push.Checked` and `Item` (what `check` returns and holds), `mime.credentials.Token` (what `pull` takes for
+  a share link) and `mime.blocks.BlockHandle` (what `Experiment.use` returns) and `Drafted` (what `fragment_from` returns), beside `mime.push.check`, `read_manifest`,
   `Manifest` and the `MANIFEST_*` names (their duplicate families wait for their own decision), `mime.blocks.fragment_from`
   and `MANIFEST_FILE`. `mime.scaffold` has no public names, since `mime scaffold` is how it is reached; `mime.cli`'s
   `__all__` is empty (`main` is still the `mime` entry point, and its names are defined in the module itself, so they stay

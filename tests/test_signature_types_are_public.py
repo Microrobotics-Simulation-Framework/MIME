@@ -93,14 +93,10 @@ def signatures(name: str, thing: object) -> Iterator[tuple[str, object, types.Mo
             yield f"{name}({parameter})", annotation, module
 
 
-#: Types a public signature names that no package exports, found when this guard was written and reported to the
-#: maintainer for his call (each is the type of a public name that predates the surface reduction or waits on a deferred
-#: family). A line goes when its type is exported or no signature names it: the test fails on a line that no longer
-#: applies, so the list only shrinks.
+#: Types a public signature names that no package exports and that wait for a decision. A line goes when its type is
+#: exported or no signature names it: the test fails on a line that no longer applies, so the list only shrinks.
 UNDECIDED = {
-    "mime.push._check.Item": "the item of a checked mime.toml (Checked.items), never exported",
-    "mime.push._sharing.Sharing": "Manifest.record; Manifest is in the duplicate families awaiting DUPLICATES",
-    "mime.blocks._from.Drafted": "what fragment_from returns, never exported",
+    "mime.push._sharing.Sharing": "decided with Manifest in the DUPLICATES work (rule 4)",
 }
 
 
