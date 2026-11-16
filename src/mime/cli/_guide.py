@@ -74,6 +74,69 @@ EXAMPLES: Mapping[tuple[str, ...], str] = {
     ("completion",): "mime completion bash > ~/.local/share/bash-completion/completions/mime",
 }
 
+#: What every command's exit code is where it says nothing else: 2 for a refusal (the user's or the environment's reason),
+#: 3 for a MIME defect or an error MIME does not recognise.
+_REFUSED = "refused: the cause and what to do are printed"
+_DEFECT = "a MIME defect, or an error MIME does not recognise (the file with its traceback is named)"
+
+#: What each command exits with, by its words after ``mime``: the codes it gives beyond the two every command may give (2
+#: refused, 3 a defect), as ``(code, meaning)``, shown under its example in its ``--help``. A test holds that every
+#: command has an entry; a code an entry does not list is one the command never gives (a closed output pipe ends a command
+#: with 141, whatever it was doing). A group of commands has none of its own.
+EXIT_CODES: Mapping[tuple[str, ...], tuple[tuple[int, str], ...]] = {
+    ("run",): ((0, "ran to the end"), (130, "stopped by Ctrl+C: the folder holds the steps reached, marked stopped, or "
+                                           "nothing where it was pressed before writing")),
+    ("study", "plan"): ((0, "planned: every member can run (or the refused are dropped)"),
+                        (1, "a member is refused and the plan does not drop it")),
+    ("study", "run"): ((0, "ran; members already done under the same key were skipped"),),
+    ("serve",): ((0, "stopped by a stop command, a signal, the launcher's exit or a time limit"),),
+    ("verify",): ((0, "reproduced"), (1, "an output moved (what moved is printed)"), (130, "interrupted: nothing verified")),
+    ("pending",): ((0, "nothing is pending"), (1, "something is pending (each item is printed, with its line to paste)")),
+    ("show",): ((0, "shown"),),
+    ("pack",): ((0, "packed"),),
+    ("card",): ((0, "written or printed"),),
+    ("pull",): ((0, "pulled"),),
+    ("push",): ((0, "done (a dry run sends nothing)"), (130, "interrupted: the same command goes on from what the service "
+                                                           "holds")),
+    ("check",): ((0, "no finding (items to do are listed, and are not findings under the exploratory profile)"),
+                 (1, "a finding: push would refuse as it stands")),
+    ("scaffold",): ((0, "written (or shown, under --dry-run)"),),
+    ("defaults",): ((0, "shown"),),
+    ("defaults", "show"): ((0, "shown"),),
+    ("defaults", "edit"): ((0, "saved"),),
+    ("credentials", "set"): ((0, "stored"),),
+    ("credentials", "status"): ((0, "said (whether there is a token, never the token)"),),
+    ("credentials", "remove"): ((0, "removed, or none was held"),),
+    ("env", "check"): ((0, "the environment holds every pin (differences that are only notes are printed)"),),
+    ("modal",): ((0, "the script is written"),),
+    ("cache", "clear"): ((0, "cleared, or there was nothing to clear"),),
+    ("assets", "list"): ((0, "listed"),),
+    ("assets", "fetch"): ((0, "fetched, every file hashed in full"),),
+    ("assets", "check"): ((0, "no cached asset is corrupt"), (1, "a cached asset is corrupt")),
+    ("assets", "sources"): ((0, "each asset's terms and locations are printed"),),
+    ("assets", "audit"): ((0, "nothing found"), (1, "a file whose bytes may not be redistributed, or a mesh with no "
+                                               "record, was found")),
+    ("assets", "licences"): ((0, "listed, or revoked"), (1, "--revoke named a licence that was not accepted")),
+    ("visuals", "list"): ((0, "listed"),),
+    ("visuals", "fetch"): ((0, "baked into the asset cache"),),
+    ("visuals", "view"): ((0, "the layer is printed"),),
+    ("visuals", "web"): ((0, "the page is written"),),
+    ("registry",): ((0, "listed"),),
+    ("docs", "check"): ((0, "every check passes"), (1, "a check fails")),
+    ("docs", "build"): ((0, "built"), (1, "the build has a problem: no page is written")),
+    ("completion",): ((0, "the script is printed"),),
+}
+
+
+def exit_codes_text(path: tuple[str, ...]) -> str | None:
+    """The exit codes block of a command's help: its own, then the two every command may give; ``None`` for a group of
+    commands, whose commands each have theirs."""
+    if path not in EXIT_CODES:
+        return None
+    held = sorted([*EXIT_CODES[path], (2, _REFUSED), (3, _DEFECT)])
+    return "\n".join(["exit codes:", *(f"  {code:<5}{meaning}" for code, meaning in held)])
+
+
 #: A help text starting with this is laid out as written, one example's line per line.
 _AS_WRITTEN = ("example", "install")
 
@@ -208,7 +271,8 @@ def attach_examples(parser: argparse.ArgumentParser, path: tuple[str, ...] = ())
         here = (*path, name)
         if here in EXAMPLES:
             held = f"{child.epilog}\n\n" if child.epilog else ""
-            child.epilog = f"{held}example:\n  {EXAMPLES[here]}"
+            codes = exit_codes_text(here)
+            child.epilog = f"{held}example:\n  {EXAMPLES[here]}" + (f"\n\n{codes}" if codes is not None else "")
         attach_examples(child, here)
 
 

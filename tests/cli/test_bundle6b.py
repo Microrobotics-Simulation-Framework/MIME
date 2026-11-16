@@ -283,3 +283,31 @@ def test_verify_of_an_experiment_ends_with_an_acceptance_as_a_study_and_a_block_
     for other in (BLOCK, STUDY):
         assert other.startswith("An acceptance: ") and "It bounds nothing about physics" in other
         assert "It bounds nothing about physics" in last
+
+
+# -- (ac) every command's help documents its exit codes ----------------------------------------------------------------
+
+
+def test_every_command_without_commands_under_it_documents_its_exit_codes_in_its_help(capsys):
+    from mime.cli import _guide, build_parser
+
+    parser = build_parser()
+    paths = _guide.leaf_paths(parser)
+    leaves = [path for path in paths if not any(other[:len(path)] == path and len(other) > len(path) for other in paths)]
+    assert len(leaves) > 30
+    assert [path for path in leaves if path not in _guide.EXIT_CODES] == []
+    for path in leaves:
+        child = parser
+        for word in path:
+            child = _guide._children(child)[word]  # pyright: ignore[reportPrivateUsage]
+        text = child.format_help()
+        assert "exit codes:" in text and "refused: the cause and what to do are printed" in text, path
+        for code, meaning in _guide.EXIT_CODES[path]:
+            assert f"  {code:<5}{meaning}" in text, (path, code)
+
+
+def test_the_top_of_the_help_lists_the_codes_every_command_may_give(capsys):
+    with pytest.raises(SystemExit):
+        mime_main(["--help"])
+    out = capsys.readouterr().out
+    assert "2 refused; 3 a MIME defect; 130 Ctrl+C; 141 the reader of a pipe closed it" in out

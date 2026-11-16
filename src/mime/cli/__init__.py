@@ -48,7 +48,10 @@ PLAIN_FLAG = "--plain"
 #: What the top of ``mime --help`` ends with: an example of the commonest command, and where the rest are.
 _ROOT_EXAMPLES = ("examples:\n  mime run my_experiment --duration 10s --out my_run\n"
                   "  mime pull 10.5281/zenodo.1234567\n"
-                  "  mime <command> --help    one command's options, with an example")
+                  "  mime <command> --help    one command's options, with an example and its exit codes\n"
+                  "exit codes: 0 done; 1 a result to look at (a moved output, a finding, something pending: each "
+                  "command's help says);\n"
+                  "  2 refused; 3 a MIME defect; 130 Ctrl+C; 141 the reader of a pipe closed it")
 #: The exit code of a command refused for the user's or the environment's reason, and of one that met a MIME defect
 #: or an error MIME does not recognise.
 REFUSED, FAILED = 2, 3
