@@ -59,7 +59,7 @@ from mime._terminal import plain
 from mime._transfers import Transfers
 from mime.assets import size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.credentials._token import Token
+from mime.credentials import Token
 from mime.push._client import Client, Dropped, Errors, Gone, Json, Owner, Transport, owned_refusals
 from mime.push._edits import (
     SHARING_KEYS,

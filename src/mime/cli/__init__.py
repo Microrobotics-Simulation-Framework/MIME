@@ -33,7 +33,7 @@ from mime.validity import Profile
 if TYPE_CHECKING:
     from mime._transfers import Transfers
     from mime.cli._display import SaidDisplay
-    from mime.credentials._token import Token
+    from mime.credentials import Token
     from mime.env import EnvReport
     from mime.cli._display import RunDisplay
     from mime.control import Progress
@@ -1248,9 +1248,9 @@ SHARE_LINK_VARIABLE = "MIME_SHARE_LINK"
 
 def _pull_source(arguments: argparse.Namespace) -> str | Token:
     """What ``mime pull`` pulls: the source as given, or a share link read by ``--link`` (with no echo, or from
-    :data:`SHARE_LINK_VARIABLE`) into a :class:`~mime.credentials._token.Token` the moment it is read. A ``--link`` that is
+    :data:`SHARE_LINK_VARIABLE`) into a :class:`~mime.credentials.Token` the moment it is read. A ``--link`` that is
     neither is refused without its value: it may be the link itself."""
-    from mime.credentials._token import Token
+    from mime.credentials import Token
     from mime.push._records import SHARE_LINK
 
     parser: argparse.ArgumentParser = arguments.pull_parser

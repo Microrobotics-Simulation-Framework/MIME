@@ -29,7 +29,7 @@ from mime import assets
 from mime.credentials import _store
 from mime.assets import _adapters, _fetch
 from mime.build import BuildRefused
-from mime.credentials._token import Token
+from mime.credentials import Token
 from mime.testing import HARNESS_TOKEN, ConnectProxy, LoopbackStore, certificates, verify_adapter
 
 PAYLOAD = b"an asset's bytes, served on this machine. " * 2000

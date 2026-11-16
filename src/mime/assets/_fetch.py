@@ -80,7 +80,7 @@ from mime.assets._reference import (
     scheme_of,
 )
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.credentials._token import Token
+from mime.credentials import Token
 from mime.terms import NO_ASSERTION
 
 #: The part of the message pooch raises for a download whose hash differs (``pooch.hashes.hash_matches``). Any other

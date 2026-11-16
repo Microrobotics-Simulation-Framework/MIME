@@ -30,7 +30,7 @@ from mime import assets
 from mime.credentials import _store
 from mime.assets import AdapterError, LoginRefused, NotFound, Opened, Redirect, Request, Transient, _adapters, _fetch
 from mime.build import BuildRefused
-from mime.credentials._token import Token
+from mime.credentials import Token
 from mime.testing import HARNESS_TOKEN, LoopbackStore
 
 PAYLOAD = b"bytes kept on this machine only, which a remote server must not choose to read. " * 40

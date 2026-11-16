@@ -50,7 +50,7 @@ from zenodo_records import FakeRecords, served
 from mime.push import _client, _draft, _publish, _records, _service
 from mime.build import BuildRefused
 from mime.cli import main
-from mime.credentials._token import Token
+from mime.credentials import Token
 from mime.assets import _fetch
 from mime.saved import _pull, pull
 

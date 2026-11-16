@@ -46,7 +46,7 @@ from mime import push
 from mime.push import _client, _draft, _plan, _service, _state
 from mime.assets import AssetRef
 from mime.build import BuildRefused
-from mime.credentials._token import Token
+from mime.credentials import Token
 from mime.saved._terms import FolderTerms
 from mime.terms import Evidence, Permission, Scope, Terms
 

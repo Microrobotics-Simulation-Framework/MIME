@@ -32,7 +32,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.credentials._token import Token
+from mime.credentials import Token
 from mime.push._client import (
     ANY_TYPE,
     LINK_PARAMETER,
@@ -104,7 +104,7 @@ class ShareLink:
 
 #: What a share link's key may be: a run of characters a URL carries unencoded (InvenioRDM's is a signed token).
 _LINK_KEY = re.compile(r"[A-Za-z0-9._~+/=-]{8,4096}")
-#: How a link held as a secret is labelled: a :class:`~mime.credentials._token.Token` says this and nothing of its value.
+#: How a link held as a secret is labelled: a :class:`~mime.credentials.Token` says this and nothing of its value.
 SHARE_LINK = "a share link"
 #: The DOI resolver's hosts: a key on an address there is a share link given in a form no service's page gives.
 _DOI_HOSTS = ("doi.org", "dx.doi.org")

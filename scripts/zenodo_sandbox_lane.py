@@ -68,7 +68,7 @@ sys.path[:0] = [str(ROOT / "tests"), str(ROOT / "tests" / "sharing")]
 from mime import push  # noqa: E402
 from mime.build import BuildRefused  # noqa: E402
 from mime.credentials import _store  # noqa: E402
-from mime.credentials._token import Token  # noqa: E402
+from mime.credentials import Token  # noqa: E402
 from mime.push import _draft, _publish, _service  # noqa: E402
 from mime.push._client import Answer, HttpTransport  # noqa: E402
 from mime.push._service import ZENODO_SANDBOX, loopback  # noqa: E402

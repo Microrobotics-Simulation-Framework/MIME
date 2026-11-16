@@ -37,7 +37,7 @@ from mime.assets._cache import locate_bundle_container
 from mime.assets._commands import fetch_command, folder_argument
 from mime.assets._reference import carries_key, redacted
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.credentials._token import Token
+from mime.credentials import Token
 from mime.saved._bundle import BUNDLE, BUNDLE_SUFFIX, FOLDER_PREFIX, Unpacked, bundle_name, destination_problem, unpack
 from mime.saved._container import collisions, staging_of
 from mime.saved._folder import LOCK_FILE
@@ -318,7 +318,7 @@ def _signed_in(service_name: str) -> Access:
 
 def _kept_secret(source: str | os.PathLike[str] | Token) -> str | Token:
     """``source`` as pull holds it: a text that carries an access key (an address's ``token`` parameter: a share link)
-    as a :class:`~mime.credentials._token.Token` from here on, so that no frame below holds the key under a name; anything else
+    as a :class:`~mime.credentials.Token` from here on, so that no frame below holds the key under a name; anything else
     as its text. It returns before anything can raise with the text in hand."""
     from mime.push._records import SHARE_LINK
 
@@ -509,7 +509,7 @@ def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str]
     credentials`` stored for that service, for a record or files shared with its account; without it, pull sends no
     token. A record's share link (``<site>/records/<record>?token=...``) is pulled by the key it carries, which is
     never printed, logged or written, and goes to its service's own host alone. Either travels as push's token does
-    (:mod:`mime.push._records`). ``source`` may be a :class:`~mime.credentials._token.Token` holding the link (as ``mime pull
+    (:mod:`mime.push._records`). ``source`` may be a :class:`~mime.credentials.Token` holding the link (as ``mime pull
     --link`` reads it, with no echo), so that no frame holds it as text; a text that carries a key is held so from the
     moment pull takes it. An address elsewhere that carries a ``token`` parameter is pulled as it was, the parameter's
     value hidden wherever the address is said."""

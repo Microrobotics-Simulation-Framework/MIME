@@ -9,4 +9,6 @@ git working tree), and its environment variable (``ZENODO_TOKEN``, ``ZENODO_SAND
 system's keyring is optional and not built. See the README.
 """
 
-__all__: list[str] = []
+from mime.credentials._token import Token
+
+__all__ = ["Token"]

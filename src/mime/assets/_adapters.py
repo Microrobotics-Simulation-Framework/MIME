@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any, Protocol, cast, override, runtime_checkable
 from urllib.parse import unquote, urljoin, urlsplit
 
-from mime.credentials._token import Token
+from mime.credentials import Token
 
 if TYPE_CHECKING:
     from mime.assets._reference import AssetRef

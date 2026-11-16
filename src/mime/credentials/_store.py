@@ -28,7 +28,7 @@ from typing import cast
 import platformdirs
 
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.credentials._token import Token
+from mime.credentials import Token
 
 #: The services a token is kept for, each with the variable that overrides the file.
 SERVICES: Mapping[str, str] = {"zenodo": "ZENODO_TOKEN", "zenodo-sandbox": "ZENODO_SANDBOX_TOKEN"}

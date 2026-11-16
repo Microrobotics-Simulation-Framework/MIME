@@ -40,7 +40,7 @@ from zenodo_records import FakeRecords, FakeTransport
 
 from mime.push import _client, _draft, _plan, _service
 from mime.build import BuildRefused, RefusalClass
-from mime.credentials._token import Token
+from mime.credentials import Token
 from mime.push._plan import rights_entries
 from mime.saved._terms import FolderTerms
 from mime.terms import CustomLicence
@@ -326,7 +326,7 @@ def test_no_variable_moves_a_tokens_host(monkeypatch: pytest.MonkeyPatch):
             sent.append(url)
             raise _client.Dropped("stopped here")
 
-    from mime.credentials._token import Token
+    from mime.credentials import Token
 
     held = _client.Client(_service.ZENODO_SANDBOX, Token("zenodo-sandbox", "x" * 40), Seen(), pause=0,
                        sleep=lambda seconds: None)
@@ -336,7 +336,7 @@ def test_no_variable_moves_a_tokens_host(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_a_service_reached_in_clear_is_refused_before_any_request():
-    from mime.credentials._token import Token
+    from mime.credentials import Token
 
     plain_http = _service.Service("zenodo", "http://zenodo.example/api", "http://zenodo.example", "zenodo", True, "x")
     assert codes(lambda: _client.Client(plain_http, Token("zenodo", "x" * 40))) == ["push.service"]
