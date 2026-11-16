@@ -41,6 +41,7 @@ from typing import Any, cast
 import numpy as np
 from numpy.typing import NDArray
 
+from mime._manifest_file import MANIFEST_FILE
 from mime._npz import check_entries, stored_entry
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.units import Quantity, parse_unit, si, unit_symbol
@@ -54,8 +55,6 @@ BASE_DIR = "experiment"
 #: comparison layer. Neither is a result, and both are redrawn or rewritten from the data.
 FIGURES_DIR = "figures"
 COMPARE_FILE = "compare.usda"
-#: The study's manifest for sharing it (``mime.push``), beside its data: nothing a study reads or writes.
-MANIFEST_FILE = "mime.toml"
 GROUPS_DIR = "groups"
 GROUP_OUTPUTS = "outputs.npz"
 GROUP_REPORT = "report.json"

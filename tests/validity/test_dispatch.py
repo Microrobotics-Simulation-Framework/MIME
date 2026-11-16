@@ -20,17 +20,9 @@ from mime.registry import EntryKind, register_observation, registered
 from mime.registry._registry import _by_class, _by_key  # noqa: PLC2701 - the case unregisters what it planted
 from mime.scene import Z
 from mime.units import mm, s
-from mime.validity import (
-    FINDING_CLASSES,
-    PROFILE_RULES,
-    Action,
-    Cover,
-    Profile,
-    ProfileRules,
-    Rule,
-    rule_problems,
-    using_tables,
-)
+from mime.validity import Profile
+from mime.validity._profiles import using_tables
+from mime.validity._profiles import FINDING_CLASSES, PROFILE_RULES, Action, Cover, ProfileRules, Rule, rule_problems
 from mime.vocabulary import register_namespace
 
 

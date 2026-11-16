@@ -67,6 +67,25 @@ def licence_acceptances_in_the_tests_own_file(tmp_path_factory: pytest.TempPathF
     monkeypatch.setenv("MIME_LICENCE_ACCEPTANCES", str(tmp_path_factory.mktemp("licences") / "licences.json"))
 
 
+@pytest.fixture(autouse=True)
+def user_config_and_state_in_the_tests_own_folder(tmp_path_factory: pytest.TempPathFactory,
+                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    """MIME keeps a person's files where ``platformdirs`` names them: the config directory (``defaults.toml``, the
+    ``credentials`` file, ``locations.toml``, ``licences.json``) and the state directory (``push``'s records). A test
+    that writes through ``mime.push._defaults.write_defaults`` or ``mime.credentials.store`` without a home of its own
+    wrote the maintainer's real ones once. Each test has both in a folder of its own, by the variables ``platformdirs``
+    reads on every call (never cached at import), so a test that sets them again, as ``tests/sharing/homes.isolate``
+    does, simply replaces these. Not redirected: ``HOME``, and the cache directory, where the XLA compilation cache is
+    kept on purpose (``user_xla_cache_in_the_sessions_own_directory`` above is its own guard; Windows has no separate
+    cache folder to leave out). macOS has no variable for them (``platformdirs`` reads ``~/Library``), so there a test
+    must set ``HOME`` itself."""
+    root = tmp_path_factory.mktemp("user-dirs")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(root / "config"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(root / "state"))
+    for override in ("WIN_PD_OVERRIDE_APPDATA", "WIN_PD_OVERRIDE_LOCAL_APPDATA"):  # Windows: its overrides come first;
+        monkeypatch.setenv(override, str(root / "appdata"))  # config, state and cache are one folder there
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--mime-shard", metavar="i/N", help="keep CI shard i of N's test files (tests/_sharding.py)")
     parser.addoption("--mime-shard-record", metavar="FILE", help="write what the shard collected and kept, as JSON")

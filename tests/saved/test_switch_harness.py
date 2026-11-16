@@ -67,6 +67,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+import _cache_ceiling
 import tube_asset
 from mrs_cases import mrs_free_space, mrs_plane, mrs_solids
 import multibody_cases
@@ -111,6 +112,26 @@ SHRUNK = RADIUS - EXTENT - MARGIN
 REFERENCE, OUTER = 1.56e-3, 1.33
 #: A body's outward speed where a row needs the hold to engage, m/s.
 OUTWARD = 1e-3
+
+
+#: How far above where a worker stands after giving its compiled programs back this file lets its resident memory
+#: grow before it gives them back again (tests/_cache_ceiling.py). Each row's test compiles its own graphs and none is
+#: called again by the next, so a worker that ran the rows one after another held 3 to 5 GB of programs, and three
+#: such workers beside a memory-heavy test lost CI's shard 16 its runner (a probe on a runner, 2026-11-16).
+HEADROOM_MIB = 1024
+LIMIT_MIB: list[float] = []  # one worker's limit: where it stood after the last give-back, plus the headroom
+
+
+@pytest.fixture(autouse=True)
+def programs_given_back():
+    """As ``test_lubrication.py``'s: give JAX's compiled programs back once a worker grows past its headroom."""
+    yield
+    now = _cache_ceiling.resident_mib()
+    if now is None:
+        return
+    if not LIMIT_MIB or now > LIMIT_MIB[0]:
+        _cache_ceiling.give_back_programs()
+        LIMIT_MIB[:] = [(_cache_ceiling.resident_mib() or now) + HEADROOM_MIB]
 
 
 @pytest.fixture(scope="module")

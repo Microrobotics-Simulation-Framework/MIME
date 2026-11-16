@@ -363,7 +363,8 @@ def test_the_cli_reference_names_every_command_and_flag_the_parser_has():
 
 
 def test_the_profiles_text_names_every_profile_and_the_rules_the_tables_hold():
-    from mime.validity import PROFILE_RULES, Profile
+    from mime.validity import Profile
+    from mime.validity._profiles import PROFILE_RULES
 
     text = GENERATORS["profiles"](ROOT)
     assert all(f"`{profile.value}`" in text for profile in Profile)

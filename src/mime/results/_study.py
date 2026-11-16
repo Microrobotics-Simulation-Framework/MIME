@@ -18,7 +18,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
-from mime.errors import public
+from mime.errors._boundary import public
 from mime.results._result import MemberOf, RunResult
 from mime.results._series import Reading, Series, Table, column_name
 from mime.units import Quantity, unit_symbol

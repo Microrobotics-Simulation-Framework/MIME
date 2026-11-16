@@ -8,7 +8,7 @@ quantity carries (``mm(3.175, reason=...)``) or one ``exp.source(path, reason=..
 in the profile rules (design #191 item 3): a physical value with no source (a convention taken for one included), a
 numerical value with none (its convergence evidence until a1's evidence records), a numerical default taken, a default
 its entry declares nothing of, and a pending reason anywhere. Every site applies its class's rule through one function,
-:func:`mime.validity.decide`, at build time: a profile changes what is refused, waived or listed, never a value or a
+:func:`mime.validity._profiles.decide`, at build time: a profile changes what is refused, waived or listed, never a value or a
 graph. A reason written where no site judges it is refused as an input error naming the slot (``source.no-site``).
 
 What the profile made of an experiment is recorded in a canonical order (by target, then code), so that the order a
@@ -23,7 +23,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, cast
 
 from mime.build._refusals import RefusalClass
-from mime.materials import read_target
+from mime.materials._read import read_target
 from mime.registry import (
     DefaultKind,
     Entry,
@@ -36,27 +36,14 @@ from mime.registry import (
     registration_of,
     setting_names,
 )
-from mime.things import Apparatus, Body, Medium, Structure, TypedPath, did_you_mean
+from mime.things import Apparatus, Body, Medium, Structure, TypedPath
+from mime.things._handles import did_you_mean
 from mime.units import Condition, Quantity, unit_symbol
-from mime.validity import (
-    PENDING,
-    REASON,
-    Action,
-    Basis,
-    Chosen,
-    Decision,
-    Finding,
-    Judge,
-    PendingItem,
-    Profile,
-    Stamp,
-    Waiver,
-    basis_problem,
-    basis_text,
-    decide,
-    is_pending,
-    pending_text,
-)
+from mime.validity import Basis, Chosen, Profile
+from mime.validity._profiles import decide
+from mime.validity._bases import PENDING, basis_problem, basis_text, is_pending
+from mime.validity._pending import REASON, PendingItem, Stamp, pending_text
+from mime.validity._profiles import Action, Decision, Finding, Judge, Waiver
 
 type Json = None | bool | int | float | str | list[Json] | dict[str, Json]
 type Problem = tuple[str, str, str]
@@ -407,7 +394,7 @@ def reasons_without_a_site(roots: Sequence[tuple[str, object]], judged: set[int]
 class ProfileWork:
     """The profile's work while an experiment is planned: the judge, the defaults taken, the waivers and items, and
     what to refuse. The planner feeds it as it goes, and :meth:`finish` judges every setting. Every site applies its
-    class's rule through :meth:`apply`, and so through :func:`mime.validity.decide`."""
+    class's rule through :meth:`apply`, and so through :func:`mime.validity._profiles.decide`."""
 
     def __init__(self, profile: Profile) -> None:
         self.judge = Judge(profile)
@@ -465,7 +452,7 @@ class ProfileWork:
 
     def apply(self, finding: Finding, item: PendingItem, baseline: Action | None, refusal: Problem, *,
               own: bool = False) -> bool:
-        """``finding``'s class's rule applied (:func:`mime.validity.decide`), with ``baseline`` what the site did before
+        """``finding``'s class's rule applied (:func:`mime.validity._profiles.decide`), with ``baseline`` what the site did before
         profiles: recorded (:meth:`record`), and where it stops the finding (``basis``, ``refuse``), refused as
         ``refusal`` says, naming the rule. Whether the site goes on with it."""
         decision = decide(self.judge, finding, baseline)

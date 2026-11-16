@@ -19,7 +19,7 @@ Controls, each caught on every run:
   the site is caught overwritten without a word;
 - **a test writing outside its own state directory**: the conftest's guard finds a record planted in the module's;
 - **a draft's ``files.enabled`` note read as a refusal**: the fake lists it on metadata written before the files, as
-  the sandbox does, and with :func:`mime.push._client.files_pending` planted away the first push stops there.
+  the sandbox does, and with :func:`mime._client.files_pending` planted away the first push stops there.
 
 Every refusal is captured with its traceback's locals, and none holds the token, in any form ``Token.occurs_in``
 finds; nor does any line push said, any file it wrote, or any request it sent but the header.
@@ -43,10 +43,10 @@ from terms_cases import CONDITIONAL_IDS, NO_REDISTRIBUTION, OPEN_IDS, UNKNOWN_ID
 from zenodo_records import FakeRecords, FakeTransport, Killed
 
 from mime import push
+from mime.push import _client, _draft, _plan, _service, _state
 from mime.assets import AssetRef
 from mime.build import BuildRefused
 from mime.credentials import Token
-from mime.push import _client, _draft, _plan, _state
 from mime.saved._terms import FolderTerms
 from mime.terms import Evidence, Permission, Scope, Terms
 
@@ -101,10 +101,10 @@ class Seen:
         return True
 
 
-def pushed(folder: Path, fake: FakeRecords, *, service: push.Service | None = None, seen: Seen | None = None,
-           **given: object) -> push.Drafted | None:
+def pushed(folder: Path, fake: FakeRecords, *, service: _service.Service | None = None, seen: Seen | None = None,
+           **given: object) -> _draft.Drafted | None:
     held = seen or Seen(fake)
-    return push.push(folder, service or fake.service(), say=held.say, transport=FakeTransport(fake), pause=0,
+    return _draft.push(folder, service or fake.service(), say=held.say, transport=FakeTransport(fake), pause=0,
                      sleep=lambda seconds: None, **given)  # type: ignore[arg-type]
 
 
@@ -177,7 +177,7 @@ def test_a_private_draft_is_made_without_a_terminal_or_yes(toy: Path, token: str
     fake = FakeRecords(token)
     folder = copy_of(toy, tmp_path)
     asked: list[str] = []
-    drafted = push.push(folder, fake.service(), confirm=lambda question: bool(asked.append(question)),
+    drafted = _draft.push(folder, fake.service(), confirm=lambda question: bool(asked.append(question)),
                         transport=FakeTransport(fake), pause=0)
     assert drafted.changed and asked == [] and len(fake.drafts()) == 1
 
@@ -197,7 +197,7 @@ def test_a_push_makes_the_draft_reserves_its_doi_and_uploads_each_file_verified(
     metadata = record.body["metadata"]
     assert metadata["rights"] == [{"id": "cc-by-4.0"}] and metadata["resource_type"] == {"id": "dataset"}  # type: ignore[index]
     assert metadata["description"].startswith("<h1>full_toy</h1>")  # type: ignore[index]
-    held = push.read_state(fake.service(), "full_toy")
+    held = _state.read_state(fake.service(), "full_toy")
     assert held is not None and held.files["NOTICE.txt"].md5 == record.files["NOTICE.txt"].checksum.removeprefix("md5:")  # type: ignore[union-attr]
 
 
@@ -250,12 +250,12 @@ def test_status_reads_the_draft_as_the_service_holds_it(toy: Path, token: str, t
     fake = FakeRecords(token)
     folder = copy_of(toy, tmp_path)
     said: list[str] = []
-    push.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
+    _draft.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
     assert said and said[0].startswith("no draft of 'full_toy' on zenodo-sandbox that MIME knows of")
     pushed(folder, fake)
     fake.records["629525"].files["extra.txt"] = type(fake.records["629525"].files["NOTICE.txt"])("extra.txt")
     said.clear()
-    push.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
+    _draft.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
     text = "\n".join(said)
     assert "reserved DOI: 10.5072/zenodo.629525; concept: 629524" in text and "creators: Carberry" in text
     assert "NOTICE" in text and "as push uploaded and verified it" in text and "extra.txt" in text and \
@@ -266,14 +266,14 @@ def test_discard_deletes_the_draft_and_the_record_and_only_a_draft(toy: Path, to
     fake = FakeRecords(token)
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake)
-    assert codes(lambda: push.discard(folder, fake.service(), transport=FakeTransport(fake), pause=0)) == \
+    assert codes(lambda: _draft.discard(folder, fake.service(), transport=FakeTransport(fake), pause=0)) == \
         ["push.unconfirmed"]
-    assert push.discard(folder, fake.service(), yes=True, transport=FakeTransport(fake), pause=0) is True
-    assert fake.drafts() == [] and push.read_state(fake.service(), "full_toy") is None
-    assert push.discard(folder, fake.service(), yes=True, transport=FakeTransport(fake), pause=0) is False
+    assert _draft.discard(folder, fake.service(), yes=True, transport=FakeTransport(fake), pause=0) is True
+    assert fake.drafts() == [] and _state.read_state(fake.service(), "full_toy") is None
+    assert _draft.discard(folder, fake.service(), yes=True, transport=FakeTransport(fake), pause=0) is False
     pushed(folder, fake)
     fake.publish("629527")
-    assert codes(lambda: push.discard(folder, fake.service(), yes=True, transport=FakeTransport(fake),
+    assert codes(lambda: _draft.discard(folder, fake.service(), yes=True, transport=FakeTransport(fake),
                                       pause=0)) == ["push.published"]
     assert codes(lambda: pushed(folder, fake)) == ["push.published"]
 
@@ -295,7 +295,7 @@ def test_a_file_added_on_the_site_is_refused_and_one_push_uploaded_earlier_is_de
     record = fake.records["629525"]
     record.files["notes.txt"] = type(record.files["NOTICE.txt"])("notes.txt", b"mine", "completed", "md5:x")
     assert codes(lambda: pushed(folder, fake)) == ["push.draft-changed"]
-    held = push.read_state(fake.service(), "full_toy")
+    held = _state.read_state(fake.service(), "full_toy")
     assert held is not None
     held.files["notes.txt"] = _state.Uploaded(4, "x", "y")
     _state.write_state(fake.service(), held)
@@ -462,11 +462,11 @@ def resumed_problems(files: dict[str, bytes], kill_at: int, after: bool, verify:
         plan = plan_of(fake, files, root / "files")
         said: list[str] = []
         try:
-            push.send(plan, None, client(fake), said.append)
+            _draft.send(plan, None, client(fake), said.append)
         except (Killed, BuildRefused):
             pass
         stopped = len(fake.requests)
-        recorded = push.read_state(plan.service, plan.experiment)
+        recorded = _state.read_state(plan.service, plan.experiment)
         verified_before = set(recorded.files) if recorded is not None else set()
         drafted, _ = run_until_drafted(plan, fake, said)
         record = fake.records[drafted.record]
@@ -616,10 +616,10 @@ def every_refusal(folder: Path, fake: FakeRecords, tmp_path: Path) -> list[BaseE
             pushed(folder, fake)
         except BuildRefused as error:
             found.append(error)
-        push.discard(folder, fake.service(), yes=True, transport=FakeTransport(fake), pause=0)
+        _draft.discard(folder, fake.service(), yes=True, transport=FakeTransport(fake), pause=0)
     fake.faults.clear()
-    for action in (lambda: push.push(folder, fake.service(), transport=FakeTransport(fake), pause=0),
-                   lambda: push.discard(folder, fake.service(), transport=FakeTransport(fake), pause=0)):
+    for action in (lambda: _draft.push(folder, fake.service(), transport=FakeTransport(fake), pause=0),
+                   lambda: _draft.discard(folder, fake.service(), transport=FakeTransport(fake), pause=0)):
         try:
             pushed(folder, fake)
             action()
@@ -627,7 +627,7 @@ def every_refusal(folder: Path, fake: FakeRecords, tmp_path: Path) -> list[BaseE
             found.append(error)
     fake.publish(max(fake.records))
     for action in (lambda: pushed(folder, fake),
-                   lambda: push.discard(folder, fake.service(), yes=True, transport=FakeTransport(fake), pause=0)):
+                   lambda: _draft.discard(folder, fake.service(), yes=True, transport=FakeTransport(fake), pause=0)):
         try:
             action()
         except BuildRefused as error:
@@ -657,8 +657,8 @@ def test_control_the_capture_finds_a_token_a_refusal_holds(token: str):
 
     def leaky() -> None:
         text = held.reveal()  # noqa: F841 - the planted defect: the text under a name in a frame
-        raise BuildRefused([push.Client.__init__.__globals__["_refuse"](
-            "push.service", push._client.RefusalClass.ENVIRONMENT, "planted", "`mime push <folder> --to x`")])
+        raise BuildRefused([_client.Client.__init__.__globals__["_refuse"](
+            "push.service", _client.RefusalClass.ENVIRONMENT, "planted", "`mime push <folder> --to x`")])
 
     with pytest.raises(BuildRefused) as refused:
         leaky()
@@ -678,7 +678,7 @@ def test_the_draft_push_sends_holds_every_field_datacite_needs_for_its_doi(toy: 
     assert metadata["publisher"] == "Zenodo"  # type: ignore[index]
 
 
-def without(plan: push.Plan, field: str) -> push.Plan:
+def without(plan: _plan.Plan, field: str) -> _plan.Plan:
     from dataclasses import replace
 
     metadata = dict(plan.payload["metadata"])  # type: ignore[arg-type]
@@ -692,14 +692,14 @@ def test_a_refused_field_mime_builds_is_mimes_defect_and_one_the_author_writes_i
 
     fake = FakeRecords(token)
     with pytest.raises(BuildRefused) as refused:
-        push.send(without(plan_of(fake, {"a.bin": b"a"}, tmp_path / "a"), "publisher"), None, client(fake))
+        _draft.send(without(plan_of(fake, {"a.bin": b"a"}, tmp_path / "a"), "publisher"), None, client(fake))
     held = refused.value.refusals
     assert [(r.code, r.category) for r in held] == [("push.rejected", RefusalClass.INTERNAL)]
     assert "metadata.publisher" in held[0].message and "MIME's defect, not yours" in held[0].message
     assert "mime.toml" not in held[0].action
     fake = FakeRecords(token)
     with pytest.raises(BuildRefused) as refused:
-        push.send(without(plan_of(fake, {"a.bin": b"a"}, tmp_path / "b"), "title"), None, client(fake))
+        _draft.send(without(plan_of(fake, {"a.bin": b"a"}, tmp_path / "b"), "title"), None, client(fake))
     held = refused.value.refusals
     assert [(r.code, r.category) for r in held] == [("push.rejected", RefusalClass.USER)]
     assert "correct it under [record] in mime.toml" in held[0].action
@@ -730,15 +730,15 @@ def test_a_stand_ins_records_are_never_read_or_written_for_the_real_service(toy:
     """A dry run's fake, named as the sandbox and even at its address, keeps its records apart: the real sandbox's
     push (here a stand-in at the real address, in this process) makes its own draft and never names the fake's."""
     folder = copy_of(toy, tmp_path)
-    dry = FakeRecords(token, api=push.ZENODO_SANDBOX.api, site=push.ZENODO_SANDBOX.site, real_address=True)
-    dry_service = push.Service("zenodo-sandbox", push.ZENODO_SANDBOX.api, push.ZENODO_SANDBOX.site, "zenodo-sandbox",
+    dry = FakeRecords(token, api=_service.ZENODO_SANDBOX.api, site=_service.ZENODO_SANDBOX.site, real_address=True)
+    dry_service = _service.Service("zenodo-sandbox", _service.ZENODO_SANDBOX.api, _service.ZENODO_SANDBOX.site, "zenodo-sandbox",
                                False, "a dry run of the sandbox")
     pushed(folder, dry, service=dry_service)
-    assert _state.namespace(dry_service) != _state.namespace(push.ZENODO_SANDBOX)
+    assert _state.namespace(dry_service) != _state.namespace(_service.ZENODO_SANDBOX)
     assert not (_state.state_root() / "zenodo-sandbox").exists()
-    real = FakeRecords(token, api=push.ZENODO_SANDBOX.api, site=push.ZENODO_SANDBOX.site, first=700001,
+    real = FakeRecords(token, api=_service.ZENODO_SANDBOX.api, site=_service.ZENODO_SANDBOX.site, first=700001,
                        real_address=True)
-    drafted = pushed(folder, real, service=push.ZENODO_SANDBOX)
+    drafted = pushed(folder, real, service=_service.ZENODO_SANDBOX)
     assert drafted is not None and drafted.record == "700001"
     assert not any("629525" in path for _, path, _, _ in real.requests)
 
@@ -747,12 +747,12 @@ def test_control_records_kept_by_the_services_name_alone_let_a_dry_run_steer_the
         toy: Path, token: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(_state, "namespace", lambda service: service.name)
     folder = copy_of(toy, tmp_path)
-    dry = FakeRecords(token, api=push.ZENODO_SANDBOX.api, site=push.ZENODO_SANDBOX.site, real_address=True)
-    pushed(folder, dry, service=push.Service("zenodo-sandbox", push.ZENODO_SANDBOX.api, push.ZENODO_SANDBOX.site,
+    dry = FakeRecords(token, api=_service.ZENODO_SANDBOX.api, site=_service.ZENODO_SANDBOX.site, real_address=True)
+    pushed(folder, dry, service=_service.Service("zenodo-sandbox", _service.ZENODO_SANDBOX.api, _service.ZENODO_SANDBOX.site,
                                              "zenodo-sandbox", False, "a dry run of the sandbox"))
-    real = FakeRecords(token, api=push.ZENODO_SANDBOX.api, site=push.ZENODO_SANDBOX.site, first=700001,
+    real = FakeRecords(token, api=_service.ZENODO_SANDBOX.api, site=_service.ZENODO_SANDBOX.site, first=700001,
                        real_address=True)
-    pushed(folder, real, service=push.ZENODO_SANDBOX)
+    pushed(folder, real, service=_service.ZENODO_SANDBOX)
     assert ("GET", "/records/629525/draft") in [(m, p) for m, p, _, _ in real.requests], \
         "with the namespace planted away, the real push takes the dry run's draft id"
 
@@ -782,7 +782,7 @@ def test_the_lanes_dry_run_never_writes_a_record_of_the_real_sandbox(token: str,
     own_temporary_folder(monkeypatch, tmp_path)
     held = lane()
     with held.sandbox_side(True, Token("zenodo-sandbox", token)) as (service, _):  # type: ignore[attr-defined]
-        assert service != push.ZENODO_SANDBOX and _state.namespace(service).startswith("other/")
+        assert service != _service.ZENODO_SANDBOX and _state.namespace(service).startswith("other/")
     assert held.main(["--creator", "Carberry, Josiah", "--demo", "toy", "--dry-run",  # type: ignore[attr-defined]
                       "--log", str(tmp_path / "log")]) == 0
     assert not (_state.state_root() / "zenodo-sandbox").exists()
@@ -796,8 +796,8 @@ def test_control_a_dry_run_as_the_real_sandbox_is_caught_writing_its_records(tok
     own_temporary_folder(monkeypatch, tmp_path)
     held = lane()
     monkeypatch.setattr(held, "sandbox_side", lambda dry_run, token: contextlib.nullcontext((
-        push.ZENODO_SANDBOX, FakeTransport(FakeRecords(token, api=push.ZENODO_SANDBOX.api,
-                                                       site=push.ZENODO_SANDBOX.site, real_address=True)))))
+        _service.ZENODO_SANDBOX, FakeTransport(FakeRecords(token, api=_service.ZENODO_SANDBOX.api,
+                                                       site=_service.ZENODO_SANDBOX.site, real_address=True)))))
     held.main(["--creator", "Carberry, Josiah", "--demo", "toy", "--dry-run",  # type: ignore[attr-defined]
                "--log", str(tmp_path / "log")])
     assert (_state.state_root() / "zenodo-sandbox").exists(), "the planted dry run's records are not seen"
@@ -834,17 +834,17 @@ def test_the_lanes_dry_run_needs_no_token_says_what_it_compared_and_removes_what
 def test_control_the_lanes_dry_run_comparison_finds_a_difference_planted_on_one_side(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
     own_temporary_folder(monkeypatch, tmp_path)
-    real = push.HttpTransport.send
+    real = _client.HttpTransport.send
 
     def changed(self, method, url, headers, body, token):  # noqa: ANN001, ANN202
         answer = real(self, method, url, headers, body, token)
         held = json.loads(answer.body) if answer.body.strip() else None
         if isinstance(held, dict) and "parent" in held:
             held["is_published"] = None
-            return push.Answer(answer.status, answer.headers, json.dumps(held).encode())
+            return _client.Answer(answer.status, answer.headers, json.dumps(held).encode())
         return answer
 
-    monkeypatch.setattr(push.HttpTransport, "send", changed)
+    monkeypatch.setattr(_client.HttpTransport, "send", changed)
     assert lane().main(["--creator", "Carberry, Josiah", "--demo", "toy", "--dry-run"]) == 1  # type: ignore[attr-defined]
     out = capsys.readouterr().out
     assert "differences:" in out and "is_published" in out
@@ -870,10 +870,10 @@ def two_studies(root: Path) -> tuple[Path, Path]:
     return saved_named(root, "other_study"), saved_named(root, "my_study")
 
 
-def record_naming(service: push.Service, experiment: str, other: str) -> None:
+def record_naming(service: _service.Service, experiment: str, other: str) -> None:
     """Push's record of ``experiment`` edited to name the draft of ``other`` (its id and page, and its mark too: a
     whole record copied over, with its experiment's name changed)."""
-    theirs = push.read_state(service, other)
+    theirs = _state.read_state(service, other)
     assert theirs is not None
     from dataclasses import replace
 
@@ -889,12 +889,12 @@ def test_a_record_naming_another_experiments_draft_changes_and_deletes_nothing_i
     before = (record.revision, dict(record.body["metadata"]), sorted(record.files))  # type: ignore[arg-type]
     record_naming(fake.service(), "my_study", "other_study")
     assert codes(lambda: pushed(mine, fake)) == ["push.draft-foreign"]
-    assert codes(lambda: push.discard(mine, fake.service(), yes=True, transport=FakeTransport(fake), pause=0)) == \
+    assert codes(lambda: _draft.discard(mine, fake.service(), yes=True, transport=FakeTransport(fake), pause=0)) == \
         ["push.draft-foreign"]
     assert theirs.record in fake.records
     assert (record.revision, dict(record.body["metadata"]), sorted(record.files)) == before  # type: ignore[arg-type]
     said: list[str] = []
-    push.status(mine, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
+    _draft.status(mine, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
     assert any("does not carry the identifier push wrote" in line for line in said)
 
 
@@ -912,7 +912,7 @@ def test_control_without_the_identifier_check_another_experiments_draft_is_rewri
         pass
     assert fake.records[theirs.record].body["metadata"]["title"] == "my_study", \
         "the planted record's push is not seen rewriting the other experiment's draft"  # type: ignore[index]
-    push.discard(mine, fake.service(), yes=True, transport=FakeTransport(fake), pause=0)
+    _draft.discard(mine, fake.service(), yes=True, transport=FakeTransport(fake), pause=0)
     assert theirs.record not in fake.records, "the planted discard is not seen deleting it"
 
 
@@ -972,11 +972,11 @@ def test_a_title_edited_on_the_site_stops_the_push_naming_both_values(toy: Path,
     held = refused.value.refusals
     assert [(r.code, r.category) for r in held] == [("push.metadata-edited", RefusalClass.USER)]
     assert "metadata.title on the site: Edited on the site; from mime.toml's [record]: full_toy" in held[0].message
-    assert "[record] `title` in mime.toml" in held[0].action and push.OVERWRITE_FLAG in held[0].action
-    assert push.KEEP_FLAG in held[0].action
+    assert "[record] `title` in mime.toml" in held[0].action and _draft.OVERWRITE_FLAG in held[0].action
+    assert _draft.KEEP_FLAG in held[0].action
     assert record.revision == before, "nothing was written to the draft"
     said: list[str] = []
-    push.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
+    _draft.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
     assert any("edited on the site since push last wrote it: title" in line for line in said)
 
 
@@ -1026,24 +1026,24 @@ def test_every_push_status_and_discard_ends_with_the_drafts_link(toy: Path, toke
     pushed(folder, fake, seen=seen)
     assert seen.events[-2].startswith("said Nothing is published") and seen.events[-1] == f"said {page}"
     said: list[str] = []
-    push.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
+    _draft.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
     assert said[-1] == page
     said.clear()
-    push.push(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
+    _draft.push(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
     assert said[-1].endswith(f"nothing was sent: {page}"), "a push with nothing changed: one line, the link last"
     fake.plant("status", lambda method, path: path.endswith("/content"), status=500, times=99)
     fake.records["629525"].files.clear()
     said.clear()
     with pytest.raises(BuildRefused):
-        push.push(folder, fake.service(), yes=True, say=said.append, transport=FakeTransport(fake), pause=0)
+        _draft.push(folder, fake.service(), yes=True, say=said.append, transport=FakeTransport(fake), pause=0)
     assert said[-1] == page, "a refused push names the draft it left"
     fake.faults.clear()
     said.clear()
-    push.discard(folder, fake.service(), confirm=lambda question: False, say=said.append, transport=FakeTransport(fake),
+    _draft.discard(folder, fake.service(), confirm=lambda question: False, say=said.append, transport=FakeTransport(fake),
                  pause=0)
     assert said[-2:] == ["Not deleted.", page]
     said.clear()
-    push.discard(folder, fake.service(), yes=True, say=said.append, transport=FakeTransport(fake), pause=0)
+    _draft.discard(folder, fake.service(), yes=True, say=said.append, transport=FakeTransport(fake), pause=0)
     assert said[-1] == "https://zenodo-records.invalid/me/uploads"
 
 

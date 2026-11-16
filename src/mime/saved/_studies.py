@@ -38,7 +38,7 @@ from typing_extensions import ReadOnly, TypedDict
 
 from mime._shell import quoted
 from mime._terminal import plain
-from mime.assets import folder_assets, known_bytes, size_text
+from mime.assets import folder_assets, known_bytes
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._refusals import ArgumentRefused, MimeError
 from mime.results._study_folder import (
@@ -58,19 +58,23 @@ from mime.saved._container import (
     BundleFile,
     ContainerKind,
     ReferencedFile,
+    collision_refusals,
     collisions,
     container_hash,
     destination_problem,
     files_of,
+    inside_problem,
     member_kind_problems,
     member_problem,
     members_listed,
     notice_of,
+    over_limit,
     read_manifest,
     refuse,
     sha256_of,
     staging_of,
     stated_format,
+    stray_refusals,
     unknown_format,
     unreadable,
     write_container,
@@ -295,27 +299,21 @@ def _unique(refusals: Sequence[Refusal]) -> list[Refusal]:
 def _stray_files(files: Sequence[tuple[str, Path]], forms: Mapping[str, SavedForm]) -> list[Refusal]:
     """A refusal for each file below the study that is not one it keeps: inside a saved folder, one the saved form does
     not name (as a bundle refuses it); and each pair of names one platform reads as one."""
-    found: list[Refusal] = []
     named = {where: named_files(form) for where, form in forms.items()}
-    for member, _ in files:
-        inside = saved_folder_of(member)
+
+    def problem_of(member: str) -> str | None:
         problem = STUDY.name_problem(member)
-        if problem is None and inside is not None:
+        if problem is None and (inside := saved_folder_of(member)) is not None:
             where, below = inside
             problem = None if below in named.get(where, set()) else (
                 f"is not listed in its lock" if where in named else "is in a saved folder the study does not name")
-        if problem is not None:
-            found.append(refuse("bundle.stray-file", RefusalClass.USER,
-                                f"{IN_STUDY}, {plain(member)} is not a file the study folder holds: it {problem}",
-                                "a study container carries what the study's run and its saved experiments wrote and "
-                                "nothing else (an .env, a .git directory and an editor's file stay behind): remove the "
-                                "file, or keep the folder somewhere it is not, then `mime pack <folder>` again"))
-    found += [refuse("bundle.name-collision", RefusalClass.USER,
-                     f"{IN_STUDY}, {plain(one)} and {plain(other)} are one name on a case-insensitive filesystem",
-                     "rename one, so that the study container unpacks to the same folder on macOS and Windows as on "
-                     "Linux; then `mime pack <folder>`")
-              for one, other in collisions([member for member, _ in files])]
-    return found
+        return problem
+
+    found = stray_refusals(
+        files, problem_of, "the study folder holds",
+        "a study container carries what the study's run and its saved experiments wrote", prefix=f"{IN_STUDY}, ")
+    return found + collision_refusals([member for member, _ in files], prefix=f"{IN_STUDY}, ",
+                                      unpacks="the study container")
 
 
 def _sent(judged: FolderTerms) -> set[str]:
@@ -380,7 +378,10 @@ def study_name(root: Path) -> str:
     return _NAME_SAFE.sub("_", root.name) or "study"
 
 
-def _too_large(member: str, size: int) -> Refusal:
+def _too_large(member: str, size: int) -> Refusal | None:
+    message = over_limit(member, size, INLINE_LIMIT_BYTES, "a container", prefix=f"{IN_STUDY}, ")
+    if message is None:
+        return None
     if saved_folder_of(member) is not None:
         action = ("give its terms an origin, asset(path, terms=Terms(..., origin=(\"https://...\",))), and save the "
                   "experiment again, built.save(folder): it then travels as a reference that `mime assets fetch "
@@ -388,9 +389,7 @@ def _too_large(member: str, size: int) -> Refusal:
     else:
         action = ("keep less of the run: record fewer outputs (record=[...]) or less often (every=...), and run the "
                   "study again into a new folder; a study's own output has no origin to travel as a reference from")
-    return refuse("bundle.file-too-large", RefusalClass.USER,
-                  f"{IN_STUDY}, {plain(member)} has {size_text(size)}, over the {size_text(INLINE_LIMIT_BYTES)} a "
-                  f"container carries", action)
+    return refuse("bundle.file-too-large", RefusalClass.USER, message, action)
 
 
 def pack_study(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None = None) -> Path:
@@ -404,10 +403,8 @@ def pack_study(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | 
     root = Path(os.path.abspath(folder))
     document = read_study(root).record
     target = Path(out) if out is not None else root.with_name(root.name + STUDY_SUFFIX)
-    if root.resolve() in (target.resolve(), *target.resolve().parents):
-        raise BuildRefused([refuse("bundle.output-inside", RefusalClass.USER,
-                                   "the study container would be written inside the folder it packs",
-                                   "write it beside the folder (--out)")])
+    if (inside := inside_problem(root, target, "the study container")) is not None:
+        raise inside
     folders = saved_folders(document)
     for where in folders:
         Experiment.load(root / where)
@@ -432,9 +429,8 @@ def pack_study(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | 
     for member, path in files:
         if member in referenced:
             continue
-        size = path.stat().st_size
-        if size > INLINE_LIMIT_BYTES:
-            refusals.append(_too_large(member, size))
+        if (large := _too_large(member, path.stat().st_size)) is not None:
+            refusals.append(large)
             continue
         carried = _bundle.scanned(f"{member} ({IN_STUDY})", path, stored, refusals)
         if carried is not None:
@@ -520,16 +516,10 @@ def pack_studies(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] 
                                    "pack a study folder, a saved folder, or a folder of study folders: `mime pack "
                                    "<folder>`")])
     directory = Path(os.path.abspath(out)) if out is not None else root.parent
-    if root.resolve() in (directory.resolve(), *directory.resolve().parents):
-        raise BuildRefused([refuse("bundle.output-inside", RefusalClass.USER,
-                                   "the study containers would be written inside the folder they pack",
-                                   "write them beside the folder (--out <folder>)")])
-    clashing = collisions([study.name for study in studies])
-    if clashing:
-        raise BuildRefused([refuse("bundle.name-collision", RefusalClass.USER,
-                                   f"the study folders {plain(one)} and {plain(other)} are one name on a "
-                                   f"case-insensitive filesystem", "rename one; then `mime pack <folder>`")
-                            for one, other in clashing])
+    if (inside := inside_problem(root, directory, "the study containers", plural=True)) is not None:
+        raise inside
+    if clashing := collision_refusals([study.name for study in studies], prefix="the study folders "):
+        raise BuildRefused(clashing)
     directory.mkdir(parents=True, exist_ok=True)
     staging = staging_of(directory / root.name)
     staging.mkdir()

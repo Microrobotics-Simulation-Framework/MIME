@@ -8,6 +8,7 @@ from mime.things._handles import (
     FieldPath,
     GeometryPath,
     Handle,
+    HandleNames,
     InitialPath,
     LawHandle,
     MediumHandle,
@@ -16,18 +17,10 @@ from mime.things._handles import (
     StructureHandle,
     SurfacePath,
     TypedPath,
-    did_you_mean,
 )
-from mime.things._parts import (
-    DERIVED,
-    Derived,
-    Part,
-    PartMass,
-    derive,
-    magnetisation,
-)
+from mime.things._parts import Part
 from mime.things._ports import CommandPort, Gaussian, Measurement, Port
-from mime.things._prims import WORLD, PrimPath
+from mime.things._prims import PrimPath
 from mime.things._things import (
     Apparatus,
     Body,
@@ -35,31 +28,27 @@ from mime.things._things import (
     PermanentMagnet,
     State,
     Structure,
-    Thing,
     ThingKind,
-    prim_path_of,
 )
 
 __all__ = [
-    "DERIVED",
     "Apparatus",
     "ApparatusHandle",
     "Body",
     "BodyHandle",
     "CommandPath",
     "CommandPort",
-    "Derived",
     "DirectionPath",
     "FieldPath",
     "Gaussian",
     "GeometryPath",
     "Handle",
+    "HandleNames",
     "InitialPath",
     "LawHandle",
     "Measurement",
     "Medium",
     "Part",
-    "PartMass",
     "MediumHandle",
     "PermanentMagnet",
     "Port",
@@ -70,12 +59,6 @@ __all__ = [
     "Structure",
     "StructureHandle",
     "SurfacePath",
-    "Thing",
     "ThingKind",
     "TypedPath",
-    "WORLD",
-    "derive",
-    "did_you_mean",
-    "magnetisation",
-    "prim_path_of",
 ]

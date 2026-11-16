@@ -20,6 +20,7 @@ import pytest
 from push_cases import copy_of, saved_toy, with_token, write_manifest
 
 from mime import push
+from mime.push import _draft
 from mime.build import BuildRefused
 from mime.cli import main
 from mime.push import _check
@@ -42,7 +43,7 @@ def verdicts(checked: _check.Checked) -> dict[str, list[str]]:
 
 def test_a_new_manifest_is_a_to_do_in_exploratory_and_a_finding_in_research(toy: Path, tmp_path: Path):
     folder = copy_of(toy, tmp_path)
-    push.init(folder)
+    _draft.init(folder)
     explored = push.check(folder)
     assert explored.profile is Profile.EXPLORATORY and not explored.given, "the experiment's own profile"
     assert verdicts(explored) == {_check.FINDING: [], _check.LISTED: [],
@@ -105,7 +106,7 @@ def test_an_experiment_with_no_licence_is_a_to_do_then_a_finding_naming_the_line
 
 def test_the_default_profile_is_the_experiments_own(toy: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     folder = copy_of(toy, tmp_path)
-    push.init(folder)
+    _draft.init(folder)
     real = _check._document  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(_check, "_document", lambda root, kind: {**real(root, kind), "profile": "research"})
     checked = push.check(folder)
@@ -115,7 +116,7 @@ def test_the_default_profile_is_the_experiments_own(toy: Path, tmp_path: Path, m
 
 def test_strict_is_refused_by_name_and_a_name_that_is_no_profile_too(toy: Path, tmp_path: Path):
     folder = copy_of(toy, tmp_path)
-    push.init(folder)
+    _draft.init(folder)
     for given, code in (("strict", "profile.reserved"), ("careful", "profile.unknown")):
         with pytest.raises(BuildRefused) as refused:
             push.check(folder, given)
@@ -125,7 +126,7 @@ def test_strict_is_refused_by_name_and_a_name_that_is_no_profile_too(toy: Path, 
 @pytest.mark.parametrize(("setup", "code"), [
     (lambda folder: None, "manifest.missing"),
     (lambda folder: (folder / "sharing.yaml").write_text("title: x\n", encoding="utf-8"), "manifest.missing"),
-    (lambda folder: (push.init(folder), (folder / "sharing.yaml").write_text("x: 1\n", encoding="utf-8")),
+    (lambda folder: (_draft.init(folder), (folder / "sharing.yaml").write_text("x: 1\n", encoding="utf-8")),
      "manifest.both"),
     (lambda folder: (folder / "mime.toml").write_text("[record\n", encoding="utf-8"), "manifest.read"),
     (lambda folder: (folder / "mime.toml").write_text('[study]\nlicence = "MIT"\n', encoding="utf-8"),
@@ -146,7 +147,7 @@ def test_a_folder_that_cannot_be_checked_is_refused_and_exits_two(toy: Path, tmp
 def test_on_the_command_line_a_finding_exits_one_and_the_text_is_the_checks(toy: Path, tmp_path: Path,
                                                                            capsys: pytest.CaptureFixture[str]):
     folder = copy_of(toy, tmp_path)
-    push.init(folder)
+    _draft.init(folder)
     assert main(["check", str(folder)]) == 0
     assert capsys.readouterr().out == push.check(folder).text()
     assert main(["check", str(folder), "--profile", "research"]) == 1
@@ -163,7 +164,7 @@ def test_a_study_folder_is_checked_by_its_base_experiments_licence_and_profile(t
     folder = tmp_path / "wall_scan"
     copy_of(toy, folder).rename(folder / "experiment")
     (folder / "study.json").write_text(json.dumps({"format": "mime-study-outputs"}), encoding="utf-8")
-    push.init(folder)
+    _draft.init(folder)
     checked = push.check(folder)
     assert checked.kind == "study" and checked.profile is Profile.EXPLORATORY
     assert [item.what for item in checked.of(_check.TO_DO)] == [
@@ -178,7 +179,7 @@ def test_a_study_folder_is_checked_by_its_base_experiments_licence_and_profile(t
 def test_a_rule_is_a_row_of_the_table_and_nothing_else(toy: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """The control of the table: a row added for the asked class in exploratory lists its items there, no other edit."""
     folder = copy_of(toy, tmp_path)
-    push.init(folder)
+    _draft.init(folder)
     assert push.check(folder).of(_check.LISTED) == []
     monkeypatch.setattr(_check, "RULES", {**_check.RULES, (Profile.EXPLORATORY, _check.ASKED): _check.LISTED})
     assert len(push.check(folder).of(_check.LISTED)) == 2, "the planted row is not seen"
@@ -187,7 +188,7 @@ def test_a_rule_is_a_row_of_the_table_and_nothing_else(toy: Path, tmp_path: Path
 def test_control_what_push_needs_planted_a_to_do_in_research_is_caught_exiting_zero(
         toy: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     folder = copy_of(toy, tmp_path)
-    push.init(folder)
+    _draft.init(folder)
     monkeypatch.setattr(_check, "RULES", {**_check.RULES, (Profile.RESEARCH, _check.NEEDED): _check.TO_DO})
     assert main(["check", str(folder), "--profile", "research"]) == 0, "the planted rule is not seen"
 

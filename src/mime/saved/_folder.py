@@ -34,7 +34,7 @@ from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._derived import array_record, sha256_of
 from mime.build._refusals import MIME_DEFECT
-from mime.materials import RECORDS
+from mime.materials._records import RECORDS
 from mime.saved._document import DESCRIPTIONS, SCENE_FOLDER, dump_document, parse_yaml
 from mime.saved._record import SavedRecord, environment
 from mime.saved._scales import OWN, RESOLUTION_FACTOR, SCALED_ATOL, SCALED_FROM, FieldUnits, judge, tolerance_for

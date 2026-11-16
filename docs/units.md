@@ -13,11 +13,14 @@ radius = mm(3.175, reason="the tube's datasheet")   # a quantity, held in SI, wi
 step = ms(20)
 speed = result[ball].speed                          # a result's quantity may hold an array
 speed.to(mm_per_s)                                  # read in a unit of its dimension
+speed.to("mm/s")                                    # or in a unit written as text: its name, its symbol or SI base units
 ```
 
 ## Quantities
 
-A unit makes a quantity, and `quantity.to(unit)` reads one back in a unit of its dimension. A quantity may carry its reason
+A unit makes a quantity, and `quantity.to(unit)` reads one back in a unit of its dimension (the unit, or its text as
+`--override` writes one: `force.to("mN")`; text that is no unit is refused as `units.label`, naming the nearest units). An
+angle is `deg(...)` or `rad(...)`, and a setting that takes one (`Annotated[Quantity, Angle]`) refuses a bare number. A plain ratio, `dimensionless(...)`, passes an angle site as radians (a radian is one in SI); write `deg()` or `rad()` to be explicit. A quantity may carry its reason
 beside its value; equality and arithmetic ignore it. Results come back as quantities too, and may hold arrays (a series of
 a run's speeds); an array quantity is a result and never a declaration.
 

@@ -7,7 +7,10 @@ always makes the same bytes on any machine. ``manifest.json`` is its first membe
 folder's files follow under the prefix, sorted, with a fixed timestamp and mode.
 
 What a kind judges before it writes (which files a folder may carry, their terms, the scans) is the kind's own code; this
-module writes the zip and reads one back. The reading side checks the format first, then every member's name and kind
+module writes the zip and reads one back. The four judgements every kind makes alike are here, each called by every
+packer with the kind's own words: the output outside the folder (:func:`inside_problem`), a name no platform or layout holds
+(:func:`stray_refusals`), two names that are one (:func:`collision_refusals`) and a file over the size limit
+(:func:`over_limit`, the message of its refusal). The reading side checks the format first, then every member's name and kind
 against the kind's layout, the manifest's shape and its own hash, and every file's hash while it is written into a
 staging folder. It writes through its own file opens and never through an extraction, so that no path can leave the
 folder, no link or special file can be made, and nothing the layout does not name is written.
@@ -188,6 +191,51 @@ def collisions(names: Sequence[str]) -> list[tuple[str, str]]:
             pairs.append((seen[key], name))
         seen[key] = seen.get(key, name)
     return pairs
+
+
+def inside_problem(root: Path, target: Path, written: str, *, plural: bool = False) -> BuildRefused | None:
+    """``bundle.output-inside`` where ``target`` is ``root`` or below it: ``written`` names what would be written (``the
+    bundle``), and ``plural`` is for several containers written into one folder."""
+    if root.resolve() not in (target.resolve(), *target.resolve().parents):
+        return None
+    return BuildRefused([refuse(
+        "bundle.output-inside", RefusalClass.USER,
+        f"{written} would be written inside the folder {'they pack' if plural else 'it packs'}",
+        "write them beside the folder (--out <folder>)" if plural else "write it beside the folder (--out)")])
+
+
+def stray_refusals(files: Sequence[tuple[str, Path]], problem_of: Callable[[str], str | None], holds: str, carries: str,
+                   *, left_behind: bool = True, prefix: str = "") -> list[Refusal]:
+    """``bundle.stray-file`` for each of ``files`` that ``problem_of`` finds a problem with (why it is not a file the
+    folder keeps, or ``None``): ``holds`` says what the folder keeps files by (``the study folder holds``), ``carries``
+    what the container carries (``a bundle carries what the saved folder holds``), and ``left_behind`` whether the action
+    names the files that stay behind (an ``.env``, a ``.git`` directory) and the folder kept elsewhere."""
+    action = (f"{carries} and nothing else (an .env, a .git directory and an editor's file stay behind): remove the "
+              f"file, or keep the folder somewhere it is not, then `mime pack <folder>` again" if left_behind else
+              f"{carries} and nothing else: remove the file, then `mime pack <folder>` again")
+    return [refuse("bundle.stray-file", RefusalClass.USER,
+                   f"{prefix}{plain(member)} is not a file {holds}: it {problem}", action)
+            for member, _ in files if (problem := problem_of(member)) is not None]
+
+
+def collision_refusals(names: Sequence[str], *, prefix: str = "", unpacks: str | None = None) -> list[Refusal]:
+    """``bundle.name-collision`` for each pair of ``names`` that is one name on a case-insensitive filesystem; ``unpacks``
+    names what must unpack to the same folder on every platform, where the action says so."""
+    action = ("rename one; then `mime pack <folder>`" if unpacks is None else
+              f"rename one, so that {unpacks} unpacks to the same folder on macOS and Windows as on Linux; then `mime "
+              f"pack <folder>`")
+    return [refuse("bundle.name-collision", RefusalClass.USER,
+                   f"{prefix}{plain(one)} and {plain(other)} are one name on a case-insensitive filesystem", action)
+            for one, other in collisions(names)]
+
+
+def over_limit(member: str, size: int, limit: int, carries: str, *, prefix: str = "") -> str | None:
+    """The message of ``bundle.file-too-large`` where ``size`` is over ``limit``, the most a container ``carries`` (``a
+    bundle``) holds of one file; ``None`` otherwise. Each kind's action differs (a saved folder's file travels as a
+    reference, a study's run is kept smaller), so each packer makes the refusal with its own."""
+    if size <= limit:
+        return None
+    return f"{prefix}{plain(member)} has {size_text(size)}, over the {size_text(limit)} {carries} carries"
 
 
 def target(root: Path, name: str, kind: ContainerKind) -> Path:
@@ -433,7 +481,7 @@ def staging_of(destination: Path) -> Path:
 
 
 __all__ = ["CHUNK", "MANIFEST_LIMIT_BYTES", "MANIFEST_MEMBER", "NOTICE_MEMBER", "BundleFile", "ContainerKind",
-           "ReferencedFile", "collisions", "container_hash", "destination_problem", "files_of", "format_of",
-           "member_kind_problems", "member_problem", "members_listed", "notice_of", "read_manifest", "refuse",
-           "sha256_of", "staging_of", "stated_format", "target", "unknown_format", "unreadable", "verify_member",
-           "write_container", "write_members"]
+           "ReferencedFile", "collision_refusals", "collisions", "container_hash", "destination_problem", "files_of",
+           "format_of", "inside_problem", "member_kind_problems", "member_problem", "members_listed", "notice_of",
+           "over_limit", "read_manifest", "refuse", "sha256_of", "staging_of", "stated_format", "stray_refusals",
+           "target", "unknown_format", "unreadable", "verify_member", "write_container", "write_members"]

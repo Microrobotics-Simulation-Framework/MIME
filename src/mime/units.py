@@ -9,12 +9,16 @@ A declared quantity may carry its reason, beside its value: ``mm(3.175, reason="
 saved form writes it beside the value. Equality and arithmetic ignore it, and a derived quantity carries none.
 
 A run's results come back as quantities too, and these may hold arrays (a series of a run's speeds): read one in the
-unit you want with ``.to(mm_per_s)``, which refuses a unit of another dimension. An array quantity is a result, never a
+unit you want with ``.to(mm_per_s)`` (or ``.to("mm/s")``, a unit written as text), which refuses a unit of another
+dimension. An array quantity is a result, never a
 declaration, so phase 1 refuses one.
 
 An entry declares each dimensioned setting's dimension once, in its annotation: ``margin: Annotated[Quantity,
 Length]``. The markers (:data:`Length`, :data:`Force` and the rest) are the SI dimensions themselves, so they combine:
 ``stiffness: Annotated[Quantity, Force / Length]``. A dimensionless setting is a plain number and needs no marker.
+An angle is the marker :data:`Angle` (radians, written ``deg(30)`` or ``rad(0.52)``): ``half_angle: Annotated[Quantity,
+Angle]`` refuses a bare number, a length and a number of turns, where a dimensionless marker would take the bare number.
+Registration refuses a setting that holds a ``Quantity`` in a form it does not read, never leaves it out.
 
 A frequency and an angular velocity share a dimension, a rate per second, and differ by 2 pi: ``Hz(1)`` is one turn
 a second, ``rad_per_s(1)`` one radian. A quantity knows which it counts (``Quantity.angle``), and so does a site that
@@ -44,6 +48,7 @@ from __future__ import annotations
 
 import difflib
 import math
+import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from numbers import Real
@@ -62,9 +67,9 @@ _REFLECTED = {"add": "__radd__", "subtract": "__rsub__", "multiply": "__rmul__",
               "less": "__gt__", "less_equal": "__ge__", "greater": "__lt__", "greater_equal": "__le__",
               "equal": "__eq__", "not_equal": "__ne__"}
 #: What an angular rate counts: turns (Hz) or radians (rad/s).
-type Angle = Literal["turn", "radian"]
-_ANGLE_UNIT: dict[Angle, str] = {"turn": "Hz", "radian": "rad/s"}
-_ANGLE_UNIT_NAME: dict[Angle, str] = {"turn": "Hz", "radian": "rad_per_s"}
+type AngleCount = Literal["turn", "radian"]
+_ANGLE_UNIT: dict[AngleCount, str] = {"turn": "Hz", "radian": "rad/s"}
+_ANGLE_UNIT_NAME: dict[AngleCount, str] = {"turn": "Hz", "radian": "rad_per_s"}
 
 
 @dataclass(frozen=True, eq=False)
@@ -76,7 +81,7 @@ class Dimension:
     for markers that are equal and of one type, so a marker's angle survives only as its type."""
 
     exponents: tuple[int, int, int, int, int, int, int] = (0, 0, 0, 0, 0, 0, 0)
-    angle: ClassVar[Angle | None] = None
+    angle: ClassVar[AngleCount | None] = None
 
     @classmethod
     def of(cls, exponents: Iterable[int]) -> Dimension:
@@ -129,6 +134,19 @@ class _Radians(Dimension):
     angle = "radian"
 
 
+class _PlaneAngle(Dimension):
+    """A plane angle, counted in radians: :data:`Angle`'s class. It has no exponents, so it equals :data:`DIMENSIONLESS`,
+    and it is its own class for the reason :class:`_Turns` is: ``typing`` keeps one ``Annotated[Quantity, ...]`` for markers
+    that are equal and of one type, so a setting that says it is an angle is told from one that is dimensionless by its
+    marker's type."""
+
+    angle = "radian"
+
+    @override
+    def __str__(self) -> str:
+        return "angle (rad)"
+
+
 def _base(index: int) -> Dimension:
     exponents = [0] * 7
     exponents[index] = 1
@@ -146,6 +164,11 @@ FREQUENCY: Dimension = _Turns((DIMENSIONLESS / TIME).exponents)
 #: An angular velocity, in rad/s: radians per second, the dimension of a frequency. A site declared with it refuses a
 #: frequency in Hz.
 ANGULAR_VELOCITY: Dimension = _Radians(FREQUENCY.exponents)
+#: A plane angle, in radians: ``deg(30)`` and ``rad(0.5)``. A site declared with it takes a quantity of an angle and refuses
+#: a bare number (30 of what?), a quantity of any other dimension, and a number of turns (a frequency times a time). It
+#: equals :data:`DIMENSIONLESS` (a radian is one in SI), so a plain ratio, ``dimensionless(x)``, passes an angle site as ``x``
+#: radians: write ``deg()`` or ``rad()`` to be explicit.
+Angle: Dimension = _PlaneAngle(DIMENSIONLESS.exponents)
 VELOCITY = LENGTH / TIME
 ACCELERATION = LENGTH / TIME**2
 FORCE = MASS * ACCELERATION
@@ -346,7 +369,7 @@ class Quantity:
     #: What an angular rate counts, where the quantity knows: ``"turn"`` for ``Hz`` and ``kHz``, ``"radian"`` for
     #: ``rad_per_s``, which share a dimension and differ by 2 pi. ``None`` where it is not a rate of an angle or is not
     #: known (a result an observation declares only by dimension).
-    angle: Angle | None = field(default=None, compare=False)
+    angle: AngleCount | None = field(default=None, compare=False)
     #: Where the value comes from, or why it was chosen (``mm(3.175, reason="...")``): equality, hashing and
     #: arithmetic ignore it, and a quantity derived from others carries none.
     reason: Basis | None = field(default=None, compare=False)
@@ -389,9 +412,13 @@ class Quantity:
         """An array quantity: ``values`` in SI, copied into a read-only float64 array."""
         return cls(_frozen(np.asarray(values, dtype=np.float64)), dimension)
 
-    def to(self, unit: Unit) -> Values:
+    def to(self, unit: Unit | str) -> Values:
         """The magnitude in ``unit`` (a float, a tuple or an array, as the quantity holds it), or :class:`UnitError`
-        when ``unit`` is of another dimension: ``speed.to(mm_per_s)``."""
+        when ``unit`` is of another dimension: ``speed.to(mm_per_s)``. A unit may be written as text, as a script's
+        ``--override`` writes one (a name of this module, its symbol, or a label of SI base units): ``force.to("mN")``;
+        text that is none of them is refused (``units.label``)."""
+        if isinstance(unit, str):
+            unit = _unit_read(unit)
         if cast(object, unit) is degC:
             raise UnitError("cannot read a quantity in degC: it is an offset unit (0 degC is 273.15 K), so it converts "
                             "by an offset as well as a factor, which a unit here does not hold; read the temperature "
@@ -596,7 +623,7 @@ class Quantity:
         return f"{self.value!r} {symbol}".rstrip()
 
 
-_COUNTS: dict[Angle, str] = {"turn": "turns", "radian": "radians"}
+_COUNTS: dict[AngleCount, str] = {"turn": "turns", "radian": "radians"}
 
 
 def _plain(other: object, operation: str) -> float:
@@ -615,19 +642,19 @@ def _differ(a: Quantity, b: Quantity) -> bool:
     return a.angle is not None and b.angle is not None and a.angle != b.angle
 
 
-def _sum_angle(a: Quantity, b: Quantity, operation: str) -> Angle | None:
+def _sum_angle(a: Quantity, b: Quantity, operation: str) -> AngleCount | None:
     """What a sum, difference or order of ``a`` and ``b`` counts: what either knows, or :class:`UnitError` where they
     know different things."""
     if _differ(a, b):
-        raise UnitError(f"cannot {operation} {a} and {b}: one counts {_COUNTS[cast(Angle, a.angle)]} and the other "
-                        f"{_COUNTS[cast(Angle, b.angle)]}, which share a dimension and differ by 2 pi (1 Hz is 2 pi "
+        raise UnitError(f"cannot {operation} {a} and {b}: one counts {_COUNTS[cast(AngleCount, a.angle)]} and the other "
+                        f"{_COUNTS[cast(AngleCount, b.angle)]}, which share a dimension and differ by 2 pi (1 Hz is 2 pi "
                         f"rad/s), which MIME does not drop silently; write both in one unit, multiplying or dividing "
                         f"one by 2 pi where you mean it", dimension=a.dimension, given=b,
                         action="write both in one unit, multiplying or dividing one by 2 pi where you mean it")
     return a.angle if a.angle is not None else b.angle
 
 
-def _product_angle(a: Quantity, b: Quantity, operation: str) -> Angle | None:
+def _product_angle(a: Quantity, b: Quantity, operation: str) -> AngleCount | None:
     """What a product or ratio of ``a`` and ``b`` counts: what the one that knows counts, nothing for a ratio of two
     that count the same (turns over turns), or :class:`UnitError` where both know (a product would count its angle
     twice, and a ratio of a turn and a radian is off by 2 pi)."""
@@ -669,7 +696,10 @@ _SYMBOLS = {
 
 def unit_symbol(dimension: Dimension) -> str:
     """How the saved form writes a dimension: its SI symbol (``m``, ``m/s^2``), ``1`` when dimensionless, and
-    otherwise a product of base units (``m^2 kg s^-1``), which :func:`parse_unit` reads back."""
+    otherwise a product of base units (``m^2 kg s^-1``), which :func:`parse_unit` reads back. A plane angle
+    (:data:`Angle`) is ``rad``, which reads back as dimensionless."""
+    if isinstance(dimension, _PlaneAngle):
+        return "rad"
     if dimension == DIMENSIONLESS:
         return "1"
     if dimension in _SYMBOLS:
@@ -686,7 +716,7 @@ POWER = ENERGY / TIME
 #: What a label's name stands for: the SI base symbols and the named derived units a label may write, each by its
 #: exponents of the base units, with what an angular rate counts where the name says (``Hz`` counts turns, ``rad``
 #: radians). A prefixed unit (``mm``, ``kPa``) is no name here: a label holds no scale factor, only a dimension.
-_LABEL_NAMES: dict[str, tuple[tuple[int, ...], Angle | None]] = {
+_LABEL_NAMES: dict[str, tuple[tuple[int, ...], AngleCount | None]] = {
     **{symbol: (_base(i).exponents, None) for i, symbol in enumerate(_BASE_SYMBOLS)},
     "N": (FORCE.exponents, None), "Pa": (PRESSURE.exponents, None), "J": (ENERGY.exponents, None),
     "W": (POWER.exponents, None), "T": (MAGNETIC_FLUX_DENSITY.exponents, None),
@@ -704,7 +734,7 @@ class _Term:
     counts one, ``rad^2/s`` two, ``1/(rad s)`` minus one)."""
 
     exponents: tuple[int, ...]
-    angle: Angle | None = None
+    angle: AngleCount | None = None
     counted: int = 0
 
 
@@ -823,7 +853,7 @@ class _Label:
         return _raised(term, int(written))
 
 
-def _rate_counting(angle: Angle) -> Dimension:
+def _rate_counting(angle: AngleCount) -> Dimension:
     """The rate per second that counts ``angle`` once: :data:`FREQUENCY` for turns, :data:`ANGULAR_VELOCITY` for radians."""
     return FREQUENCY if angle == "turn" else ANGULAR_VELOCITY
 
@@ -853,11 +883,11 @@ def _read(symbol: str) -> tuple[Dimension, _Term]:
             raise _label_error(symbol, f"it is a rate per second that counts {term.counted} of "
                                        f"{'turns (Hz)' if term.angle == 'turn' else 'radians (rad)'}, not one: a rate "
                                        f"counts turns or radians once, 'Hz' or 'rad/s'")
-        return _rate_counting(cast(Angle, term.angle)), term
+        return _rate_counting(cast(AngleCount, term.angle)), term
     return Dimension.of(term.exponents), term
 
 
-def parse_value_unit(symbol: str) -> tuple[Dimension, Angle | None]:
+def parse_value_unit(symbol: str) -> tuple[Dimension, AngleCount | None]:
     """The unit a value is written in, as :func:`parse_unit` reads it and with what it counts: the dimension and the
     quantity's :attr:`Quantity.angle`, so that ``10 rad s^-1`` is an angular velocity and ``2 Hz s`` is two turns, which
     a site that takes the other refuses and never reads as the number. A value counts an angle once or not at all: a
@@ -883,7 +913,7 @@ type Marker = Dimension | str
 def unit_label(*parts: Marker) -> str:
     """A unit label written from dimension markers, the ones settings are declared with (``unit_label(Length,
     DIMENSIONLESS)`` is ``"m; 1"``, a pose's), or from labels already written; a part that is a label is read here, so
-    that a typo fails where the label is written. A marker is written as :func:`rate_symbol` writes it, so an angular
+    that a typo fails where the label is written. A marker is written by its symbol, so an angular
     velocity is ``rad/s`` and a frequency ``Hz``."""
     if not parts:
         raise _label_error("", "a label has at least one part")
@@ -970,10 +1000,14 @@ def si(quantity: object, dimension: Dimension, *, what: str) -> Magnitude:
     number of turns where a number goes (``Hz(5.0) * s(1.0)``), which MIME counts in radians; a quantity that does not
     know what it counts (a result, or one loaded from a saved folder) is taken as the site counts."""
     if not isinstance(quantity, Quantity):
-        if dimension == DIMENSIONLESS:
+        if dimension == DIMENSIONLESS and not isinstance(dimension, _PlaneAngle):
             return _magnitude(quantity)
-        raise UnitError(f"{what} needs units of {dimension}; it was given the bare value {quantity!r}",
-                        dimension=dimension, given=quantity)
+        bare = isinstance(dimension, _PlaneAngle) and _real(quantity)
+        raise UnitError(f"{what} needs units of {dimension}; it was given the bare value {quantity!r}"
+                        f"{', which could be degrees or radians' if bare else ''}",
+                        dimension=dimension, given=quantity,
+                        alternatives=((f"deg({quantity!r})", "if degrees"), (f"rad({quantity!r})", "if radians"))
+                        if bare else ())
     if quantity.dimension != dimension:
         raise UnitError(f"{what} needs units of {dimension}; it was given {quantity.dimension} ({quantity})",
                         dimension=dimension, given=quantity)
@@ -981,10 +1015,10 @@ def si(quantity: object, dimension: Dimension, *, what: str) -> Magnitude:
         raise UnitError(f"{what} is given an array quantity ({quantity}): an array is a run's result, and a "
                         f"declaration takes a number or a tuple of them",
                         action="declare a number or a tuple of them with its unit: mm(3.0), mm((1.0, 2.0))")
-    if dimension.angle is not None and quantity.angle is not None and quantity.angle != dimension.angle:
-        raise _other_angle(quantity, dimension, what)
     if dimension == DIMENSIONLESS and quantity.angle == "turn":
         raise _turns_counted(quantity, what)
+    if dimension.angle is not None and quantity.angle is not None and quantity.angle != dimension.angle:
+        raise _other_angle(quantity, dimension, what)
     return quantity.value
 
 
@@ -1014,7 +1048,7 @@ class Unit:
     factor: float
     dimension: Dimension
     description: str
-    angle: Angle | None = None
+    angle: AngleCount | None = None
 
     def __call__(self, value: float | Iterable[float], *, reason: Basis | None = None) -> Quantity:
         """A quantity of this unit, with its reason when given (``mm(3.175, reason="the tube's datasheet")``)."""
@@ -1037,6 +1071,7 @@ kHz = Unit("kHz", 1e3, FREQUENCY, "Kilohertz.", "turn")
 kg = Unit("kg", 1.0, MASS, "Kilograms.")
 g = Unit("g", 1e-3, MASS, "Grams.")
 N = Unit("N", 1.0, FORCE, "Newtons.")
+mN = Unit("mN", 1e-3, FORCE, "Millinewtons.")
 A = Unit("A", 1.0, CURRENT, "Amperes.")
 K = Unit("K", 1.0, TEMPERATURE, "Kelvin.")
 T = Unit("T", 1.0, MAGNETIC_FLUX_DENSITY, "Tesla.")
@@ -1062,6 +1097,7 @@ rpm = Unit("rpm", 1.0 / 60.0, FREQUENCY, "Revolutions per minute: turns per minu
 deg_per_s = Unit("deg/s", math.pi / 180.0, ANGULAR_VELOCITY,
                  "Degrees per second: an angular velocity, held in rad/s (pi/180 of one each).", "radian")
 m2 = Unit("m^2", 1.0, AREA, "Square metres: an area, or a porous material's Darcy permeability.")
+mm2 = Unit("mm^2", 1e-6, AREA, "Square millimetres: an area.")
 um2 = Unit("um^2", 1e-12, AREA, "Square micrometres: an area, or a porous material's Darcy permeability.")
 m3 = Unit("m^3", 1.0, VOLUME, "Cubic metres.")
 mm3 = Unit("mm^3", 1e-9, VOLUME, "Cubic millimetres.")
@@ -1096,6 +1132,44 @@ def units_by_name() -> dict[str, Unit]:
     """Every unit this module exports, by its Python name (``mPa_s``, ``mm_per_s``): what ``--override`` and a study's
     spec file read a unit as, beside the symbol each unit prints with (``mPa s``, ``mm/s``)."""
     return {name: value for name, value in globals().items() if isinstance(value, Unit) and not name.startswith("_")}
+
+
+def unit_written(text: str) -> Unit | None:
+    """The unit of this module that ``text`` writes, or ``None`` where it writes none: a unit's Python name (``mPa_s``,
+    ``mm_per_s``), the symbol it prints with (``mPa s``, ``mm/s``, with or without spaces about its slash), or, in a token
+    with no space in it, that symbol with its spaces left out (``mPas``). A unit written with spaces is its symbol as
+    printed, spaces and all: it is never read with them removed, which would read ``m s`` as ``ms`` and ``2 m T`` as
+    ``2 mT``; what is not a unit's symbol is read by the label grammar (``m s`` is a product)."""
+    named = units_by_name()
+    held = named.get(text)
+    if held is not None:
+        return held
+    by_symbol = {unit.symbol: unit for unit in named.values()}
+    if len(text.split()) > 1:
+        # a slash is written with or without spaces about it (``mm / s``, ``rad /s``): it joins no letters, so the
+        # symbol it spells is the same one
+        return by_symbol.get(" ".join(re.sub(r"\s*/\s*", "/", text).split()))
+    return by_symbol.get(text) or {unit.symbol.replace(" ", ""): unit for unit in named.values()}.get(text)
+
+
+def _unit_read(text: str) -> Unit:
+    """The unit a script wrote as text where a unit goes (``series.to("mN")``): :func:`unit_written`'s, or else the SI
+    base units' label grammar's (``"kg m/s^2"``, a unit of factor one), or :class:`UnitError` coded ``units.label`` naming
+    the nearest units."""
+    held = unit_written(text.strip())
+    if held is not None:
+        return held
+    try:
+        dimension, angle = parse_value_unit(text)
+    except UnitError:
+        known = {name.lower(): name for name in (*units_by_name(), *(u.symbol for u in units_by_name().values()))}
+        near = [known[found] for found in difflib.get_close_matches(text.strip().lower(), list(known), n=3)]
+        raise UnitError(f"{text!r} is not a unit MIME reads: it is no unit's name or symbol in mime.units"
+                        f"{' (nearest: ' + ', '.join(near) + ')' if near else ''}, and no label of SI base units "
+                        f"such as 'N m' or 'kg m/s^2'", label=True,
+                        action="name a unit of mime.units (`mm`, `mN`, `mm_per_s`) or its symbol ('mm/s', 'N m'), or write "
+                               "SI base units ('kg m/s^2'); `quantity.to(mN)` takes the unit itself") from None
+    return Unit(text.strip(), 1.0, dimension, "A unit written as a label of SI base units.", angle)
 
 
 def unit_name(dimension: Dimension) -> str | None:
@@ -1155,19 +1229,19 @@ from mime.core._labels import install_label_reader  # noqa: E402  (``mime.core``
 install_label_reader(parse_label, unit_label, UnitError)
 
 __all__ = [
-    "ACCELERATION", "ANGULAR_VELOCITY", "AREA", "AngularVelocity", "Area", "COMPLIANCE", "Compliance", "HYDRAULIC_RESISTANCE",
+    "ACCELERATION", "ANGULAR_VELOCITY", "AREA", "Angle", "AngularVelocity", "Area", "COMPLIANCE", "Compliance", "HYDRAULIC_RESISTANCE",
     "HydraulicResistance", "PRESSURE", "Pressure", "VOLUME_FLUX", "VolumeFlux", "Pa", "Pa_s_per_m3", "m3_per_Pa",
-    "m3_per_s", "mL_per_s", "SAY_THE_ANGLE", "rate_symbol", "says_its_angle", "CURRENT",
+    "m3_per_s", "mL_per_s", "CURRENT",
     "DENSITY", "DIMENSIONLESS", "DYNAMIC_VISCOSITY", "FIELD_GRADIENT", "FIELD_RATE", "FORCE", "FREQUENCY", "LENGTH",
     "MAGNETIC_FLUX_DENSITY", "MAGNETIC_MOMENT", "MASS", "MOMENT_OF_INERTIA", "ROTATIONAL_DAMPING", "TEMPERATURE",
     "TIME", "TORQUE", "VELOCITY", "VOLUME", "Acceleration", "Current", "Density", "DynamicViscosity", "FieldGradient",
     "FieldRate",
     "Force", "Frequency", "Length", "MagneticFluxDensity", "MagneticMoment", "Mass", "MomentOfInertia",
     "RotationalDamping", "Temperature", "Time", "Torque", "Velocity", "Volume", "Condition", "Dimension", "Quantity",
-    "Unit", "UnitError", "VACUUM_PERMEABILITY", "Values", "ZERO_CELSIUS", "parse_unit", "parse_value_unit", "si", "unit_symbol", "A",
-    "A_m2", "Hz", "K", "N", "N_m", "N_m_s", "Pa_s", "T", "T_per_m", "T_per_s", "cm", "deg", "degC", "dimensionless", "g", "kHz",
+    "Unit", "UnitError", "VACUUM_PERMEABILITY", "Values", "ZERO_CELSIUS", "parse_unit", "si", "unit_symbol", "A",
+    "A_m2", "Hz", "K", "N", "mN", "mm2", "N_m", "N_m_s", "Pa_s", "T", "T_per_m", "T_per_s", "cm", "deg", "degC", "dimensionless", "g", "kHz",
     "kg", "kg_m2", "kg_per_m3", "m", "m2", "m3", "m_per_s", "m_per_s2", "mPa_s", "mT", "mT_per_m", "mm", "mm3", "mm_per_s",
     "ms", "rad", "rad_per_s", "s", "standard_gravity", "uT", "um", "um2", "um_per_s", "us",
-    "ENERGY", "MPa", "Marker", "POWER", "cP", "deg_per_s", "kPa", "mL", "mmHg", "parse_label", "rpm", "unit_label",
-    "unit_name", "units_by_name",
+    "AngleCount", "ENERGY", "MPa", "Magnitude", "Marker", "POWER", "cP", "deg_per_s", "kPa", "mL", "mmHg", "parse_label", "rpm", "unit_label",
+    "units_by_name",
 ]

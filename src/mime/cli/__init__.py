@@ -7,13 +7,14 @@ import hashlib
 import io
 import json
 import os
+import select
 import sys
 import warnings
 import zipfile
 from collections.abc import Callable, Generator, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, TextIO, override
 
 from mime import __version__, _import_guard
 from mime._extras import VERIFY_EXTRA_MISSING
@@ -26,7 +27,8 @@ from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
 from mime.cli._display import AMBER, amber_line, set_plain, styled
 from mime.cli._durations import FORMS, is_bare_number, seconds, unit_examples
 from mime.cli._shell import quoted
-from mime.errors import TRACEBACK_VARIABLE, crossed, full_mode, short_text
+from mime.errors._boundary import crossed
+from mime.errors._display import TRACEBACK_VARIABLE, full_mode, short_text
 from mime.experiment import Experiment
 from mime.validity import Profile
 
@@ -140,10 +142,33 @@ def _deterministic(on: bool) -> None:
         _warn(CPU_DETERMINISTIC)
 
 
+def _is_run_folder(folder: Path) -> bool:
+    """Whether ``folder`` is what ``mime run`` wrote: a record (``run.json``) and the outputs' manifest beside it."""
+    from mime.experiment import RUN_RECORD
+    from mime.results import RUN_MANIFEST
+
+    return folder.is_dir() and (folder / RUN_RECORD).is_file() and (folder / RUN_MANIFEST).is_file()
+
+
+def _not_a_saved_experiment(folder: Path, command: str) -> BuildRefused:
+    """A run folder given where a saved experiment is read (``verify``, ``pending``): what it is, and what reads it."""
+    from mime.experiment import RUN_EXPERIMENT
+
+    reading = {"verify": f"`mime verify {quoted(str(folder))} --run` replays the run and checks its outputs",
+               "pending": f"`mime pending {quoted(str(folder / RUN_EXPERIMENT))}` plans the experiment the run was made from"}
+    return BuildRefused([Refusal(
+        "load.run-folder", RefusalClass.USER,
+        f"{folder} is a run folder, which mime run wrote, and `mime {command}` reads a saved experiment",
+        f"{reading[command]}; `mime show {quoted(str(folder))}` prints its outputs; or name the saved experiment it was "
+        "run from")])
+
+
 def _verify(folder: Path, run: bool = False) -> int:
-    from mime.blocks import is_block_folder
+    from mime.blocks._definition import is_block_folder
     from mime.saved._studies import BLOCK_SUFFIX, is_publishing_folder, is_study_folder
 
+    if not run and _is_run_folder(folder):
+        raise _not_a_saved_experiment(folder, "verify")
     with Interrupt():
         try:
             if not run and (is_block_folder(folder) or (folder.is_file() and folder.name.endswith(BLOCK_SUFFIX))):
@@ -249,6 +274,8 @@ def _pending(folder: Path) -> int:
     the route a sealed document takes before it is built and saved again."""
     from mime.env import apply_lock_precision
 
+    if _is_run_folder(folder):
+        raise _not_a_saved_experiment(folder, "pending")
     try:
         if folder.is_file():
             profile = Experiment.from_document(folder).plan().profile
@@ -289,13 +316,15 @@ def _show(folder: Path, graph: bool, tree: bool, as_json: bool, out: Path | None
     ``folder`` may be a document instead of a folder. ``--json`` is the tree as data. ``--out [FILE]`` writes the graph as
     one page to pan and zoom, instead of printing it, as ``mime visuals web --out`` writes the 3-D view (the default name
     is ``<experiment>.graph.html``, never the 3-D page's; never inside a saved or run folder, ``visuals.web-out``)."""
-    from mime.blocks import is_block_folder
+    from mime.blocks._definition import is_block_folder
     from mime.env import apply_lock_precision
 
     from mime.saved._studies import BLOCK_SUFFIX
 
     if (folder.is_dir() and is_block_folder(folder)) or (folder.is_file() and folder.name.endswith(BLOCK_SUFFIX)):
         return _show_block(folder, as_json)
+    if _is_run_folder(folder):
+        return _show_run(folder, as_json)
     if out is not None and out is not DEFAULT_PAGE:
         from mime.experiment._mermaid import written_outside
 
@@ -334,6 +363,18 @@ def _show(folder: Path, graph: bool, tree: bool, as_json: bool, out: Path | None
                 webbrowser.open(written.resolve().as_uri())
         else:
             sys.stdout.write(for_terminal(diagram))
+    return 0
+
+
+def _show_run(folder: Path, as_json: bool) -> int:
+    """``mime show`` of a run folder: the run's outputs summary, as the result reads it back (``RunResult.text``), or with
+    ``--json`` the manifest it was read from (``outputs.json``). Nothing is built or run."""
+    from mime.results import RUN_MANIFEST, RunResult
+
+    if as_json:
+        sys.stdout.write(for_terminal((folder / RUN_MANIFEST).read_text(encoding="utf-8")))
+    else:
+        print(for_terminal(RunResult.read(folder).text()))
     return 0
 
 
@@ -384,8 +425,8 @@ def _run(folder: Path, duration: float | None, out: Path, history: bool, record:
     written); once the run is under way it stops the run at its next chunk and the run folder is written as the steps
     reached, marked stopped (130); the second quits at once, writing nothing (``mime._interrupt``).
 
-    ``out`` is a new folder, an empty one, or MIME's own run folder; any other is refused before anything loads
-    (``run.out-not-empty``) unless ``force``, which warns first, makes Ctrl+C cancel the run until it begins to write
+    ``out`` is a new folder or an empty one; any other, MIME's own run folder too, is refused before anything loads
+    (``run.out-not-empty``): a run never replaces what is there without being asked to, unless ``force``, which warns first, makes Ctrl+C cancel the run until it begins to write
     (130, the folder as it was), and shows an amber notice when it does.
 
     On a terminal (``mime.cli._display``) the run shows its progress on standard error and ends with what needs
@@ -394,11 +435,11 @@ def _run(folder: Path, duration: float | None, out: Path, history: bool, record:
     from mime.experiment._experiment import foreign_entries, refuse_out_not_own, refuse_out_over
 
     refuse_out_over(out, [folder])
-    refuse_out_not_own(out, force)
-    forced = foreign_entries(out) if force else ()
+    refuse_out_not_own(out, force, own_too=True)
+    forced = foreign_entries(out, own_too=True) if force else ()
     if forced:
         amber_line(sys.stderr, f"warning: --force: {out} holds {', '.join(forced[:5])}{', ...' if len(forced) > 5 else ''}"
-                               f", which is not an empty folder or a MIME run folder; the run will write into it, "
+                               f", which is not an empty folder; the run will write into it, "
                                "replacing any file of the names a run writes (outputs.npz, outputs.json, run.json, "
                                "report.json, topology.json, experiment/). Ctrl+C cancels it until it begins to write, "
                                "and a notice says when it does")
@@ -625,7 +666,8 @@ def _serve(arguments: argparse.Namespace) -> int:
               chunk=s(arguments.chunk) if arguments.chunk is not None else None,
               pace=None if arguments.unpaced else arguments.pace, out=arguments.out,
               select=arguments.select or None, json_frames=arguments.json_frames, start=arguments.start,
-              remote=arguments.remote, ready_file=arguments.ready_file, say=say,
+              allow_remote_commands=arguments.allow_remote_commands, ready_file=arguments.ready_file, say=say,
+              warn=lambda line: amber_line(sys.stderr, line),
               outlive_launcher=arguments.outlive_launcher, watch=arguments.watch or None, view=display,
               idle_timeout=idle_timeout, max_wall=max_wall)
     finally:
@@ -711,7 +753,9 @@ def _env_check(arguments: argparse.Namespace) -> int:
 
     try:
         report = env.check(arguments.folder, variant=arguments.variant, gpu=arguments.gpu, base=arguments.base,
-                           lab=arguments.lab, xla_cache=arguments.xla_cache, mime_version=arguments.mime_version)
+                           lab=arguments.lab, xla_cache=arguments.xla_cache, mime_version=arguments.mime_version,
+                           strict=arguments.strict or arguments.base or arguments.mime_version is not None
+                           or arguments.folder is not None)
     except BuildRefused as refused:
         _write_record(arguments.record, {"refused": [str(r) for r in refused.refusals]})
         raise
@@ -741,7 +785,7 @@ def _modal(arguments: argparse.Namespace) -> int:
                                lab_requirements=arguments.lab_requirements, xla_cache=not arguments.no_xla_cache,
                                timeout=arguments.timeout, max_containers=arguments.max_containers,
                                cpu=arguments.cpu, memory=arguments.memory, study=arguments.study,
-                               shards=arguments.shards)
+                               shards=arguments.shards, force=arguments.force)
     print(written.text())
     return 0
 
@@ -761,6 +805,10 @@ def _study(arguments: argparse.Namespace) -> int:
     from mime.env import apply_lock_precision
     from mime.study._spec import read_spec, study_from_spec
 
+    if arguments.study_command == "run":
+        from mime.study._folder_run import refuse_unwritable_out
+
+        refuse_unwritable_out(arguments.out)  # before the base loads and the plan is made
     spec = Path(arguments.spec)
     base = arguments.base
     held = read_spec(spec)
@@ -943,7 +991,7 @@ def _place(folder: Path, accept_licences: Sequence[str] = ()) -> list[Refusal]:
 
 def _pack(folder: Path, out: Path | None) -> int:
     from mime import assets, saved
-    from mime.blocks import is_block_folder
+    from mime.blocks._definition import is_block_folder
     from mime.saved._studies import is_publishing_folder, is_study_folder
 
     if is_study_folder(folder) or is_publishing_folder(folder):
@@ -1035,7 +1083,7 @@ def _card(folder: Path, out: Path | None, notice: bool) -> int:
     from mime.saved._study_card import study_card_text, study_notice
     from mime.saved._studies import is_publishing_folder, is_study_folder
 
-    from mime.blocks import is_block_folder
+    from mime.blocks._definition import is_block_folder
 
     if is_block_folder(folder):
         from mime.blocks._card import block_card_text
@@ -1302,14 +1350,14 @@ def _pull(source: str | Token, into: Path | None, no_assets: bool, yes: bool, ma
 def _push_arguments(arguments: argparse.Namespace) -> None:
     """What argparse cannot require of ``mime push`` once ``--defaults`` (no folder, no service) and ``--setup`` (no
     service) are among its modes: the folder and ``--to`` everywhere else, said as argparse says a missing argument."""
-    from mime import push
+    from mime.push import _draft
 
     parser: argparse.ArgumentParser = arguments.push_parser
     if arguments.defaults or arguments.setup:
         ignored = [flag for flag, given in (("--confirm", arguments.confirm is not None), ("--yes", arguments.yes),
-                                            (push.FULL_FLAG, arguments.full_plan),
-                                            (push.KEEP_FLAG, arguments.keep_site_edits),
-                                            (push.OVERWRITE_FLAG, arguments.overwrite_site_edits)) if given]
+                                            (_draft.FULL_FLAG, arguments.full_plan),
+                                            (_draft.KEEP_FLAG, arguments.keep_site_edits),
+                                            (_draft.OVERWRITE_FLAG, arguments.overwrite_site_edits)) if given]
         if ignored:
             what = ("--defaults shows your own defaults" if arguments.defaults else
                     "--setup asks for mime.toml's fields")
@@ -1326,21 +1374,21 @@ def _push_arguments(arguments: argparse.Namespace) -> None:
 
 def _defaults_show() -> int:
     """``mime defaults`` (and ``mime push --defaults``, its alias): where the person's defaults live, and each."""
-    from mime import push
+    from mime.push import _defaults
 
-    for line in push.defaults_lines(say=_say):
+    for line in _defaults.defaults_lines(say=_say):
         print(for_terminal(line))
     return 0
 
 
 def _defaults(command: str | None) -> int:
     if command == "edit":
-        from mime import push
+        from mime.push import _setup
 
         voice = _Voice("uploading")
         with _setup_questions(voice) as (typed, _):
             try:
-                push.edit_defaults(typed=typed, say=voice.say)
+                _setup.edit_defaults(typed=typed, say=voice.say)
             finally:
                 voice.close()
         return 0
@@ -1367,12 +1415,12 @@ def _check(folder: Path, profile: str | None) -> int:
 
 def _scaffold(arguments: argparse.Namespace) -> int:
     """``mime scaffold <kind> <path>``: the folder made, its tree and where each value came from said."""
-    from mime import scaffold
+    from mime.scaffold import _scaffold
 
     voice = _Voice("uploading")
     with _setup_questions(voice) as (typed, ask):
         try:
-            scaffold.scaffold(arguments.kind, arguments.path, yes=arguments.yes, sets=arguments.sets,
+            _scaffold.scaffold(arguments.kind, arguments.path, yes=arguments.yes, sets=arguments.sets,
                               dry_run=arguments.dry_run, source=arguments.from_folder, sockets=arguments.sockets,
                               typed=typed, ask=ask, say=voice.say)
         finally:
@@ -1382,8 +1430,10 @@ def _scaffold(arguments: argparse.Namespace) -> int:
 
 def _push(arguments: argparse.Namespace) -> int:
     from mime import push
+    from mime.push import _defaults, _draft, _publish, _service, _setup
     from mime.push._defaults import read_all
-    from mime.push._manifest import BUNDLE, OLD_FILE, folder_kind
+    from mime._manifest_file import OLD_FILE
+    from mime.push._manifest import BUNDLE, folder_kind
     from mime.push._sharing import DEFAULT_LICENCE
 
     _push_arguments(arguments)
@@ -1394,11 +1444,11 @@ def _push(arguments: argparse.Namespace) -> int:
         voice = _Voice("uploading")
         with _setup_questions(voice) as (typed, ask):
             try:
-                push.setup(folder, typed=typed, ask=ask, say=voice.say, service=arguments.to)
+                _setup.setup(folder, typed=typed, ask=ask, say=voice.say, service=arguments.to)
             finally:
                 voice.close()
         return 0
-    service = push.SERVICES[arguments.to]
+    service = _service.SERVICES[arguments.to]
     voice = _Voice("uploading")
     ask = voice.ask if _a_terminal() else None
     if arguments.confirm is not None and not arguments.publish:
@@ -1407,7 +1457,7 @@ def _push(arguments: argparse.Namespace) -> int:
                                     f"`mime push {quoted(str(folder))} --to {service.name} --publish --confirm <DOI>`")])
     if arguments.init:
         migrating = (folder / OLD_FILE).is_file() and not (folder / push.MANIFEST_FILE).is_file()
-        path, written, licence = push.init(folder, say=_say)
+        path, written, licence = _draft.init(folder, say=_say)
         print(for_terminal(f"wrote {path}" if written else f"kept {path}, which exists: edit it, or delete it and "
                                                           f"run --init again"))
         defaults = read_all()
@@ -1417,7 +1467,7 @@ def _push(arguments: argparse.Namespace) -> int:
                            f"declare the same, exp.licence(\"{stated}\"), then save"))
         filled = list(defaults.values) if written and not migrating else []
         if filled:
-            print(for_terminal(f"filled from your defaults ({push.defaults_path()}): {', '.join(filled)}"))
+            print(for_terminal(f"filled from your defaults ({_defaults.defaults_path()}): {', '.join(filled)}"))
         then = (f"`mime push {quoted(str(folder))} --to {service.name}`" if folder_kind(folder.absolute()) == BUNDLE
                 else f"`mime check {quoted(str(folder))}`")
         print(for_terminal(f"next: check what your defaults filled in it, then {then}" if filled else
@@ -1425,17 +1475,19 @@ def _push(arguments: argparse.Namespace) -> int:
                            f"next: name the creators in it, then {then}"))
         return 0
     try:
-        if arguments.status:
-            push.status(folder, service, say=voice.say)
+        if arguments.dry_run:
+            _draft.dry_run(folder, service, say=voice.say, full=arguments.full_plan)
+        elif arguments.status:
+            _draft.status(folder, service, say=voice.say)
         elif arguments.discard:
-            push.discard(folder, service, yes=arguments.yes, confirm=ask, say=voice.say)
+            _draft.discard(folder, service, yes=arguments.yes, confirm=ask, say=voice.say)
         elif arguments.publish:
-            push.publish(folder, service, confirm=arguments.confirm, ask=ask,
+            _publish.publish(folder, service, confirm=arguments.confirm, ask=ask,
                          typed=voice.typed if ask is not None else None, say=voice.say,
                          overwrite_site_edits=arguments.overwrite_site_edits,
                          keep_site_edits=arguments.keep_site_edits, full=arguments.full_plan)
         else:
-            push.push(folder, service, yes=arguments.yes, confirm=ask, say=voice.say,
+            _draft.push(folder, service, yes=arguments.yes, confirm=ask, say=voice.say,
                       overwrite_site_edits=arguments.overwrite_site_edits, keep_site_edits=arguments.keep_site_edits,
                       full=arguments.full_plan, progress=voice.progress)
     finally:
@@ -1453,7 +1505,7 @@ _CREDENTIAL_USAGE = ("usage: mime credentials set|status|remove <zenodo|zenodo-s
 def _credential_words_problem(after: Sequence[str]) -> str | None:
     """Why the words after ``mime credentials`` are not a verb and a service, or ``None``. Said without quoting any
     word, so that a token typed where it does not belong is not written to the screen or a log by the message."""
-    from mime import credentials
+    from mime.credentials import _store
 
     if any(word in ("-h", "--help") for word in after):
         return None
@@ -1461,8 +1513,8 @@ def _credential_words_problem(after: Sequence[str]) -> str | None:
         return "the first word is set, status or remove"
     if len(after) > 2:
         return "a verb takes one service and nothing else"
-    if len(after) == 2 and after[1] not in credentials.SERVICES and not credentials.is_host_service(after[1]):
-        return f"the service is one of {', '.join(credentials.SERVICES)}, or host:<host name>"
+    if len(after) == 2 and after[1] not in _store.SERVICES and not _store.is_host_service(after[1]):
+        return f"the service is one of {', '.join(_store.SERVICES)}, or host:<host name>"
     return None
 
 
@@ -1472,26 +1524,26 @@ class _Services(list[str]):
 
     @override
     def __contains__(self, value: object) -> bool:
-        from mime import credentials
+        from mime.credentials import _store
 
-        return super().__contains__(value) or (isinstance(value, str) and credentials.is_host_service(value))
+        return super().__contains__(value) or (isinstance(value, str) and _store.is_host_service(value))
 
 
 def _credentials(command: str, service: str | None) -> int:
-    from mime import credentials
+    from mime.credentials import _store
 
     if command == "status":
-        for each in [service] if service else list(credentials.SERVICES):
-            print(for_terminal(credentials.describe(each)))
+        for each in [service] if service else list(_store.SERVICES):
+            print(for_terminal(_store.describe(each)))
     elif service is None:
         raise AssertionError("argparse requires a service for set and remove")
     elif command == "set":
-        print(f"stored the {service} token in {credentials.store(service, credentials.prompt(service))}")
+        print(f"stored the {service} token in {_store.store(service, _store.prompt(service))}")
     else:
-        print(f"removed the {service} token from the credentials file" if credentials.remove(service)
+        print(f"removed the {service} token from the credentials file" if _store.remove(service)
               else f"the credentials file holds no {service} token")
-        if credentials.source(service) is not None:
-            print(f"{service}: a token is still set by {credentials.source(service)}, which is the environment's to "
+        if _store.source(service) is not None:
+            print(f"{service}: a token is still set by {_store.source(service)}, which is the environment's to "
                   "unset")
     return 0
 
@@ -1718,7 +1770,8 @@ def build_parser() -> _guide.MimeParser:
     card.add_argument("--out", type=Path, help="write it to this file (default: print it)")
     card.add_argument("--notice", action="store_true", help="the NOTICE (each file's licence, credit, verdict and "
                                                             "declared permission) in place of the card")
-    from mime import credentials, push
+    from mime.credentials import _store
+    from mime.push import _draft, _service
 
     pull = commands.add_parser("pull", help="get a bundle by DOI, address or file, unpack it into a new folder, and "
                                             "fetch its assets")
@@ -1732,7 +1785,7 @@ def build_parser() -> _guide.MimeParser:
                            f"`--link env` reads it from {SHARE_LINK_VARIABLE}. A link given as the source stays in "
                            "your shell's history and, while pull runs, in its arguments, which any account on this "
                            "machine can read (ps, /proc/<pid>/cmdline) unless /proc is mounted with hidepid")
-    pull.add_argument("--from", dest="from_service", choices=list(push.SERVICES), metavar="SERVICE",
+    pull.add_argument("--from", dest="from_service", choices=list(_service.SERVICES), metavar="SERVICE",
                       help="read the published record of this number at the service's records API (zenodo-sandbox: "
                            "its DOIs do not resolve through doi.org)")
     pull.add_argument("--signed-in", action="store_true",
@@ -1749,7 +1802,7 @@ def build_parser() -> _guide.MimeParser:
     pushing = commands.add_parser(
         "push", help="show the plan, then make or update the experiment's draft record on Zenodo and upload its files "
                      "(nothing is published)",
-        usage="%(prog)s [-h] --to {zenodo,zenodo-sandbox} [--init | --setup | --status | --discard | --publish]\n"
+        usage="%(prog)s [-h] --to {zenodo,zenodo-sandbox} [--init | --setup | --status | --discard | --publish | --dry-run]\n"
               "                 [--confirm DOI[@FINGERPRINT]] [--yes] [--full-plan]\n"
               "                 [--keep-site-edits | --overwrite-site-edits]\n"
               "                 folder\n"
@@ -1757,7 +1810,7 @@ def build_parser() -> _guide.MimeParser:
               "       %(prog)s --defaults")
     pushing.set_defaults(push_parser=pushing)
     pushing.add_argument("folder", type=Path, nargs="?", help="a folder written by Experiment.save")
-    pushing.add_argument("--to", choices=list(push.SERVICES),
+    pushing.add_argument("--to", choices=list(_service.SERVICES),
                          help="the service: zenodo, or zenodo-sandbox to try it on Zenodo's test service (required, "
                               "but for --setup and --defaults)")
     pushing_mode = pushing.add_mutually_exclusive_group()
@@ -1778,22 +1831,25 @@ def build_parser() -> _guide.MimeParser:
     pushing_mode.add_argument("--publish", action="store_true",
                               help="publish the draft, the one step that cannot be undone: the plan, the confirmation "
                                    "in words, each declared permission asked, then the record number typed")
+    pushing_mode.add_argument("--dry-run", action="store_true",
+                              help="show what would be uploaded and where, as the plan push shows before it sends "
+                                   "anything, and send nothing: no token is read and no connection opened")
     pushing.add_argument("--confirm", metavar="DOI[@FINGERPRINT]",
                          help="with --publish, from a script: the draft's reserved DOI, in place of the record number "
                               "typed (it must be that draft's); once a push changed the draft after first printing its "
                               "DOI, the DOI and the fingerprint the last push printed beside it")
     pushing.add_argument("--yes", action="store_true", help="delete the draft with --discard without asking (it never "
                                                             "publishes, declares a permission or settles a site edit)")
-    pushing.add_argument(push.FULL_FLAG, dest="full_plan", action="store_true",
+    pushing.add_argument(_draft.FULL_FLAG, dest="full_plan", action="store_true",
                          help="the full plan: every file inside the bundle with its tier and verdict, every field sent")
     site_edits = pushing.add_mutually_exclusive_group()
-    site_edits.add_argument(push.KEEP_FLAG, dest="keep_site_edits", action="store_true",
+    site_edits.add_argument(_draft.KEEP_FLAG, dest="keep_site_edits", action="store_true",
                          help="keep each edit made on the service's site that mime.toml's [record] can hold, written "
                               "into it, without asking")
-    site_edits.add_argument(push.OVERWRITE_FLAG, dest="overwrite_site_edits", action="store_true",
+    site_edits.add_argument(_draft.OVERWRITE_FLAG, dest="overwrite_site_edits", action="store_true",
                          help="write the draft's metadata from mime.toml and the folder over what was edited on the "
                               "service's site since push last wrote it (without it, such an edit stops the push)")
-    from mime.scaffold import KINDS as scaffold_kinds
+    from mime.scaffold._values import KINDS as scaffold_kinds
 
     scaffolding = commands.add_parser(
         "scaffold", help="start a new experiment, bundle, study, block or plugin from a template, its values from your "
@@ -1832,7 +1888,7 @@ def build_parser() -> _guide.MimeParser:
     for verb, what in (("set", "read a token (hidden) and store it"), ("remove", "delete the stored token"),
                        ("status", "whether there is a token, where from, and its last four characters, if 32 or more")):
         each = credential_commands.add_parser(verb, help=what)
-        each.add_argument("service", nargs="?" if verb == "status" else None, choices=_Services(credentials.SERVICES))
+        each.add_argument("service", nargs="?" if verb == "status" else None, choices=_Services(_store.SERVICES))
     held_cache = commands.add_parser("cache", help="the XLA compilation cache mime run and mime serve keep")
     cache_commands = held_cache.add_subparsers(dest="cache_command", required=True)
     cache_commands.add_parser("clear", help="delete the compilation cache in the user's cache directory")
@@ -1849,8 +1905,8 @@ def build_parser() -> _guide.MimeParser:
     run.add_argument("--out", type=Path, required=True, help="the folder to write the outputs, the record and the "
                                                              "run's saved form to")
     run.add_argument("--force", action="store_true",
-                     help="run into --out although it is neither new, empty nor a MIME run folder: a warning says what "
-                          "it holds, Ctrl+C cancels the run until it begins to write, and an amber notice says when it "
+                     help="run into --out although it is not new or empty (an earlier run's folder included, whose run "
+                          "this one replaces): a warning says what it holds, Ctrl+C cancels the run until it begins to write, and an amber notice says when it "
                           "does; the files a run writes (outputs.npz, outputs.json, run.json, report.json, topology.json, "
                           "experiment/) replace those of their names")
     run.add_argument("--history", action="store_true", help="write every step's fields, not only the last")
@@ -1947,8 +2003,10 @@ def build_parser() -> _guide.MimeParser:
                             "vector, every per-step output and every flag)")
     serve.add_argument("--json-frames", action="store_true", help="send frames as JSON, for debugging")
     serve.add_argument("--start", action="store_true", help="start stepping at once, before a client's start")
-    serve.add_argument("--remote", action="store_true",
-                       help="allow an address that is not loopback (no authentication: prefer an SSH tunnel)")
+    serve.add_argument("--allow-remote-commands", action="store_true",
+                       help="bind an address that is not loopback all the same: whoever reaches it can command the "
+                            "session, as nothing authenticates a client (prefer an SSH tunnel); it warns, naming each "
+                            "such address")
     serve.add_argument("--ready-file", type=Path, default=None, metavar="FILE",
                        help="write the bound endpoints as JSON to FILE once the sockets listen")
     serve.add_argument("--outlive-launcher", action="store_true",
@@ -1983,6 +2041,11 @@ def build_parser() -> _guide.MimeParser:
                                                                          "in its directory for this jaxlib and device")
     env_check.add_argument("--mime-version", metavar="VERSION",
                            help="the version of the MIME wheel pinned for the run; without it MIME is not held to one")
+    env_check.add_argument("--strict", action="store_true",
+                           help="hold every pin exactly, for a reproduction: a distribution at another version than "
+                                "its pin, though inside the ranges MIME's dependencies declare, and one nothing pins, "
+                                "are refused (without it they are notes). It is implied by --base, --mime-version and "
+                                "a folder (its lock), the reproduction's own arguments")
     env_check.add_argument("--record", type=Path, metavar="FILE", help="also write what the check found as JSON")
     modal = commands.add_parser("modal", help="write the script that runs a saved experiment on Modal")
     modal.add_argument("folder", type=Path, help="a folder written by Experiment.save")
@@ -2006,6 +2069,9 @@ def build_parser() -> _guide.MimeParser:
     modal.add_argument("--study", type=Path, metavar="SPEC",
                        help="add a `study` entrypoint that runs this study spec (study.mime.yaml) in one container, a "
                             "pilot first; the same --name resumes it")
+    modal.add_argument("-f", "--force", action="store_true",
+                       help="replace the files of a script written earlier in the folder; without it they are refused "
+                            "(only the files the script is made of are replaced)")
     modal.add_argument("--shards", type=int, default=1, metavar="K",
                        help="split the study over K containers, one shard each, each into a study folder of its own "
                             "(needs --max-containers K). Sharding is by structure group: K is at most the study's "
@@ -2081,9 +2147,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ``mime serve <folder> [--commands <endpoint>] [--frames <endpoint>] [--chunk <seconds>] [--pace <factor>]
     [--out <dir>] [--start]``: the saved experiment's live session, speaking ``mime.live/1`` over ZMQ (commands on a REP,
-    frames on a PUB), bound to localhost unless ``--remote``, until a ``stop`` command, a signal, or the exit of the
-    process that launched it (unless ``--outlive-launcher``), or ``--idle-timeout`` with no client connected, or
-    ``--max-wall`` (each at the end of the chunk in hand); it writes a run folder when it stops, and says why. On a terminal it draws a live view on standard
+    frames on a PUB), bound to loopback unless ``--allow-remote-commands`` (which warns, naming each address that is
+    not), until a ``stop`` command, a signal, or the exit of the process that launched it (unless
+    ``--outlive-launcher``), or ``--idle-timeout`` with no client connected, or ``--max-wall`` (each at the end of
+    the chunk in hand); it writes a run folder when it stops, and says why. On a terminal it draws a live view on standard
     error (the state, the step, the speed, the clients, a table of values chosen by ``--watch``, and the commands
     clients ask); anywhere else it prints its two lines on standard output and nothing more.
 
@@ -2143,8 +2210,12 @@ def _parsed(parser: argparse.ArgumentParser, words: list[str], full: bool) -> in
 
     try:
         with short_description_warnings(sys.stderr):
-            return _command(parser, arguments)
+            code = _command(parser, arguments)
+        sys.stdout.flush()  # a pipe closed by the reader is met here, not at the interpreter's exit
+        return code
     except Exception as error:  # noqa: BLE001 - every error a command meets is shown as a MIME error with its code
+        if _closed_pipe(error):
+            return _pipe_closed()
         return refused(error, arguments.command)
     finally:
         if full:
@@ -2154,21 +2225,95 @@ def _parsed(parser: argparse.ArgumentParser, words: list[str], full: bool) -> in
                 os.environ[TRACEBACK_VARIABLE] = held
 
 
+def _folder_must_exist(arguments: argparse.Namespace) -> None:
+    """Refuse, as every command that takes a folder does (``load.missing-folder``, with the folders beside it and the
+    nearest), a folder that is not there, before the command reads anything of it: ``check``, ``modal``, ``push`` and
+    ``scaffold bundle|study`` named it differently each, by the first file they looked for."""
+    command = arguments.command
+    folder: Path | None = None
+    if command in ("check", "modal") or (command == "push" and not arguments.defaults):
+        folder = arguments.folder
+    elif command == "scaffold" and arguments.kind in ("bundle", "study"):
+        folder = arguments.path
+    if folder is not None and not folder.exists():
+        from mime.env._check import LOCK_FILE, missing_folder
+        from mime._manifest_file import MANIFEST_FILE
+        from mime.results._study_folder import STUDY_FILE
+
+        raise missing_folder(folder, holding=(LOCK_FILE, MANIFEST_FILE, STUDY_FILE))
+
+
+#: The exit code of a command whose output was read no further (``mime registry --json | head``): what a process ended by
+#: SIGPIPE shows in a shell (128 and 13), so a pipeline reads it as it reads ``cat``.
+PIPE_CLOSED = 141
+
+
+def _closed_pipe(error: BaseException) -> bool:
+    """Whether ``error`` is a ``BrokenPipeError`` raised directly by a write to standard output or standard error, the
+    pipe the user's reader closed. An error that was caused by one (a ``ConnectionError`` raised from a socket's) is
+    no closed pipe of the user's, and neither is a socket's own ``BrokenPipeError`` while both streams are open: those
+    are shown as the failures they are. Whether a stream's reader has gone is asked of the stream (:func:`_reader_gone`),
+    since the error itself does not say which pipe it came from."""
+    return (isinstance(error, BrokenPipeError) and error.__cause__ is None and error.__context__ is None
+            and any(_reader_gone(stream) for stream in (sys.stdout, sys.stderr)))
+
+
+def _reader_gone(stream: TextIO) -> bool:
+    """Whether ``stream`` is a pipe or socket whose reader has closed it: the descriptor polls as in error, or flushing
+    what the stream still holds meets a broken pipe. A stream with no descriptor (a test's capture) has no reader."""
+    try:
+        descriptor = stream.fileno()
+    except (AttributeError, ValueError, OSError):
+        return False
+    try:
+        polling = select.poll()
+        polling.register(descriptor, select.POLLOUT)
+        if any(event & select.POLLERR for _, event in polling.poll(0)):
+            return True
+    except (AttributeError, OSError, ValueError):  # no poll on this platform
+        pass
+    try:
+        stream.flush()
+    except BrokenPipeError:
+        return True
+    except (OSError, ValueError):
+        return False
+    return False
+
+
+def _pipe_closed() -> int:
+    """End quietly when the reader of a pipe has gone: the streams are pointed at the null device, so the interpreter's
+    own flush at exit finds nothing to fail on, and nothing is printed (a closed pipe is the reader's choice, no bug)."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            descriptor = stream.fileno()
+        except (AttributeError, ValueError, OSError):
+            continue
+        null = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(null, descriptor)
+        os.close(null)
+    return PIPE_CLOSED
+
+
 def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> int:
     from mime import assets
 
+    _folder_must_exist(arguments)
     if arguments.command == "verify":
         _deterministic(arguments.deterministic)
         return _verify(arguments.folder, arguments.run)
     if arguments.command == "pending":
         return _pending(arguments.folder)
     if arguments.command == "show":
-        from mime.blocks import is_block_folder
+        from mime.blocks._definition import is_block_folder
 
         if arguments.folder.is_dir() and is_block_folder(arguments.folder) and (
                 arguments.graph or arguments.tree or arguments.out is not None):
             parser.error("a block folder shows what the block is and needs; --tree, --graph and --out are a saved "
                          "experiment's (save one that uses the block, then show that)")
+        if _is_run_folder(arguments.folder) and (arguments.graph or arguments.tree or arguments.out is not None):
+            parser.error("a run folder shows its outputs; --tree, --graph and --out are a saved experiment's (name "
+                         "the experiment the run was made from, or its saved form, <run folder>/experiment)")
         if arguments.json and arguments.graph:
             parser.error("--json is the tree as data; the graph is Mermaid text, so --json and --graph do not go together")
         if arguments.out is not None and (arguments.json or arguments.tree):
@@ -2254,4 +2399,4 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     parser.error(f"unknown command {arguments.command!r}")
 
 
-__all__ = ["FAILED", "REFUSED", "TRACEBACK_FLAG", "main", "refused"]
+__all__: list[str] = []

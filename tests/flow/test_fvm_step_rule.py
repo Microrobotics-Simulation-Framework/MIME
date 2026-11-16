@@ -16,7 +16,7 @@ import mime.dynamics.flow._steps as steps
 from fvm_cases import in_dtype
 from mime.build import BuildRefused
 from mime.dynamics import FVM, Scheme, Womersley
-from mime.dynamics.flow import chosen_scheme
+from mime.dynamics.flow._fvm import chosen_scheme
 from mime.experiment import Experiment
 from mime.interactions import BodyForce
 from mime.nodes.flow.fvm import ExplicitFlowNode, ImplicitFlowNode

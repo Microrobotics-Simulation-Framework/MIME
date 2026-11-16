@@ -45,6 +45,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
+from mime._manifest_file import OLD_FILE
 from mime._said import (
     DONE,
     EDIT_OURS,
@@ -76,7 +77,7 @@ from mime.push._fields import access_words
 from mime.push._owners import ACCESS_FIELD, FIELD_OWNERS, field_owner
 from mime.push._plan import NOTICE_KEY, Plan, RecordFile, make_plan, restaged, with_sharing
 from mime.push._service import TEST_PREFIX, ZENODO, ZENODO_SANDBOX, Service
-from mime.push._manifest import OLD_FILE, manifest_path, manifest_text, old_values, present, read_record
+from mime.push._manifest import manifest_path, manifest_text, old_values, present, read_record
 from mime.push._sharing import DEFAULT_LICENCE
 from mime.push._state import (
     ACCESS,
@@ -175,7 +176,7 @@ def usable(service: Service) -> None:
 def token_of(service: Service) -> Token:
     """The token push sends ``service``, and only where MIME may go online (``MIME_OFFLINE`` closes push too). The two
     real services' stored tokens are never the same one: a token stored under the other's name is refused."""
-    from mime import credentials
+    from mime.credentials import _store
     from mime.assets import offline
 
     if offline():
@@ -183,7 +184,7 @@ def token_of(service: Service) -> Token:
             "push.service", RefusalClass.ENVIRONMENT,
             f"MIME_OFFLINE is set, so push sends nothing to {service.name}",
             "unset MIME_OFFLINE to let push go online, then `mime push <folder> --to <service>` again")])
-    found = credentials.token(service.credential)
+    found = _store.token(service.credential)
     if found is None:
         raise BuildRefused([_refuse(
             "push.token", RefusalClass.ENVIRONMENT,
@@ -193,7 +194,7 @@ def token_of(service: Service) -> Token:
     others = [each.credential for each in (ZENODO, ZENODO_SANDBOX) if each.credential != service.credential]
     if service.credential in (ZENODO.credential, ZENODO_SANDBOX.credential):
         for other in others:
-            held = credentials.token(other)
+            held = _store.token(other)
             if held is not None and held.reveal() == found.reveal():
                 raise BuildRefused([_refuse(
                     "push.token", RefusalClass.ENVIRONMENT,
@@ -1015,6 +1016,27 @@ def push(folder: str | os.PathLike[str], service: Service, *, yes: bool = False,
 
 def _nothing() -> None:
     pass
+
+
+def dry_run(folder: str | os.PathLike[str], service: Service, *, say: Say = _quiet, full: bool = False) -> Plan:
+    """What :func:`push` would upload and where, and nothing sent: the plan it shows before its first request, made as
+    ``push`` makes it (from the folder and what push kept of the experiment's earlier drafts, never a request), shown
+    in full where ``full``, and a line saying nothing was sent. It reads no token and opens no connection, so it runs
+    offline and for a service the user has no token for."""
+    usable(service)
+    root = Path(os.path.abspath(folder))
+    experiment = experiment_name(root)
+    state = read_state(service, experiment)
+    plan = planned(root, service, state)
+    published = state.published if state is not None and state.record is None else None
+    if published is not None and unchanged(plan, published):
+        say(f"dry run: {plain(experiment)!r} is unchanged since {published.doi} (version {published.version} on "
+            f"{service.name}), so a push would make no version, and nothing was sent")
+        return plan
+    _show_plan(lambda: plan, state, say, full)()
+    say(f"dry run: nothing was sent and nothing on {service.name} was read or changed; `mime push <folder> --to "
+        f"{service.name}` makes the draft and uploads these files")
+    return plan
 
 
 def send(plan: Plan, state: DraftState | None, client: Client, say: Say = _quiet, *,

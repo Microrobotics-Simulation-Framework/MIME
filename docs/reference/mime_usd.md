@@ -68,5 +68,6 @@ plans the fixtures, which needs their assets, so a run without them does not exe
   declared range in its `customData`, physics values set by a recording (never colours).
 - `mime:mesh:fields`: on a surface's mesh, its fields' names in the order the entry declares them.
 - `mime:display`: on a surface's mesh that is not the solver's own surface but a section shown as one, how it was
-  made: `revolved` (an axisymmetric section turned about its axis) or `extruded` (a plane section swept along its
-  normal). Absent on the solver's own surface.
+  made: `revolved` (an axisymmetric section turned about its axis), `extruded` (a plane section swept along its
+  normal) or `mirrored` (a symmetric part solved as a quarter or a half, drawn with its reflections across its planes of
+  symmetry: the solve holds the part alone). Absent on the solver's own surface.

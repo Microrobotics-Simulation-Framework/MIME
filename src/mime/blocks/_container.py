@@ -30,6 +30,7 @@ from typing import Literal, cast
 
 from typing_extensions import ReadOnly, TypedDict
 
+from mime._manifest_file import MANIFEST_FILE, MANIFEST_FORMAT
 from mime._terminal import plain
 from mime.assets import AssetRef, size_text
 from mime.blocks._definition import (
@@ -37,7 +38,6 @@ from mime.blocks._definition import (
     CASES,
     DESCRIPTIONS,
     FRAGMENT_FILE,
-    MANIFEST_FILE,
     RECORDS,
     Definition,
     content_hash,
@@ -48,18 +48,21 @@ from mime.push._toml import key_text, value_text
 from mime.saved._container import (
     BundleFile,
     ReferencedFile,
-    collisions,
+    collision_refusals,
     container_hash,
     destination_problem,
     files_of,
+    inside_problem,
     member_problem,
     member_kind_problems,
     members_listed,
     notice_of,
+    over_limit,
     read_manifest,
     refuse,
     sha256_of,
     staging_of,
+    stray_refusals,
     unknown_format,
     unreadable,
     write_container,
@@ -124,7 +127,7 @@ def block_layout_problem(name: str) -> str | None:
 def definition_text(held: Mapping[str, object]) -> str:
     """The definition's tables (``held``, ``[record]`` left out) as TOML, canonically: keys sorted, a table of tables
     as one table each, an array of tables as one each, no comment. Read back by ``tomllib`` and held equal."""
-    lines = [f"format = {value_text(held.get('format', 'mime.toml/1'))}"]
+    lines = [f"format = {value_text(held.get('format', MANIFEST_FORMAT))}"]
     for key in sorted(each for each in held if each != "format"):
         value = held[key]
         if isinstance(value, list):
@@ -183,7 +186,7 @@ def pack_block(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | 
     published. The same folder makes the same bytes."""
     from mime.blocks._check import case_refusals
     from mime.blocks._fragment import read_fragment
-    from mime.credentials import held_tokens
+    from mime.credentials._store import held_tokens
     from mime.experiment import Experiment
     from mime.saved import _bundle
     from mime.saved._bundle import referenced_members, shipped_asset_problems
@@ -195,23 +198,18 @@ def pack_block(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | 
     read_fragment(root, definition.sockets)
     content = definition.content_hash()
     target = Path(out) if out is not None else root.with_name(f"{definition.id}-{definition.version}{BLOCK_SUFFIX}")
-    if root.resolve() in (target.resolve(), *target.resolve().parents):
-        raise BuildRefused([refuse("bundle.output-inside", RefusalClass.USER,
-                                   "the block's container would be written inside the folder it packs",
-                                   "write it beside the folder (--out)")])
+    if (inside := inside_problem(root, target, "the block's container")) is not None:
+        raise inside
     refusals = [refusal for _, refusal in case_refusals(definition, content) if cases or refusal.code != "block.no-case"]
     held = [each for each in _cases(root) if cases]
     stored = held_tokens()
     files = [(member, path) for member, path in files_of(root, BLOCK)
              if member != MANIFEST_FILE and (cases or case_of(member) is None)]
-    refusals += [refuse("bundle.stray-file", RefusalClass.USER,
-                        f"{plain(member)} is not a file a block folder holds: it {problem}",
-                        "a block's container carries its definition, fragment, records, descriptions, assets and cases "
-                        "and nothing else: remove the file, then `mime pack <folder>` again")
-                 for member, _ in files if (problem := block_layout_problem(member)) is not None]
-    refusals += [refuse("bundle.name-collision", RefusalClass.USER,
-                        f"{plain(one)} and {plain(other)} are one name on a case-insensitive filesystem",
-                        "rename one; then `mime pack <folder>`") for one, other in collisions([m for m, _ in files])]
+    refusals += stray_refusals(
+        files, block_layout_problem, "a block folder holds",
+        "a block's container carries its definition, fragment, records, descriptions, assets and cases",
+        left_behind=False)
+    refusals += collision_refusals([m for m, _ in files])
     referenced: dict[str, ReferencedFile] = {}
     records: list[RemoteAssetRecord] = [cast(RemoteAssetRecord, dict(ref.to_record())) for ref in definition.assets]
     for case in held:
@@ -241,12 +239,10 @@ def pack_block(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | 
     for member, path in files:
         if member in referenced:
             continue
-        size = path.stat().st_size
-        if size > INLINE_LIMIT_BYTES:
-            refusals.append(refuse("bundle.file-too-large", RefusalClass.USER,
-                                   f"{plain(member)} has {size_text(size)}, over the {size_text(INLINE_LIMIT_BYTES)} a "
-                                   f"container carries", "keep it as an asset with a location, `[[assets]]` "
-                                                         "locations = [\"https://...\"], and out of the folder"))
+        if (message := over_limit(member, path.stat().st_size, INLINE_LIMIT_BYTES, "a container")) is not None:
+            refusals.append(refuse("bundle.file-too-large", RefusalClass.USER, message,
+                                   "keep it as an asset with a location, `[[assets]]` locations = "
+                                   "[\"https://...\"], and out of the folder"))
             continue
         carried = _bundle.scanned(member, path, stored, refusals)
         if carried is None:

@@ -17,7 +17,7 @@ from study_plants import SOURCE_VARIABLE
 from study_rigs import write_study
 from zenodo_records import FakeRecords, served
 
-from mime import push
+from mime.push import _client, _draft, _publish, _service
 from mime.build import BuildRefused
 from mime.cli import main
 
@@ -31,12 +31,12 @@ def written(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture
 def sandbox(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRecords]:
-    """The fake behind a server on this machine, standing in for the sandbox in ``mime.push.SERVICES``."""
+    """The fake behind a server on this machine, standing in for the sandbox in ``mime.push._service.SERVICES``."""
     token = with_token(monkeypatch)
-    monkeypatch.setattr(push._client, "PAUSE_SECONDS", 0.0)
+    monkeypatch.setattr(_client, "PAUSE_SECONDS", 0.0)
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     with served(token) as fake:
-        monkeypatch.setitem(push.SERVICES, "zenodo-sandbox", fake.service())  # type: ignore[index]
+        monkeypatch.setitem(_service.SERVICES, "zenodo-sandbox", fake.service())  # type: ignore[index]
         yield fake
 
 
@@ -53,8 +53,8 @@ def publishing(written: Path, root: Path) -> Path:
 def test_a_publishing_folder_is_one_record_of_its_studies_and_pulls_back_a_folder_each(
         written: Path, sandbox: FakeRecords, tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     folder = publishing(written, tmp_path)
-    service = push.SERVICES["zenodo-sandbox"]
-    drafted = push.push(folder, service, pause=0)
+    service = _service.SERVICES["zenodo-sandbox"]
+    drafted = _draft.push(folder, service, pause=0)
     record = sandbox.records[drafted.record]
     assert sorted(record.files) == ["NOTICE.txt", "step_scan.mimestudy", "stiffness_scan.mimestudy"]
     metadata = record.body["metadata"]
@@ -63,9 +63,9 @@ def test_a_publishing_folder_is_one_record_of_its_studies_and_pulls_back_a_folde
     assert "mime-study" in subjects and "mime-experiment" not in subjects
     assert drafted.doi in str(metadata["description"]), "the description names the reserved DOI"
     assert "step_scan" in str(metadata["description"]) and "README" not in str(metadata["description"])
-    again = push.push(folder, service, pause=0)
+    again = _draft.push(folder, service, pause=0)
     assert again.uploaded == (), "a second push finds every file uploaded and verified"
-    push.publish(folder, service, confirm=drafted.doi, pause=0)
+    _publish.publish(folder, service, confirm=drafted.doi, pause=0)
     into = tmp_path / "pulled"
     assert main(["pull", "--from", "zenodo-sandbox", drafted.record, "--into", str(into)]) == 0
     assert sorted(path.name for path in into.iterdir()) == ["step_scan", "stiffness_scan"]
@@ -80,7 +80,7 @@ def test_the_record_licence_must_be_every_studys(written: Path, sandbox: FakeRec
     path.write_text(path.read_text(encoding="utf-8").replace('licence = "CC-BY-4.0"', 'licence = "MIT"'),
                     encoding="utf-8")
     with pytest.raises(BuildRefused) as refused:
-        push.push(folder, push.SERVICES["zenodo-sandbox"], pause=0)
+        _draft.push(folder, _service.SERVICES["zenodo-sandbox"], pause=0)
     assert set(refused.value.codes()) == {"push.licence"} and len(refused.value.refusals) == 4
     assert sandbox.records == {}, "nothing was sent"
 
@@ -88,5 +88,5 @@ def test_the_record_licence_must_be_every_studys(written: Path, sandbox: FakeRec
 def test_a_single_study_folder_is_pushed_as_a_record_of_one(written: Path, sandbox: FakeRecords, tmp_path: Path):
     folder = Path(shutil.copytree(written, tmp_path / "wall_scan"))
     write_manifest(folder)
-    drafted = push.push(folder, push.SERVICES["zenodo-sandbox"], pause=0)
+    drafted = _draft.push(folder, _service.SERVICES["zenodo-sandbox"], pause=0)
     assert sorted(sandbox.records[drafted.record].files) == ["NOTICE.txt", "wall_scan.mimestudy"]

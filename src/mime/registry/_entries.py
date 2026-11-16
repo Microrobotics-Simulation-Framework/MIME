@@ -81,6 +81,12 @@ Commanded = SettingKind("Commanded", "a quantity in the dimension of the command
 #: second), which phase 1 checks it against.
 CommandedRate = SettingKind("CommandedRate", "a quantity in the dimension of the command it drives, per second")
 
+#: A setting that holds quantities in a container (a mapping of a joint's name to its ``Quantity``, a tuple of pairs), which
+#: the registration reads no dimension from: the entry reads them itself and checks each one's dimension where it uses them.
+#: It is a declaration, not a check, and the one way such a setting is registered: a setting that holds a ``Quantity``
+#: in a form the registration does not read is refused, never left out.
+CheckedByEntry = SettingKind("CheckedByEntry", "quantities in a container, each checked by the entry itself")
+
 type DirectionLike = TypedPath | str | tuple[float, float, float]
 
 
@@ -1416,8 +1422,10 @@ class Response(Entry):
 
 
 #: How a surface is shown when it is not the solver's own: a two-dimensional or axisymmetric section turned or swept into a
-#: surface for display alone (``mime:display`` on its prim).
-MESH_DISPLAYS = ("revolved", "extruded")
+#: surface for display alone (``mime:display`` on its prim), or a symmetric part (a quarter, a half) solved in three
+#: dimensions and drawn with its reflections across its planes of symmetry. The entry draws each, as it computes the
+#: surface's rest and its points; the value says how, for the stage's readers, and the solve never sees the reflection.
+MESH_DISPLAYS = ("revolved", "extruded", "mirrored")
 #: How a field's values over a cluster of vertices become the one value of the vertex a decimated surface draws there
 #: (:data:`mime.build._surfaces.SURFACE_TRIANGLES`): their mean, or their maximum, for a damage-like field whose front a mean
 #: would smear.

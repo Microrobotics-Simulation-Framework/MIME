@@ -160,7 +160,8 @@ def cli_reference(_root: Path) -> str:
 def profiles(_root: Path) -> str:
     """The profiles as the code defines them: ``Profile``'s own docstring, whether each is built, and the table of
     what each does with each class of finding (``profile_rules.txt``), each class with what covers it and its codes."""
-    from mime.validity import BUILT, FINDING_CLASSES, PROFILE_RULES, Profile, profile_of
+    from mime.validity import Profile
+    from mime.validity._profiles import BUILT, FINDING_CLASSES, PROFILE_RULES, profile_of
 
     out = ["The definition, as the code states it:", "", f"> {' '.join((Profile.__doc__ or '').split())}", ""]
     out += ["| Profile | Built |", "|---|---|"]

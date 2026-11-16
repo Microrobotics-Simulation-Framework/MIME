@@ -302,6 +302,11 @@ def run_build(root: Path, out: Path | None, *, junit: Path | None = None, collec
     held = Collection.from_json(collection.read_text(encoding="utf-8")) if collection is not None else None
     built = build_pages(root, Inputs(not skip_evidence, held,
                                      lane_reports(junit) if junit is not None and not skip_evidence else None))
+    reduced = (f"only the pages generated from the registry: --root holds no hand-written sources (it is not a checkout "
+               f"of MIME), so the guides, concepts, reference and evidence pages are left out; pass --root "
+               f"<checkout> for the whole set") if built.sources == 0 else None
+    if reduced is not None:
+        print(f"note: this build is {reduced}")  # first, before the summary a reader skims past it; again at the end
     for line in built.summary():
         print(line)
     if built.failures:
@@ -311,7 +316,8 @@ def run_build(root: Path, out: Path | None, *, junit: Path | None = None, collec
         return 1
     target = (out if out is not None else root / BUILD_DIRECTORY).resolve()
     written = write_pages(built, target)
-    print(f"mime docs build: wrote {len(written)} pages to {_shown(target, root)}")
+    print(f"mime docs build: wrote {len(written)} pages to {_shown(target, root)}"
+          + (f", {reduced}" if reduced is not None else ""))
     return 0
 
 

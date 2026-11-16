@@ -18,13 +18,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from mime._manifest_file import MANIFEST_FILE, OLD_FILE
 from mime._said import DONE, QUESTION_CONFIRM, Said
 from mime._shell import quoted
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.credentials import held_tokens
+from mime.credentials._store import held_tokens
 from mime.push._defaults import DEFAULT_KEYS, Defaults, read_all, write_defaults
-from mime.push._manifest import MANIFEST_FILE, OLD_FILE, STUDY, record_lines
+from mime.push._manifest import STUDY, record_lines
 from mime.push._setup import Walk, asked, filled, folder_facts
 from mime.push._sharing import DEFAULT_LICENCE
 from mime.push._toml import value_text

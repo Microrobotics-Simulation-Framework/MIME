@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 from zenodo_records import FakeRecords
 
-from mime.push import RDM_TYPE, Answer, Dropped
+from mime.push._client import Answer, Dropped, RDM_TYPE
 
 RECORDED = json.loads((Path(__file__).with_name("zenodo_probe_answers.json")).read_text(encoding="utf-8"))
 ANSWERS = RECORDED["answers"]

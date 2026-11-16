@@ -32,7 +32,7 @@ import pytest
 import yaml
 from scaffold_rig import NAMESPACE
 
-from mime import scaffold
+from mime.scaffold import _scaffold
 from mime.push import _defaults
 
 PACKAGE = "scafx_probes"
@@ -62,7 +62,7 @@ MACHINE_PATH = "/ho" "me/|/Us" "ers/|[A-Za-z]:\\\\|coord" "_work|/t" "mp/"
 
 def scaffolded(tmp_path: Path, *sets: str) -> Path:
     path = tmp_path / "scafx-probes"
-    scaffold.scaffold("plugin", path, yes=True, sets=[f"plugin.namespace={NAMESPACE}", *sets], say=lambda line: None)
+    _scaffold.scaffold("plugin", path, yes=True, sets=[f"plugin.namespace={NAMESPACE}", *sets], say=lambda line: None)
     return path
 
 

@@ -358,7 +358,7 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
     except EntryBuildError as error:
         return builder, [str(error)]
     except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
-        from mime.errors import raised_at
+        from mime.errors._translate import raised_at
 
         passed = passed_through(error, plan.registered.cls, "building", plan.owner)
         if passed is not None:  # the user's or the environment's refusal, raised by MIME's API inside the entry
