@@ -217,6 +217,33 @@ def test_a_solve_that_cannot_converge_in_its_cap_says_so():
     assert np.all(np.abs(commands) <= limit)
 
 
+def curved_rows(u: Any) -> Any:
+    """Rows no point meets, in a curved valley (Rosenbrock's, with a turn and a product added)."""
+    return jnp.stack([10.0 * (u[1] - u[0] ** 2), 1.0 - u[0], 2.0 * (u[2] - jnp.sin(u[1])), 0.5 * u[0] * u[2] - 0.7])
+
+
+@pytest.mark.parametrize("kind", ["affine", "nonlinear"])
+def test_a_solve_whose_tolerance_cannot_be_met_ends_within_its_cap_and_says_so(kind):
+    """With the tolerance below zero, which no iterate can meet (at zero, the curved valley's solve met it: its
+    gradient rounds to exactly zero there), the solve still ends: within ``ITERATIONS`` (its local phase never
+    starts), its commands finite and inside the box, ``converged`` false. On an affine problem and on a curved valley's
+    rows, whose line searches are the nonlinear ones: every loop of the solve is bounded, and at its bound the solve
+    says so."""
+    with in_dtype("float64"), pytest.MonkeyPatch.context() as patch:
+        patch.setattr(module, "TOLERANCE", dict.fromkeys(module.TOLERANCE, -1.0))
+        if kind == "affine":
+            matrix, target, limit = synthetic(np.random.default_rng(3), 10, 12)
+            found = iterative(matrix, target * 3.0, limit, "float64")
+        else:
+            limit = 2.0
+            found = iterative_allocation(curved_rows, jnp.asarray([-1.5, 1.0, 0.0]), lower=-limit, upper=limit,
+                                         owner=OWNER)
+    commands = np.asarray(found.commands)
+    low, high = -limit, limit
+    assert not bool(found.converged) and int(found.iterations) <= module.ITERATIONS, int(found.iterations)
+    assert np.all(np.isfinite(commands)) and np.all(commands >= low) and np.all(commands <= high)
+
+
 # -- the arm: inverse kinematics and the implicit derivative ------------------------------------------------------
 
 #: The arm's objective: link_6's position over 1 mm and its orientation's rotation vector over 10 mrad; the effort's
