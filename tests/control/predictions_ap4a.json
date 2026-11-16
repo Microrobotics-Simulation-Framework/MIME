@@ -197,5 +197,19 @@
       "one_ulp": "script A in both dtypes, a0_graph in float32 and the coil sphere in float32, every leaf one ulp up in the head: arrays differ"
     }
   },
-  "outcomes": null
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43756307412",
+    "head": "97d2550e (probe/ap4a-gates, the branch at de8e6cfa plus probe/)",
+    "gate_1_agreement_exact": "early 20/20, loose 20/20 caught; clean 0/20 each",
+    "gate_2_agreement_bvls": "early 20/20 caught, clean 0/20; loose: the arm was cancelled after 3 h unfinished (Hypothesis's explain phase over every failing variation, about 10 min a planted run; no loop unbounded): re-run in four arms in tests/control/predictions_ap4a_fix.json, 20/20",
+    "gate_3_derivative": "gauss_newton 20/20, bounds 20/20 caught; clean 0/20 each",
+    "gate_3b_warm_start": "unpolished 20/20 caught; clean FLAGGED 2/20 (seeds 0 and 5, draws 575 and 29557): a reference solve at the cap, unconverged and saying so. Diagnosed (tests/control/predictions_ap4a_fix.json's seen_before): the solve's sawtooth in a curved valley, fixed by bending the step's path with the rows",
+    "gate_4_inverse_kinematics": "early 20/20 caught; clean FLAGGED 3/20 (seeds 3, 6, 17, draws 451, 57135088, 12766): the solve converged at a joint's limit, a constrained stationary point off the pose, where the library met the pose: the test's premise, restated",
+    "gate_5_float32": "passed (tests_alloc arm)",
+    "gate_6_real_path": "silent 10/10, unleveled 10/10 caught, clean 0/10 each; test_iterative_controller, test_controller_flags and test_allocator 58 passed",
+    "gate_7_follower_gradient": "unpolished 5/5 caught, clean 0/5",
+    "costs": "steady minimum, one thread, AMD EPYC 7763: exact sphere 170 us, iterative 194 us (1.14x); ArmTracking 0.1.0 on A0 309 us, the follower 1.93 ms (6.2x)",
+    "bits": "base 4f85bcf5: all 11 programs array_equal; the 4 one-ulp controls differ",
+    "memory": "every arm's peak 0.5 to 7.9 GiB (under 12); the estimate's 1.86 GiB bound, uncalibrated, below it on most arms (the mem-check step red: the estimate, not a gate)"
+  }
 }

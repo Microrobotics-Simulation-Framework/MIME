@@ -143,5 +143,17 @@
    "one_ulp": "script A in both dtypes, a0_graph and the coil sphere in float32, every leaf one ulp up: arrays differ"
   }
  },
- "outcomes": null
+ "outcomes": {
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43777271404",
+  "head": "01c53acb (probe/ap4a-fix, the branch at 01df9b75 plus probe/)",
+  "gate_1_inverse_kinematics": "early 20/20 caught (two arms of 10, seeds 100-119), clean 0/20; every_run on both arms",
+  "gate_2_warm_start": "unpolished 20/20 caught (seeds 100-119), clean 0/20; as predicted this cannot tell the fix from the code before it (about 0.4 flagged of 20 expected before); the fix's evidence is the local surveys",
+  "gate_3_bvls_loose": "loose 20/20 caught (four arms of 5, seeds 0-19), clean 0/20; the arms took 44 to 59 min",
+  "gate_4_derivative_plants": "gauss_newton 20/20, bounds 20/20 caught (seeds 100-119), clean 0/20 each",
+  "gate_5_follower_and_flag": "unpolished 5/5 caught, clean 0/5; silent 10/10 caught, clean 0/10; tests_alloc 11 passed; tests_ctrl (with test_in_graph) 168 passed",
+  "costs": "steady minimum, one thread, AMD EPYC 9V45 (another CPU than the first run's): exact sphere 78 us, iterative 91 us (1.16x, in the band 1.1-1.6); ArmTracking 0.1.0 on A0 160 us, the follower 1.38 ms (8.7x, in the band 4-9, at its top; the follower's three builds 1.38 to 1.69 ms)",
+  "bits": "base dcb411e8 against the head: all 11 programs array_equal; the 4 one-ulp controls differ",
+  "memory": "every arm's peak 0.9 to 8.6 GiB (tests_alloc the largest), under 12; the estimate's 1.95 GiB bound, uncalibrated, below most (the mem-check step red: the estimate, not a gate)",
+  "arm_times": "every arm within its timeout: 6 to 73 min (the longest det_bounds_a)"
+ }
 }
