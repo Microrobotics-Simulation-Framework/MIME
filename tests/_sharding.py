@@ -44,6 +44,8 @@ from pathlib import Path
 
 import pytest
 
+import _shard_table
+
 #: The options, which tests/conftest.py adds.
 OPTION = "--mime-shard"
 RECORD_OPTION = "--mime-shard-record"
@@ -111,16 +113,9 @@ def load_split(path: Path = WEIGHTS_FILE) -> dict[str, dict[str, int]]:
     """``{test file: {test: seconds}}`` for the files the table deals by test (its optional ``split``): each test is
     named by its node id without the file, and the file keeps its total under ``seconds``."""
     try:
-        split = json.loads(path.read_text(encoding="utf-8")).get("split", {})
-    except (OSError, ValueError, AttributeError) as error:
-        raise pytest.UsageError(f"{path}: cannot read the shards' table ({error!r})") from None
-    ok = isinstance(split, dict) and all(
-        isinstance(file, str) and isinstance(tests, dict) and tests
-        and all(isinstance(part, str) and type(sec) is int and sec > 0 for part, sec in tests.items())
-        for file, tests in split.items())
-    if not ok:
-        raise pytest.UsageError(f"{path}: 'split' must be a {{test file: {{test: whole seconds}}}} table, no file empty")
-    return split
+        return _shard_table.read_split(path)
+    except _shard_table.TableError as error:
+        raise pytest.UsageError(str(error)) from None
 
 
 def load_seconds(path: Path = WEIGHTS_FILE) -> dict[str, int]:
