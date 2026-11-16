@@ -12,7 +12,8 @@ from dataclasses import dataclass
 import pytest
 
 from mime.core import shape_names, shape_switches, switch
-from mime.docs import load_namespaces, read_list
+from mime.docs._export import load_namespaces
+from mime.docs._lists import read_list
 from mime.docs._check import LISTS, Report, list_path, switch_problems
 from mime.gradients import GradientStatus, derived_status, status_of_switches, status_problem
 from mime.nodes.control import STAGE_SWITCHES

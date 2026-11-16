@@ -135,7 +135,7 @@ def test_what_the_registry_export_imports_from_mime_docs_imports_nothing_from_mi
 
 
 def test_the_scans_find_a_planted_import():
-    assert of(imports("from mime.docs import read_list\n", in_functions=False), "mime.docs")
+    assert of(imports("from mime.docs._lists import read_list\n", in_functions=False), "mime.docs")
     assert of(imports("import mime.testing.toys\n", in_functions=False), "mime.testing")
     assert not of(imports("import mime.testingly\nfrom mime import docs_of\n", in_functions=False), "mime.docs")
 

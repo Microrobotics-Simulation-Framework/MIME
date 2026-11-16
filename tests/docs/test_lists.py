@@ -11,7 +11,7 @@ import pytest
 from checkout import ROOT, copy_checkout, docs_check, failures
 
 from mime.build import REFUSAL_TABLE
-from mime.docs import floor_problems, list_problems, read_list
+from mime.docs._lists import floor_problems, list_problems, read_list
 from mime.docs._check import LISTS, list_path, read_lists, refusal_check
 
 FIRST = read_list(list_path(ROOT, "refusal_codes"), LISTS["refusal_codes"]).lines[0]

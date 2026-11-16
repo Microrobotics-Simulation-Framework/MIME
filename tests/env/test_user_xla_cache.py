@@ -16,7 +16,8 @@ import platformdirs
 import pytest
 
 from mime.cli import main as mime_main
-from mime.env import USER_CACHE_CAP_BYTES, clear_user_xla_cache, prune_to_cap, user_xla_cache, user_xla_cache_root
+from mime.env import prune_to_cap, user_xla_cache, user_xla_cache_root
+from mime.env._xla_cache import USER_CACHE_CAP_BYTES, clear_user_xla_cache
 from mime.env import _xla_cache
 from mime.env._xla_cache import DIRECTORY_LIMIT_BYTES
 from mime.env._xla_cache import point_xla_cache

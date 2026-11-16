@@ -36,7 +36,8 @@ from node_cases import NODE_CASES, shape_evaluations
 
 from mime.core import Symbol, SymbolKind, shape_named
 from mime.core.switch import Declaration
-from mime.docs import RatchetList, instance_problems, list_problems, read_list, rows_of
+from mime.docs._lists import RatchetList, list_problems, read_list
+from mime.docs._symbols import instance_problems, rows_of
 from mime.docs._check import LISTS, list_path
 from mime.registry import BuildContext, Dynamics, EntryKind, lookup, register_interaction
 from mime.testing import NodeCase, builds_failures, covered, installed_entries, node_failures, node_results, \

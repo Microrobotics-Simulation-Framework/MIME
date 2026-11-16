@@ -1029,6 +1029,16 @@ def has_link_inside(out: Path) -> bool:
     return any(Path(root, name).is_symlink() for root, directories, names in os.walk(out) for name in (*directories, *names))
 
 
+def linked_run_entries(out: Path) -> tuple[str, ...]:
+    """The entries of ``out`` that a run writes through and that are, or hold, a symbolic link (never followed): a name a run
+    writes (:data:`RUN_FOLDER_NAMES`, the runner's environment check) that is a link, or a folder of those names with a
+    link inside. A run into ``out`` would overwrite what such a link points at, wherever that is; the names are sorted."""
+    if not out.is_dir():
+        return ()
+    names = sorted(RUN_FOLDER_NAMES | {ENV_CHECK_FILE})
+    return tuple(name for name in names if (out / name).is_symlink() or ((out / name).is_dir() and has_link_inside(out / name)))
+
+
 def own_run_folder(out: Path) -> bool:
     """Whether ``out`` is MIME's own run folder, by what it holds and not by its names alone: ``run.json`` that reads as
     a run's record, and every other entry of a name a run writes (or the runner's environment check), holding what that
@@ -1075,6 +1085,17 @@ def refuse_out_not_own(out: Path, force: bool, *, meanwhile: bool = False, own_t
     where writing begins). ``own_too`` refuses MIME's own run folder as well (``mime run``'s rule, his: a run never
     replaces another run without being asked to), which :meth:`BuiltExperiment.run_to` does not, so that a script that
     runs again into its own folder keeps working."""
+    linked = linked_run_entries(Path(out))
+    if linked:
+        raise ArgumentRefused([Refusal(
+            "run.out-not-empty", RefusalClass.USER,
+            f"the run would be written into {out}, where {', '.join(linked[:5])}{', ...' if len(linked) > 5 else ''} "
+            "is, or holds, a symbolic link: writing there would replace what the link points at",
+            "remove the link, or write to a new folder or an empty one: --out <a new folder> (or out=); --force "
+            "(or force=True) does not write through a link",
+            why="a run writes the files of its own names (outputs.npz, run.json, experiment/ and the rest) into its folder; "
+                "through a link they would land wherever it points, outside the folder, and --force only says that "
+                "the files of those names in the folder may be replaced")])
     held = foreign_entries(Path(out), own_too=own_too)
     if not held or (force and not not_a_folder(Path(out))):
         return
@@ -1951,18 +1972,23 @@ class BuiltExperiment:
 
     @public
     def live(self, *, chunk: Quantity | None = None, pace: float | None = 1.0, select: Sequence[str] | None = None,
-             out: str | PathLike[str] | None = None) -> LiveSession:
+             out: str | PathLike[str] | None = None, force: bool = False,
+             record_budget: int | None = None) -> LiveSession:
         """A live session of this built experiment (``mime.live``): it steps the run in chunks of one fixed size,
         ``chunk`` (about 60 per simulated second when not given, a whole number of control periods with a controller
         called back), hands each chunk's frame to its subscribers, takes live inputs (a controller's, in the callback
         mode) and records the stage on request, paced to ``pace`` times real time (``None``: as fast as it runs).
         ``select`` names the fields its frames carry (``<node>.<field>``; every bound pose and vector, every per-step
         observation output and every flag when not given). It writes a minimal run folder into ``out`` when it stops:
-        the experiment, the command log, the final state, and the recording layer when recording was on."""
+        the experiment, the command log, the final state, and the recording layer when recording was on. ``out`` is
+        judged as :meth:`run_to` judges it (``force`` as there), and one that holds a command log already is refused,
+        ``force`` or not (``live.log-exists``). A recording holds at most ``record_budget`` samples (by default as many
+        as fit in 512 MiB), and stops by itself there."""
         from mime.live import LiveSession
 
         self._fresh()
-        return LiveSession(self, chunk=chunk, pace=pace, select=select, out=Path(out) if out is not None else None)
+        return LiveSession(self, chunk=chunk, pace=pace, select=select, out=Path(out) if out is not None else None,
+                           force=force, record_budget=record_budget)
 
     @public
     def run_to(self, out: str | PathLike[str], duration: Quantity, *, history: bool = False,

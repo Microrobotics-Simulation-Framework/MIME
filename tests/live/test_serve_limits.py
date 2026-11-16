@@ -13,7 +13,11 @@ on, and without the flag a server with no client serves on). ``--max-wall`` stop
 connected or not. A time that is not above zero is refused by its code before anything is built.
 
 ``--watch`` chooses the rows of a view's table and nothing the frames carry: the frames a client receives with
-``--watch all`` are byte for byte the frames it receives without (control: ``--select`` of another field is not)."""
+``--watch all`` are byte for byte the frames it receives without (control: ``--select`` of another field is not).
+
+A request over the server's limit is refused by its code (``live.message-too-large``) and the same client is served on;
+a client refuses a reply over its own limit by the same code. ``mime serve`` says the ``ssh`` command that reaches it
+from another machine, both ports forwarded to the addresses bound."""
 
 import json
 import re
@@ -26,7 +30,9 @@ import pytest
 from live_cases import saved
 from live_servers import client, serve_command, watched
 
+from mime.build import BuildRefused
 from mime.live import PROTOCOL, LiveClient
+from mime.live import _zmtp
 
 MIME = [sys.executable, "-m", "mime.cli"]
 #: A guard against waiting for ever, never a measure of speed.
@@ -69,7 +75,7 @@ def connect(ready: Path) -> LiveClient:
     return client(ready, timeout=60.0)
 
 
-#: The keys of the ready file, under mime.live/1's rule: fields may be added and a reader ignores what it does not know.
+#: The keys of the ready file, under mime.live/2's rule: fields may be added and a reader ignores what it does not know.
 #: ``mechanism`` and ``server_key`` are reserved for a later CURVE session and are not written now.
 READY_KEYS = {"protocol", "commands", "frames", "out"}
 
@@ -268,3 +274,37 @@ def test_the_docs_state_that_the_server_key_is_forty_characters_of_z85_text():
 
     public, _ = zmq.curve_keypair()
     assert len(public) == 40, "and 40 is what libzmq's keypair writes"
+
+
+def test_a_request_over_the_limit_is_refused_by_its_code_and_the_session_serves_on(launch, toy_folder, tmp_path,
+                                                                                    monkeypatch):
+    """(Item 4.) A ``set`` of 20,000 numbers, about 100 kB, over the 64 KiB a request may be: before, the server read it
+    whole (its limit was 1 MiB a frame) and the toy, which has no controller, refused it as ``live.input-mode``. A
+    client whose own limit is below the toy's ``hello`` refuses that reply by the same code."""
+    process, ready, out = start(launch, toy_folder, tmp_path)
+    live = connect(ready)
+    over = live.request("set", values={"offset": [0.0] * 20_000})
+    assert not over["ok"] and [error["code"] for error in over["errors"]] == ["live.message-too-large"], over
+    assert live.request("status")["ok"], "the same client is served on"
+    endpoints = json.loads(ready.read_text())
+    monkeypatch.setitem(_zmtp.LIMITS, "REQ", 1000)
+    with pytest.raises(BuildRefused) as refused:
+        LiveClient(endpoints["commands"], endpoints["frames"], timeout=60.0)
+    assert [refusal.code for refusal in refused.value.refusals] == ["live.message-too-large"]
+    monkeypatch.undo()
+    assert live.request("status")["ok"] and live.request("stop")["ok"]
+    process.communicate(timeout=HANG)
+
+
+def test_serve_says_the_ssh_command_that_reaches_it_with_both_ports(launch, toy_folder, tmp_path):
+    """(Item 6.) SSH tunnelling is the documented way to a remote session, so ``mime serve`` says the command, each
+    port forwarded to the address it is bound to, after its ready line."""
+    process, ready, out = start(launch, toy_folder, tmp_path)
+    endpoints = json.loads(ready.read_text())
+    ports = [endpoints[key].rpartition(":")[2] for key in ("commands", "frames")]
+    live = connect(ready)
+    live.request("stop")
+    stdout, _ = process.communicate(timeout=HANG)
+    expected = f"ssh -N -L {ports[0]}:127.0.0.1:{ports[0]} -L {ports[1]}:127.0.0.1:{ports[1]} "
+    (line,) = [held for held in stdout.splitlines() if "ssh -N" in held]
+    assert line.startswith("mime serve: from another machine, run there ") and expected in line, line

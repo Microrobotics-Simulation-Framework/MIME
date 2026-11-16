@@ -1,4 +1,5 @@
-"""The platforms workflow runs the tests `tests/platforms.txt` names and nothing else, and every one of them exists.
+"""The platforms workflow's smoke runs the tests `tests/platforms.txt` names and nothing else, and every one of them
+exists; its live job runs `tests/live` whole on macOS.
 
 A list read only by a workflow rots silently: a renamed file is a path pytest reports as an error on one platform and
 nothing on another, or a deleted one drops out of the smoke unseen. So the names are checked here, in the default lane,
@@ -147,3 +148,34 @@ def test_the_workflow_sets_up_as_the_default_lane_does_and_sets_no_encoding():
     default = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     for pinned in re.findall(r"uses: (\S+@[0-9a-f]{40})", text):
         assert pinned in default, f"{pinned} is not an action version ci.yml pins"
+
+
+def test_the_live_job_runs_the_live_tests_on_macos_in_the_full_matrix_as_the_smoke_installs():
+    """His item 106: the live sessions' sockets differ on BSD (``SO_REUSEADDR``), so ``tests/live`` runs whole on macOS,
+    installed as the smoke is, bounded, in the full matrix and no required check (the name test above covers it). The
+    control: the job's run step pointed elsewhere, or on Linux, fails."""
+    assert live_problems(workflow()) == []
+    for plant in ({"os": ["ubuntu-latest"]}, {"run": "uv run --no-sync python -m pytest tests/cli"}):
+        planted = workflow()
+        if "os" in plant:
+            planted["jobs"]["live"]["strategy"]["matrix"]["os"] = plant["os"]
+        else:
+            planted["jobs"]["live"]["steps"][-1]["run"] = plant["run"]
+        assert live_problems(planted) != [], plant
+
+
+def live_problems(held: dict) -> list[str]:
+    job = held["jobs"].get("live")
+    if job is None:
+        return ["no live job"]
+    found: list[str] = []
+    if job["strategy"]["matrix"]["os"] != ["macos-latest"]:
+        found.append(f"the live job runs on {job['strategy']['matrix']['os']}, not macOS")
+    if job.get("needs") != "mode" or job.get("if") != "needs.mode.outputs.full == 'true'":
+        found.append("the live job does not run in the full matrix as the smoke does")
+    runs = [step.get("run", "") for step in job["steps"]]
+    if "uv sync --locked --extra verify" not in runs or "uv pip install --no-deps ./lab_fixture" not in runs:
+        found.append("the live job does not install as the smoke does")
+    if not any(run.split()[:7] == ["uv", "run", "--no-sync", "python", "-m", "pytest", "tests/live"] for run in runs):
+        found.append("the live job does not run tests/live")
+    return found

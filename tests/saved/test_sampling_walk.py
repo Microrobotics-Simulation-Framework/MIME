@@ -26,7 +26,7 @@ import numpy as np
 import pytest
 from cases import CASES
 
-from mime.docs import load_namespaces
+from mime.docs._export import load_namespaces
 from mime.registry import EntryKind, Support, implements, lookup
 from mime.registry import registered as registered_entries
 from mime.scene import KEPT, Box, Capsule, Screw, Sphere, quadrature, sampled_reach
