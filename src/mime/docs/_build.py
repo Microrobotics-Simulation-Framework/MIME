@@ -305,10 +305,10 @@ def run_build(root: Path, out: Path | None, *, junit: Path | None = None, collec
     reduced = (f"only the pages generated from the registry: {root} holds no hand-written sources (it is not a checkout "
                f"of MIME), so the guides, concepts, reference and evidence pages are left out; pass --root "
                f"<checkout> for the whole set") if built.sources == 0 else None
+    if reduced is not None:
+        print(f"note: this build is {reduced}")  # first, before the summary a reader skims past it; again at the end
     for line in built.summary():
         print(line)
-    if reduced is not None:
-        print(f"note: this build is {reduced}")
     if built.failures:
         for problem in built.failures:
             print(f"FAIL: {problem}")

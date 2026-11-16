@@ -248,10 +248,10 @@ def _constants(values: dict[str, object]) -> str:
 def _held_already(target: Path, names: list[str], force: bool) -> tuple[Path, ...]:
     """The files of ``names`` that ``target`` holds already, which a script written now would replace: refused unless
     ``force``, as ``mime run`` refuses a folder it would write over (a file that is no folder is refused either way)."""
-    if target.exists() and not target.is_dir():
+    if os.path.lexists(target) and not target.is_dir():
         raise _refuse("modal.out-exists", RefusalClass.USER, f"{target} is a file, not a folder",
                       "name a new folder, or an empty one: --out <folder>")
-    held = tuple(target / name for name in names if (target / name).exists())
+    held = tuple(target / name for name in names if os.path.lexists(target / name))  # a link to nowhere too: a write follows it
     if held and not force:
         shown = ", ".join(path.name for path in held)
         raise _refuse("modal.out-exists", RefusalClass.USER,

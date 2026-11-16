@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import os
+import select
 import sys
 import warnings
 import zipfile
@@ -14,7 +15,7 @@ from collections import Counter
 from collections.abc import Callable, Generator, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, TextIO, override
 
 from mime import __version__, _import_guard
 from mime._extras import VERIFY_EXTRA_MISSING
@@ -1926,8 +1927,8 @@ def build_parser() -> _guide.MimeParser:
     run.add_argument("--out", type=Path, required=True, help="the folder to write the outputs, the record and the "
                                                              "run's saved form to")
     run.add_argument("--force", action="store_true",
-                     help="run into --out although it is neither new, empty nor a MIME run folder: a warning says what "
-                          "it holds, Ctrl+C cancels the run until it begins to write, and an amber notice says when it "
+                     help="run into --out although it is not new or empty (an earlier run's folder included, whose run "
+                          "this one replaces): a warning says what it holds, Ctrl+C cancels the run until it begins to write, and an amber notice says when it "
                           "does; the files a run writes (outputs.npz, outputs.json, run.json, report.json, topology.json, "
                           "experiment/) replace those of their names")
     run.add_argument("--history", action="store_true", help="write every step's fields, not only the last")
@@ -2273,14 +2274,35 @@ PIPE_CLOSED = 141
 
 
 def _closed_pipe(error: BaseException) -> bool:
-    """Whether ``error`` is, or was raised from, a write to a pipe whose reader has gone."""
-    seen: set[int] = set()
-    held: BaseException | None = error
-    while held is not None and id(held) not in seen:
-        if isinstance(held, BrokenPipeError):
+    """Whether ``error`` is a ``BrokenPipeError`` raised directly by a write to standard output or standard error, the
+    pipe the user's reader closed. An error that was caused by one (a ``ConnectionError`` raised from a socket's) is
+    no closed pipe of the user's, and neither is a socket's own ``BrokenPipeError`` while both streams are open: those
+    are shown as the failures they are. Whether a stream's reader has gone is asked of the stream (:func:`_reader_gone`),
+    since the error itself does not say which pipe it came from."""
+    return (isinstance(error, BrokenPipeError) and error.__cause__ is None and error.__context__ is None
+            and any(_reader_gone(stream) for stream in (sys.stdout, sys.stderr)))
+
+
+def _reader_gone(stream: TextIO) -> bool:
+    """Whether ``stream`` is a pipe or socket whose reader has closed it: the descriptor polls as in error, or flushing
+    what the stream still holds meets a broken pipe. A stream with no descriptor (a test's capture) has no reader."""
+    try:
+        descriptor = stream.fileno()
+    except (AttributeError, ValueError, OSError):
+        return False
+    try:
+        polling = select.poll()
+        polling.register(descriptor, select.POLLOUT)
+        if any(event & select.POLLERR for _, event in polling.poll(0)):
             return True
-        seen.add(id(held))
-        held = held.__cause__ or held.__context__
+    except (AttributeError, OSError, ValueError):  # no poll on this platform
+        pass
+    try:
+        stream.flush()
+    except BrokenPipeError:
+        return True
+    except (OSError, ValueError):
+        return False
     return False
 
 

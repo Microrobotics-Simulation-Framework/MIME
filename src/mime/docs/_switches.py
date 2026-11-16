@@ -1032,7 +1032,7 @@ def declaration_problems(records: Sequence[Registered]) -> list[str]:
         seen.setdefault(declared.owner, (declarer, declared))
         if declarer.package != "mime" and not declared.owner.startswith(f"{declarer.package}."):
             found.append(f"{declarer.label}: the switch {declared.owner!r} is declared outside MIME's namespace, and "
-                         f"its owner does not start with its package's name, {declarer.package}.; the package's to "
+                         f"its owner does not start with its package's name ({declarer.package}.); the package's to "
                          f"fix, not MIME's: write the owner as {declarer.package}.{declared.owner.split('.', 1)[-1]}, where "
                          f"the package declares it")
     return found
