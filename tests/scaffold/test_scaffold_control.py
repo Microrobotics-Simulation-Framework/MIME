@@ -28,7 +28,7 @@ import pytest
 from scaffold_rig import (KINDS, NAMESPACE, PLUGIN_PLANTS, PluginBase, PluginClean, environment, failures_of, planted,
                           plugin_planted_failures, unpacked)
 
-from mime import scaffold
+from mime.scaffold import _scaffold
 from mime.build import BuildRefused
 from mime.scaffold import _values
 
@@ -81,7 +81,7 @@ def test_the_plugin_control_leaves_this_process_registry_unchanged(clean_plugin:
 def test_the_unchanged_check_fails_when_the_plugin_is_put_on_this_processs_path(tmp_path: Path):
     """The control of the test above: a plugin installed where this process reads is caught, on every run."""
     plugin = tmp_path / "scafx-probes"
-    scaffold.scaffold("plugin", plugin, yes=True, sets=[f"plugin.namespace={NAMESPACE}"], say=lambda line: None)
+    _scaffold.scaffold("plugin", plugin, yes=True, sets=[f"plugin.namespace={NAMESPACE}"], say=lambda line: None)
     before = environment()
     target = unpacked(plugin, tmp_path / "target")
     with pytest.MonkeyPatch.context() as patch:
@@ -93,7 +93,7 @@ def test_the_unchanged_check_fails_when_the_plugin_is_put_on_this_processs_path(
 
 def test_a_namespace_an_installed_distribution_declares_is_refused_and_a_free_one_is_not(tmp_path: Path):
     plugin = tmp_path / "scafx-probes"
-    scaffold.scaffold("plugin", plugin, yes=True, sets=[f"plugin.namespace={NAMESPACE}"], say=lambda line: None)
+    _scaffold.scaffold("plugin", plugin, yes=True, sets=[f"plugin.namespace={NAMESPACE}"], say=lambda line: None)
     assert _values.namespace_clash(NAMESPACE) is None, "free until a distribution declares it"
     target = unpacked(plugin, tmp_path / "target")
     with pytest.MonkeyPatch.context() as patch:
@@ -111,7 +111,7 @@ RESERVED_FOLDER = "helix-probes"
 def test_a_plugin_folder_named_for_one_of_mimes_words_is_refused_not_defaulted(tmp_path: Path):
     assert "helix" in _values.taken_namespaces(), "the word is read from the registry, and MIME's entries begin with it"
     with pytest.raises(BuildRefused) as refused:
-        scaffold.scaffold("plugin", tmp_path / RESERVED_FOLDER, yes=True, sets=[], say=lambda line: None)
+        _scaffold.scaffold("plugin", tmp_path / RESERVED_FOLDER, yes=True, sets=[], say=lambda line: None)
     refusal = refused.value.refusals[0]
     assert refusal.code == "scaffold.set" and "helix" in refusal.message and "lab_helix" in refusal.message
     assert not (tmp_path / RESERVED_FOLDER).exists()
