@@ -1922,11 +1922,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`mime run`, `mime serve`, `mime study run`). JAX writes an entry in place with no lock unless it is given a cache size
   limit, so two processes that compile one program together could leave a complete frame plus the longer writer's tail;
   JAX never rewrites it, so each run that read it printed `UserWarning: Error reading persistent compilation cache entry
-  ... Unknown frame descriptor` (Python 3.14, zstd) and compiled again. `user_xla_cache` now gives JAX the 2 GB cap as that
-  limit (`jax_compilation_cache_max_size`), so JAX takes a file lock around each read and write of an entry and evicts the
+  ... Unknown frame descriptor` (Python 3.14, zstd) and compiled again. `user_xla_cache` now gives JAX a 64 MB limit on the directory in use
+  (`jax_compilation_cache_max_size`; about 3,300 entries, a write takes a median 62 ms when full), so JAX takes a file lock around each read and write of an entry and evicts the
   least recently used when it adds one; this needs the **`filelock` package, a new dependency** (`filelock>=3.12`, locked at
   4.2.10). MIME's own pruning at the start of a command now keeps only what JAX's limit cannot reach, the directories of
-  other jaxlib releases, platforms and CPUs, to 2 GB together (so the cache can hold up to twice 2 GB). **Measured** (two
+  other jaxlib releases, platforms and CPUs, to what is left of 2 GB (the cache holds at most 2 GB in all). A `.lockfile`
+  the user cannot write is the existing "cannot be written" note, not a warning per program. **Measured** (two
   children through `user_xla_cache`, 150 programs, 13 trials of 152 entries): with the limit unset 121 damaged entries in
   13 of 13 trials on Python 3.14 and 16 in 9 of 13 on 3.12 (where JAX reads such a file without complaint); with it set,
   none in 13 of 13 on each. The lock costs 0.3 to 1 ms per entry read: 20 ms of a 2.8 s warm `mime run` of the toy (0.7 %).

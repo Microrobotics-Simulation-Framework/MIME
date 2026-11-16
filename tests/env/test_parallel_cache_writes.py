@@ -36,7 +36,7 @@ import jax
 import pytest
 
 from mime.env import _xla_cache
-from mime.env._xla_cache import USER_CACHE_CAP_BYTES, point_xla_cache, prune_to_cap, user_xla_cache
+from mime.env._xla_cache import DIRECTORY_LIMIT_BYTES, USER_CACHE_CAP_BYTES, point_xla_cache, prune_to_cap, user_xla_cache
 
 try:
     from compression import zstd  # Python 3.14+, which JAX compresses with
@@ -188,8 +188,11 @@ def test_the_users_cache_is_given_to_jax_as_its_size_limit_and_the_setting_comes
     before = jax.config.jax_compilation_cache_max_size
     with user_xla_cache(root=tmp_path / "root", say=lambda _: None) as held:
         assert held is not None
-        assert jax.config.jax_compilation_cache_max_size == USER_CACHE_CAP_BYTES
+        assert jax.config.jax_compilation_cache_max_size == DIRECTORY_LIMIT_BYTES == 64 * 1024**2
     assert jax.config.jax_compilation_cache_max_size == before
+    with user_xla_cache(root=tmp_path / "small", cap=1000, say=lambda _: None):
+        assert jax.config.jax_compilation_cache_max_size == 1000, "never more than the cap"
+    assert USER_CACHE_CAP_BYTES == 2 * 1024**3
 
 
 def test_two_commands_writing_one_program_into_the_users_cache_leave_no_damaged_entry(tmp_path):
@@ -238,10 +241,11 @@ def test_a_command_prunes_other_directories_to_the_cap_and_leaves_its_own_to_jax
         path = other / f"k{index}-cache"
         path.write_bytes(b"x" * 400)
         os.utime(path, (1_000_000 + index, 1_000_000 + index))
-    with user_xla_cache(root=tmp_path / "root", cap=700, say=lambda _: None) as held:
+    # JAX's directory takes the limit out of the cap, so the other directories are held to what is left: 700 bytes
+    with user_xla_cache(root=tmp_path / "root", cap=DIRECTORY_LIMIT_BYTES + 700, say=lambda _: None) as held:
         assert held is not None and not held.is_relative_to(other)
         survivors = sorted(path.name for path in other.iterdir())
-    assert survivors == ["k2-cache"], "the oldest files of the other directories go until they fit the cap"
+    assert survivors == ["k2-cache"], "the oldest files of the other directories go until they fit what the cap leaves"
 
 
 def test_two_commands_starting_at_once_do_not_share_the_file_that_proves_the_directory_writable(
@@ -263,3 +267,23 @@ def test_two_commands_starting_at_once_do_not_share_the_file_that_proves_the_dir
         with user_xla_cache(root=tmp_path / "root", say=lambda _: None):
             pass
     assert len(set(written)) == 2 and written[0] == written[2] != written[1]
+
+
+@pytest.mark.skipif(sys.platform == "win32" or os.geteuid() == 0, reason="needs a file this user cannot write")
+def test_a_lock_file_the_user_cannot_write_is_the_cache_cannot_be_written_note_not_a_warning_per_program(
+        jax_cache_unset, tmp_path):
+    """JAX opens ``.lockfile`` for every read and write and warns on each program when it cannot; the probe opens it too, so
+    the note MIME already gives for a cache it cannot write is what the user sees, once, and the block runs without the cache.
+    The control: the same directory with a lock file the user can write gives no note."""
+    messages: list[str] = []
+    with user_xla_cache(root=tmp_path / "root", say=messages.append) as held:
+        assert held is not None
+        lock = held / ".lockfile"
+    assert messages == [] and lock.exists()
+    lock.chmod(0o400)
+    try:
+        with user_xla_cache(root=tmp_path / "root", say=messages.append) as chosen:
+            assert chosen is None and jax.config.jax_compilation_cache_dir is None
+    finally:
+        lock.chmod(0o600)
+    assert len(messages) == 1 and "cannot be written" in messages[0] and "--no-xla-cache" in messages[0]
