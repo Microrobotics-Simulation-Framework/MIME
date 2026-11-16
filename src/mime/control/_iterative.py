@@ -43,8 +43,12 @@ its target) the full step can raise it past even the nonmonotone test's allowanc
 **Its guards, declared** (MIME's rule for single precision: a tolerance at or above the dtype's reachable floor, with a
 stagnation stop). It stops at :data:`ITERATIONS` unless the point it has reached is within the tolerance (whose local
 phase then ends by its own count), at the end of the local phase, or where it stagnates: no step passes Armijo's test,
-or :data:`STALLS` steps in a row lower the objective by no more than the objective resolves without halving the
-stationarity. The stationarity is the projected gradient's length in the scaled commands, ``|v - P(v - grad_v)|_inf``,
+or :data:`STALLS` steps in a row leave the commands within their rounding (the local phase's line), lower the
+objective by no more than it resolves, and do not halve the stationarity. A step that moves the commands further is
+progress the objective cannot show, not stagnation: in float32, on an unreachable target (an objective of 1e6 whose
+steps lowered it by less than one), steps of a thousand times the commands' rounding were counted as stalls and stopped
+two solves of 1202 with their stationarity 30 times the tolerance; counted only where the commands stand still, every
+one converged, in at most 11 iterations. The stationarity is the projected gradient's length in the scaled commands, ``|v - P(v - grad_v)|_inf``,
 over the problem's size, ``|r| + sum_k c_k |u_k|`` (the rows' miss and what the commands make, so its rounding floor is
 the dtype's units in the last place of it whatever the rows cancel); the solve has met its tolerance where it is within
 :data:`TOLERANCE`. ``converged`` is read again at the commands returned, never from the loop's own account: the
@@ -98,7 +102,8 @@ TOLERANCE = {np.dtype(np.float64): 1e-10, np.dtype(np.float32): 1e-5}
 FLOOR = {dtype: value * value for dtype, value in RCOND.items()}
 #: The widest band, as a share of the problem's size in the scaled commands, within which a command at a bound is held.
 ACTIVE_BAND = 1e-3
-#: The steps in a row that lower the objective by no more than its rounding before the solve stops as stagnated.
+#: The steps in a row that leave the commands within their rounding and lower the objective by no more than its
+#: rounding before the solve stops as stagnated.
 STALLS = 2
 #: The points whose largest objective Newton's step is judged against (Grippo, Lampariello and Lucidi's nonmonotone
 #: line search, 1986), where the Hessian on the free commands is positive definite and no bound cuts the step: in a
@@ -206,7 +211,8 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         allowance = jnp.max(recent) - recent[-1]
         # Newton's local phase, from the first point within the tolerance on (see _POLISHING_STEPS).
         polishing = stationary | (polished > 0)
-        # A stall: the last step's decrease within what the objective resolves, and the stationarity not halved by it.
+        # A stall: the last step quiet (its decrease within what the objective resolves, the commands within their
+        # rounding), and the stationarity not halved by it.
         stalls = jnp.where(quiet & (measure >= 0.5 * before), stalls + 1, 0)
         band = jnp.minimum(ACTIVE_BAND * at.size, jnp.sqrt(jnp.sum(at.projected * at.projected)))
         low, high = _held(at, u, lower, upper, band)
@@ -289,7 +295,10 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         after = jnp.where(polish, first[0], jnp.where(stop, jnp.where(polishing, best, u), moved))
         damping = jnp.where(first[2], jnp.where(damping > _DAMPING, damping / _DAMPING_FACTOR, 0.0),
                             jnp.maximum(damping * _DAMPING_FACTOR, _DAMPING))
-        return (after, taken + jnp.where(stop, 0, 1).astype(np.int32), stalls, stop, measure, small & ~polishing,
+        # A quiet step, for the stall count: its decrease within what the objective resolves and the commands left
+        # within their rounding (a step that moves them further is progress the objective cannot show).
+        still = small & ~polishing & (jnp.max(at.columns * jnp.abs(moved - u)) <= 4.0 * eps * at.size)
+        return (after, taken + jnp.where(stop, 0, 1).astype(np.int32), stalls, stop, measure, still,
                 polished + polish.astype(np.int32), best, shortest, recent, damping)
 
     first = (start, jnp.zeros((), dtype=np.int32), jnp.zeros((), dtype=np.int32), jnp.zeros((), dtype=bool),

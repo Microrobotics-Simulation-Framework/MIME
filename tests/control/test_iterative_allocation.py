@@ -31,7 +31,7 @@ from typing import Any
 import jax
 import numpy as np
 import pytest
-from allocation_draws import SLACK, Problem, bvls, line, problems, unique
+from allocation_draws import SLACK, Problem, bvls, line, problems, residual_line, tie_window, unique
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -142,7 +142,24 @@ def test_the_iterative_path_meets_the_exact_path_where_both_apply(dtype, problem
                                  scales=jnp.ones((a.shape[0],), dtype=dtype), owner=OWNER)
     reference = np.asarray(exact.commands, dtype=np.float64)
     rounded = Problem(problem.system, problem.kind, a, b, np.ones(a.shape[0]), limit)
-    assert claim_problems(found, a, b, reference, line(rounded, reference, dtype), dtype) == []
+    found_problems = claim_problems(found, a, b, reference, line(rounded, reference, dtype), dtype)
+    if found_problems and tied(rounded, np.asarray(found.commands, dtype=np.float64), reference, dtype):
+        # The exact path ties faces whose residuals are within its window and takes the least effort among them
+        # (``allocation_draws``' verdict): float32 resolves residuals more finely than the window, so its commands
+        # can be another face's by whole amperes (a stress run's CardioMag draw: 0.51 A off, its residual 3.6e-5 over
+        # the minimum's within a window of 1.1e-4, the iterative path on BVLS's to 3.7e-6). There it is no oracle of
+        # the minimiser, and SciPy's BVLS on the same rows is, at its own line.
+        reference = bvls(rounded, dtype)
+        found_problems = claim_problems(found, a, b, reference, line(rounded, reference, dtype), dtype)
+    assert found_problems == []
+
+
+def tied(problem: Problem, found: np.ndarray, exact: np.ndarray, dtype: str) -> bool:
+    """Whether the exact path's residual is within its tie windows (at its commands and at ``found``) and the
+    residual's rounding of the iterative path's: two faces the exact path cannot tell apart by its own rule."""
+    a, b = problem.scaled(dtype)
+    gap = abs(float(np.linalg.norm(a @ exact - b)) - float(np.linalg.norm(a @ found - b)))
+    return gap <= residual_line(problem, dtype) + tie_window(problem, exact, dtype) + tie_window(problem, found, dtype)
 
 
 def synthetic(rng: np.random.Generator, commands: int, rows: int) -> tuple[np.ndarray, np.ndarray, float]:

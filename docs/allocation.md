@@ -241,8 +241,10 @@ measurement.
 **Its guards, declared**, as MIME's rule for single precision asks: a cap on its iterations (`ITERATIONS`, read at a
 point already weighed, so that one within the tolerance still goes on to its local phase), a tolerance by dtype at or
 above the dtype's reachable floor (`TOLERANCE`, on the stationarity over the problem's size; the CHANGELOG's entry gives
-the floor measured in each), and a stagnation stop (`STALLS` steps in a row whose decrease is within what the objective
-resolves and which do not halve the stationarity). The stationarity is the projected gradient's length in the scaled
+the floor measured in each), and a stagnation stop (`STALLS` steps in a row that leave the commands within their rounding,
+whose decrease is within what the objective resolves and which do not halve the stationarity: a step that moves the
+commands further is progress the objective cannot show, as in single precision on an unreachable target, whose
+objective is too large to resolve the steps that still converge). The stationarity is the projected gradient's length in the scaled
 commands over the problem's size, the rows' miss plus what the commands make, so its floor is the dtype's rounding of
 that size whatever the rows cancel.
 

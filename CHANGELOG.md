@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     objective resolves passing (each row's rounding judged on its terms' scale, the problem's size, not on the row's).
     **Its guards, declared**: at most `ITERATIONS` (50) iterations, read at a point already weighed; `TOLERANCE` on the
     stationarity (the projected gradient's length in commands scaled to unit columns, over the rows' miss plus what the
-    commands make), 1e-10 in float64 and 1e-5 in float32, at or above the floor measured; a stagnation stop; and **a
+    commands make), 1e-10 in float64 and 1e-5 in float32, at or above the floor measured; a stagnation stop, counting only steps that leave the commands within their rounding (counting every step whose decrease the objective could not resolve, it stopped 2 of 1202 float32 solves on unreachable targets far from their tolerance while the commands still moved); and **a
     local phase**, from the first point within the tolerance: full Newton steps with no line search while they are
     longer than the commands' rounding (at most 8), returning the point within the tolerance whose
     step was shortest, so that the derivative is taken at the minimiser. The tolerance alone left a warm-started, weakly
