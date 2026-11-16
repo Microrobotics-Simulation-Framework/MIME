@@ -22,6 +22,7 @@ from mime.materials._values import (
     ValueKind,
     ValuePath,
     kind_of_path,
+    not_above_zero,
     resolve_declared,
 )
 from mime.things import DERIVED, Derived, PartMass, ThingKind, derive, magnetisation
@@ -68,8 +69,12 @@ class Resolver:
                  conditions: Mapping[str, OperatingCondition], media: Mapping[str, Record],
                  bodies: Mapping[str, Mapping[str, PartPlan]], loaded: Mapping[str, LoadedRecord],
                  store: RecordStore | None, judge: Judge,
-                 apparatus: Mapping[str, Mapping[str, Record]] | None = None) -> None:
+                 apparatus: Mapping[str, Mapping[str, Record]] | None = None,
+                 refused_parts: frozenset[str] = frozenset()) -> None:
         self.things = things
+        #: The bodies with a part the build refused: what their parts would give is blocked, with no refusal of its
+        #: own, since the part's refusal is the problem.
+        self.refused_parts = refused_parts
         self.apparatus = apparatus or {}
         self.declared = declared
         self.directed = directed
@@ -123,6 +128,8 @@ class Resolver:
         if thing is ThingKind.MEDIUM and parsed.thing in self.media and kind.record is not None:
             return self._read(self.media[parsed.thing], kind.record, path, kind)
         if thing is ThingKind.BODY and parsed.thing in self.bodies and parsed.name in DERIVED:
+            if parsed.thing in self.refused_parts:
+                return Resolution(None, blocked=True)
             return self._from_parts(parsed, kind)
         return Resolution(None)
 
@@ -172,6 +179,11 @@ class Resolver:
                 inputs[path] = self.value(path)
                 held = inputs[path].value
                 if held is not None and isinstance(held.value, float):
+                    kind = kind_of_path(ValuePath.parse(path), self.things)
+                    below = not_above_zero(path, kind, held.value, held.source) if kind is not None else None
+                    if below is not None:
+                        inputs[path] = Resolution(None, (below,), reads=inputs[path].reads)
+                        continue
                     density[name] = held.value
         moments: dict[str, Vector] = {}
         for name, part in parts.items():

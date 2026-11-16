@@ -62,3 +62,11 @@ plans the fixtures, which needs their assets, so a run without them does not exe
 - `mime:vector:value`: the field's value at the body, set by a recording or a live client, in `mime:vector:units`.
 - `mime:vector:units`: the unit of `mime:vector:value`.
 - `mime:vector:metres_per_unit`: how long the drawn arrow is per unit of the field.
+- `mime:mesh:owner`: on a surface's mesh (a node moves it, below its thing's prim), the entry that declares it, its
+  name and version. The mesh holds the surface at rest, its points float32 in its thing's frame; a recording gives its
+  `points` time samples. Its fields' values are vertex primvars `primvars:mime:<field>`, each with its units and
+  declared range in its `customData`, physics values set by a recording (never colours).
+- `mime:mesh:fields`: on a surface's mesh, its fields' names in the order the entry declares them.
+- `mime:display`: on a surface's mesh that is not the solver's own surface but a section shown as one, how it was
+  made: `revolved` (an axisymmetric section turned about its axis) or `extruded` (a plane section swept along its
+  normal). Absent on the solver's own surface.

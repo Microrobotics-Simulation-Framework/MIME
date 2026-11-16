@@ -1,6 +1,7 @@
 """A duration on the command line (``--duration``, ``--every``, ``--stage-every``): ``10s``, ``500ms``, ``250us``,
-``2min``, ``1h``, or a bare number, which is seconds as it was before units. The units are ``mime.units``' own, so
-``500ms`` is what a script writes ``ms(500)``; a refusal names the forms."""
+``2min`` or ``1h``, and never a bare number, which the Python API refuses too (it was seconds before 0.3.0: ``--duration 3``
+ran 30,000 steps of a 0.1 ms step). The units are ``mime.units``' own, so ``500ms`` is what a script writes ``ms(500)``;
+a refusal names the forms."""
 
 import math
 from decimal import Decimal
@@ -26,9 +27,23 @@ def test_each_form_is_read_in_seconds(text, expected):
     assert seconds(text) == pytest.approx(expected, rel=1e-12)
 
 
-@pytest.mark.parametrize("text", ["0.0165", "10", "1e-3", "  2 ", "0.02", "inf", "-1"])
-def test_a_bare_number_is_the_seconds_it_always_was(text):
-    assert seconds(text) == float(text)
+@pytest.mark.parametrize("text", ["0.0165", "10", "1e-3", "  2 ", "0.02", "inf", "-1", "0", "nan"])
+def test_a_bare_number_is_no_duration(text):
+    assert seconds(text) is None
+
+
+@pytest.mark.parametrize(("option", "code"), [("--duration", "run.duration"), ("--every", "run.every"),
+                                              ("--stage-every", "run.stage-every"), ("--idle-timeout", "live.timeout"),
+                                              ("--max-wall", "live.timeout")])
+def test_a_bare_number_is_refused_with_the_unit_forms_shown(option, code):
+    """The case that found it: ``--duration 3`` ran 3 s, 1000 times what ``3ms`` runs. The refusal says the number has
+    no unit and writes the same number with two units, beside every form."""
+    with pytest.raises(BuildRefused) as refused:
+        option_seconds(option, "3")
+    (refusal,) = refused.value.refusals
+    assert refusal.code == code and "bare number" in refusal.message and f"{option} 3 " in refusal.message
+    assert "3s for 3 seconds, 3ms for 3 milliseconds" in refusal.action and FORMS in refusal.action
+    assert option_seconds(option, "3ms") == pytest.approx(0.003) and option_seconds(option, "3s") == 3.0
 
 
 @given(MAGNITUDES, st.sampled_from(["s", "ms", "us"]))
@@ -51,17 +66,17 @@ DECIMALS = st.builds(lambda digits, places: Decimal(digits).scaleb(-places), st.
 
 @given(DECIMALS)
 def test_every_way_of_writing_the_same_seconds_is_the_same_float(written):
-    """``700ms``, ``0.7``, ``0.7s`` and ``700000us`` are one duration, so one float and one ``run.json``: the number is read
+    """``700ms``, ``0.7s`` and ``700000us`` are one duration, so one float and one ``run.json``: the number is read
     as a decimal and converted once. (``700 * 1e-3`` is 0.7000000000000001.) The control is that multiplying as floats
     does disagree on this property's draws."""
-    forms = [f"{written:f}", f"{written:f}s", f"{written * 1000:f}ms", f"{written * 1_000_000:f}us"]
+    forms = [f"{written:f}s", f"{written * 1000:f}ms", f"{written * 1_000_000:f}us"]
     assert len({seconds(form) for form in forms}) == 1, forms
     assert seconds(forms[0]) == float(written)
     assert seconds(f"{written / 60:.40f}min") == pytest.approx(float(written), rel=1e-15)
 
 
 def test_the_case_that_found_it_and_the_control_that_floats_would_get_it_wrong():
-    assert seconds("700ms") == seconds("0.7") == 0.7
+    assert seconds("700ms") == seconds("0.7s") == 0.7
     assert 700 * 1e-3 != 0.7, "the control: the product of the floats is not the float of the decimal"
     assert units.ms(700.0).value != 0.7
     assert seconds("2300ms") == 2.3 and 2300 * 1e-3 != 2.3
@@ -85,13 +100,100 @@ def test_a_refusal_has_its_options_code_and_names_the_forms(option, code):
 def test_an_option_not_given_is_none_and_a_given_one_is_its_seconds():
     assert option_seconds("--every", None) is None
     assert option_seconds("--every", "20ms") == pytest.approx(0.02)
-    assert math.isinf(option_seconds("--duration", "inf") or 0.0)
+    assert math.isinf(option_seconds("--duration", "1e400s") or 0.0)
 
 
-@pytest.mark.parametrize("text", ["1e400ms", "1e999999999s", "1e400"])
+@pytest.mark.parametrize("text", ["1e400ms", "1e999999999s", "1e400s"])
 def test_a_number_past_the_float_s_range_is_infinite_as_it_was_not_an_error_or_a_hang(text):
     assert seconds(text) == math.inf and seconds("-" + text) == -math.inf
 
 
 def test_a_number_below_the_float_s_range_is_zero():
     assert seconds("1e-400us") == 0.0
+
+
+# -- every command line MIME prints is one it would run -----------------------------------------------------------------
+
+
+def parsed_back(printed: str) -> list[tuple[str, str]]:
+    """Each backtick-quoted ``mime run`` or ``mime serve`` line of ``printed``, run back through the command line's own
+    parser and duration reader: the ``(option, value)`` of every duration it holds. A placeholder (``<folder>``) is any
+    word. A line the parser rejects, or a duration ``option_seconds`` refuses, fails the test that asked."""
+    import re
+    import shlex
+
+    from mime.cli import build_parser
+
+    found: list[tuple[str, str]] = []
+    for line in re.findall(r"`(mime (?:run|serve) [^`]*)`", printed):
+        words = shlex.split(re.sub(r"<[^>]*>", "x", line))[1:]
+        held = build_parser().parse_args(words)
+        for option, value in (("--duration", getattr(held, "duration", None)), ("--every", getattr(held, "every", None)),
+                              ("--stage-every", getattr(held, "stage_every", None)),
+                              ("--idle-timeout", getattr(held, "idle_timeout", None)),
+                              ("--max-wall", getattr(held, "max_wall", None))):
+            if value is not None:
+                option_seconds(option, value)
+                found.append((option, value))
+    return found
+
+
+def test_the_command_line_a_non_finite_run_prints_is_one_the_parser_reads(tmp_path):
+    """The case that found it: ``run.non-finite``'s do: printed ``--duration 0.08``, which the command line now
+    refuses (a bare number), so the line it told the user to run was refused. The control is the same line with its unit
+    taken off, which the parser's reader refuses."""
+    from mime.build import Refusal, RefusalClass, RunFailed
+    from mime.cli import _non_finite_here
+
+    failed = RunFailed([Refusal("run.non-finite", RefusalClass.USER, "the state is not finite", "look")])
+    held = _non_finite_here(failed, tmp_path / "saved", 0.08, tmp_path / "out", 1e-4)
+    printed = "\n".join(refusal.action for refusal in held.refusals)
+    assert parsed_back(printed) == [("--duration", "0.08s")]
+    with pytest.raises(BuildRefused):
+        parsed_back(printed.replace("0.08s", "0.08"))
+
+
+def test_the_refusal_of_a_bare_number_prints_commands_the_parser_reads():
+    for option in ("--duration", "--every", "--stage-every", "--idle-timeout", "--max-wall"):
+        with pytest.raises(BuildRefused) as refused:
+            option_seconds(option, "3")
+        assert parsed_back(refused.value.refusals[0].action), option
+
+
+def test_no_command_line_in_the_source_is_written_with_a_duration_that_has_no_unit():
+    """A scan of what MIME's source prints as a command: ``--duration <number or {value}>`` with nothing after the number
+    but a space or the end of the quote is a bare number, which no longer runs (prose that names one in
+    double backticks, as a docstring does to say what was refused, is not a command). (A Modal script's own ``--duration`` is
+    in seconds, as that script says, and passes the unit on.)"""
+    import re
+    from pathlib import Path
+
+    import mime
+
+    bare = re.compile(r"(?<!`)--(?:duration|every|stage-every|idle-timeout|max-wall) (?:\{[^}]*\}|\d[\d.]*)(?=[ `'\"]|$)")
+    found = [f"{path.name}: {match.group(0)}" for path in sorted(Path(mime.__file__).parent.rglob("*.py"))
+             for match in bare.finditer(path.read_text(encoding="utf-8"))]
+    assert found == []
+
+
+@pytest.mark.parametrize("words", [["--duration", "3", "s"], ["--duration=3", "ms"], ["--every", "2", "min"]])
+def test_a_unit_written_apart_is_refused_with_the_two_ways_to_write_it(words, capsys):
+    """``--duration 3 s`` reached argparse as the value ``3`` and a stray ``s``, and said only "unrecognized
+    arguments: s". It now says how to write it: as one word, or in quotes. The quoted form runs."""
+    from mime.cli import main
+
+    with pytest.raises(SystemExit) as refused:
+        main(["run", "x", *words, "--out", "y"])
+    err = capsys.readouterr().err
+    assert refused.value.code == 2 and "unrecognized arguments" in err
+    assert f"{words[0].split('=')[0]} 3s, or {words[0].split('=')[0]} \"3 s\"" in err
+    assert option_seconds("--duration", "3 s") == 3.0
+
+
+def test_the_unit_hint_is_only_for_a_unit(capsys):
+    """The control: a stray word that is no unit gets no such hint."""
+    from mime.cli import main
+
+    with pytest.raises(SystemExit):
+        main(["run", "x", "--duration", "3s", "stray", "--out", "y"])
+    assert "written as one word" not in capsys.readouterr().err

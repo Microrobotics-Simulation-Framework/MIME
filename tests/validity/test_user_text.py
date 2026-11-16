@@ -48,6 +48,15 @@ WORK_LABELS = re.compile(
 OTHER_MEANINGS = {"src/mime/env/_gpus.py"}
 #: Kept as a record of its history: the walk labels are looked for in them, the work labels are not.
 RECORDS = {"CHANGELOG.md", "docs/development/changes_0.3.0.dev1.md", "docs/validation/known_anomalies.yaml"}
+#: The changelog's fragments (``changes.d/<slug>.<kind>.md``), entries on their way into ``CHANGELOG.md``, are read by the
+#: rules of a record; the directory's README is a page.
+FRAGMENTS = "changes.d/"
+
+
+def is_record(relative: str) -> bool:
+    return relative in RECORDS or relative.startswith(FRAGMENTS) and relative != FRAGMENTS + "README.md"
+
+
 #: The checker's own lists, which are not pages a user reads.
 UNREAD = ("docs/ratchets/", "docs/unpaged.txt")
 TEXT_SUFFIXES = {".md", ".txt", ".yaml", ".json"}
@@ -139,7 +148,7 @@ def library_files(root: Path) -> list[Path]:
 def page_files(root: Path) -> list[Path]:
     """The hand-written pages, the examples, and the text files beside the code."""
     candidates = [*(root / "docs").rglob("*"), *(root / "examples").rglob("*"), *(root / "src" / "mime").rglob("*"),
-                  root / "README.md", root / "CHANGELOG.md"]
+                  *(root / "changes.d").rglob("*"), root / "README.md", root / "CHANGELOG.md"]
     return sorted(path for path in candidates if path.is_file() and path.stat().st_size <= MAX_BYTES and (
         path.suffix in TEXT_SUFFIXES or path.suffix == ".py" and path.relative_to(root).parts[0] == "examples"))
 
@@ -177,7 +186,7 @@ def page_findings(root: Path) -> dict[str, list[str]]:
         if relative.startswith(UNREAD):
             continue
         text = _text_as_read(path, root)
-        held = walk_labels(text) + ([] if relative in RECORDS else work_labels(text))
+        held = walk_labels(text) + ([] if is_record(relative) else work_labels(text))
         if held:
             found[relative] = held
     return found
@@ -196,7 +205,7 @@ def test_the_scans_reach_the_surfaces_they_are_named_for():
     library = {_relative(path, ROOT) for path in library_files(ROOT)}
     assert {"README.md", "CHANGELOG.md", "docs/README.md", "docs/choosing_spacing.md", "src/mime/README.md",
             "src/mime/cli/README.md", "docs/validation/known_anomalies.yaml",
-            "docs/development/changes_0.3.0.dev1.md"} <= pages
+            "docs/development/changes_0.3.0.dev1.md", "changes.d/README.md"} <= pages
     assert any(name.startswith("docs/entries/") for name in pages)
     assert any(name.startswith("examples/") for name in pages)
     assert any(name.startswith("src/mime/") and name.endswith(".txt") for name in pages)
@@ -218,6 +227,8 @@ CLEAN_FILES = {
     "README.md": "A library.\n",
     "CHANGELOG.md": "# Changelog\n- a change (MIME-ANO-114)\n",
     "docs/development/changes_0.3.0.dev1.md": "# The development record\n- a change (MIME-ANO-114)\n",
+    "changes.d/README.md": "How to write a fragment.\n",
+    "changes.d/a-change.added.md": "- a change (MIME-ANO-114)\n",
     "docs/page.md": "A page a user reads.\n",
     "docs/entries/kind/entry.md": "An entry page.\n",
     "docs/validation/known_anomalies.yaml": "- id: MIME-ANO-1\n  text: recorded\n",
@@ -266,10 +277,13 @@ PLANTS = [
     ("src/mime/things/data.txt", "rule = value  # but phase 7h\nsecond = see the review of PR #60\n", True),
     ("CHANGELOG.md", "- as the first-hour walk found\n", True),
     ("docs/development/changes_0.3.0.dev1.md", "- as the first-hour walk found\n", True),
+    ("changes.d/a-change.added.md", "- as the first-hour walk found\n", True),
+    ("changes.d/README.md", "More arrives in a PR #109 too.\n", True),
     ("src/mime/things/_hidden.py", 'def another():\n    """A private helper (phase 7o)."""\n', False),
     ("src/mime/things/data.txt", "# a comment of phase 7o\n", False),
     ("CHANGELOG.md", "- a change (phase 7o, design #195)\n", False),
     ("docs/development/changes_0.3.0.dev1.md", "- a change (phase 7o, design #195)\n", False),
+    ("changes.d/a-change.added.md", "- a change (phase 7o, design #195)\n", False),
     ("docs/validation/known_anomalies.yaml", "  note: since phase 7a, dev1's\n", False),
     ("docs/ratchets/list.txt", "a row, phase 7n-b\n", False),
 ]

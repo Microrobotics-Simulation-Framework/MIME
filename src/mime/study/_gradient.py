@@ -49,7 +49,7 @@ from mime.results._gradient import GradientResult, MemberGradient, RaisedFlag, R
 from mime.saved._pins import keeping_pins
 from mime.study._axes import BUILT_CUT, STUDY_REASON, Axis, AxisKind, base_value, outside_range, value_text
 from mime.study._point import Point, build_point, precision
-from mime.study._study import stacked_state, stacked_tree
+from mime.study._study import refuse_no_members, stacked_state, stacked_tree
 from mime.units import Quantity, unit_symbol
 
 if TYPE_CHECKING:
@@ -632,6 +632,7 @@ def gradient(experiment: Experiment, plan: StudyPlan, of: Callable[[Any], Any], 
             f"{len(plan.refused)} of the study's {len(plan.points)} points are refused, so no derivative is taken there",
             "change the axes' values so that every point is one the experiment allows, or sweep(..., "
             "drop_refused=True)")])
+    refuse_no_members(plan, "differentiate")
     settings, declarations, saved = experiment.declared_as()
     axes = tuple(resolve(path, declarations) for path in wrt) if wrt is not None else plan.axes
     if not axes:

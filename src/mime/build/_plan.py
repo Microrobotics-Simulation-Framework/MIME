@@ -165,6 +165,10 @@ from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_INERTIA,
     RESOLVED_PARTNER, Capability, ReadKind, TargetKind
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+#: The codes of the refusals a law makes for lacking the hull of a body whose part was refused: the part's own refusal
+#: is the problem, and these follow from it (:meth:`_Planner.note_consequences`).
+HULL_CONSEQUENCES = frozenset({"drag.no-samples", "drag.stokes-sphere", "drag.penalty-kind", "drag.body-kind",
+                               "drag.no-centreline", "confinement.no-hull"})
 _LOCAL = re.compile(r"[a-z_][a-z0-9_]*")
 #: What a region's name in OpenMaterica's scene manifest (``<structure>_<region>``) may be.
 MANIFEST_NAME = re.compile(r"[a-z0-9_]+")
@@ -689,6 +693,10 @@ class _Planner:
         self.settings = settings
         self.declarations = declarations
         self.refusals: list[Refusal] = []
+        #: Each body that has a part whose own refusal was made (a solid's setting, a placement), with the index of
+        #: that first refusal: what follows from a body having no such part (its derived mass, a law's need of its
+        #: hull) is not refused as a problem of its own, and the refusal says so (:meth:`note_consequences`).
+        self.refused_parts: dict[str, int] = {}
         #: Whether a law's openings were refused at their binding: it then registers with no flow, so a flow's own
         #: judgement of its openings' laws would name the law the user did attach as missing.
         self.openings_unbound = False
@@ -770,6 +778,15 @@ class _Planner:
     def refuse(self, code: str, category: RefusalClass, message: str, action: str) -> None:
         self.refusals.append(Refusal(code, category, message, action))
 
+    def note_consequences(self) -> None:
+        """A body's first refused part says what follows from it: the body's mass, inertia and hull come from its parts,
+        so a law that needs them is not refused for lacking them, and fixing the part shows what is left."""
+        for body, index in self.refused_parts.items():
+            refusal = self.refusals[index]
+            note = (f"what follows from it is not listed as a problem of its own: {body}'s mass, inertia and hull "
+                    f"come from its parts, so a drag or a contact that needs them waits for this part")
+            self.refusals[index] = dataclasses.replace(refusal, why=f"{refusal.why}; {note}" if refusal.why else note)
+
     def defect(self, cls: type[Entry], message: str, error: BaseException | None = None) -> None:
         """Refuse an entry's defect, at the entry's own line that raised ``error`` where it raised one. A refusal of
         the user's or the environment's class that MIME's own API raised inside the entry is that refusal, not the
@@ -841,6 +858,7 @@ class _Planner:
         self.judge_ranges()
         self.note_shared_media()
         if self.refusals or self.frame is None:
+            self.note_consequences()
             raise BuildRefused(self.refusals, BuildReport(self.settings.experiment, self.dt or None,
                                                           vocabulary=vocabulary.versions(),
                                                           refusals=tuple(self.refusals), profile=self.outcome,
@@ -1663,9 +1681,12 @@ class _Planner:
                 continue
             planned: dict[str, PartLine] = {}
             for key, part in sorted(thing.parts.items()):  # by name: the order a script lists them changes nothing
+                before = len(self.refusals)
                 line = self.plan_part(name, key, cast(object, part), thing)
                 if line is not None:
                     planned[key] = line
+                elif len(self.refusals) > before:
+                    self.refused_parts.setdefault(name, before)
             for key, line in planned.items():
                 host = line.inside
                 if host is None:
@@ -1848,7 +1869,8 @@ class _Planner:
             for key, line in planned.items()} for name, planned in self.parts.items()}
         kinds = {name: thing.kind for name, thing in self.things.items()}
         self.resolver = materials.Resolver(kinds, self.values, self.directed(), self.conditions, media, bodies,
-                                           self.records, store, self.work.judge, self.apparatus_materials)
+                                           self.records, store, self.work.judge, self.apparatus_materials,
+                                           refused_parts=frozenset(self.refused_parts))
 
     def plan_thing(self, thing: Thing, index: int) -> None:
         if isinstance(thing, Medium) and thing.fills is not None:
@@ -1917,10 +1939,11 @@ class _Planner:
             return []
         try:
             problems = list(entry.setting_problems(settings))
-        except MimeError as refused:  # a refusal its settings meet below it (an asset gate's) keeps its own code
-            self.refusals.extend(refused.refusals)
-            return ["refused"]
         except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+            if isinstance(error, MimeError) and error.kept_when_wrapped:
+                # a refusal its settings meet below it (an asset gate's) keeps its own code
+                self.refusals.extend(error.refusals)
+                return ["refused"]
             self.defect(type(entry), f"setting_problems() raised {error!r}", error)
             return ["defect"]
         for problem in problems:
@@ -3383,7 +3406,10 @@ class _Planner:
             return
         if not self.check_locals(cls, tuple(plan.nodes)):
             return
+        lacking = any(name in self.refused_parts for name in bindings.values())
         for problem in plan.problems:
+            if lacking and problem.code in HULL_CONSEQUENCES:
+                continue  # the body has no hull because one of its parts was refused: that refusal says so
             uncatalogued = catalogue_problem(problem.code, RefusalClass.USER)
             if uncatalogued is not None:
                 self.defect(cls, f"its plan's problem ({problem.message}) has a code it cannot be refused with: "
@@ -4006,7 +4032,9 @@ class _Planner:
                 self.refused_problems.add(problem)
                 self.refuse(problem[0], RefusalClass.USER, problem[1], problem[2])
 
-    def value(self, plan: EntryPlan, label: str, thing: str, name: str) -> None:
+    def value(self, plan: EntryPlan, label: str, thing: str, name: str, inertial: bool = False) -> None:
+        """The value ``name`` of ``thing`` as ``plan`` reads it; ``inertial`` where the reader is a dynamics, which
+        divides by a mass."""
         held = self.things.get(thing)
         if held is None:
             return
@@ -4033,8 +4061,10 @@ class _Planner:
                         f"{sources + ', and ' if sources else ''}the experiment declares no value",
                         f"declare it with its reason: exp.declare({path!r}, {quantity}, reason=\"...\")")
             return
-        below = materials.not_above_zero(path, materials.VALUE_KINDS[held.kind][name], found.value.value,
-                                         found.value.source)
+        judged = path in self.values and found.value.value != 0.0  # at its declaration, but for a zero a reader judges
+        below = None if judged else materials.not_above_zero(
+            path, materials.VALUE_KINDS[held.kind][name], found.value.value, found.value.source,
+            str(plan.registered.cls.name) if inertial else None)
         if below is not None:
             self.refuse_problems([below])
         plan.values[label] = found.value
@@ -4042,7 +4072,7 @@ class _Planner:
     def resolve_values(self) -> None:
         for plan in self.dynamics.values():
             for label, name in cast(type[Dynamics], plan.registered.cls).values.items():
-                self.value(plan, label, plan.thing or "", name)
+                self.value(plan, label, plan.thing or "", name, inertial=True)
             self.dynamics_value_problems(plan)
         for plan in self.providers.values():
             for label, name in cast(type[FieldProvider], plan.registered.cls).values.items():

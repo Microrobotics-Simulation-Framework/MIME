@@ -181,7 +181,7 @@ def run_from_the_command_line(seam: str, act, tmp_path: Path, monkeypatch: pytes
     experiment.build().save(tmp_path / "saved", steps=2)
     monkeypatch.setattr(lab.Nudge, seam, lambda self, *arguments: act())
     capsys.readouterr()
-    code = cli.main(["run", str(tmp_path / "saved"), "--duration", "0.002", "--out", str(tmp_path / "out")])
+    code = cli.main(["run", str(tmp_path / "saved"), "--duration", "0.002s", "--out", str(tmp_path / "out")])
     return code, capsys.readouterr().err
 
 

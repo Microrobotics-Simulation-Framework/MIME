@@ -67,6 +67,7 @@ bundle.unscannable            user
 call.missing-setting          user
 call.polyline                 user
 call.renamed                  user
+call.rotation                 user
 call.tube_tree                user
 call.units                    user
 call.unknown-name             user
@@ -531,6 +532,7 @@ record.unit                   user
 record.unknown                user
 record.unreadable             user
 registration.not-accepted     user
+registry.unknown-entry        user
 remove.ambiguous              user
 remove.named                  user
 remove.unknown                user
@@ -553,6 +555,7 @@ run.every                     user
 run.no-node-at-dt             user
 run.non-finite                user
 run.nothing-to-step           user
+run.out-not-empty             user
 run.out-of-memory             environment
 run.out-over-source           user
 run.rate-not-multiple         user
@@ -628,6 +631,7 @@ study.not-a-member            user
 study.not-a-study-folder      user
 study.order                   user
 study.other-study             user
+study.port-undeclared         user
 study.precision               user
 study.protocol-command        user
 study.protocol-folder         user
@@ -670,6 +674,7 @@ two-builds.float32            user
 two-builds.leaf-shapes        user
 two-builds.not-movable        user
 two-builds.undetected         internal
+units.label                   user
 value.duplicate               user
 value.from-kind               user
 value.not-positive            user

@@ -53,6 +53,7 @@ from mime.things import ThingKind
 from mime.units import SAY_THE_ANGLE, TIME, Dimension, Quantity, UnitError, says_its_angle, si
 from mime.vocabulary import MIME_NAMESPACE, Capability, EnergyClass, ReadKind, namespace_of, port_kind
 from mime.vocabulary import lookup as interface_named
+from mime.vocabulary._versions import parsed, version_order, version_problem
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 #: A controller's read or write label.
@@ -213,6 +214,27 @@ def setting_names(cls: type) -> list[str]:
     bindings: set[str] = set(cast(Mapping[str, object], getattr(cls, "roles", {}))) if issubclass(cls, Observation) \
         else set()
     return [f.name for f in dataclasses.fields(cls) if f.name not in bindings]
+
+
+def reserved_setting_problems(cls: type) -> list[str]:
+    """Every setting of ``cls`` named like an attribute one of its base classes declares that is not a setting of that
+    class: a dataclass field of that name would replace the attribute (a setting ``gradient`` overwrites the entry's
+    ``gradient`` record, and its declared switches go missing). The reserved names are read from the bases themselves,
+    each with the class that declares it; a base's own settings (``rate``, a dynamics') are settings, never reserved."""
+    if not dataclasses.is_dataclass(cls):
+        return []
+    reserved: dict[str, type] = {}
+    for base in cls.__mro__[1:]:
+        if base is object:
+            continue
+        settings = {f.name for f in dataclasses.fields(cast(Any, base))} if "__dataclass_fields__" in vars(base) \
+            else set[str]()
+        for name in vars(base):
+            if not name.startswith("_") and name not in settings:
+                reserved.setdefault(name, base)
+    return [f"setting {name!r} is named like {reserved[name].__qualname__}.{name}, an attribute of the entry's "
+            f"class that the setting would replace: rename the setting"
+            for name in setting_names(cls) if name in reserved]
 
 
 def declared_roles(cls: type) -> dict[str, SettingRole]:
@@ -465,8 +487,8 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
     elif namespace_of(name) == MIME_NAMESPACE and not cls.__module__.split(".")[0] == "mime":
         found.append(f"name {name!r} is in MIME's namespace; register your own with "
                      f"mime.vocabulary.register_namespace and prefix the name with it")
-    if not (isinstance(version, str) and version):
-        found.append(f"version {version!r}: a non-empty string")
+    if (problem := version_problem(version)) is not None:
+        found.append(problem)
     if not isinstance(getattr(held, "differentiability", None), GradientStatus):
         found.append("differentiability: declare a mime.gradients.GradientStatus")
     else:
@@ -736,6 +758,7 @@ def _naming_missing_settings(cls: type) -> None:
 def _register[E: type[Entry]](kind: EntryKind, cls: E) -> E:
     found = _problems(kind, cls)
     found += rate_problems(cls)
+    found += reserved_setting_problems(cls)
     settings: dict[str, DimensionedSetting] = {}
     if dataclasses.is_dataclass(cls):
         settings, problems = dimensioned_settings(cls)
@@ -749,6 +772,12 @@ def _register[E: type[Entry]](kind: EntryKind, cls: E) -> E:
         if held.defined_in != f"{cls.__module__}.{cls.__qualname__}":
             raise ValueError(f"{kind.value} {cls.name} {cls.version} is already registered by {held.defined_in}")
         del _by_class[held.cls]
+    for other in versions_of(kind, cls.name):
+        same = other != cls.version and parsed(other) == parsed(cls.version)
+        if same and _by_key[(kind, cls.name, other)].defined_in != f"{cls.__module__}.{cls.__qualname__}":
+            raise ValueError(f"{kind.value} {cls.name} {cls.version} is the version {other} of "
+                             f"{_by_key[(kind, cls.name, other)].defined_in} in another spelling: one version has one "
+                             f"spelling, so write {other}")
     record = Registered(kind, cls.name, cls.version, cls, settings, declared_roles(cls))
     _by_key[key] = record
     _by_class[cls] = record
@@ -841,9 +870,9 @@ def lookup(kind: EntryKind, name: str, version: str) -> Registered | None:
 
 
 def versions_of(kind: EntryKind, name: str) -> list[str]:
-    return sorted(v for (k, n, v) in _by_key if k is kind and n == name)
+    return sorted((v for (k, n, v) in _by_key if k is kind and n == name), key=version_order)
 
 
 def registered(kind: EntryKind | None = None) -> list[Registered]:
     return sorted((r for r in _by_key.values() if kind is None or r.kind is kind),
-                  key=lambda r: (r.kind.value, r.name, r.version))
+                  key=lambda r: (r.kind.value, r.name, version_order(r.version)))

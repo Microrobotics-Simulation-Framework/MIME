@@ -147,6 +147,22 @@ def _shard_checked(plan: StudyPlan, shard: tuple[int, int] | None) -> None:
                       f"`mime study run <spec> --out <folder>`")
 
 
+def _out_checked(out: Path, experiment: Experiment) -> None:
+    """Refuse an ``out`` a study cannot be written into, before anything runs: a file or a link to nowhere (``mkdir``
+    would fail with no code, after the run), and a folder inside the saved experiment the study
+    reads (``run.out-over-source``, as ``mime run`` refuses it). A folder that is or holds it is refused by what it holds
+    (:func:`_old_document`, ``study.folder-not-empty``)."""
+    from mime.experiment._experiment import not_a_folder, refuse_out_over
+
+    if not_a_folder(out):
+        what = "a link to nowhere" if out.is_symlink() else "a file"
+        raise _refuse("study.folder-not-empty", RefusalClass.USER, f"{out} is {what}, not a folder",
+                      "name a new folder, or an empty one: `--out <folder>`, `study.run_to(<folder>)`")
+    saved = experiment.declared_as()[2]
+    if saved is not None and out.resolve() != saved.folder.resolve() and out.resolve().is_relative_to(saved.folder.resolve()):
+        refuse_out_over(out, [saved.folder])
+
+
 def run_study_to(study: Study, experiment: Experiment, points: Points, out: Path, *,
                  shard: tuple[int, int] | None = None, pilot: bool = False, say: Say | None = None) -> StudyResult:
     """The study run into ``out``: see :meth:`Study.run_to`."""
@@ -160,6 +176,7 @@ def run_study_to(study: Study, experiment: Experiment, points: Points, out: Path
                       "run it in memory, `study.run()`, and read it there with ramp_crossings(result, lag); or sweep "
                       "from rest, `sweep(..., protocol=FromRest())`, into the folder")
     _shard_checked(plan, shard)
+    _out_checked(out, experiment)
     out.mkdir(parents=True, exist_ok=True)
     old = _old_document(out)
     input_hash, write_base = _base(experiment)

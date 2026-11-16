@@ -6,9 +6,7 @@ command.ambiguous         # no test names it
 dynamics.wrong-thing      # no test names it
 frame.gravity-invalid     # no test names it
 group.no-dynamics         # no test names it
-load.namespace-import     # no test names it
 maddening.compile         # no test names it
-maddening.dtype           # no test names it
 magnet.no-part            # no test names it
 magnet.part-missing       # no test names it
 magnet.role               # no test names it
@@ -26,7 +24,6 @@ part.missing              # no test names it
 part.not-a-part           # no test names it
 part.not-a-solid          # no test names it
 part.scaled               # no test names it
-parts.no-bulk             # no test names it
 post-build.base-step      # no test names it
 post-build.not-by-edge    # no test names it
 record.extrapolation      # no test names it

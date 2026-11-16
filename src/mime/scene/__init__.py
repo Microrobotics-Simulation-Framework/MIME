@@ -42,6 +42,7 @@ from mime.scene._frame import (
 )
 from mime.scene._geometry import Axis, Plane, Tube, X, Y, Z
 from mime.scene._plug import Plug
+from mime.scene._rotation import rotation
 from mime.scene._previous import KEPT
 from mime.scene._sampling import (
     QUADRATURE,
@@ -93,11 +94,17 @@ from mime.scene._stage import (
     RegionPrim,
     StageFinding,
     StageSpec,
+    MESH_DISPLAY,
+    MESH_FIELDS,
+    MESH_FIELD_PREFIX,
+    MESH_OWNER,
+    MeshPrim,
     ThingPrim,
     VectorPrim,
     VisualPrim,
     check_stage,
     stage_text,
+    mesh_field_attribute,
     up_axis,
 )
 from mime.scene._visual_sets import (
@@ -127,10 +134,11 @@ __all__ = [
     "wall_resolution",
     "Screw", "Shape", "Sphere", "StageEdits", "StageFinding", "StageSpec", "ThingPrim", "Tube", "UP_AXES",
     "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256",
+    "MESH_DISPLAY", "MESH_FIELDS", "MESH_FIELD_PREFIX", "MESH_OWNER", "MeshPrim", "mesh_field_attribute",
     "VectorPrim", "VisualPins", "VisualPrim", "WorldFrame", "X", "Y", "Z", "asset", "body_reach",
     "check_stage", "compose", "derived_findings", "geometry_schema_problems", "kind_frame", "length_of", "manifest_beside", "mesh_path",
     "mesh_source", "meters_per_unit", "pinned_visuals", "placed", "quadrature", "quadrature_counts", "quadrature_owners", "quasi_uniform",
     "read_kind", "register_shape", "sampled_points", "sampled_reach", "scene_up", "sha256_hex", "shape_settings",
-    "stage_derived_findings", "stage_edits", "stage_text", "unit_vector", "up_axis", "up_axis_problem",
+    "rotation", "stage_derived_findings", "stage_edits", "stage_text", "unit_vector", "up_axis", "up_axis_problem",
     "valid_part_path", "valid_prim_path", "visual_sets", "within", "world_frame",
 ]

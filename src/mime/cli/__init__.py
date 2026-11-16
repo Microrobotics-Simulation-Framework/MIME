@@ -23,8 +23,8 @@ from mime.assets import AssetRef, PlainAsker
 from mime.build import BuildRefused, InternalError, MimeError, Refusal, RefusalClass, RunFailed, UnrecognisedError
 from mime.cli import _completion, _durations, _guide
 from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
-from mime.cli._display import set_plain, styled
-from mime.cli._durations import FORMS, seconds
+from mime.cli._display import AMBER, amber_line, set_plain, styled
+from mime.cli._durations import FORMS, is_bare_number, seconds, unit_examples
 from mime.cli._shell import quoted
 from mime.errors import TRACEBACK_VARIABLE, crossed, full_mode, short_text
 from mime.experiment import Experiment
@@ -66,18 +66,16 @@ def option_seconds(option: str, text: str | None) -> float | None:
     value = seconds(text)
     if value is not None:
         return value
-    message = f"{option} {text} is not a duration"
-    action = f"write it with a unit, `mime run <folder> {option} 10s --out <dir>`; the forms are {FORMS}"
-    why = "a bare number is read as seconds, and a unit after it as written: s, ms, us, min or h"
-    if option in LIVE_TIMEOUTS:
-        refusal = Refusal("live.timeout", RefusalClass.USER, message,
-                          f"write it with a unit, `mime serve <folder> {option} 15min`; the forms are {FORMS}", why=why)
-    elif option == "--every":
-        refusal = Refusal("run.every", RefusalClass.USER, message, action, why=why)
-    elif option == "--stage-every":
-        refusal = Refusal("run.stage-every", RefusalClass.USER, message, action, why=why)
-    else:
-        refusal = Refusal("run.duration", RefusalClass.USER, message, action, why=why)
+    bare = is_bare_number(text)
+    message = f"{option} {text} is a bare number, with no unit" if bare else f"{option} {text} is not a duration"
+    live = option in LIVE_TIMEOUTS
+    action = (f"write it with a unit: {option} {unit_examples(text)}, as in `mime {'serve' if live else 'run'} <folder> "
+              f"{option} {'15min' if live else '10s'}{'' if live else ' --out <dir>'}`; the forms are {FORMS}")
+    why = ("MIME takes every value with its units and never assumes them, so a bare number is never read as seconds "
+           "or as anything else: the unit after it is s, ms, us, min or h" if bare else
+           "a duration is a number and its unit, s, ms, us, min or h")
+    code = "live.timeout" if live else {"--every": "run.every", "--stage-every": "run.stage-every"}.get(option, "run.duration")
+    refusal = Refusal(code, RefusalClass.USER, message, action, why=why)
     raise BuildRefused([refusal])
 
 
@@ -98,6 +96,16 @@ def _xla_cache(arguments: argparse.Namespace) -> AbstractContextManager[object]:
     from mime.env import user_xla_cache
 
     return user_xla_cache(say=_warn)
+
+
+@contextmanager
+def _xla_cache_and_its_note(arguments: argparse.Namespace) -> Generator[None]:
+    """:func:`_xla_cache` for a command that does not show its own note of a damaged entry (``mime run`` does): the
+    warning of one, on a terminal, gets the command that clears it beside it."""
+    from mime.cli._display import damaged_cache_note
+
+    with _xla_cache(arguments), damaged_cache_note(sys.stderr):
+        yield
 
 
 def _cache_clear() -> int:
@@ -371,21 +379,40 @@ def _document_of(folder: Path) -> Path:
 
 def _run(folder: Path, duration: float | None, out: Path, history: bool, record: Sequence[str] = (),
          every: float | None = None, stage_every: float | None = None, commands: Path | None = None,
-         full: bool = False, overrides: Sequence[str] = ()) -> int:
+         full: bool = False, overrides: Sequence[str] = (), force: bool = False) -> int:
     """``mime run``. Ctrl+C: the first press, while the experiment loads and builds, ends the command (130, nothing
     written); once the run is under way it stops the run at its next chunk and the run folder is written as the steps
     reached, marked stopped (130); the second quits at once, writing nothing (``mime._interrupt``).
 
+    ``out`` is a new folder, an empty one, or MIME's own run folder; any other is refused before anything loads
+    (``run.out-not-empty``) unless ``force``, which warns first, makes Ctrl+C cancel the run until it begins to write
+    (130, the folder as it was), and shows an amber notice when it does.
+
     On a terminal (``mime.cli._display``) the run shows its progress on standard error and ends with what needs
     attention first; ``full`` adds the rest. Anywhere else it prints what it always did."""
-    from mime.cli._display import RunDisplay, damaged_cache_note
+    from mime.cli._display import RunDisplay, amber_line, damaged_cache_note
+    from mime.experiment._experiment import foreign_entries, refuse_out_not_own, refuse_out_over
 
+    refuse_out_over(out, [folder])
+    refuse_out_not_own(out, force)
+    forced = foreign_entries(out) if force else ()
+    if forced:
+        amber_line(sys.stderr, f"warning: --force: {out} holds {', '.join(forced[:5])}{', ...' if len(forced) > 5 else ''}"
+                               f", which is not an empty folder or a MIME run folder; the run will write into it, "
+                               "replacing any file of the names a run writes (outputs.npz, outputs.json, run.json, "
+                               "report.json, topology.json, experiment/). Ctrl+C cancels it until it begins to write, "
+                               "and a notice says when it does")
     display = RunDisplay(sys.stderr) if commands is None and styled(sys.stderr) else None
     interrupt = Interrupt(leave=display.leave, say=display.say) if display is not None else Interrupt()
     with damaged_cache_note(sys.stderr), interrupt:
         try:
             return _ran(folder, duration, out, history, record, every, stage_every, commands, interrupt, display, full,
-                        overrides)
+                        overrides, bool(forced))
+        except _Cancelled:
+            if display is not None:
+                display.close()
+            _say(f"cancelled: the run ended without writing anything; {out} is as it was")
+            return INTERRUPTED
         except KeyboardInterrupt:
             if display is not None:
                 display.close()
@@ -396,9 +423,13 @@ def _run(folder: Path, duration: float | None, out: Path, history: bool, record:
                 display.close()
 
 
+class _Cancelled(KeyboardInterrupt):
+    """Ctrl+C was pressed before a forced run wrote anything: the run is cancelled and its folder is as it was."""
+
+
 def _ran(folder: Path, duration: float | None, out: Path, history: bool, record: Sequence[str],
          every: float | None, stage_every: float | None, commands: Path | None, interrupt: Interrupt,
-         display: RunDisplay | None, full: bool, overrides: Sequence[str] = ()) -> int:
+         display: RunDisplay | None, full: bool, overrides: Sequence[str] = (), forced: bool = False) -> int:
     import time
 
     from mime.study._override import parse_override
@@ -435,19 +466,35 @@ def _ran(folder: Path, duration: float | None, out: Path, history: bool, record:
     if duration is None:
         raise BuildRefused([Refusal("run.duration", RefusalClass.USER,
                                     "mime run needs --duration, or --commands: this experiment declares no run length",
-                                    "give the simulated time: mime run <folder> --duration <seconds> --out <dir>; or "
+                                    "give the simulated time: mime run <folder> --duration 3ms --out <dir> (a number and its unit); or "
                                     "declare it where the experiment is made, Experiment(..., duration=s(3)), and "
                                     "save it again")])
     interrupt.running()
+    if forced:
+        interrupt.cancels()
     if display is None or not terminal:
         own = declared is not None and duration == declared
         _say(f"running {duration!r} s of simulated time{' (the length the experiment declares)' if own else ''}; "
-             "Ctrl+C stops it at the next chunk and writes the steps it reached, twice quits at once")
+             + ("Ctrl+C cancels it, writing nothing, twice quits at once" if forced else
+                "Ctrl+C stops it at the next chunk and writes the steps it reached, twice quits at once"))
     stop = interrupt.stop
     if display is not None:
         stop = _watched(built, display, built.steps_in(s(duration)), interrupt, time.perf_counter())
+    def begin_writing() -> None:
+        if not forced:
+            return
+        if interrupt.pressed:
+            raise _Cancelled
+        interrupt.writing()
+        line = f"writing into {out} now, which keeps what it held but for the files a run writes; Ctrl+C no longer cancels"
+        if display is not None:
+            display.say(line, AMBER)
+        else:
+            amber_line(sys.stderr, line)
+
     try:
-        written = built.run_to(out, s(duration), history=history, record=list(record),
+        written = built.run_to(out, s(duration), history=history, record=list(record), force=forced,
+                               before_writing=begin_writing,
                                every=s(every) if every is not None else None, source=folder,
                                load_seconds=time.perf_counter() - started,
                                stage_every=s(stage_every) if stage_every is not None else None,
@@ -530,7 +577,7 @@ def _non_finite_here(failed: RunFailed, folder: Path, duration: float, out: Path
 
     from mime.saved import DOCUMENT_FILE
 
-    rerun = f"`mime run {quoted(str(folder))} --duration {duration!r} --out <another folder> --history`"
+    rerun = f"`mime run {quoted(str(folder))} --duration {duration!r}s --out <another folder> --history`"
     smaller = (f"give a smaller base step: in {folder / DOCUMENT_FILE}, set dt under run: to {dt / 10!r} s, then save "
                f"the folder again (Experiment.from_document(document).save(folder))")
     refusals: list[Refusal] = []
@@ -729,12 +776,36 @@ def _study(arguments: argparse.Namespace) -> int:
     return 0
 
 
-def _registry(as_json: bool) -> int:
+def _named_entries(exported: str, entry: str | None) -> str:
+    """The export with only the entries called ``entry`` (every version and kind of the name) and the namespaces they
+    are in, as JSON (``not_loaded`` stays whole: a package that failed to import is why an entry may be missing), or
+    whole where none is asked for; the name no entry has is refused (``registry.unknown-entry``) with the nearest names."""
+    if entry is None:
+        return exported
+    from mime.things._handles import did_you_mean
+
+    found = json.loads(exported)
+    names = sorted({held["name"] for held in found["entries"]})
+    if entry not in names:
+        raise BuildRefused([Refusal(
+            "registry.unknown-entry", RefusalClass.USER, f"no registered entry is called {entry!r}",
+            f"name one `mime registry` lists, in its own spelling (a lab's is prefixed with its namespace, "
+            f"`labx.slender_tail`). {did_you_mean(entry, names)}")])
+    found["entries"] = [held for held in found["entries"] if held["name"] == entry]
+    held_by = {held["namespace"] for held in found["entries"]}
+    found["namespaces"] = {name: version for name, version in found["namespaces"].items() if name in held_by}
+    return json.dumps(found, indent=2, sort_keys=True)
+
+
+def _registry(as_json: bool, entry: str | None = None) -> int:
     from mime.docs._export import export_json
 
-    exported = export_json()
+    refused: list[Refusal] = []
+    exported = _named_entries(export_json(refused), entry)
     if as_json:
         print(exported)
+        if refused:
+            raise BuildRefused(refused)
         return 0
     found = json.loads(exported)
 
@@ -745,10 +816,12 @@ def _registry(as_json: bool) -> int:
                       found["not_loaded"], sys.stdout)
 
     if not _drawn(draw):
-        for entry in found["entries"]:
-            print(f"{entry['kind']}  {entry['name']}  {entry['version']}")
+        for held in found["entries"]:
+            print(f"{held['kind']}  {held['name']}  {held['version']}")
         for name, reason in found["not_loaded"].items():
             print(f"not loaded: {name} ({reason})")
+    if refused:
+        raise BuildRefused(refused)
     return 0
 
 
@@ -763,11 +836,29 @@ def _assets_named(arguments: Sequence[str]) -> list[AssetRef]:
     return refs
 
 
+def _assets_of_source(namespace: str) -> list[AssetRef]:
+    """The records one asset source holds (``mime`` for MIME's own, an installed package's by the name of its
+    ``mime.assets`` entry point, which is its namespace's), each as that source states it; a source none is called
+    is refused (``asset.unknown``) with the sources there are."""
+    from mime.assets._sources import shared
+    from mime.things._handles import did_you_mean
+
+    held = shared().records
+    sources = sorted({each.source for each in (sourced for group in held.values() for sourced in group)})
+    if namespace not in sources:
+        raise BuildRefused([Refusal(
+            "asset.unknown", RefusalClass.USER, f"no asset source is called {namespace!r}",
+            f"name a source that holds records, `mime assets list --namespace <source>`. "
+            f"{did_you_mean(namespace, sources)}")])
+    return [each.ref for name in sorted(held) for each in held[name] if each.source == namespace]
+
+
 def _assets(command: str, arguments: Sequence[str], accept_licences: Sequence[str] = (), yes: bool = False,
-            force: bool = False) -> int:
+            force: bool = False, namespace: str | None = None) -> int:
     from mime import assets
 
-    refs = _assets_named(arguments) if arguments else list(assets.known().values())
+    refs = _assets_named(arguments) if arguments else \
+        _assets_of_source(namespace) if namespace is not None else list(assets.known().values())
     if command == assets.LIST:
         def draw() -> None:
             from mime.cli._display import show_assets
@@ -1543,6 +1634,8 @@ def build_parser() -> _guide.MimeParser:
     show.add_argument("--open", action="store_true", help="with --out, open the page in the default browser")
     registry = commands.add_parser("registry", help="every registered entry and what it declares")
     registry.add_argument("--json", action="store_true", help="the whole export, as JSON")
+    registry.add_argument("--entry", metavar="NAME", help="only the entries called NAME (every version and kind of "
+                                                          "it), as `mime registry` lists them or in the JSON export")
     # A skip flag of the documentation's checks is only ever spelled in full: argparse would take ``--skip-ex`` for
     # ``--skip-example-runs``, and a guard that reads workflows for the full spelling would not see it.
     docs = commands.add_parser("docs", help="the documentation's sources", allow_abbrev=False)
@@ -1582,7 +1675,10 @@ def build_parser() -> _guide.MimeParser:
 
     held = commands.add_parser(assets.GROUP, help="large files referenced by sha256 and fetched on request")
     held_commands = held.add_subparsers(dest="assets_command", required=True)
-    held_commands.add_parser(assets.LIST, help="every known asset, cached or missing, with its size")
+    listed = held_commands.add_parser(assets.LIST, help="every known asset, cached or missing, with its size")
+    listed.add_argument("--namespace", metavar="NS", help="only the records of one source: `mime` for MIME's own, "
+                                                          "or the name of an installed package's `mime.assets` "
+                                                          "entry point (its namespace's)")
     fetch = held_commands.add_parser(assets.FETCH, help="store assets in the cache (the cache, then the primary location, then backups), then hash "
                                    "them in full")
     fetch.add_argument("names", nargs="*", metavar="name-or-folder",
@@ -1746,18 +1842,24 @@ def build_parser() -> _guide.MimeParser:
     run.add_argument("--no-xla-cache", action="store_true", help=no_cache_help)
     run.add_argument("folder", type=Path, help="a folder written by Experiment.save")
     run.add_argument("--duration", default=None, metavar="DURATION",
-                     help=f"the simulated time, a whole number of the experiment's base steps ({_durations.FORMS}); "
+                     help=f"the simulated time with its unit, a whole number of the experiment's base steps ({_durations.FORMS}; "
+                          "a bare number is refused); "
                           "the length the saved experiment declares when not given (required, with --commands "
                           "the exception, when it declares none)")
     run.add_argument("--out", type=Path, required=True, help="the folder to write the outputs, the record and the "
                                                              "run's saved form to")
+    run.add_argument("--force", action="store_true",
+                     help="run into --out although it is neither new, empty nor a MIME run folder: a warning says what "
+                          "it holds, Ctrl+C cancels the run until it begins to write, and an amber notice says when it "
+                          "does; the files a run writes (outputs.npz, outputs.json, run.json, report.json, topology.json, "
+                          "experiment/) replace those of their names")
     run.add_argument("--history", action="store_true", help="write every step's fields, not only the last")
     run.add_argument("--record", action="append", default=[], metavar="OUTPUT",
                      help="a per-step output to record as a series, <observation id>.<output> or an observation's id "
                           "for all of its own (repeat it for more)")
     run.add_argument("--every", default=None, metavar="DURATION",
                      help="the spacing of the recorded series' samples, a whole number of base steps (default: every "
-                          "step); a unit as for --duration")
+                          "step); written with its unit as --duration is")
     run.add_argument("--stage-every", default=None, metavar="DURATION",
                      help="write the recording layer (recording.usdc, over the run's own stage) with a sample every "
                           "DURATION, a whole number of the run's chunks; a unit as for --duration")
@@ -1957,18 +2059,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     ``mime completion bash|zsh|fish``: a completion script for the shell, written to standard output from this parser
     (every command, flag and choice in it), which runs no Python when Tab is pressed.
 
-    ``mime registry [--json]``: every registered entry, MIME's and each installed namespace's, in a fresh process.
+    ``mime registry [--json] [--entry NAME]``: every registered entry, MIME's and each installed namespace's, in a fresh
+    process; ``--entry`` only those called NAME.
 
     ``mime docs check [--root <checkout>] [--base <revision>]``: the documentation's sources and their checks, in a
     checkout of MIME; with ``--base``, the README start list against that revision's too. Exits 0 when every check
     passes, 1 when one fails, 2 without the ``verify`` extra.
 
-    ``mime assets list | fetch <name>... | fetch --all | check``: the large files MIME references by sha256, in the
+    ``mime assets list [--namespace SOURCE] | fetch <name>... | fetch --all | check``: the large files MIME references by sha256, in the
     cache. ``fetch`` stores them (and refuses with 2), ``check`` re-hashes the cached ones in full (1 when one is
     corrupt).
 
-    ``mime run <folder> [--duration <seconds>] --out <dir> [--history] [--record <output>]... [--every <seconds>]
-    [--stage-every <seconds>]``: load and rebuild a saved experiment, run it, and write its outputs, their manifest
+    ``mime run <folder> [--duration <time>] --out <dir> [--force] [--history] [--record <output>]... [--every <time>]
+    [--stage-every <time>]``: load and rebuild a saved experiment, run it, and write its outputs, their manifest
     (``outputs.json``), its record, its topology, its build report's summary and the run's own saved form into
     ``<dir>``, which ``RunResult.read`` reads back, with the recording layer (``recording.usdc``) where
     ``--stage-every`` asks. The run is as long as the experiment declared (``Experiment(..., duration=...)``) unless
@@ -2077,7 +2180,7 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         return _show(arguments.folder, arguments.graph, arguments.tree, arguments.json, arguments.out, arguments.cdn,
                      arguments.caption, arguments.open)
     if arguments.command == "registry":
-        return _registry(arguments.json)
+        return _registry(arguments.json, arguments.entry)
     if arguments.command == "run":
         duration = option_seconds("--duration", arguments.duration)
         every = option_seconds("--every", arguments.every)
@@ -2085,12 +2188,13 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         _deterministic(arguments.deterministic)
         with _xla_cache(arguments):
             return _run(arguments.folder, duration, arguments.out, arguments.history, arguments.record,
-                        every, stage_every, arguments.commands, arguments.full, arguments.override)
+                        every, stage_every, arguments.commands, arguments.full, arguments.override,
+                        arguments.force)
     if arguments.command == "study":
-        with _xla_cache(arguments) if arguments.study_command == "run" else nullcontext():
+        with _xla_cache_and_its_note(arguments) if arguments.study_command == "run" else nullcontext():
             return _study(arguments)
     if arguments.command == "serve":
-        with _xla_cache(arguments):
+        with _xla_cache_and_its_note(arguments):
             return _serve(arguments)
     if arguments.command == "cache":
         return _cache_clear()
@@ -2123,7 +2227,7 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
             parser.error("fetch takes asset names, or --all")
         return _assets(arguments.assets_command, arguments.names if arguments.assets_command == assets.FETCH else (),
                        getattr(arguments, "accept_licence", ()), getattr(arguments, "yes", False),
-                       getattr(arguments, "force", False))
+                       getattr(arguments, "force", False), getattr(arguments, "namespace", None))
     if arguments.command == "pack":
         return _pack(arguments.folder, arguments.out)
     if arguments.command == "card":

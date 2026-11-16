@@ -40,13 +40,30 @@ def split_believed_name(name: str) -> tuple[str, str]:
     return key, parameter
 
 
+#: The prefix of a controller node's leaf holding a number of a command port its law reads (``ctx.allocator``'s bounds
+#: and slew): the apparatus, the command and the number joined by double underscores (``port_coils__currents__high``).
+PORT = "port_"
+#: The prefix of the name a law is made again from for a port's number: ``port:<apparatus>.<command>:<number>``.
+PORT_NAME = "port:"
+
+
+def port_name(apparatus: str, command: str, number: str) -> str:
+    """The name a command port's number (``low``, ``high``, ``slew``) is made again under, as the controller reads it:
+    ``port:<apparatus>.<command>:<number>``."""
+    return f"{PORT_NAME}{apparatus}.{command}:{number}"
+
+
 def leaf_param(name: str) -> str:
     """The controller node's leaf a name its law is made again from is held as: ``setting_<name>`` for a setting,
     ``believed_<key>__<parameter>`` for a believed number (``believed:<key>:<parameter>``, the key with its dots and its
-    colon written out, which a leaf name holds none of)."""
+    colon written out, which a leaf name holds none of), ``port_<apparatus>__<command>__<number>`` for a port's number
+    (``port:<apparatus>.<command>:<number>``, the command's dots written out)."""
     if name.startswith(BELIEVED_NAME):
         key, parameter = split_believed_name(name)
         return f"{BELIEVED}{key.replace('.', '__').replace(':', '_c_')}__{parameter}"
+    if name.startswith(PORT_NAME):
+        key, _, number = name[len(PORT_NAME):].rpartition(":")
+        return f"{PORT}{key.replace('.', '__')}__{number}"
     return f"{SETTING}{name}"
 
 
@@ -194,5 +211,6 @@ class DelayNode(MimeNode):
         return node_fields(out)
 
 
-__all__ = ["BELIEVED", "BELIEVED_NAME", "SETTING", "ControllerInputs", "ControllerNode", "ControllerState", "DelayInputs", "DelayNode",
-           "DelayState", "ReadSpec", "Step", "believed_name", "leaf_param", "split_believed_name"]
+__all__ = ["BELIEVED", "BELIEVED_NAME", "PORT", "PORT_NAME", "SETTING", "ControllerInputs", "ControllerNode", "ControllerState",
+           "DelayInputs", "DelayNode", "DelayState", "ReadSpec", "Step", "believed_name", "leaf_param", "port_name",
+           "split_believed_name"]

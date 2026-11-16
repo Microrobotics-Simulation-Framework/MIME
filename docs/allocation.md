@@ -127,7 +127,15 @@ def step(state, reads):
   for a field gradient (the form `unit_symbol` gives it), which the scale is checked against: write a scale in
   `T_per_m` or `mT_per_m`.
 - **The bounds** are the port's declared `bounds`, else the bounds its receiver states (an arm's joint limits). A command
-  with neither is refused (`allocation.bounds`): the exact allocation chooses within bounds.
+  with neither is refused (`allocation.bounds`): the exact allocation chooses within bounds. **Inside the compiled step
+  the port's declared bounds and slew are leaves of the controller's node** (`port_<apparatus>__<command>__low`,
+  `__high`, `__slew`), beside the stage's own leaves of them, wherever the law's step allocates within them: a study's
+  axis on the port (`coils.ports.currents.high`, `mime.study`) writes both, so the controller knows its hardware, a sweep
+  of the limit is one program, and `Study.gradient(..., wrt=["coils.ports.currents.high"])` passes through the stage and
+  the allocation alike (what a stronger amplifier buys). A controller *believing* a limit other than the hardware's is
+  not built: one axis moves both. A controller called on the host (`mode="callback"`) makes its law from each run's
+  declared bounds, as built, with no derivative through it. A receiver's stated bounds are no port's number and stay the
+  law's constants.
 - **The slew.** Where the port declares a `slew`, the bounds are narrowed to `last` plus or minus the slew times the
   base step times `g` base steps: what the stage delivers before the next write arrives. For a port sampling every `R`
   base steps and a controller writing every `P`, `g = R * floor(P / R)` where `R <= P`, else `R / ceil(R / P)`: with the

@@ -63,11 +63,10 @@ from jax import Array
 from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta
 from maddening.core.node import BoundaryInputSpec
-from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_fields, node_input, \
-    run_constants_given, run_dtype, typed_view
+from mime.core import NodeFields, ParamSpec, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_fields, \
+    node_input, run_constants_given, run_dtype, typed_view
 from mime.core._node import for_derivative
 from mime.core.multibody import compose
 from mime.nodes.actuation._chain import POSE_UNITS, MountedNode

@@ -19,10 +19,10 @@ from jax import Array, vmap
 from jaxtyping import Float
 from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
-from maddening.core.params import ParamSpec
 from typing_extensions import ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_input, quaternion, switch
+from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, as_run_array, jnp, node_input, quaternion, \
+    switch
 from mime.core.multibody import compose
 from mime.nodes.actuation._chain import POSE_UNITS, flattened
 

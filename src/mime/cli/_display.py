@@ -157,6 +157,19 @@ def _ordered_console(stream: IO[str], guard: threading.RLock) -> Console:
     return Ordered(file=stream, highlight=False, markup=False, emoji=False, width=_columns_of(stream))
 
 
+#: The style of a notice that is neither an error nor a wait: an amber (xterm colour 214), as the licence panel's border.
+AMBER = "color(214)"
+
+
+def amber_line(stream: IO[str], line: str) -> None:
+    """``line`` on ``stream``, in amber where ``stream`` is a styled terminal, and as it is anywhere else."""
+    if styled(stream):
+        _console_of(stream).print(_text(line, AMBER), soft_wrap=True)
+    else:
+        stream.write(for_terminal(line) + "\n")
+        stream.flush()
+
+
 def _text(line: str, style: str = "") -> Any:
     from rich.text import Text
 
@@ -242,9 +255,9 @@ class RunDisplay:
 
     close = pause
 
-    def say(self, line: str) -> None:
-        """A line above the display (Ctrl+C's acknowledgement), without breaking it."""
-        self._console.print(_text(line))
+    def say(self, line: str, style: str = "") -> None:
+        """A line above the display (Ctrl+C's acknowledgement, a notice), without breaking it."""
+        self._console.print(_text(line, style))
 
     def leave(self, code: int) -> None:
         """The second Ctrl+C, which ends the process where it stands: the cursor the display hid is shown again first."""
