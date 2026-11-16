@@ -1651,6 +1651,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A toy, `toy.indented_sheet`, declares one. Where no entry declares a surface, the stage, the recording, the run's
     state, the GLB and the page are the same bytes as before, in float32 and float64 (measured on three experiments, with
     the sheet added as the control that differs).
+- **CLI bundle 6, found by walking the CLI end to end.** `mime push <folder> --to <service> --dry-run` shows the plan push
+  shows before it sends anything (what would be uploaded, and where) and sends nothing: it reads no token and opens no
+  connection. `mime show <run folder>` prints the run's outputs summary (`--json` the manifest it was read from), where it was
+  refused with no hint. `mime env check --strict` holds every pin exactly. `mime modal --force` replaces the files of a script
+  written earlier.
+- **`.to()` takes a unit written as text, and `mN` and `mm2` are units** (G18). `series.values.to("N")`, `.to("mN")`,
+  `.to("mm/s")` and `.to("kg m/s^2")` read a unit as `--override` writes one (a name of `mime.units`, the symbol it prints
+  with, or a label of SI base units); text that is none of them is refused as `units.label`, naming the nearest units.
+  `mime.units.mN` (millinewtons) and `mime.units.mm2` (square millimetres) join `cm` and `um2`.
+- **A surface may declare `display="mirrored"`** (G19). `SurfaceMesh.display` takes `mirrored` beside `revolved` and
+  `extruded`: a symmetric part solved as a quarter or a half, drawn with its reflections across its planes of symmetry.
+  The entry draws the reflections as it draws a revolved section, the stage writes `mime:display` as `mirrored`, and the
+  solve holds the part alone; MIME declares no symmetry planes and reflects nothing itself.
 
 ### Changed
 
@@ -2092,6 +2105,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   build report" but names the node's class and its package, says what its author changes, and the footer says it is not
   MIME's defect; a node of one of MIME's own classes is still MIME's, under a lab's entry too. MADDENING's other errors
   (a coupling group mixed, a non-float loop, a cycle, a missing node) are worded as they were.
+- **CLI bundle 6: no silent overwrite, and fewer refusals that were someone else's fault.**
+  `mime run --out <folder>` refuses MIME's own run folder too, as it refuses any folder that holds something
+  (`run.out-not-empty`): a run never replaces another run unasked, and `--force` runs into it with the warning and the
+  cancel-until-writing it already had (`BuiltExperiment.run_to` from Python still runs again into its own folder).
+  `mime modal` refuses a folder that holds a script of an earlier run (`modal.out-exists`) unless `--force`.
+  `mime env check` without a folder, `--base` or `--mime-version` no longer fails a plain install on versions newer than
+  the pins CI tested: a distribution installed at another version, inside the ranges the installed distributions
+  declare, and one nothing pins, are notes in the report; one outside its ranges, and every difference under `--strict`
+  (implied by a folder, `--base` and `--mime-version`, the reproduction's own arguments), still refuse. `mime docs build`
+  outside a checkout says, at its start and at its end, that it built only the generated pages and left the guides out.
+  A switch owner outside MIME's namespace that does not start with its package's name is reported as the package's to fix,
+  with the owner to write.
+- **CLI bundle 6b: one frame for every error, and the tour's smaller findings.**
+  A mistake in the command line (a missing or unknown argument, a mistyped command, a token typed where it does not
+  belong) is a coded refusal, `cli.usage`, with what to do (the command's own `--help` and its example, and the nearest
+  name, never a flag the line already has; a removed flag says what replaces it), drawn as every refusal is; argparse's usage block and the credentials command's own frame are gone, and the exit
+  code is still 2. `mime study`, `mime assets` and every other group named alone list their commands. `--traceback` shows
+  the refusal first, then the traceback, then the refusal's one line again. `mime run --override` is checked against the
+  saved document before anything loads (a path that names nothing, a value the thing does not have, a value in the wrong
+  units, a bare number included), and a declared value in the wrong units is refused once, not again as undeclared.
+  `mime push <folder> --init` needs no `--to`; `mime push --defaults` is gone (`mime defaults` is the one spelling, and the refusal says so).
+  `mime assets check` always ends with a total. `mime visuals list` says how to get a set when there is none, and knows
+  the AR4 arm's mesh manifest, shipped as references only (names, hashes, sizes, upstream addresses and terms; no mesh
+  bytes). The GPU precision refusal of `mime modal --gpu` reads "an A100-40GB" and says how to save for a GPU.
+  `mime scaffold --yes` chooses no licence and no namespace: where none is given by `--set` or the defaults it writes a
+  marked placeholder (`LicenseRef-CHOOSE-A-LICENCE`, `choose_a_namespace`) that every check refuses until it is replaced:
+  a bundle's `mime.toml` and a plugin's example, benchmark manifest and record carry it too.
+  A repeated `mime study run` says how many members it skipped and why any are run again. `mime verify` ends with an
+  "An acceptance" paragraph for a saved experiment and a run folder as it does for a study and a block. Every command's
+  `--help` lists its exit codes. `mime check` and `mime pack` write a path below the current directory relative to it.
+  `mime registry` has a header row and a `from` column (`mime` or the plugin's namespace). A plain `mime env check`
+  names an installed plugin that nothing pins as a plugin in its notes; a strict check (`--strict`, or a folder,
+  `--base` or `--mime-version`) refuses it, as any distribution nothing pins.
+- **Conventions, written down and held in one place.** CONTRIBUTING's naming rules gain an error suffix rule (`*Refused`: MIME
+  declined an input, with a code the user can fix; `*Error`: something failed that is not the user's input) and restate
+  "one name, one concept" with the `*Shape` example; `mime scaffold plugin`'s README says both. The three packers (`mime
+  pack` of a saved folder, of a study folder and of a block folder, and of a publishing folder of studies) make their
+  output-outside-the-folder, stray-file, name-collision and size checks through one function each; and `mime.toml`'s file name,
+  format and block tables are defined once. Every refusal code and message is as it was. `mime.errors.KEPT`, the number of
+  full-traceback files kept, is internal now (it was plumbing, and shared its name with the retired-version maps of
+  `mime.interactions`, `mime.fields`, `mime.scene` and `mime.dynamics.body`).
+- The public surface of `mime.env` and `mime.docs` is smaller (SURFACE-REDUCTION): 98 names that only MIME's own commands, modules, tests and scripts used left their `__all__`, with no shim (the soft-tissue plugin imports none of them). `mime.docs` and the environment's pins, records and generators are tooling that ships with the commands (`mime env`, `mime modal`, `mime docs`, `mime registry --json`), so their Python names are internal behind them. What stays public is what a user calls or annotates: in `mime.env`, `check` with the `EnvReport` it returns, `apply_lock_precision` (the way to apply a saved folder's recorded precision from Python), the `DistributionRow`s in its `rows` (now exported) and `EnvRefused`, `deterministic_mode`, the user's XLA cache (`user_xla_cache`, `use_xla_cache`, `user_xla_cache_root`, `prune_to_cap`) and `EXACT_GPUS`; in `mime.docs`, `claim` and the `Claim` it returns, which `docs/validation/README.md` teaches. `tests/test_signature_types_are_public.py` reads both packages too, and the two types of `check`'s test stand-ins (`system=`, `devices=`) wait on its undecided list.
+  Out of `mime.env` (51): `Base`, `CPU_DETERMINISTIC`, `CpuRecord`, `DETERMINISTIC_FLAG`, `EXPORT_ARGUMENTS`, `GpuRecord`, `INSTALLERS`, `LOOSE_GPUS`, `ModalScript`, `OPTIONAL_EXPORT_ARGUMENTS`, `OPTIONAL_EXTRAS`, `OPTIONAL_FILE`, `OPTIONAL_GROUPS`, `Pin`, `RUNNER_INFO_VARIABLE`, `RUNNER_VARIABLE`, `System`, `TRITON_GEMM_ANOMALY`, `TRITON_GEMM_FLAG`, `USER_CACHE_CAP_BYTES`, `VARIANTS`, `applicable`, `bases`, `clear_user_xla_cache`, `cpu_record`, `deterministic`, `environment_modules`, `fingerprint`, `gpu_precision_refusals`, `gpu_record`, `gpu_type`, `installed_distributions`, `is_kind_of`, `lab_pins_of`, `lock_matmul_precision`, `lock_x64`, `matmul_precision`, `modal_script`, `optional_pins`, `parse_requirements`, `pins`, `requirements_bytes`, `requirements_name`, `runner_info`, `runner_record`, `series_of`, `shadow_refusals`, `triton_gemm_warning`, `with_deterministic`, `xla_cache_dir`, `xla_flags`.
+  Out of `mime.docs` (47): `CODE_SHAPE`, `Census`, `Collection`, `Derived`, `ENTRY_POINT_GROUP`, `FrozenId`, `Line`, `RatchetList`, `Resolution`, `STRUCTURE`, `Scan`, `Site`, `TableReport`, `Token`, `Unencodable`, `census`, `claim_problems`, `class_vars`, `collect`, `completeness_problems`, `derive`, `encode`, `entry_record`, `export`, `export_json`, `floor_problems`, `instance_problems`, `junit_outcomes`, `list_problems`, `load_namespaces`, `meta_of`, `name_rule`, `next_id`, `path_problem`, `read_claims`, `read_frozen_ids`, `read_list`, `registry_export`, `resolve`, `row_key`, `rows_of`, `scan_package`, `static_problems`, `symbols_of`, `table_problems`, `tokens`, `unrowed`.
+- **`decide` and `using_tables` are no longer public, and `HandleNames` is** (SURFACE-REDUCTION follow-up). `mime.validity` no longer exports the profile dispatcher `decide` or the test seam `using_tables`; nothing calls them, and they are open to go public again if a need appears. The six types they made undecided (`Judge`, `Finding`, `Action`, `Decision`, `FindingClasses`, `ProfileRules`) are no public signature's concern now. The namespace that `ApparatusHandle.commands` and `BodyHandle.initial` return is exported from `mime.things` as `HandleNames`, so a script can annotate it.
+- The small paradigm packages' internal names leave their public surface (SURFACE-REDUCTION): 30 names that only MIME's own
+  modules and tests used are out of the `__all__` of `mime.units` (`SAY_THE_ANGLE`, `parse_value_unit`,
+  `rate_symbol`, `says_its_angle`, `unit_name`), `mime.things` (`DERIVED`, `Derived`, `PartMass`, `Thing`, `WORLD`, `derive`,
+  `did_you_mean`, `magnetisation`, `prim_path_of`), `mime.fields` (`CALIBRATIONS`), `mime.dynamics` and its subpackages
+  (`PRODUCTS_TAKEN_AS_NONE`, `RigidInertialExplicit`, `RigidInertialMoments`, `STEPPERONLINE_17HS19_2004S1`, `actuator`,
+  `chosen_scheme`, `registered_actuators`), `mime.interactions` and its modules (`CENTRE_SWITCHES`, `HULL_SWITCHES`,
+  `UniformTube`, `uniform_tube`), `mime.drives` (`as_drive`) and `mime.vocabulary` (`ENERGY` and `POWER`, which are
+  `mime.units`'s), with no shim (the soft-tissue plugin imports none of them). A name that left is now internal: MIME's own
+  modules and tests import it from the module that defines it, and no script needs it.
+  Kept public because a user annotates them or MIME's own messages teach them: `mime.units.Dimension`, `Marker`,
+  `Values`, `ZERO_CELSIUS` and `mime.things.Port`; `mime.units.Magnitude` and `AngleCount` (what `Quantity.value` and `Quantity.angle`
+  hand back) are now in `mime.units.__all__`. `tests/test_signature_types_are_public.py` reads these six packages too, and
+  counts a class a public submodule exports (`mime.dynamics.flow.RK3Scheme`) as exported.
+- The public surface of the policy and records packages is smaller: 184 names that only MIME's own modules, its tests
+  and its scripts used left the `__all__` of `mime.terms` (27), `mime.errors` (26), `mime.validity` (33),
+  `mime.walls` (2), `mime.surrogates` (62, 45 of them `mime.surrogates.generator`'s, whose `__all__` is now
+  empty) and `mime.materials` (34), with no shim (the soft-tissue plugin imports none of them). They are now internal. To
+  handle an error, catch `MimeError` (or `BuildRefused`, `RunFailed`) and read its code; `mime.errors` no longer exports
+  `ArgumentRefused`, `ArgumentTypeRefused`, `InternalError` and `UnrecognisedError`, which stay importable from `mime.build`
+  for now. Kept public: `Surrogate`, `register_evaluator`, `evaluator_named`, `SURROGATES` and `staleness`; what MIME's messages
+  teach or a user annotates, `mime.validity.pending`, `chosen`, `Pending`, `Chosen`, `Basis` and `Profile`, `mime.terms.Scope`,
+  `Evidence`, `Verdict` and the vocabulary `Tier`, `Role`, `Status`, `EvidenceKind` and `LicenceGiven`, `mime.materials.RecordFile`
+  and `Extrapolation`, `mime.surrogates.Accuracy`, `Provenance` and `Evaluator`. `tests/test_signature_types_are_public.py` now reads
+  these six packages and sees type aliases too; the types it lists as undecided wait for the decision of the function or
+  package that names them. Out of `mime.terms`: `CONDITIONAL`, `CONDITION_LINE_LIMIT`, `CUSTOM_PREFIX`, `CUSTOM_STATUSES`, `DERIVED_BY`, `DIFFERING_CONDITIONS_BY`, `EVIDENCE_KINDS`, `NON_COMMERCIAL`, `NOTICE_TEXT_REQUIRED`, `NO_ASSERTION`, `NO_DERIVATIVES`, `OPEN`, `ROLES`, `SHARE_ALIKE`, `canonical`, `derived_verdict`, `expression_of`, `freest`, `ids_of`, `licence_problem`, `licence_verdict`, `packaging_version`, `permission_problems`, `permission_verdict`, `strictest`, `unlisted_ids`, `unlisted_words`. Out of `mime.errors`: `ArgumentRefused`, `ArgumentTypeRefused`, `DIRECTORY_VARIABLE`, `HIDDEN_PACKAGES`, `InternalError`, `Place`, `TRACEBACK_VARIABLE`, `UnrecognisedError`, `caller_place`, `crossed`, `first_lines`, `full_chain`, `full_mode`, `install`, `is_library`, `page_of`, `public`, `raised_at`, `script_place`, `script_places`, `script_traceback`, `short_text`, `standing_for`, `traceback_directory`, `traced_value_error`, `translated`. Out of `mime.validity`:
+  `Action`, `BUILT`, `Cover`, `DEFAULT_PROFILE`, `Decision`, `FINDING_CLASSES`, `Finding`, `FindingClasses`, `Judge`, `PENDING`, `PENDING_PYTHON`, `PENDING_YAML`, `PROFILE_RULES`, `PendingItem`, `ProfileRules`, `REASON`, `Rule`, `SEALING_ROUTE`, `Stamp`, `Waiver`, `active_tables`, `also_line`, `basis_problem`, `basis_text`, `document_fragment`, `import_lines`, `is_pending`, `pending_text`, `pending_waiver`, `profile_of`, `python_line`, `rule_problems`, `waivers_alone`. Out of `mime.walls`: `RESERVED`, `TUBE_SWITCHES`. Out of `mime.surrogates`: `CHOLESKY_MLP`, `CholeskyMLP`, `DEJONGH_MLP_V2`, `DIAGONAL_FLOOR`, `DeclaredRange`, `OUTPUTS`, `REFERENCE_POINTS`, `SCREW_FEATURES`, `ScrewSurrogate`, `TRIANGLE`, `UNJUDGED_ROLES`, `cholesky_resistance`, `current_inputs`, `evaluators`, `generator.ASYMMETRY_TOLERANCE`, `generator.CANONICAL`, `generator.Case`, `generator.DESIGNS`, `generator.DOMAIN`, `generator.DeclaredEdge`, `generator.Design`, `generator.Discretisation`, `generator.Domain`, `generator.EIGENVALUE_FLOOR`, `generator.MARGIN`, `generator.MEASURED_NEAR_WALL_EDGES`, `generator.MEASURED_NEAR_WALL_NOTES`, `generator.MRSEvaluator`, `generator.NEAR_WALL_CRITERION_COMMIT`, `generator.NEAR_WALL_DESIGN`, `generator.NEAR_WALL_GAPS`, `generator.NEAR_WALL_QUANTITIES`, `generator.NEAR_WALL_SPACINGS`, `generator.NEAR_WALL_TOLERANCE`, `generator.NEAR_WALL_TUBE`, `generator.NEAR_WALL_USES`, `generator.OPEN_NEAR_WALL_EDGE`, `generator.OpenEdge`, `generator.ROLLS`, `generator.Sample`, `generator.TRAINING_MARGINS`, `generator.TUBES`, `generator.TrainingData`, `generator.accuracy`, `generator.design_named`, `generator.evaluate`, `generator.experiment`, `generator.held_out_cases`, `generator.into_canonical`, `generator.near_wall_ratio`, `generator.near_wall_ratios`, `generator.overlap`, `generator.protocol_json`, `generator.resting_offset`, `generator.samples_npz`, `generator.swim_per_spin`, `generator.training_cases`, `generator.training_margins`, `generator.wall_excess`, `mlp_forward`, `predict_resistance`, `read_cholesky_mlp`. Out of
+  `mime.materials`: `APPARATUS_PART_VALUE_KINDS`, `AboveZero`, `CONDITION_UNITS`, `DECLARED_IN_THE_EXPERIMENT`, `DERIVED_FROM_PARTS`, `Declared`, `Directed`, `LoadedRecord`, `OperatingCondition`, `PARTS`, `PART_VALUE_KINDS`, `PartPlan`, `RECORDS`, `ReadOutcome`, `RecordField`, `Resolution`, `ResolvedValue`, `Resolver`, `ValueKind`, `ValuePath`, `ZeroIs`, `declaration_problems`, `kind_of_path`, `load_record`, `not_above_zero`, `openmaterica_version`, `operating_conditions`, `part_value_kinds`, `read_target`, `record_problems`, `record_store`, `resolve`, `resolve_declared`, `value_kind`.
 
 ### Fixed
 
@@ -2358,6 +2443,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cos` of incidence: the sheared corners carry the error of the distance, not of the triangle) may lose or keep a fold's two
   crossings together; the oracle now leaves such rays out by that derived bound, where it left out only a fixed `1e-4`.
   A test change; the renderer is unchanged.
+- **CLI bundle 6: the CLI's loose ends.** `mime registry --json | head` ends quietly (exit 141, as a process ended by
+  SIGPIPE shows) instead of asking the user to report a bug (only a `BrokenPipeError` raised directly by a write to a closed standard output or error; a network error caused by one is shown). Every command that takes a folder refuses an absent one as
+  `load.missing-folder`, with the folders beside it and the nearest (`check`, `modal`, `push` and `scaffold bundle|study`
+  named it by the first file each looked for). `mime verify` and `mime pending` given a run folder say it is one
+  (`load.run-folder`) and what reads it. `mime study run --out <folder that holds something>` refuses before it loads the
+  base and plans, not after about half a minute of it. An unrecognised flag shows its command's usage, not the top one's.
+  `mime serve --commands 127.0.0.1:5555` (no `tcp://`) is refused as `live.endpoint`, not as `live.remote-bind`.
+- **A mistyped command's refusal reads the same on every Python.** `mime defaults foo` listed the choices in argparse's own spelling, which quotes each name on Python 3.14 and 3.12.8 and later (`choose from 'show', 'edit'`), so the message changed with the Python version. The `cli.usage` frame now writes the list from the command's own choices.
+- **The contact loops' Newton property (`tests/oracles/test_contact_loops.py`) judges a group only where 0.4.0 resolves it
+  against its own rounding.** 0.4.0's resolution is also taken from 64 copies of its search whose every step is moved by the
+  rounding its solve may leave, which a pose's last place does not reach (a float32 FL-9 draw ended 1 mm shallower on CI). A
+  group 0.4.0 does not resolve is counted, not judged: every judgement of such a group tried (its converged flag, its residual
+  against the arms' or against its own rounding floor) flagged the clean search on CI's runners. Each planted defect (a short
+  loop, a stale carry, an early stop) has a pinned control in both dtypes, and the property's measured per-run detection is
+  stated. A test change; the contact is unchanged.
+- **A setting an entry declares in a form the registration does not read is refused at registration, never left out** (G17,
+  from the 3-D tutorial's friction log). `half_angle: Annotated[Quantity, Angle]` was left out of the entry's settings with no
+  refusal (`mime.units.Angle` was a type alias for what a rate counts, not a marker), so the entry's own
+  `setting_problems` raised `KeyError` and the build reported a defect of the entry. `Angle` is now the marker of a plane
+  angle, in radians (`deg(30)`, `rad(0.52)`; a bare number, a length and a number of turns are refused, as a
+  dimensionless marker would take the bare number), and the old alias is `AngleCount`. Every other form the reader left out
+  without a word is refused naming the setting: metadata that is no dimension, `Annotated[...] | None` and `Optional`
+  around the `Annotated`, a `type` alias, a container of quantities, and a setting group in a container. Quantities in a
+  container an entry checks itself are declared so, `Annotated[..., CheckedByEntry]` (the arm's `armature` and
+  `actuators`), a declaration and not a check.
+- **The test suite can no longer write a developer's real configuration.** A test that saved defaults (`mime.push._defaults.write_defaults`) or a
+  credential without a home of its own wrote under the shell's `~/.config/mime/`, which once overwrote a maintainer's real `defaults.toml`. An
+  autouse fixture in `tests/conftest.py` now gives every test its own config and state directories (`XDG_CONFIG_HOME`, `XDG_STATE_HOME`, and
+  Windows' application-data overrides); `HOME` and the XLA compilation cache are left alone, and a test that sets its own home still replaces these.
+  `tests/test_config_home_isolation.py` writes defaults and a credential through the public functions against a sentinel home and fails without the
+  fixture. A test change; MIME is unchanged.
+- **The unit grammar's planted-bug controls fail on every run.** The spellings property reached a rate with a slash (the
+  plant of a quotient that forgets its angle) only by its draws, and missed it once on release run 43886742202 (about one
+  run in a thousand or more; 0 of 1300 here, before and after the units change that was suspected). The table's rows
+  are now the property's own examples, run before any draw, so each plant the table catches fails the property on every run.
 
 ### Security
 
