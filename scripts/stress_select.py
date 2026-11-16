@@ -19,10 +19,22 @@ Anything it cannot use is refused by name, and so is an empty selection: a stres
 changed files fit a job's limit: the files are dealt longest first onto the lightest of *n* parts by their seconds in
 ``tests/shard_weights.json`` (the table the default lane's shards are dealt by; a file it does not list takes
 ``new_file_weight``, the 90th percentile of its file weights, as ``tests/_sharding.py`` assumes), *n* being the total over
-``PART_SECONDS``, rounded up, and at most the number of files and ``MAX_JOBS`` over the runs. Each part runs in its own job for
+``PART_SECONDS``, rounded up, and at most the number of units and ``MAX_JOBS`` over the runs. Each part runs in its own job for
 every run, each run with its own seed, so every selected test runs as many times as it did unsplit. A file is not divided
 (a node id of a file weighs the file's seconds, an upper bound), so a file over ``PART_SECONDS`` is a part of its own, and a
 description that narrows the set with ``only`` and a few node ids is one part, as before.
+
+**A file the table splits** (its ``split``: one so heavy that, whole, it would not fit a job, as the default lane knows) is
+dealt by test instead: each test the table lists is a unit of its listed seconds, dealt with the other files' units, and goes
+into its part as a node id. The tests the table does not list (each under its ``tests_over``, and any added since) have no
+unit of their own: they ride with the one part, among those that hold a listed test of the file, with the least seconds, as
+that part's pytest is given the file itself and a ``--deselect=<node id>`` for each listed test another part runs (so a part
+that held only the unlisted tests, and so ran nothing, can never occur). Every test of the file is in exactly one part. Two
+limits: ``--deselect`` matches by prefix, so a listed test whose name is a prefix of another test's name would drop that test
+from the part that has the file (a file with such a pair among its listed tests is dealt whole instead, and
+``test_stress_select.py`` holds the table to it); and a listed test the file no longer has is a node id pytest cannot find,
+which fails the part loudly (the table is rebuilt by ``scripts/shard_weights.py``). A part's seconds are the units' by the
+table; each part that gets tests of a split file compiles the programs they share once more, which the table does not count.
 ``cache`` names the compilation caches of the default lane's shards that hold the selected files (the ones a base
 branch's push saved), at most ``CACHE_SLOTS`` of them, most files first.
 """
@@ -30,6 +42,7 @@ branch's push saved), at most ``CACHE_SLOTS`` of them, most files first.
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib
 import json
 import math
@@ -53,6 +66,8 @@ PART_SECONDS, MAX_JOBS = 1000, 250
 WEIGHTS = Path(__file__).resolve().parents[1] / "tests" / "shard_weights.json"
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT / "tests"))
+import _shard_table  # noqa: E402
 import compilation_cache_mode  # noqa: E402
 import shard_matrix  # noqa: E402
 
@@ -126,24 +141,75 @@ def table_seconds(path: Path = WEIGHTS) -> tuple[dict[str, int], int]:
     return seconds, ordered[math.ceil(0.9 * len(ordered)) - 1]
 
 
-def split(targets: list[str], seconds: dict[str, int], unlisted: int, runs: int) -> list[list[str]]:
-    """``targets`` (in directory order) dealt into parts by their files' seconds: longest file first onto the lightest part,
-    ties on the file's path and the lower part; the files are kept whole, and each part keeps ``targets``' order."""
-    weight: dict[str, int] = {}
-    for target in targets:
-        file = target.split("::", 1)[0]
-        weight[file] = seconds.get(file, unlisted)
-    count = max(1, min(len(weight), math.ceil(sum(weight.values()) / PART_SECONDS), MAX_JOBS // runs))
-    load, held = [0] * count, [set[str]() for _ in range(count)]
-    for file in sorted(weight, key=lambda f: (-weight[f], f)):
+def defined_tests(file: str) -> set[str]:
+    """The names of the ``test*`` functions and methods ``file`` defines, read from its source (none if it cannot be read)."""
+    try:
+        tree = ast.parse((ROOT / file).read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return set()
+    return {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            and node.name.startswith("test")}
+
+
+def pinned_tests(tests: dict[str, int], defined: set[str]) -> set[str]:
+    """The listed tests of a split file that ``--deselect`` could not leave out alone: those whose name is a prefix of
+    another test's, listed or defined in the file (a parameter's id ends in ``]``, so it never is one)."""
+    return {name for name in tests if any(other != name and other.startswith(name) for other in {*tests, *defined})}
+
+
+def split(targets: list[str], seconds: dict[str, int], unlisted: int, runs: int,
+          by_test: dict[str, dict[str, int]] | None = None, defined: dict[str, set[str]] | None = None) -> list[list[str]]:
+    """``targets`` (in directory order) dealt into parts by their seconds: longest unit first onto the lightest part, ties on
+    the unit's name and the lower part. A unit is a file, kept whole, or, for a bare file of ``by_test`` (the table's
+    ``split``), one of its listed tests, except the one that carries the file's other tests (the module's docstring): its
+    unlisted tests and its pinned ones (``pinned_tests``) with the file's lightest listed test that is not pinned (a file
+    with none is dealt whole). Each part keeps ``targets``' order, with its ``--deselect`` options last."""
+    by_test, defined = by_test or {}, defined or {}
+    files = dict.fromkeys(target.split("::", 1)[0] for target in targets)
+    units: dict[tuple[str, ...], int] = {}
+    carrier: dict[str, str] = {}  # a split file's carrying listed test
+    pinned: dict[str, set[str]] = {}
+    for file in files:
+        tests = by_test.get(file, {})
+        pinned[file] = pinned_tests(tests, defined.get(file, set()))
+        free = sorted((sec, name) for name, sec in tests.items() if name not in pinned[file])
+        if file in targets and free:
+            carrier[file] = free[0][1]
+            units.update({(file, name): sec for name, sec in tests.items() if name not in pinned[file]})
+            others = sum(sec for name, sec in tests.items() if name in pinned[file]) + max(
+                seconds.get(file, unlisted) - sum(tests.values()), 1)
+            units[(file, carrier[file])] += others
+        else:
+            units[(file,)] = seconds.get(file, unlisted)
+    count = max(1, min(len(units), math.ceil(sum(units.values()) / PART_SECONDS), MAX_JOBS // runs))
+    load, held = [0] * count, [set[tuple[str, ...]]() for _ in range(count)]
+    for unit in sorted(units, key=lambda u: (-units[u], u)):
         lightest = min(range(count), key=lambda k: (load[k], k))
-        held[lightest].add(file)
-        load[lightest] += weight[file]
-    return [[t for t in targets if t.split("::", 1)[0] in files] for files in held if files]
+        held[lightest].add(unit)
+        load[lightest] += units[unit]
+    parts: list[list[str]] = []
+    for k in range(count):
+        arguments, deselected = [], []
+        for file in files:
+            if file in carrier:
+                mine = [name for name in by_test[file] if (file, name) in held[k] and name not in pinned[file]]
+                if (file, carrier[file]) in held[k]:
+                    arguments.append(file)
+                    deselected += [f"--deselect={file}::{name}" for name in by_test[file]
+                                   if name not in pinned[file] and (file, name) not in held[k]]
+                else:
+                    arguments += [f"{file}::{name}" for name in mine]
+            elif (file,) in held[k]:
+                arguments += [t for t in targets if t.split("::", 1)[0] == file]
+        if arguments:
+            parts.append(arguments + deselected)
+    return parts
 
 
 def select(body: str, changed: list[str], exists: Callable[[str], bool], fresh_seed: Callable[[], int],
-           weights: tuple[dict[str, int], int] | None = None) -> Request:
+           weights: tuple[dict[str, int], int] | None = None,
+           by_test: dict[str, dict[str, int]] | None = None,
+           defined: dict[str, set[str]] | None = None) -> Request:
     """The stress run a description and a diff ask for; ``exists`` says whether a listed file is in the checkout."""
     listed, options, only = parse_description(body)
     for token in listed:
@@ -163,7 +229,10 @@ def select(body: str, changed: list[str], exists: Callable[[str], bool], fresh_s
     runs = _whole("runs", options["runs"], 1, MAX_RUNS) if "runs" in options else DEFAULT_RUNS
     seed = _whole("seed", options["seed"], 0, 2**31 - 1) if "seed" in options else fresh_seed()
     seconds, unlisted = weights if weights is not None else table_seconds()
-    parts = tuple(tuple(part) for part in split(targets, seconds, unlisted, runs))
+    by_name = by_test if by_test is not None else ({} if weights is not None else _shard_table.read_split(WEIGHTS))
+    if defined is None:
+        defined = {file: defined_tests(file) for file in by_name if file in targets}
+    parts = tuple(tuple(part) for part in split(targets, seconds, unlisted, runs, by_name, defined))
     return Request(tuple(targets), runs, python, seed, parts)
 
 
@@ -171,15 +240,19 @@ def cache_shards(targets: list[str], count: int) -> list[str]:
     """``["i/N", ...]`` for the shards holding the targets' files, the shards with most files first, at most
     ``CACHE_SLOTS``; the split is the one CI runs (``tests/_sharding.py``), with the files the table does not list read from
     the checkout's ``test_*.py`` files, as CI reads them from its collection."""
-    sys.path.insert(0, str(ROOT / "tests"))
     _sharding = importlib.import_module("_sharding")
 
-    weights, split = _sharding.load_weights(), set(_sharding.load_split())
+    weights, listed = _sharding.load_weights(), _sharding.load_split()
+    split = set(listed)
     on_disk = {path.relative_to(ROOT).as_posix() for path in (ROOT / "tests").rglob("test_*.py")}
     dealt = _sharding.deal(weights, count, on_disk - weights.keys() - split, _sharding.new_file_weight())
     held: dict[int, set[str]] = {}
-    for target in targets:
-        held.setdefault(_sharding.shard_of(target, count, dealt), set()).add(target.split("::", 1)[0])
+    skipped = {target.split("=", 1)[1] for target in targets if target.startswith("--deselect=")}
+    for target in (t for t in targets if not t.startswith("-")):
+        file = target.split("::", 1)[0]
+        for nodeid in [f"{file}::{name}" for name in listed[file]] if file == target and file in split else [target]:  # a bare split file: the shards of the listed tests this part runs
+            if nodeid not in skipped:
+                held.setdefault(_sharding.shard_of(nodeid, count, dealt, split), set()).add(file)
     ranked = sorted(held, key=lambda shard: (-len(held[shard]), shard))
     return [f"{shard}/{count}" for shard in ranked[:CACHE_SLOTS]]
 
