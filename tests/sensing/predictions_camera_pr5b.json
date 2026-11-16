@@ -26,5 +26,14 @@
   "bits": "route 1's compiled programs (step, run, jvp, render and a mesh scene; float32 and float64) and camera PR 5a's helix and ellipsoid programs equal the base 24e955bf; a one-ulp control differs",
   "cost": "a creased cylinder's structural frame estimate is 2 to 4 times that of a ray of an uncreased body of the same evaluation cost"
  },
- "outcomes": {}
+ "outcomes": {
+  "composed_share": "passes 100 drawn line sets against the clipped polygons (exact to 1e-12); two-term unions exact, coinciding lines and lines along a cell side included. Found on the way: 5a's union_covered reads 0.125 for a line repeated along a cell's side (exact 0), a measure-zero degeneracy of 5a's code, not changed here",
+  "conformance": "the cylinder passes crease_measure_problems on 40 draws (local); wide-cap's rate not yet measured",
+  "g18_pinned": "turns 0, 2, 4 at roll 0, no offset, both dtypes: largest pixel errors 0.0222, 0.0104, 0.0208 (0.44, 0.21, 0.42 of the line); motion 1.1e-4, 3.5e-3, 5.7e-4 (line 0.0153); thin_cap raised at turn 2 exactly where a cap is that thin. Local, 2026-11-16",
+  "controls_pinned": "single-edge-crease fails 6 of 6 (pixel 0.20 to 0.26, 4 to 5 times the line); no-crease-measure fails 6 of 6 (pixel 0.17 to 0.21). Neither moves the motion past its line at these views (single edge 0.0013 to 0.0029, no measure 0.0010 to 0.0080 against 0.0153): the motion gate does not discriminate these plants here, the pixel gate does",
+  "swap": "turn 7, roll 33: route 1 within its line (1/16) and route 2 within its own, of the same exact image (local)",
+  "g18_drawn": "not yet run",
+  "g17_derivative": "running",
+  "bits": "not yet run"
+ }
 }

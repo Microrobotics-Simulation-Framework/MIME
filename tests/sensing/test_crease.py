@@ -184,7 +184,7 @@ def plant_scheme(monkeypatch) -> None:
     if planted("no-crease-measure"):
         import dataclasses
 
-        found_place = Subject._place_sampled
+        found_place, found_evaluate = Subject._place_sampled, sampled_route.evaluate
 
         def unmeasured(self):
             found_place(self)
@@ -192,7 +192,10 @@ def plant_scheme(monkeypatch) -> None:
             body = dataclasses.replace(marched, regions=(), creases=0, compose=None)
 
             def evaluate(sampled, p, x, y, z):
-                return sampled_route.body(marched, p, x, y, z)
+                value = found_evaluate(marched, p, x, y, z)
+                for region in marched.regions:
+                    value = jnp.maximum(value, sampled_route._region(marched, p, region, x, y, z))
+                return value
 
             monkeypatch.setattr(sampled_route, "evaluate", evaluate)
             placed = dataclasses.replace(self.placed, sampled=body, form=sampled_route.form(body))
@@ -248,7 +251,7 @@ def judged_view(turn: float, roll: float, offset: tuple[float, float], dtype: st
         scheme = aggregates(moved) - aggregates(covered)
         truth = aggregates(moved_exact) - aggregates(exact)
         motion = max(motion, float(np.linalg.norm(scheme - truth) / np.linalg.norm(truth)))
-    return {"pixel": pixel, "motion": motion, "thin": thin, "flag": bool(frame.flags["thin_cap:rod"]),
+    return {"pixel": pixel, "motion": motion, "thin": thin, "flag": bool(frame.flags.get("thin_cap:rod", False)),
             "line": PIXEL_LINE[dtype]}
 
 
