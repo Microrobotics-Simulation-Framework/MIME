@@ -56,6 +56,18 @@ session.stop()                # the run folder: a0_live/
   (`{"reached": <step>}`, before that chunk's frame is sent), each line flushed. A session that dies (a crash, a
   kill) leaves a log that replays to the last step it reached, every frame a client received included. `--out` is
   refused when it is the folder the session or the replay reads, inside it, or holds it (`run.out-over-source`).
+  **The log is never replaced or written into**: a session opens it exclusively, before it writes anything else into
+  its folder, so a folder that holds one already, another session's, is refused (`live.log-exists`), with `force` or
+  without, and left as it is.
+- **A recording has a budget**, the samples it may hold (one a chunk, over every stretch of it): `record_budget=` (or
+  `mime serve --record-budget`), by default as many as fit in 512 MiB, which `hello` gives as `record_budget`. A rig's
+  sample is its bound fields: A0's apparatus closed by `ArmTracking` takes 359,833 samples (100 minutes at 60 frames a
+  second), a sheet of 40,000 vertices 670 (`scripts/live_message_sizes.py`). At the budget the recording stops by itself, keeping every sample it took (the
+  status's `recording` turns false and its `recorded` reaches the budget), and a `record` that would start another
+  stretch is refused (`live.record-budget`); `record` off is always taken. The budget is in the command log's header, so
+  a replay stops where the session did. A budget, not a ring that drops the oldest samples: a recording is what the log
+  says was recorded, from the step it began, and its end is a coded event a client sees, never a silent loss of its
+  start.
 - **Every session and every run starts from the declared inputs.** A live input lasts as long as its session: it is
   cleared when a session opens and when it stops, and a batch run of the same built starts with none set.
 - **Stop always stops**, in every state: ready, running, paused, or taking a step (on another thread, or in `mime
@@ -70,7 +82,10 @@ session.stop()                # the run folder: a0_live/
 
 ## The run folder
 
-Every live session that is given `out=` writes a minimal run folder when it stops (`mime serve` always does):
+Every live session that is given `out=` writes a minimal run folder when it stops (`mime serve` always does). The
+folder takes `run_to`'s rule: a new folder, an empty one or MIME's own run folder (`mime serve`, as `mime run`, refuses
+MIME's own too), and any other is refused (`run.out-not-empty`) unless `force=True` (`--force`), which writes into it,
+replacing only the files of the names below and keeping every other file, `experiment/`'s included:
 
 | File | What it holds |
 |---|---|
@@ -110,11 +125,27 @@ not resolved for this) is refused before anything binds, `live.commands-not-loop
 `live.frames-not-loopback` for the frame socket. `--allow-remote-commands` binds it all the same and warns on
 standard error, naming each such address: whoever reaches the command socket can start, stop and step the session and
 set its live inputs. A port in use, by another `mime serve` say, is refused, naming it (`live.address-in-use`):
-`tcp://127.0.0.1:0` takes a free port, which the ready line and the ready file below give.
+`tcp://127.0.0.1:0` takes a free port, which the ready line and the ready file below give. The server binds the address
+it checked (`localhost` is resolved once), and a port outside 0 to 65535 is refused as a malformed endpoint
+(`live.endpoint`). A listener sets `SO_REUSEADDR` on Linux alone, so that a server restarted on its port binds it while
+the last one's connections wait out TIME_WAIT (Linux refuses a second listener on an overlapping address with it all the
+same). On macOS and the BSDs it sets none: there `SO_REUSEADDR` would let a second server bind `127.0.0.1:P` while a
+first, allowed off loopback, holds `0.0.0.0:P`, and take the connections to loopback; so a restart on the same port there
+may be refused until TIME_WAIT ends, and asking for any free port is the way. On Windows it sets none either, as there the
+option lets a second socket bind the very address held. The platforms workflow runs the live tests on macOS.
 
-<!-- mime-fragment: an ssh line for the reader's own host -->
-```sh
-ssh -L 5555:localhost:5555 -L 5556:localhost:5556 <host>     # then connect to localhost as if it ran here
+`--out` is refused before anything binds or loads unless it is new or empty (`run.out-not-empty`, as for `mime run`),
+and `--force` serves into it all the same, warning what it holds; a folder that holds a command log is refused, with
+`--force` too (`live.log-exists`). Without `--out` the session makes its run folder here,
+`<experiment>-live-<UTC time>/`, and a second session in the same second takes `-2`, a third `-3`.
+
+**Reaching it from another machine.** Once it listens, `mime serve` says the `ssh` command that reaches the session:
+each port forwarded to the address it is bound to, the login it runs as on this machine's own name for itself (use the
+name the other machine knows it by, if another). Run it on the other machine, and connect there to the same endpoints:
+
+<!-- mime-fragment: the line mime serve prints, its ports, user and host this machine's own -->
+```text
+mime serve: from another machine, run there ssh -N -L 5555:127.0.0.1:5555 -L 5556:127.0.0.1:5556 you@this-host (with the name it knows this machine by, if another), and connect to the same endpoints
 ```
 
 ### The ready file
@@ -143,7 +174,8 @@ address it was given by hand, and never in `hello`, which goes over the connecti
 ### What the terminal shows
 
 On a terminal, `mime serve` draws a live view on standard error (anywhere else it prints what it always printed: the load
-report, the line when it listens and the line when it stops, on standard output, byte for byte; `--plain`, `NO_COLOR` and
+report, the line when it listens, the line with the `ssh` command that reaches it and the line when it stops, on
+standard output, byte for byte; `--plain`, `NO_COLOR` and
 `TERM=dumb` ask for the same). It is a strip of a few lines: the state in a word (`READY`, `COMPILING`, `RUNNING`,
 `PAUSED`, `STOPPING`), the step, the simulated time against the wall time, the speed as a multiple of real time and the
 frames a second (over the last few seconds), the clients, whether it is recording and the flags seen raised, and how to stop.
@@ -223,8 +255,24 @@ its end, in order; and three optional keys below); on a refusal,
 `page`. A request a client gets wrong is refused with its code (an argument of the wrong type included: `live.step`,
 `live.input-value`, `live.record`, `live.pace`), and the session goes on; an error of MIME's own inside a command is
 answered in the same shape, the session going on. The server never stops for one peer's bytes: a peer that does not
-speak ZMTP, does not finish its handshake in time, sends a message over its socket's limit, or sends requests without
-reading their replies is closed, and the others are served on (the limits are `mime.live._zmtp`'s constants).
+speak ZMTP, does not finish its handshake in time, or sends requests without reading their replies is closed, and the
+others are served on.
+
+**Message sizes.** Every message received is held to its socket's limit, from the header of the frame that takes it
+over, before that frame's bytes are read, its parts counted together. A request over the server's is answered with
+`live.message-too-large` in its turn, its bytes dropped as they arrive, and the same client is served on; a subscription
+or a command over its limit closes that peer; a client refuses a reply or a frame over its own limit by the same code,
+dropping it unread. The limits, set from the largest messages measured through the real session on the repository's
+rigs (`scripts/live_message_sizes.py`, sizes no machine changes), each with its margin:
+
+| Socket receives | Limit | The largest measured | Margin |
+|---|---|---|---|
+| a request (the server's REP) | 64 KiB | 93 bytes: A0's `set` of its live input at the longest float text (24 characters) | 700 times: a `set` of some 2,500 numbers |
+| a subscription (the server's PUB) | 64 KiB | 1 byte: MIME's client subscribes to every frame | |
+| a reply (a client's REQ) | 64 MiB | 0.71 MB: the `hello` of a sheet of 40,000 vertices, its clusters in the binding (A0's is 59.4 kB) | 90 times |
+| a frame (a client's SUB) | 256 MiB | 5.3 MB: that sheet's points and two fields selected, as JSON at the longest float text (0.80 MB binary; A0's 888 bytes) | 48 times |
+
+Every status also says how many samples the recording holds, `recorded`, over every stretch of it.
 
 **Three optional keys of the status**, which `mime serve` always sends and a client that does not read them is unaffected by:
 
@@ -246,20 +294,25 @@ the view from `status` and the frames shows what these keys let it, and no more 
 | `start` | | starts or resumes stepping, paced |
 | `pause` | | stops stepping after the chunk in hand (taken while a chunk runs: answered at once, `pending`) |
 | `step` | `chunks`, a whole number above zero | steps that many chunks now, from a session that is not running; answered when they are stepped, or when a `stop` or `pause` from another client ends the step (the server takes other requests between its chunks) |
-| `stop` | | stops in every state, sends the last frame, writes the run folder (between chunks its reply holds the run folder's path; taken while a chunk runs it is answered at once as pending, with no `folder`: the final frame or the closed connection says it took effect) |
+| `stop` | | stops in every state, sends the last frame, writes the run folder (between chunks its reply holds the run folder's name, `folder`, never its path; taken while a chunk runs it is answered at once as pending, with no `folder`: the final frame or the closed connection says it took effect) |
 | `set` | `values`, live inputs by label | sets the controller's live inputs from its next tick |
-| `record` | `on`, true or false | turns the recording layer on or off |
+| `record` | `on`, true or false | turns the recording layer on or off; on is refused once the recording holds its budget (`live.record-budget`) |
 | `pace` | `rtf`, a factor or null | the real-time factor, or unpaced |
 
 `hello` returns MIME's version, the experiment's name and its hashes, the base step and the chunk in base steps, the
 controller (its entry, mode, period and latency) and its live inputs (each with its units, shape, meaning and
-`default`), the build report's summary (`report`, below), the path of the stage the session serves
-(`stage`), what the asset cache draws of its visuals (`visuals`: the overlay to add over the stage, the visual sets
-it lacks with the command that fetches each, `fetch`, and every set's notice, its credit and terms, whether its meshes
-are drawn or not: see [recordings](recordings.md)), the stage binding (`binding`), the topology, the frame schema (`schema`), the commands,
-and the status. `stage` is the path on the machine that serves the session: a client on another machine opens its own
-copy of the saved folder (the one it gave `mime serve`, or a `mime pull` of it) and checks it is the same experiment
-by `hashes`, the lock's.
+`default`), the build report's summary (`report`, below), the stage the session serves (`stage`), what the asset
+cache draws of its visuals (`visuals`: the overlay to add over the stage, the visual sets it lacks with the command that
+fetches each, `fetch`, and every set's notice, its credit and terms, whether its meshes are drawn or not: see
+[recordings](recordings.md)), the stage binding (`binding`), the topology, the frame schema (`schema`), the commands,
+the recording's budget in samples (`record_budget`), and the status. **`hello` and `stop` name no path of the machine
+that serves the session.** `stage` is relative to the run folder, `experiment/scene/scene.usda` (its `experiment/` is the
+saved folder's copy; `null` for a session with no run folder); `visuals.overlay` is the overlay's id, its file name in the
+asset cache's `overlays/` folder; each `fetch` command names its folder relative to the run folder, to be run there; and
+`stop`'s `folder` is the run folder's name. A program that started `mime serve` has the run folder's path in the ready
+file (`out`), on its own machine; a client on another machine opens its own copy of the saved folder (the one it gave
+`mime serve`, or a `mime pull` of it) and checks it is the same experiment by `hashes`, the lock's. Nothing here serves
+a file: a client that needs one fetches it as it fetched the saved folder.
 
 ### The stage binding
 
@@ -356,3 +409,5 @@ prim's `mime:vector:metres_per_unit`, with no conversion. The recording layer is
 - **A controller inside the compiled step** takes no live input: its state is in the graph. Declare it as a callback
   to steer it live.
 - **Batch runs on Modal** play from their run folders (`mime modal`, then the folder), not live.
+- **Who sent each command** is not in the command log yet: it records the key behind each command once sessions
+  authenticate clients by key (CurveZMQ, a later release).

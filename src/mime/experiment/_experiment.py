@@ -1927,18 +1927,23 @@ class BuiltExperiment:
 
     @public
     def live(self, *, chunk: Quantity | None = None, pace: float | None = 1.0, select: Sequence[str] | None = None,
-             out: str | PathLike[str] | None = None) -> LiveSession:
+             out: str | PathLike[str] | None = None, force: bool = False,
+             record_budget: int | None = None) -> LiveSession:
         """A live session of this built experiment (``mime.live``): it steps the run in chunks of one fixed size,
         ``chunk`` (about 60 per simulated second when not given, a whole number of control periods with a controller
         called back), hands each chunk's frame to its subscribers, takes live inputs (a controller's, in the callback
         mode) and records the stage on request, paced to ``pace`` times real time (``None``: as fast as it runs).
         ``select`` names the fields its frames carry (``<node>.<field>``; every bound pose and vector, every per-step
         observation output and every flag when not given). It writes a minimal run folder into ``out`` when it stops:
-        the experiment, the command log, the final state, and the recording layer when recording was on."""
+        the experiment, the command log, the final state, and the recording layer when recording was on. ``out`` is
+        judged as :meth:`run_to` judges it (``force`` as there), and one that holds a command log already is refused,
+        ``force`` or not (``live.log-exists``). A recording holds at most ``record_budget`` samples (by default as many
+        as fit in 512 MiB), and stops by itself there."""
         from mime.live import LiveSession
 
         self._fresh()
-        return LiveSession(self, chunk=chunk, pace=pace, select=select, out=Path(out) if out is not None else None)
+        return LiveSession(self, chunk=chunk, pace=pace, select=select, out=Path(out) if out is not None else None,
+                           force=force, record_budget=record_budget)
 
     @public
     def run_to(self, out: str | PathLike[str], duration: Quantity, *, history: bool = False,

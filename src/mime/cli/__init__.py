@@ -496,7 +496,7 @@ def _ran(folder: Path, duration: float | None, out: Path, history: bool, record:
     if commands is not None:
         from mime.live import replay
 
-        session = replay(built, commands, out)
+        session = replay(built, commands, out, force=forced)
         print(f"replayed {commands}: {session.steps - session.start_step} steps in chunks of {session.chunk_steps}; "
               f"wrote the session's run folder, {out}")
         return 0
@@ -669,7 +669,8 @@ def _serve(arguments: argparse.Namespace) -> int:
               allow_remote_commands=arguments.allow_remote_commands, ready_file=arguments.ready_file, say=say,
               warn=lambda line: amber_line(sys.stderr, line),
               outlive_launcher=arguments.outlive_launcher, watch=arguments.watch or None, view=display,
-              idle_timeout=idle_timeout, max_wall=max_wall)
+              idle_timeout=idle_timeout, max_wall=max_wall, force=arguments.force,
+              record_budget=arguments.record_budget)
     finally:
         if display is not None:
             display.close()
@@ -1996,7 +1997,17 @@ def build_parser() -> _guide.MimeParser:
                        help="run at FACTOR times real time (default: 1)")
     serve.add_argument("--unpaced", action="store_true", help="run as fast as it runs")
     serve.add_argument("--out", type=Path, default=None, metavar="DIR",
-                       help="the run folder it writes when it stops (default: ./<experiment>-live-<time>/)")
+                       help="the run folder it writes, a new folder or an empty one (default: "
+                            "./<experiment>-live-<time>/, made when it opens, -2 and on after it for a second session "
+                            "in the same second)")
+    serve.add_argument("--force", action="store_true",
+                       help="serve into --out although it is not new or empty (an earlier run's folder included): a "
+                            "warning says what it holds, and the files a run writes (outputs.npz, outputs.json, "
+                            "run.json, report.json, topology.json, experiment/) replace those of their names; a "
+                            "folder that holds a command log is refused all the same")
+    serve.add_argument("--record-budget", type=int, default=None, metavar="SAMPLES",
+                       help="the samples a recording may hold, one a chunk; it stops by itself there (default: as "
+                            "many as fit in 512 MiB, which hello's record_budget gives)")
     serve.add_argument("--select", action="append", default=[], metavar="FIELD",
                        help="a field the frames carry, <node>.<field> (repeat it; default: every bound pose and "
                             "vector, every per-step output and every flag)")
@@ -2145,13 +2156,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     and writes it as the steps reached, marked stopped; the second quits at once, writing nothing.
 
     ``mime serve <folder> [--commands <endpoint>] [--frames <endpoint>] [--chunk <seconds>] [--pace <factor>]
-    [--out <dir>] [--start]``: the saved experiment's live session, speaking ``mime.live/1`` over ZMQ (commands on a REP,
-    frames on a PUB), bound to loopback unless ``--allow-remote-commands`` (which warns, naming each address that is
-    not), until a ``stop`` command, a signal, or the exit of the process that launched it (unless
-    ``--outlive-launcher``), or ``--idle-timeout`` with no client connected, or ``--max-wall`` (each at the end of
-    the chunk in hand); it writes a run folder when it stops, and says why. On a terminal it draws a live view on standard
+    [--out <dir> [--force]] [--record-budget <samples>] [--start]``: the saved experiment's live session, speaking
+    ``mime.live/1`` over ZMQ (commands on a REP, frames on a PUB), bound to loopback unless ``--allow-remote-commands``
+    (which warns, naming each address that is not), until a ``stop`` command, a signal, or the exit of the process that
+    launched it (unless ``--outlive-launcher``), or ``--idle-timeout`` with no client connected, or ``--max-wall`` (each
+    at the end of the chunk in hand); it writes a run folder when it stops (``--out`` new or empty, as for ``mime run``,
+    unless ``--force``; never one holding a command log), and says why. On a terminal it draws a live view on standard
     error (the state, the step, the speed, the clients, a table of values chosen by ``--watch``, and the commands
-    clients ask); anywhere else it prints its two lines on standard output and nothing more.
+    clients ask); anywhere else it prints its lines on standard output (ready, the ``ssh`` command that reaches it,
+    stopped) and nothing more.
 
     ``mime env check [<folder>] --variant cpu|cuda12 [--gpu <type>] [--base] [--lab <file>] [--xla-cache <dir>]``:
     hold this environment to MIME's pins and the GPU requested, then apply the precision the folder's lock records.

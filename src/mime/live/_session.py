@@ -5,7 +5,13 @@ folder written when it stops.
 A session given a run folder writes its command log there as it goes: the header when it opens, each command before it
 acts, and after each chunk, before that chunk's frame is sent, the step it reached. Each line is flushed as it is
 written, so a session that dies (a crash, a kill) leaves a log that replays to the last step it reached, and every frame
-a client received is a step the log holds.
+a client received is a step the log holds. The log is opened exclusively, before anything else is written into the
+folder: a folder that holds one already is another session's, and is refused (``live.log-exists``), never written over.
+
+A recording holds at most its budget of samples (``record_budget``; by default as many as fit in :data:`RECORD_BYTES`):
+it stops by itself at the budget, keeping the samples it took, and a ``record`` that would start another stretch once
+the budget is spent is refused (``live.record-budget``). The budget is in the log's header, so a replay stops where the
+session did.
 
 Two locks: one held by a chunk while it runs, which every command that changes what a run does takes first, so that it
 acts between chunks; and one over the session's fields, held for moments, which is all ``status`` and ``hello`` take,
@@ -50,6 +56,10 @@ REACHED = "reached"
 
 #: How many of the commands taken a status reports as ``recent``.
 RECENT_COMMANDS = 5
+#: The memory a recording's samples may take by default (bytes): its budget is as many samples as fit, each the bound
+#: fields' bytes and :data:`SAMPLE_OVERHEAD` for each field and for the sample's step.
+RECORD_BYTES = 512 << 20
+SAMPLE_OVERHEAD = 128
 
 READY, RUNNING, PAUSED, STOPPED = "ready", "running", "paused", "stopped"
 #: What the session is doing (``activity`` in every status): its first chunk running, which compiles the run's programs
@@ -125,7 +135,7 @@ class LiveSession:
 
     def __init__(self, built: BuiltExperiment, *, chunk: Quantity | None = None, pace: float | None = 1.0,
                  select: Sequence[str] | None = None, out: Path | None = None,
-                 chunk_steps: int | None = None) -> None:
+                 chunk_steps: int | None = None, force: bool = False, record_budget: int | None = None) -> None:
         self.built = built
         dt = built.plans.dt
         period = built._runs.chunk  # pyright: ignore[reportPrivateUsage]
@@ -185,14 +195,17 @@ class LiveSession:
         #: Who is connected, as ``clients`` in a status: set by a server, which alone knows (``(commands, frames)``).
         self.clients: Callable[[], tuple[int, int]] | None = None
         self._started = time.perf_counter()
+        #: The samples a recording may hold, over every stretch of it.
+        self.record_budget = self._budget(record_budget)
         self._refuse_an_older_stage()
         if out is not None:
-            from mime.experiment._experiment import refuse_out_over
+            from mime.experiment._experiment import refuse_out_not_own, refuse_out_over
 
             saved = built._saved  # pyright: ignore[reportPrivateUsage]
             refuse_out_over(out, [saved.folder] if saved is not None else [])
+            refuse_out_not_own(out, force)
+            self._open_log(out)  # first, and exclusively: the folder's log is the session's claim on it
             self._write_experiment(out)
-            self._open_log(out)
         self._open_inputs()  # last: an open that is refused or fails installs no live input in the built's callback
 
     def _open_inputs(self) -> None:
@@ -224,6 +237,19 @@ class LiveSession:
                 f"save it again with this MIME, whose stage writer {STAGE_WRITER} draws them: "
                 f"Experiment.load(\"{saved.folder}\").save(\"<a new folder>\"), and serve that folder",
                 why="a client moves the prims the binding names, in the stage it opens")])
+
+    def _budget(self, given: int | None) -> int:
+        """The samples a recording may hold: ``given``, or as many as fit in :data:`RECORD_BYTES`."""
+        if given is not None:
+            return checked_budget(given)
+        fields = self.built.binding().fields()
+        each = SAMPLE_OVERHEAD * (1 + len(fields)) + sum(
+            np.asarray(self._final[node][name]).nbytes for node, name in fields)
+        return max(1, RECORD_BYTES // each)
+
+    def _samples(self) -> int:
+        """The samples the recording holds, over every stretch of it."""
+        return sum(len(part.steps) for part in self._recorded)
 
     @staticmethod
     def _pace(pace: float | None) -> float | None:
@@ -286,6 +312,8 @@ class LiveSession:
             self.stepping = 0
         if self._recording is not None:
             self._recording.take(self.steps, final)
+            if self._samples() >= self.record_budget:
+                self._recording = None  # full: what it holds is kept, and status says it no longer records
         self._write_line({REACHED: self.steps})
         return self._send(final)
 
@@ -296,12 +324,16 @@ class LiveSession:
         self._write_line(line)
 
     def _open_log(self, out: Path) -> None:
-        """Start the run folder's command log with its header."""
+        """Start the run folder's command log with its header, the file made by this call alone: one that is there
+        already, another session's, is refused and left as it is."""
         header = {"format": LOG_FORMAT, "protocol": PROTOCOL, "experiment": self.built.plans.settings.experiment,
                   "input_hash": self.built.record.hashes()["input"], "dt": self.dt, "chunk_steps": self.chunk_steps,
-                  "start_step": self.start_step}
+                  "start_step": self.start_step, "record_budget": self.record_budget}
         out.mkdir(parents=True, exist_ok=True)
-        self._log_file = (out / COMMAND_LOG).open("w", encoding="utf-8", newline="\n")
+        try:
+            self._log_file = (out / COMMAND_LOG).open("x", encoding="utf-8", newline="\n")
+        except FileExistsError as error:
+            raise ArgumentRefused([_log_exists(out)]) from error
         self._write_line(header)
 
     def _write_line(self, line: Mapping[str, Any]) -> None:
@@ -461,6 +493,13 @@ class LiveSession:
                 "send `{\"command\": \"record\", \"on\": true}` or `false`; in Python, session.record(True)")])
         with self._chunk, self._lock:
             self._require_open("record")
+            if on and self._recording is None and self._samples() >= self.record_budget:
+                raise ArgumentRefused([Refusal(
+                    "live.record-budget", RefusalClass.USER,
+                    f"the recording holds {self._samples()} samples, its budget; this session records no more",
+                    "serve it again with a larger budget, mime serve <folder> --record-budget <samples> "
+                    "(built.live(record_budget=...)), or record a shorter stretch",
+                    why="a recording is held in memory until the session stops, and the budget bounds it")])
             self._logged("record", on=on)
             if on and self._recording is None:
                 from mime.viz import StageSamples
@@ -468,6 +507,8 @@ class LiveSession:
                 self._recording = StageSamples(self.built.binding(), self.chunk_steps)
                 self._recording.take(self.steps, self._final)
                 self._recorded.append(self._recording)
+                if self._samples() >= self.record_budget:
+                    self._recording = None
             elif not on:
                 self._recording = None
 
@@ -511,13 +552,16 @@ class LiveSession:
     def hello(self) -> dict[str, Any]:
         """The session as ``hello`` describes it: protocol, MIME's version, the experiment and its hashes, the base
         step and chunk, the controller and its live inputs, the stage, the binding, the topology, the build report's
-        summary, the frame schema, the commands, and the status. Answered while a chunk runs."""
+        summary, the frame schema, the commands, the recording's budget, and the status. Answered while a chunk runs.
+        It holds no path of this machine's: the stage is named relative to the run folder (``experiment/`` holds the
+        saved folder's copy), and is ``None`` for a session with none."""
         from mime import __version__
+        from mime.experiment._experiment import RUN_EXPERIMENT
+        from mime.scene import STAGE_FILE
 
         controller = self.controller
         built = self.built
-        saved = built._saved  # pyright: ignore[reportPrivateUsage]
-        stage = str((saved.folder / "scene" / "scene.usda").resolve()) if saved is not None else None
+        stage = f"{RUN_EXPERIMENT}/{STAGE_FILE}" if self.out is not None else None
         return reply("hello", mime=__version__, experiment=built.plans.settings.experiment,
                      hashes=dict(built.record.hashes()), dt=self.dt, chunk_steps=self.chunk_steps,
                      controller=None if controller is None else {
@@ -526,20 +570,31 @@ class LiveSession:
                      live_inputs={label: {"units": held.units, "shape": list(held.shape), "meaning": held.meaning,
                                           "default": self.defaults[label].tolist()}
                                   for label, held in self.live_inputs.items()},
-                     stage=stage, visuals=self._visuals(stage), binding=built.binding().record(),
+                     stage=stage, visuals=self._visuals(), binding=built.binding().record(),
                      topology=self._topology, report=built.report_summary(),
-                     schema=self.schema.record(), commands=list(COMMANDS), **self.status_fields())
+                     schema=self.schema.record(), commands=list(COMMANDS), record_budget=self.record_budget,
+                     **self.status_fields())
 
-    def _visuals(self, stage: str | None) -> dict[str, Any] | None:
-        """What the asset cache draws of the stage's visuals: the overlay to add over the stage (a layer in the cache,
-        never in a folder), the visual sets it lacks, which the stage draws as simple shapes, and the command that
-        fetches each (``fetch``, its folder quoted for a shell)."""
-        if stage is None:
+    def _visuals(self) -> dict[str, Any] | None:
+        """What the asset cache draws of the stage's visuals: the overlay to add over the stage, by its id (its file
+        name in the asset cache's ``overlays/``, never a folder's), the visual sets it lacks, which the stage draws as
+        simple shapes, and the command that fetches each (``fetch``, run in the run folder: the folder it names is
+        ``experiment/``, whose lock holds the set's manifest). ``None`` for a session with no run folder."""
+        if self.out is None:
             return None
+        from mime.experiment._experiment import RUN_EXPERIMENT
+        from mime.scene import STAGE_FILE
         from mime.viz import overlay
+        from mime.viz._visuals import UNKNOWN_FOLDER
 
-        found = overlay(Path(stage))
-        return {"overlay": str(found.path) if found.path is not None else None, "drawn": found.drawn,
+        found = overlay(self.out / RUN_EXPERIMENT / STAGE_FILE)
+        base = self.out.resolve()
+        for name, held in found.fetch.items():
+            if held != UNKNOWN_FOLDER and Path(held).is_absolute():
+                inside = Path(held).resolve()
+                found.fetch[name] = f"{inside.relative_to(base).as_posix()}/" if inside.is_relative_to(base) else \
+                    UNKNOWN_FOLDER
+        return {"overlay": found.path.name if found.path is not None else None, "drawn": found.drawn,
                 "missing": found.missing, "fetch": found.fetch_commands(), "notice": found.notices}
 
     @property
@@ -559,7 +614,7 @@ class LiveSession:
             "state": self.state, "step": self.steps, "time": self.steps * self.dt, "frames": self.frames,
             "pace": self.pace, "recording": self._recording is not None, "non_finite": self.non_finite,
             "stepping": self.stepping, "activity": self.activity, "pending": list(self.pending),
-            "wall_time": self.wall_time, "recent": self._recent()}
+            "wall_time": self.wall_time, "recent": self._recent(), "recorded": self._samples()}
         if self.clients is not None:
             commanders, viewers = self.clients()
             status["clients"] = {"commands": commanders, "frames": viewers}
@@ -624,7 +679,7 @@ class LiveSession:
                 self.step(chunks)
         elif name == "stop":
             folder = self.stop()
-            return reply("stop", folder=str(folder) if folder is not None else None, **self._status())
+            return reply("stop", folder=folder.name if folder is not None else None, **self._status())
         elif name == "set":
             values = message.get("values")
             if not isinstance(values, Mapping) or not values:
@@ -646,14 +701,13 @@ class LiveSession:
 
     def _write_experiment(self, out: Path) -> None:
         """The run folder's ``experiment/``: the saved folder the session was loaded from, copied as it is, or this
-        built experiment saved."""
+        built experiment saved. Only the files of the saved form's names are written: nothing else in the folder is
+        touched, as a run's rule keeps a forced folder's other files."""
         from mime.experiment._experiment import RUN_EXPERIMENT
         from mime.saved._folder import named_files
 
         target = out / RUN_EXPERIMENT
         saved = self.built._saved  # pyright: ignore[reportPrivateUsage]
-        if target.exists():
-            shutil.rmtree(target)
         if saved is None:
             self.built.save(target)
             return
@@ -686,11 +740,41 @@ class LiveSession:
             recording = write_recording(out, self.built.binding(), joined, self.built.recording_settings())
         _json(out / RUN_RECORD, {
             "live": {"protocol": PROTOCOL, "chunk_steps": self.chunk_steps, "frames": self.frames,
-                     "commands": COMMAND_LOG, "wall_seconds": round(time.perf_counter() - self._started, 3)},
+                     "commands": COMMAND_LOG, "wall_seconds": round(time.perf_counter() - self._started, 3),
+                     "record_budget": self.record_budget, "recorded": self._samples()},
             "steps": self.steps - self.start_step, "duration": (self.steps - self.start_step) * self.dt,
             "recording": recording.name if recording is not None else None, "non_finite": self.non_finite,
             "environment": self.built.record.environment})
         return out
+
+
+def checked_budget(given: int) -> int:
+    """A recording's budget as given, or its refusal (``live.record-budget``): a whole number of samples above zero."""
+    if not (type(cast(object, given)) is int and given >= 1):
+        raise ArgumentRefused([Refusal(
+            "live.record-budget", RefusalClass.USER,
+            f"a recording's budget is {given!r}, not a whole number of samples above zero",
+            "give one, record_budget=3600 (or mime serve --record-budget 3600), or leave it out for as many as fit "
+            f"in {RECORD_BYTES >> 20} MiB")])
+    return given
+
+
+def _log_exists(out: Path) -> Refusal:
+    return Refusal(
+        "live.log-exists", RefusalClass.USER,
+        f"{out} holds a command log ({COMMAND_LOG}) already, another session's; a session never replaces one or writes "
+        "into it",
+        "write the session to a new folder or an empty one: --out <a new folder> (or out=); --force does not replace a "
+        "command log",
+        why="a run folder replays from its command log: replaced or written into, the run it records could not be "
+            "replayed")
+
+
+def refuse_a_log(out: Path) -> None:
+    """Refuse a run folder that holds a command log already (``live.log-exists``): a session opens its own exclusively,
+    and this says so before anything is built."""
+    if (out / COMMAND_LOG).exists() or (out / COMMAND_LOG).is_symlink():
+        raise ArgumentRefused([_log_exists(out)])
 
 
 def _numbers(value: Any) -> np.ndarray | None:
@@ -751,11 +835,12 @@ def read_log(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
 
 
 def replay(built: BuiltExperiment, log: Path, out: Path | None, *,
-           subscriber: Subscriber | None = None) -> LiveSession:
+           subscriber: Subscriber | None = None, force: bool = False) -> LiveSession:
     """The live session a command log records, run again on ``built`` (built from the same saved folder): the same
     chunks, each live input and each recording turned on or off at the step it took effect at, stopped where it
     stopped (or, for a session that died, at the last step its log reached), its run folder written into ``out``,
-    which may not be the folder the log or the experiment is in. ``subscriber`` takes each of its frames."""
+    which may not be the folder the log or the experiment is in (``force`` as :class:`LiveSession` takes it); a
+    recording stops at the budget the log's header states. ``subscriber`` takes each of its frames."""
     header, lines = read_log(log)
     if header["input_hash"] != built.record.hashes()["input"]:
         raise ArgumentRefused([Refusal(
@@ -766,7 +851,9 @@ def replay(built: BuiltExperiment, log: Path, out: Path | None, *,
         from mime.experiment._experiment import refuse_out_over
 
         refuse_out_over(out, [log])
-    session = LiveSession(built, chunk=None, pace=None, out=out, chunk_steps=int(header["chunk_steps"]))
+    budget = header.get("record_budget")
+    session = LiveSession(built, chunk=None, pace=None, out=out, chunk_steps=int(header["chunk_steps"]), force=force,
+                          record_budget=int(budget) if budget is not None else None)
     if subscriber is not None:
         session.subscribe(subscriber)
     for line in lines:
@@ -794,4 +881,5 @@ def replay(built: BuiltExperiment, log: Path, out: Path | None, *,
 
 
 __all__ = ["COMMAND_LOG", "COMPILING", "FRAMES_PER_SECOND", "IDLE", "LOG_FORMAT", "PAUSED", "READY", "REACHED",
-           "RUNNING", "STEPPING", "STOPPED", "LiveSession", "frame_schema", "read_log", "replay"]
+           "RECORD_BYTES", "RUNNING", "SAMPLE_OVERHEAD", "STEPPING", "STOPPED", "LiveSession", "checked_budget",
+           "frame_schema", "read_log", "refuse_a_log", "replay"]

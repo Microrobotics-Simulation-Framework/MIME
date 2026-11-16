@@ -12,7 +12,10 @@
   step after it, the log flushed as it goes; `replay` runs the log again (a dying session's to the step it reached)
   and writes the same run folder, which every session given `out=` writes when it stops: the experiment, the command
   log, the final state and its manifest, the topology, the build report's summary (`report.json`), and the recording
-  layer when recording was on. A live input lasts as long as its session, and the controller's step reads every one
+  layer when recording was on. The folder takes `run_to`'s rule (`force=`), and its log is opened exclusively before
+  anything else is written: a folder holding one is another session's, refused (`live.log-exists`). A recording holds
+  at most its budget of samples (`record_budget=`), and stops by itself there.
+  A live input lasts as long as its session, and the controller's step reads every one
   from the session's first tick, at its declared default until it is set, so that no `set` compiles the step again. A
   command that changes the run waits for the chunk in flight; `status` and `hello` do not, and say what the session is
   doing (`activity`). A request a client got wrong is refused by its code, and no request stops the session.
@@ -23,7 +26,9 @@
 - **`mime serve`** (`_serve.py`): a saved folder's session in a process of its own, over ZMQ (a REP for commands, a
   PUB for frames), bound to localhost unless asked otherwise, each chunk run on a thread of its own while the loop
   answers: `hello` and `status` at once, `stop` and `pause` at once and acting at the chunk's end (`pending`), the
-  other commands at the chunk's end, in the order they came; `LiveClient` is its Python client.
+  other commands at the chunk's end, in the order they came; `LiveClient` is its Python client. `hello` and `stop` name
+  no path of the serving machine (the stage relative to the run folder, the overlay by its id, the run folder by its
+  name), and it says the `ssh` command that reaches it (`tunnel`).
 - **The view's state** (`_state.py`): `ServeState`, plain data (no terminal, no `rich`, no session): the session's status as
   a client reads it, the rows of the table of values (a name `--watch` takes, a field of the frames and an index), each
   one-number row's minimum and maximum over every frame taken, the flags seen raised, the events not yet shown and how the
@@ -32,7 +37,10 @@
   `status` and the frames it receives draws the same view.
 - **ZMTP** (`_zmtp.py`): ZMQ's wire protocol with the NULL mechanism, spoken by MIME itself, so that serving needs no
   extra package; a libzmq peer connects as it would to libzmq's own sockets. A peer that does not speak it, finishes no
-  handshake, oversteps a size limit or never reads its replies is closed, and the others are served on. Its tests
+  handshake or never reads its replies is closed, and the others are served on. Every message received is held to its
+  socket's limit from its frame's header, before its bytes are read: a request over it is refused by its code and the
+  peer served on. The server binds loopback unless allowed, the address it checked, with `SO_REUSEADDR` on Linux alone.
+  Its tests
   replay the handshakes libzmq's own sockets sent, run libzmq itself (pyzmq, a development dependency) against `mime
   serve` both ways, and fuzz the handshake and the framing.
 

@@ -9,11 +9,19 @@ PUB never waits on a subscriber: a subscriber that falls more than :data:`QUEUE_
 it has not taken, as libzmq's high-water mark drops them.
 
 The server never stops for one peer: a peer whose bytes are not ZMTP, that does not finish its handshake within
-:data:`HANDSHAKE_SECONDS`, that sends a message over its socket's limit (:data:`REQUEST_LIMIT` for a request, as a
-command is a small JSON object; :data:`SUBSCRIPTION_LIMIT` for a subscription), or that sends requests without reading
-the replies (:data:`PENDING_LIMIT`, :data:`REPLY_BUFFER_LIMIT`) is closed, and the others are served on. A connection
-that arrives when the process has no descriptor left is accepted on a spare and closed at once, and the listener rests a
-moment rather than spin."""
+:data:`HANDSHAKE_SECONDS`, or that sends requests without reading the replies (:data:`PENDING_LIMIT`,
+:data:`REPLY_BUFFER_LIMIT`) is closed, and the others are served on. A connection that arrives when the process has no
+descriptor left is accepted on a spare and closed at once, and the listener rests a moment rather than spin.
+
+**Every message received is held to its socket's limit** (:data:`LIMITS`), checked on each frame's header, before its
+bytes are read (:class:`MessageTooLarge`): a request on the server's REP, a subscription on its PUB, a reply on a
+client's REQ, a frame on a client's SUB. A request over it is answered with the server's coded refusal where the server
+was given one (``too_large``, ``mime serve``'s ``live.message-too-large``) and its bytes are dropped as they arrive, so
+the peer is served on; any other message over it closes the peer. A client raises :class:`MessageTooLarge`.
+
+**A server binds loopback only** unless it is allowed otherwise, resolving ``localhost`` once and binding the address it
+resolved (:func:`loopback_address`), and sets on its listeners only the options that keep a second server off their
+ports on its platform (:func:`listener_options`)."""
 
 from __future__ import annotations
 
@@ -27,7 +35,7 @@ import struct
 import sys
 import time
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 
 SIGNATURE = b"\xff" + b"\x00" * 8 + b"\x7f"
@@ -38,10 +46,18 @@ MORE, LONG, COMMAND = 0x01, 0x02, 0x04
 QUEUE_LIMIT = 1000
 #: The peer socket types each of ours speaks with.
 PEERS = {"PUB": {"SUB", "XSUB"}, "REP": {"REQ", "DEALER"}, "SUB": {"PUB", "XPUB"}, "REQ": {"REP", "ROUTER"}}
-#: The most bytes a request (its parts together) may hold, and a subscriber's message: commands are small JSON objects,
-#: a subscription a topic.
-REQUEST_LIMIT = 1 << 20
+#: The most bytes a message (its parts together) may hold, by the socket that receives it. Measured through the real
+#: session on the repository's rigs (docs/live.md, "Message sizes"): the largest command is 93 bytes (A0's ``set`` of
+#: its live input at the longest float text), the largest ``hello`` 0.71 MB and the largest frame 5.3 MB (each a sheet
+#: of 40,000 vertices with its points and two fields selected, the frame as JSON at the longest float text; 0.80 MB
+#: binary). A request may be 700 times the largest command (a ``set`` of some 2,500 numbers), a reply 90 times the
+#: largest ``hello`` and a frame 48 times the largest frame. A subscription is a topic, a byte for MIME's client.
+REQUEST_LIMIT = 1 << 16
 SUBSCRIPTION_LIMIT = 1 << 16
+REPLY_LIMIT = 1 << 26
+FRAME_LIMIT = 1 << 28
+#: Each socket type's limit on what it receives.
+LIMITS = {"REP": REQUEST_LIMIT, "PUB": SUBSCRIPTION_LIMIT, "REQ": REPLY_LIMIT, "SUB": FRAME_LIMIT}
 #: The most parts a message may have: a request's envelope, its delimiter and its body.
 PARTS_LIMIT = 64
 #: The requests a peer may send ahead of their replies, and the reply bytes it may leave unread, before it is closed.
@@ -70,6 +86,19 @@ def _address(sock: socket.socket) -> str:
 
 class ProtocolError(ConnectionError):
     """A peer that does not speak ZMTP 3 with the NULL mechanism, or a socket type ours cannot speak with."""
+
+
+class MessageTooLarge(ProtocolError):
+    """A message over its socket's limit, refused from the header of the frame that takes it over (``size``: the bytes
+    of its parts so far and that frame's), before that frame's bytes are read. The reader drops its bytes, and those of
+    the message's later parts, as they arrive, so the stream goes on with the next message."""
+
+    code = "live.message-too-large"
+
+    def __init__(self, size: int, limit: int, *, part: bool = True) -> None:
+        what = "a message" if part else "a command"
+        super().__init__(f"{what} of at least {size} bytes, over the {limit} this socket takes")
+        self.size, self.limit, self.part = size, limit, part
 
 
 def frame(body: bytes, *, more: bool = False, command: bool = False) -> bytes:
@@ -119,8 +148,13 @@ class _Reader:
     signed: bool = False
     peer_type: str | None = None
     parts: list[bytes] = field(default_factory=list[bytes])
-    #: The most bytes one frame may declare (``None``: no limit, a client's).
+    #: The most bytes a message (its parts together), or a command, may declare (``None``: no limit).
     limit: int | None = None
+    #: The bytes of the message's parts so far, which the limit holds together with its next part's.
+    held: int = 0
+    #: The bytes still to drop of a message refused as too large, and whether parts of it are still to come.
+    skip: int = 0
+    skipping: bool = False
 
     def feed(self, data: bytes) -> None:
         self.buffer += data
@@ -151,24 +185,46 @@ class _Reader:
         self.greeted = True
         return True
 
-    def frames(self) -> list[tuple[int, bytes]]:
-        found: list[tuple[int, bytes]] = []
-        while len(self.buffer) >= 2:
+    def frames(self) -> Iterator[tuple[int, bytes]]:
+        """Each frame whole in the buffer, taken out as it is returned. A frame that takes its message over the limit
+        raises :class:`MessageTooLarge` from its header, before its bytes are read; they, and the message's later parts,
+        are dropped as they arrive, so the next call goes on with the next message."""
+        while True:
+            if self.skip:
+                dropped = min(self.skip, len(self.buffer))
+                del self.buffer[:dropped]
+                self.skip -= dropped
+                if self.skip:
+                    return
+            if len(self.buffer) < 2:
+                return
             flags = self.buffer[0]
             if flags & LONG:
                 if len(self.buffer) < 9:
-                    break
+                    return
                 (size,) = struct.unpack_from(">Q", self.buffer, 1)
                 start = 9
             else:
                 size, start = self.buffer[1], 2
-            if self.limit is not None and size > self.limit:
-                raise ProtocolError(f"a frame of {size} bytes, over the {self.limit} this socket takes")
+            part = not flags & COMMAND
+            if part and self.skipping:  # a later part of a message refused as too large
+                del self.buffer[:start]
+                self.skip, self.skipping = size, bool(flags & MORE)
+                continue
+            total = size + (self.held if part else 0)
+            if self.limit is not None and total > self.limit:
+                del self.buffer[:start]
+                self.skip, self.skipping = size, part and bool(flags & MORE)
+                if part:
+                    self.held = 0
+                raise MessageTooLarge(total, self.limit, part=part)
             if len(self.buffer) < start + size:
-                break
-            found.append((flags, bytes(self.buffer[start:start + size])))
+                return
+            body = bytes(self.buffer[start:start + size])
             del self.buffer[:start + size]
-        return found
+            if part:
+                self.held = self.held + size if flags & MORE else 0
+            yield flags, body
 
 
 @dataclass(frozen=True)
@@ -189,6 +245,15 @@ class PeerEvent:
 EVENT_LIMIT = 1024
 
 
+@dataclass(frozen=True)
+class _Refused:
+    """A request over the limit, answered by the server's refusal in its turn: its envelope, its size and the limit."""
+
+    envelope: list[bytes]
+    size: int
+    limit: int
+
+
 @dataclass
 class _Peer:
     sock: socket.socket
@@ -202,7 +267,7 @@ class _Peer:
     sent_greeting: bool = False
     ready: bool = False
     topics: set[bytes] = field(default_factory=set[bytes])
-    requests: deque[list[bytes]] = field(default_factory=deque[list[bytes]])
+    requests: deque[list[bytes] | _Refused] = field(default_factory=deque[list[bytes] | _Refused])
     envelope: list[bytes] | None = None
     dropped: int = 0
     opened: float = field(default_factory=time.monotonic)
@@ -213,48 +278,80 @@ class _Peer:
 
 
 def parse_endpoint(endpoint: str) -> tuple[str, int]:
-    """``tcp://<host>:<port>`` as a host and a port (``*`` or ``0``: any free port)."""
+    """``tcp://<host>:<port>`` as a host and a port (``*`` or ``0``: any free port); a port that is not a whole number
+    from 0 to 65535 is refused."""
     if not endpoint.startswith("tcp://"):
         raise ValueError(f"{endpoint!r} is not a tcp:// endpoint")
     host, _, port = endpoint.removeprefix("tcp://").rpartition(":")
     host = host.strip("[]")
     if host == "*":
         host = "0.0.0.0"
-    return host, 0 if port in ("*", "") else int(port)
+    number = 0 if port in ("*", "") else int(port) if port.isdecimal() else -1
+    if not 0 <= number <= 65535:
+        raise ValueError(f"{endpoint!r} names the port {port!r}, not a whole number from 0 to 65535")
+    return host, number
 
 
-def is_loopback(host: str) -> bool:
-    """Whether a socket bound to ``host`` is reached from this machine only: an address in 127.0.0.0/8 or ``::1``, or
-    ``localhost`` where every IPv4 address it resolves to is one, as the bind resolves it. Any other name is not, whatever
-    it resolves to now: what it resolves to when bound may differ."""
+def loopback_address(host: str) -> str | None:
+    """The address a socket asked to bind ``host`` binds when that is reached from this machine only: ``host`` itself,
+    an address in 127.0.0.0/8 or ``::1``; for ``localhost``, the first IPv4 address it resolves to, where every one it
+    resolves to is loopback (resolved once, here, so that the bind takes the address this checked); ``None`` for any
+    other host. Any other name is not resolved: what it resolves to when bound may differ."""
     if host.lower() == "localhost":
         try:
             found = socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)
         except OSError:
-            return False
-        return bool(found) and all(ipaddress.ip_address(info[4][0]).is_loopback for info in found)
+            return None
+        addresses = [str(info[4][0]) for info in found]
+        return addresses[0] if addresses and all(ipaddress.ip_address(each).is_loopback for each in addresses) else None
     try:
-        return ipaddress.ip_address(host).is_loopback
+        return host if ipaddress.ip_address(host).is_loopback else None
     except ValueError:
-        return False
+        return None
+
+
+def is_loopback(host: str) -> bool:
+    """Whether a socket bound to ``host`` is reached from this machine only (:func:`loopback_address`)."""
+    return loopback_address(host) is not None
+
+
+def listener_options(platform: str) -> tuple[str, ...]:
+    """The socket options a listener sets to 1 on ``platform`` (as ``sys.platform`` names it), none of which lets a
+    second server take its port. Linux: ``SO_REUSEADDR``, so that a server restarted on its port binds it while the
+    last one's connections wait out TIME_WAIT; Linux refuses a second listener on an overlapping address with it all
+    the same. macOS and the BSDs: none, since there ``SO_REUSEADDR`` lets a second socket bind a specific address
+    (``127.0.0.1:P``) on a port a wildcard listener holds (``0.0.0.0:P``), and the connections to that address go to
+    the second; a restart on the same port may then be refused until TIME_WAIT ends (``live.address-in-use``).
+    Windows: none, since there ``SO_REUSEADDR`` lets a second socket bind the very address and port held."""
+    return ("SO_REUSEADDR",) if platform.startswith("linux") else ()
 
 
 class ListenError(OSError):
     """A socket of :class:`Server`'s that could not listen: which (``REP`` or ``PUB``), on what endpoint, and the
-    system's error (its ``errno``, ``EADDRINUSE`` for a port in use)."""
+    system's error (its ``errno``, ``EADDRINUSE`` for a port in use); ``malformed`` for an endpoint that is no
+    ``tcp://<host>:<port>``, and ``not_loopback`` for an address off loopback that the server was not allowed."""
 
-    def __init__(self, kind: str, endpoint: str, error: OSError) -> None:
+    def __init__(self, kind: str, endpoint: str, error: OSError, *, malformed: bool = False,
+                 not_loopback: bool = False) -> None:
         super().__init__(error.errno, error.strerror or str(error))
         self.kind, self.endpoint = kind, endpoint
+        self.malformed, self.not_loopback = malformed, not_loopback
 
 
 class Server:
     """The two sockets a live session is served on, in one thread: a PUB that sends each frame to every subscriber
     whose topic it begins with, and a REP that takes one request at a time from each peer and sends its reply back
     on the envelope it came on. :meth:`poll` moves bytes both ways and returns the requests that arrived, or returns
-    early when another thread calls :meth:`wake`."""
+    early when another thread calls :meth:`wake`.
 
-    def __init__(self, commands: str, frames: str) -> None:
+    Both sockets bind loopback (:func:`loopback_address`) unless ``allow_remote``; an endpoint off it, or malformed, is
+    refused (:class:`ListenError`) with every socket opened so far closed. ``too_large`` makes the reply to a request
+    over :data:`REQUEST_LIMIT`, from its size and the limit, sent on its envelope in its turn; without it the peer is
+    closed."""
+
+    def __init__(self, commands: str, frames: str, *, allow_remote: bool = False,
+                 too_large: Callable[[int, int], bytes] | None = None) -> None:
+        self.too_large = too_large
         self.selector = selectors.DefaultSelector()
         self.peers: dict[int, _Peer] = {}  # by socket descriptor, for the selector
         self.identified: dict[int, _Peer] = {}  # by identity, for the caller's replies
@@ -271,15 +368,26 @@ class Server:
             end.setblocking(False)
         self.selector.register(self._waker, selectors.EVENT_READ)
         for kind, endpoint in (("REP", commands), ("PUB", frames)):
-            host, port = parse_endpoint(endpoint)
-            family = socket.AF_INET6 if ":" in host else socket.AF_INET
             listener: socket.socket | None = None
             try:
+                try:
+                    host, port = parse_endpoint(endpoint)
+                except ValueError as error:
+                    raise ListenError(kind, endpoint, OSError(errno.EINVAL, str(error)), malformed=True) from error
+                address = loopback_address(host)
+                if address is None and not allow_remote:
+                    raise ListenError(kind, endpoint, OSError(errno.EACCES, f"{host or 'every interface'} is not a "
+                                                                           "loopback address"), not_loopback=True)
+                bound = address if address is not None else host
+                family = socket.AF_INET6 if ":" in bound else socket.AF_INET
                 listener = socket.socket(family, socket.SOCK_STREAM)
-                if sys.platform != "win32":  # Windows' SO_REUSEADDR would let a second server take a port in use
-                    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                listener.bind((host, port))
+                for option in listener_options(sys.platform):
+                    listener.setsockopt(socket.SOL_SOCKET, getattr(socket, option), 1)
+                listener.bind((bound, port))
                 listener.listen(16)
+            except ListenError:
+                self.close()
+                raise
             except OSError as error:
                 if listener is not None:
                     listener.close()
@@ -399,10 +507,26 @@ class Server:
                 peer.sent_greeting = True
             if not reader.greeting():
                 return
-            for flags, body in reader.frames():
-                self._frame(peer, flags, body)
+            while True:
+                try:
+                    for flags, body in reader.frames():
+                        self._frame(peer, flags, body)
+                    return
+                except MessageTooLarge as error:
+                    self._refuse(peer, error)
         except Exception:  # noqa: BLE001 - a peer's bytes never stop the server: that peer is closed
             self._close(peer)
+
+    def _refuse(self, peer: _Peer, error: MessageTooLarge) -> None:
+        """A request over the limit, refused in its turn on its envelope, its bytes dropped as they arrive; any other
+        message over its limit (a subscription, a command, or a request with no envelope yet) closes the peer."""
+        parts, peer.reader.parts = peer.reader.parts, []
+        delimiter = next((index for index, part in enumerate(parts) if part == b""), None)
+        if peer.kind != "REP" or not peer.ready or self.too_large is None or delimiter is None or not error.part:
+            raise error
+        if len(peer.requests) >= PENDING_LIMIT:
+            raise ProtocolError(f"more than {PENDING_LIMIT} requests sent ahead of their replies")
+        peer.requests.append(_Refused(parts[:delimiter + 1], error.size, error.limit))
 
     def _frame(self, peer: _Peer, flags: int, body: bytes) -> None:
         if flags & COMMAND:
@@ -434,8 +558,8 @@ class Server:
                 peer.topics.discard(body[1:])
             return
         peer.reader.parts.append(body)
-        if len(peer.reader.parts) > PARTS_LIMIT or sum(map(len, peer.reader.parts)) > REQUEST_LIMIT:
-            raise ProtocolError(f"a message of more than {PARTS_LIMIT} parts or {REQUEST_LIMIT} bytes")
+        if len(peer.reader.parts) > PARTS_LIMIT:
+            raise ProtocolError(f"a message of more than {PARTS_LIMIT} parts")
         if not flags & MORE:
             parts, peer.reader.parts = peer.reader.parts, []
             delimiter = next((index for index, part in enumerate(parts) if part == b""), None)
@@ -460,11 +584,17 @@ class Server:
         del peer.out[:sent]
 
     def _requests(self) -> list[tuple[int, bytes]]:
-        """The next request of each peer that is not waiting for a reply, with its envelope kept for the reply."""
+        """The next request of each peer that is not waiting for a reply, with its envelope kept for the reply; a
+        request refused as too large before it is answered here, in its turn."""
         found: list[tuple[int, bytes]] = []
         for peer in list(self.peers.values()):
-            if peer.kind == "REP" and peer.envelope is None and peer.requests:
+            while peer.kind == "REP" and peer.envelope is None and peer.requests and peer.ident in self.identified:
                 parts = peer.requests.popleft()
+                if isinstance(parts, _Refused):
+                    assert self.too_large is not None
+                    peer.envelope = parts.envelope
+                    self.reply(peer.ident, self.too_large(parts.size, parts.limit))  # closes one that reads no reply
+                    continue
                 delimiter = parts.index(b"")
                 peer.envelope = parts[:delimiter + 1]
                 found.append((peer.ident, b"".join(parts[delimiter + 1:])))
@@ -586,7 +716,7 @@ class Client:
         self.kind = kind
         self.sock = socket.create_connection((host, port), timeout=timeout)
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self.reader = _Reader()
+        self.reader = _Reader(limit=LIMITS[kind])
         self._pending: deque[tuple[int, bytes]] = deque()
         self.sock.sendall(GREETING + ready(kind))
         while not (self.reader.signature() and self.reader.greeting()):
@@ -608,8 +738,15 @@ class Client:
         self.reader.feed(data)
 
     def _next(self) -> tuple[int, bytes]:
+        """The next frame; a message over this socket's limit raises :class:`MessageTooLarge`, its parts dropped."""
         while not self._pending:
-            self._pending.extend(self.reader.frames())
+            try:
+                for held in self.reader.frames():
+                    self._pending.append(held)
+            except MessageTooLarge:
+                while self._pending and self._pending[-1][0] & MORE and not self._pending[-1][0] & COMMAND:
+                    self._pending.pop()  # the refused message's earlier parts
+                raise
             if not self._pending:
                 self._fill()
         return self._pending.popleft()
@@ -636,6 +773,7 @@ class Client:
         self.sock.close()
 
 
-__all__ = ["ACCEPT_REST_SECONDS", "GREETING", "HANDSHAKE_SECONDS", "PARTS_LIMIT", "PENDING_LIMIT", "QUEUE_LIMIT",
-           "REPLY_BUFFER_LIMIT", "REQUEST_LIMIT", "SUBSCRIPTION_LIMIT", "Client", "ListenError", "PeerEvent",
-           "ProtocolError", "Server", "frame", "is_loopback", "message", "parse_endpoint", "ready"]
+__all__ = ["ACCEPT_REST_SECONDS", "FRAME_LIMIT", "GREETING", "HANDSHAKE_SECONDS", "LIMITS", "PARTS_LIMIT",
+           "PENDING_LIMIT", "QUEUE_LIMIT", "REPLY_BUFFER_LIMIT", "REPLY_LIMIT", "REQUEST_LIMIT", "SUBSCRIPTION_LIMIT", "Client",
+           "ListenError", "MessageTooLarge", "PeerEvent", "ProtocolError", "Server", "frame", "is_loopback",
+           "listener_options", "loopback_address", "message", "parse_endpoint", "ready"]

@@ -88,7 +88,7 @@ def test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state(launch, f
     process = started(launch, folder, tmp_path / "out", tmp_path / "ready.json", "--unpaced")
     live = client(tmp_path / "ready.json")
     hello = live.hello
-    assert hello["ok"] and hello["state"] == "ready" and hello["stage"].endswith("scene.usda")
+    assert hello["ok"] and hello["state"] == "ready" and hello["stage"] == "experiment/scene/scene.usda"
     from visual_cases import ar4_manifest
 
     # Nothing baked: no overlay, every mesh missing, and the set's notice (its credit and terms, from the manifest the
@@ -98,7 +98,8 @@ def test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state(launch, f
                                 "notice": [ar4_manifest().text()]}
     (command,) = fetch.values()
     assert list(fetch) == ["ar4_mk5"] and shlex.split(command)[:3] == ["mime", "visuals", "fetch"]
-    assert (Path(shlex.split(command)[3]) / "mime.lock").is_file(), "the folder whose lock holds the set's manifest"
+    assert (tmp_path / "out" / shlex.split(command)[3] / "mime.lock").is_file(), \
+        "the folder whose lock holds the set's manifest, relative to the run folder"
     assert "Annin Robotics" in hello["visuals"]["notice"][0]
     assert live.request("start")["state"] == "running"
     frames = [live.frame() for _ in range(40)]
@@ -210,7 +211,8 @@ def test_a_malformed_argument_is_refused_over_the_wire_and_the_server_goes_on(la
              live.request("set", values={"offset": "abc"}), live.request("record", on="off")]
     assert [answer["errors"][0]["code"] for answer in codes] == ["live.step", "live.step", "live.input-value",
                                                                  "live.record"]
-    nested = json.loads(live.commands.request(b"[" * 100_000 + b"]" * 100_000).decode())
+    # nested far past what JSON's reader takes, within the server's request limit (REQUEST_LIMIT, 64 KiB)
+    nested = json.loads(live.commands.request(b"[" * 30_000 + b"]" * 30_000).decode())
     assert nested["errors"][0]["code"] == "live.command"
     assert live.request("status")["ok"] and live.request("stop")["ok"] and process.wait(timeout=60) == 0
     log = [json.loads(line) for line in (tmp_path / "out" / COMMAND_LOG).read_text().splitlines()]

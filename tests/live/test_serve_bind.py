@@ -5,6 +5,13 @@ an address of another machine, a host name, and ``localhost`` where it resolves 
 binds it all the same and warns, naming it. A second ``mime serve`` on the ports of one running is refused, naming the
 port it could not take (``live.address-in-use``), and leaves the first serving and nothing of its own listening.
 
+The transport's server checks for itself as well (``mime.live._zmtp.Server``, defence in depth): it refuses an address
+off loopback unless allowed, resolves ``localhost`` once and binds the address it resolved (so a name that resolves
+elsewhere between the check and the bind is refused, not bound), refuses a port outside 0 to 65535 as a malformed
+endpoint with the socket it opened first closed, and sets on a listener only the options that keep a second server off
+its port on its platform: ``SO_REUSEADDR`` on Linux alone, since on macOS and the BSDs it lets a second server bind
+``127.0.0.1:P`` while a first holds ``0.0.0.0:P`` (the platforms workflow runs these on macOS).
+
 No test here opens a socket off loopback: every bind of the test's process goes through :class:`Binds`, which records
 it and makes one off loopback on loopback instead. A session that gets past its sockets stops at its load
 (:class:`Loaded`), so no build runs but the running server's. The control: the same recorder sees the binds of a session
@@ -28,7 +35,8 @@ from live_servers import client as watched_client
 
 from mime.build import ArgumentRefused, BuildRefused
 from mime.live import serve
-from mime.live._zmtp import is_loopback
+from mime.live import _zmtp
+from mime.live._zmtp import ListenError, Server, is_loopback, listener_options
 
 MIME = [sys.executable, "-m", "mime.cli"]
 #: A guard against waiting for ever on a server's ready file, never a measure of speed.
@@ -158,7 +166,7 @@ def test_loopback_addresses_are_loopback(host):
 
 def test_loopback_binds_with_no_warning_and_the_recorder_sees_it(binds, unloaded):
     assert served(unloaded, commands="tcp://127.0.0.1:0", frames="tcp://localhost:0") == ["loaded"]
-    assert binds.asked == ["127.0.0.1", "localhost"]
+    assert binds.asked == ["127.0.0.1", _zmtp.loopback_address("localhost")]  # localhost bound as it was resolved
     assert all(sock.fileno() == -1 for sock in binds.sockets)  # closed when the load raised
     assert served(unloaded, commands="tcp://127.0.0.1:0", frames="tcp://127.0.0.1:0",
                   allow_remote_commands=True) == ["loaded"]  # allowed, and nothing off loopback: no warning
@@ -207,3 +215,129 @@ def test_a_second_serve_on_the_ports_of_one_running_is_refused_naming_the_port(l
     assert live.request("status")["ok"] and live.request("stop")["ok"] and first.wait(timeout=60) == 0
     live.close()
     assert not (tmp_path / "second").exists()
+
+
+@pytest.mark.parametrize("port", ["99999", "65536", "-1", "5x"])
+def test_a_port_outside_0_to_65535_is_refused_as_a_malformed_endpoint_and_nothing_stays_open(binds, unloaded, port):
+    """(The review's minor (a).) Before, ``int`` took the port, ``bind`` raised an ``OverflowError`` that no handler
+    coded (exit 3), and the command socket bound first stayed open until collected."""
+    assert served(unloaded, commands="tcp://127.0.0.1:0", frames=f"tcp://127.0.0.1:{port}") == ["live.endpoint"]
+    assert binds.asked == []
+    with pytest.raises(ListenError) as refused:
+        Server("tcp://127.0.0.1:0", f"tcp://127.0.0.1:{port}")
+    assert refused.value.malformed and refused.value.kind == "PUB" and "0 to 65535" in str(refused.value)
+    assert len(binds.sockets) == 1 and binds.sockets[0].fileno() == -1  # the command socket, closed
+
+
+def test_the_server_refuses_an_address_off_loopback_of_its_own_unless_allowed(binds):
+    """(Minor (b).) The transport's ``Server`` called directly, as no code of MIME's but ``mime serve`` does: off
+    loopback it binds nothing; allowed, it binds (made loopback by the recorder)."""
+    for commands in ("tcp://0.0.0.0:0", "tcp://lab-host:0", "tcp://[::]:0"):
+        with pytest.raises(ListenError) as refused:
+            Server(commands, "tcp://127.0.0.1:0")
+        assert refused.value.not_loopback and binds.asked == []
+    allowed = Server("tcp://0.0.0.0:0", "tcp://127.0.0.1:0", allow_remote=True)
+    allowed.close()
+    assert binds.asked == ["0.0.0.0", "127.0.0.1"]
+
+
+def test_localhost_is_resolved_once_and_the_address_it_resolved_to_is_bound(binds, unloaded, monkeypatch):
+    """(Minor (c).) A resolver that answers loopback for the check and elsewhere after: the server binds the address it
+    checked, and ``mime serve``, which checks before the server does, refuses where the server's own look finds it
+    elsewhere. Before, the bind resolved ``localhost`` a second time itself."""
+    answers: list[list[str]] = []
+
+    def getaddrinfo(host, *_):
+        address = answers.pop(0) if answers else ["192.0.2.7"]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (each, 0)) for each in address]
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    answers[:] = [["127.0.0.1"]]
+    Server("tcp://localhost:0", "tcp://127.0.0.1:0").close()
+    assert binds.asked == ["127.0.0.1", "127.0.0.1"] and answers == []  # one resolution, and its address bound
+    binds.asked.clear()
+    answers[:] = [["127.0.0.1"]]  # the session's own check, then the server's look, which finds it elsewhere
+    assert served(unloaded, commands="tcp://localhost:0", frames="tcp://127.0.0.1:0") == ["live.commands-not-loopback"]
+    assert binds.asked == []
+
+
+@pytest.mark.parametrize("platform, options", [("linux", ("SO_REUSEADDR",)), ("darwin", ()), ("freebsd14", ()),
+                                               ("openbsd7", ()), ("netbsd10", ()), ("win32", ())])
+def test_only_linux_listeners_set_so_reuseaddr(platform, options):
+    """(Item 5.) On macOS and the BSDs ``SO_REUSEADDR`` lets a second server bind a specific address on a port a
+    wildcard listener holds; on Windows it lets a second take the very address. Before, every platform but Windows set it."""
+    assert listener_options(platform) == options
+
+
+def reuse_address(sock: socket.socket) -> bool:
+    return sock.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR) != 0
+
+
+def test_a_listener_on_this_platform_sets_what_its_policy_says_and_a_planted_reuse_is_seen(monkeypatch):
+    """The listeners of a real server, on the platform the test runs on (the platforms workflow runs it on macOS):
+    ``SO_REUSEADDR`` set exactly where the policy names it. The control: the option as it was before, planted, is seen
+    on every platform where it differs from the policy (macOS and the BSDs), and the policy's own reading is the same
+    socket call."""
+    server = Server("tcp://127.0.0.1:0", "tcp://127.0.0.1:0")
+    try:
+        held = [listener for listener, _ in server.listeners.values()]
+        assert [reuse_address(listener) for listener in held] == \
+            ["SO_REUSEADDR" in listener_options(sys.platform)] * 2
+    finally:
+        server.close()
+    monkeypatch.setattr(_zmtp, "listener_options", lambda platform: () if platform == "win32" else ("SO_REUSEADDR",))
+    planted = Server("tcp://127.0.0.1:0", "tcp://127.0.0.1:0")
+    try:
+        seen = [reuse_address(listener) for listener, _ in planted.listeners.values()]
+    finally:
+        planted.close()
+    assert seen == [sys.platform != "win32"] * 2
+
+
+def own_run_folder(at: Path) -> Path:
+    """A folder that reads as MIME's own run folder: a run's record and nothing else."""
+    at.mkdir()
+    (at / "run.json").write_text(json.dumps({"steps": 0, "duration": 0.0, "environment": {}}), encoding="utf-8")
+    return at
+
+
+def test_serve_takes_mime_runs_rule_for_its_run_folder_before_anything_binds(binds, unloaded, tmp_path):
+    """(Item 1.) ``--out`` was written over whatever it held: the session deleted its ``experiment/`` and truncated its
+    ``commands.jsonl``. Now a folder of the user's, an earlier run's folder and a file are refused
+    (``run.out-not-empty``) before anything binds; ``--force`` writes into the first two with a warning naming what they hold (the session then
+    gets as far as its load here); and a folder that holds a command log is refused with ``--force`` too
+    (``live.log-exists``), the log untouched."""
+    mine = tmp_path / "mine"
+    (mine / "experiment").mkdir(parents=True)
+    (mine / "experiment" / "notes.txt").write_text("mine\n", encoding="utf-8")
+    earlier = own_run_folder(tmp_path / "earlier")
+    logged = own_run_folder(tmp_path / "logged")
+    (logged / "commands.jsonl").write_text('{"format": "mime.commands/1"}\n', encoding="utf-8")
+    afile = tmp_path / "afile"
+    afile.write_text("x", encoding="utf-8")
+    ports = {"commands": "tcp://127.0.0.1:0", "frames": "tcp://127.0.0.1:0"}
+    saved_at = unloaded / "saved"  # beside the run folders, not holding them
+    for out in (mine, earlier, logged, afile):
+        assert served(saved_at, out=out, **ports) == ["run.out-not-empty"], out.name
+    assert binds.asked == []
+    for out in (mine, earlier):
+        warned, *rest = served(saved_at, out=out, force=True, **ports)
+        assert rest == ["loaded"] and warned.startswith(f"mime serve: warning: --force: {out} holds "), warned
+    assert served(saved_at, out=logged, force=True, **ports) == ["live.log-exists"]
+    assert served(saved_at, out=afile, force=True, **ports) == ["run.out-not-empty"]
+    assert (mine / "experiment" / "notes.txt").read_text(encoding="utf-8") == "mine\n"
+    assert (logged / "commands.jsonl").read_text(encoding="utf-8") == '{"format": "mime.commands/1"}\n'
+
+
+def test_the_cli_passes_force_and_the_record_budget_and_refuses_them_by_their_codes(unloaded, tmp_path, capsys):
+    """``mime serve --force`` into a folder holding a command log, and ``--record-budget 0``: each refused by its code
+    before anything binds or loads (exit 2)."""
+    from mime.cli import main as mime_main
+
+    logged = own_run_folder(tmp_path / "logged")
+    (logged / "commands.jsonl").write_text("{}\n", encoding="utf-8")
+    ports = ["--commands", "tcp://127.0.0.1:0", "--frames", "tcp://127.0.0.1:0"]
+    assert mime_main(["serve", str(unloaded / "saved"), "--out", str(logged), "--force", *ports]) == 2
+    assert "live.log-exists" in capsys.readouterr().err
+    assert mime_main(["serve", str(unloaded / "saved"), "--record-budget", "0", *ports]) == 2
+    assert "live.record-budget" in capsys.readouterr().err

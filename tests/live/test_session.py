@@ -526,3 +526,53 @@ def test_an_open_that_is_refused_leaves_no_live_input_installed(tmp_path, monkey
     opened = held.live(pace=None)
     assert set(callback.live) == {"offset"}
     opened.stop()
+
+
+def recorded_samples(folder) -> int:
+    """The time samples of a run folder's recording layer: one a sample the session took."""
+    from pxr import Sdf
+
+    from mime.viz import RECORDING_FILE
+
+    return len(Sdf.Layer.FindOrOpen(str(folder / RECORDING_FILE)).ListAllTimeSamples())
+
+
+def test_a_recording_stops_at_its_budget_keeps_its_samples_and_a_new_stretch_is_refused(tmp_path, monkeypatch):
+    """(His item 106: a bounded ``record``.) A recording held every chunk's sample in memory until the session stopped,
+    with no bound. With a budget of three samples: turned on (the state as it stands, one sample) and stepped five
+    chunks, it holds three and stops by itself, the status saying so; a ``record`` that would start another stretch is
+    refused by its code (``live.record-budget``) and ``off`` is taken; the recording layer holds the three; and a replay
+    of the log, whose header carries the budget, writes the same layer. A budget that is not a whole number above zero
+    is refused. The control: with the count of what it holds planted at nothing, the budget never trips and the layer
+    holds all six samples, which the same count sees."""
+    from mime.live._session import RECORD_BYTES
+
+    folder = saved(tmp_path)
+    held = Experiment.load(folder).build()
+    for bad in (0, -1, 2.5, True):
+        with pytest.raises(ArgumentRefused, match="live.record-budget"):
+            held.live(pace=None, record_budget=bad)
+    default = held.live(pace=None)
+    assert 100_000 < default.record_budget == default.hello()["record_budget"] < RECORD_BYTES // 852
+    default.stop()
+    live = held.live(pace=None, out=tmp_path / "live", record_budget=3)
+    assert live.hello()["record_budget"] == 3
+    live.record(True)
+    live.step(5)
+    status = live.status()
+    assert status["recording"] is False and status["recorded"] == 3
+    again = live.command({"command": "record", "on": True})
+    assert not again["ok"] and [error["code"] for error in again["errors"]] == ["live.record-budget"]
+    assert live.command({"command": "record", "on": False})["ok"]
+    written = live.stop()
+    assert recorded_samples(written) == 3 and json.loads((written / "run.json").read_text())["live"]["recorded"] == 3
+    assert json.loads((written / COMMAND_LOG).read_text().splitlines()[0])["record_budget"] == 3
+    replay(Experiment.load(folder).build(), written / COMMAND_LOG, tmp_path / "again")
+    assert files_of(tmp_path / "again")["recording.usdc"] == files_of(written)["recording.usdc"]
+    from mime.live import LiveSession
+
+    monkeypatch.setattr(LiveSession, "_samples", lambda self: 0)
+    planted = held.live(pace=None, out=tmp_path / "planted", record_budget=3)
+    planted.record(True)
+    planted.step(5)
+    assert recorded_samples(planted.stop()) == 6
