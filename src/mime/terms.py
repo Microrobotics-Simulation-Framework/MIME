@@ -43,6 +43,11 @@ CONDITION_LINE_LIMIT = 160
 #: SPDX's word for a licence nobody stated: accepted alone as a licence, and read as unknown.
 NO_ASSERTION = "NOASSERTION"
 CUSTOM_PREFIX = "LicenseRef-"
+#: What ``mime scaffold --yes`` writes where a licence or a namespace is wanted and neither ``--set`` nor the person's
+#: defaults gave one: a marker, never a choice (a licence is the person's, and a real-looking namespace is a name in
+#: the registry). Every check that reads a licence, a block's id or a plugin's namespace refuses it, naming this.
+PLACEHOLDER_LICENCE = "LicenseRef-CHOOSE-A-LICENCE"
+PLACEHOLDER_NAMESPACE = "choose_a_namespace"
 #: A custom licence's id after its prefix, as SPDX's ``idstring`` allows it: letters, digits, ``.`` and ``-``.
 _CUSTOM_ID = re.compile(r"LicenseRef-[A-Za-z0-9.\-]+")
 _TOKEN = re.compile(r"\(|\)|[^\s()]+")
@@ -173,6 +178,9 @@ def licence_problem(text: object, *, unlisted: bool = False) -> str | None:
         return "a licence is an SPDX licence expression, such as CC-BY-4.0 or MIT OR Apache-2.0"
     if text == NO_ASSERTION:
         return None
+    if text == PLACEHOLDER_LICENCE:
+        return (f"{text} is the placeholder `mime scaffold --yes` writes where it was given no licence: choose yours (an "
+                f"SPDX licence expression, such as CC-BY-4.0 or MIT OR Apache-2.0) and write it in its place")
     if text != "".join(each for each in text if each.isprintable()):
         return "the licence has a control or format character"
     held = canonical(text)
@@ -500,7 +508,7 @@ def freest(verdicts: Sequence[Verdict]) -> Verdict:
     return min(verdicts, key=_rank)
 
 
-__all__ = ["CONDITIONAL", "CONDITION_LINE_LIMIT", "CUSTOM_PREFIX", "CUSTOM_STATUSES", "DERIVED_BY",
+__all__ = ["PLACEHOLDER_LICENCE", "PLACEHOLDER_NAMESPACE", "CONDITIONAL", "CONDITION_LINE_LIMIT", "CUSTOM_PREFIX", "CUSTOM_STATUSES", "DERIVED_BY",
            "DIFFERING_CONDITIONS_BY", "EVIDENCE_KINDS", "NON_COMMERCIAL", "NOTICE_TEXT_REQUIRED", "NO_ASSERTION", "NO_DERIVATIVES", "OPEN",
            "ROLES", "SHARE_ALIKE", "CustomLicence", "Evidence", "EvidenceKind", "LicenceGiven", "Permission", "Role",
            "Scope", "Status", "Terms", "Tier", "Verdict", "canonical", "derived_verdict", "expression_of", "freest",

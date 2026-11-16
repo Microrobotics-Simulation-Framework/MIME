@@ -1863,8 +1863,10 @@ def build_parser() -> _guide.MimeParser:
                                                                          "mime.toml to the saved or study folder at path")
     scaffolding.add_argument("path", type=Path, help="the new folder (for a bundle or a study, the existing folder)")
     scaffolding.add_argument("--yes", "-y", action="store_true",
-                             help="ask nothing: each value from --set, then your defaults, then scaffold's own (it accepts no "
-                                  "licence and declares no permission, which scaffold never asks)")
+                             help="ask nothing: each value from --set, then your defaults, then scaffold's own; where none gives a "
+                                  "licence or a namespace it writes a marked placeholder (LicenseRef-CHOOSE-A-LICENCE, "
+                                  "choose_a_namespace) that `mime check` refuses until you replace it: it never chooses a "
+                                  "licence or a name for you, and declares no permission")
     scaffolding.add_argument("--set", dest="sets", metavar="KEY=VALUE", action="append", default=[],
                              help="a value, by its key in mime.toml (block.id, record.title, plugin.namespace, ...); repeat "
                                   "it, an unknown key names the known ones")

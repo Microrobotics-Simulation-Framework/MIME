@@ -224,13 +224,19 @@ def made(kind: str, root: Path, name: str | None = None) -> Path:
     return root / (name or ("scafx-probes" if kind == "plugin" else f"new_{kind}"))
 
 
+#: What a person gives where scaffold chooses nothing for them (a licence, a namespace): ``--yes`` writes a marker that
+#: ``mime check`` refuses where none is given (tests/cli/test_bundle6b.py), so the control gives its own.
+CHOSEN = {"plugin": [f"plugin.namespace={NAMESPACE}"], "experiment": ["experiment.licence=CC-BY-4.0"],
+          "block": ["block.id=scafx.probe", "block.licence=CC-BY-4.0"]}
+
+
 def failures_of(kind: str, root: Path, name: str | None = None, sets: list[str] | None = None, lanes: bool = True) -> list[str]:
     """Scaffold ``kind`` with ``--yes`` at a path in ``root`` (``name`` its folder, ``sets`` its ``--set`` words: for a plugin
     the namespace ``scafx``) and run its check: every failure, empty when it passes. ``lanes`` false stops a plugin's check
     at its registry listing."""
     path = made(kind, root, name)
     try:
-        sets = sets if sets is not None else [f"plugin.namespace={NAMESPACE}"] if kind == "plugin" else []
+        sets = sets if sets is not None else CHOSEN.get(kind, [])
         scaffold.scaffold(kind, path, yes=True, sets=sets, say=lambda line: None)
         if kind == "experiment":
             return verified(path / "saved")
@@ -399,7 +405,7 @@ def planted(kind: str) -> Callable[[pytest.MonkeyPatch], None]:
             key = "\nlicence = " if kind == "bundle" else "\ntitle = "
             patch.setattr(_draft, "manifest_text", lambda *a, **k: original(*a, **k).replace(key, key.replace("e", "x", 1)))
             return
-        name, old, new = {"experiment": ("experiment.py.txt", "experiment.licence(", "experiment.licnce("),
+        name, old, new = {"experiment": ("experiment.py.txt", "experiment.add_body(", "experiment.add_bdy("),
                           "block": ("mime.toml.txt", "\nlicence = ", "\nlicnce = "),
                           "plugin": ("pyproject.toml.txt", '"mime.entries"', '"mime.entrys"')}[kind]
         real = _templates.template

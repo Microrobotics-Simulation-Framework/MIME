@@ -38,6 +38,7 @@ from mime.terms import (
     CUSTOM_STATUSES,
     CustomLicence,
     Evidence,
+    PLACEHOLDER_NAMESPACE,
     Permission,
     Scope,
     Verdict,
@@ -79,6 +80,9 @@ LINES = {"id": 'id = "<namespace>.<name>"', "version": 'version = "0.1.0"', "lic
 def id_problem(text: str) -> str | None:
     """Why ``text`` is not a block's id, ``<namespace>.<name>``, or ``None``."""
     if _ID.fullmatch(text):
+        if text.partition(".")[0] == PLACEHOLDER_NAMESPACE:
+            return (f"{text}'s namespace is the placeholder `mime scaffold --yes` writes where it was given none: choose "
+                    f"yours, the word before the dot, and write it in its place")
         return None
     return (f"{plain(repr(text))} is not <namespace>.<name> (lower-case letters, digits and '_', each starting with a "
             f"letter)")

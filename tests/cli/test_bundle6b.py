@@ -210,3 +210,61 @@ def test_visuals_list_names_the_shipped_set_with_nothing_installed_and_fetch_kno
     from mime.scene import visual_sets
 
     assert "ar4_mk5" not in visual_sets(), "a description still finds its meshes' records beside it, never in MIME's data"
+
+
+# -- (w) mime modal --gpu from an experiment saved without the highest matmul precision -------------------------------
+
+
+@pytest.mark.parametrize("gpu, article", [("A100-40GB", "an"), ("H100", "an"), ("L4", "an"), ("T4", "a")])
+def test_the_gpu_precision_refusal_has_its_grammar_and_says_how_to_save_for_a_gpu(gpu, article):
+    from mime.env._check import gpu_precision_refusals
+
+    (refusal,) = gpu_precision_refusals(None, gpu)
+    assert f"a run on {article} {gpu} computes" in refusal.message
+    assert "None (a CPU run records none)" in refusal.message
+    assert "JAX_DEFAULT_MATMUL_PRECISION=highest python <script>.py" in refusal.action
+    assert gpu_precision_refusals("highest", gpu) == [] and gpu_precision_refusals(None, None) == []
+
+
+# -- (x) scaffold --yes chooses no licence and no namespace --------------------------------------------------------
+
+
+def test_yes_writes_marked_placeholders_where_it_was_given_no_licence_or_namespace_and_check_refuses_them(tmp_path, capsys):
+    """``--yes`` took CC-BY-4.0 and the namespace ``mylab`` from "scaffold's own" while its help said it accepts no
+    licence: a block now carries a marker in each place, and ``mime check`` says what to choose."""
+    block = tmp_path / "lb"
+    assert mime_main(["scaffold", "block", str(block), "--yes"]) == 0
+    text = (block / "mime.toml").read_text(encoding="utf-8")
+    assert "LicenseRef-CHOOSE-A-LICENCE" in text and "choose_a_namespace.lb" in text
+    assert "CC-BY-4.0" not in text and "mylab" not in text
+    capsys.readouterr()
+    assert mime_main(["check", str(block)]) == 1
+    said = capsys.readouterr()
+    assert "placeholder" in said.out + said.err and "choose" in said.out + said.err
+
+
+def test_control_the_same_scaffold_with_a_licence_and_an_id_given_passes_its_check(tmp_path, capsys):
+    block = tmp_path / "lb"
+    assert mime_main(["scaffold", "block", str(block), "--yes", "--set", "block.id=labx.lb", "--set",
+                      "block.licence=CC-BY-4.0"]) == 0
+    capsys.readouterr()
+    assert mime_main(["check", str(block)]) == 0
+
+
+def test_an_experiment_scaffolded_with_yes_declares_no_licence_and_says_where_to_choose_one(tmp_path):
+    folder = tmp_path / "ex"
+    assert mime_main(["scaffold", "experiment", str(folder), "--yes"]) == 0
+    text = (folder / "experiment.py").read_text(encoding="utf-8")
+    assert "# experiment.licence(" in text and "CC-BY-4.0\")" not in text.replace("such as CC-BY-4.0 or MIT", "")
+    assert not any(line.strip().startswith("experiment.licence(") for line in text.splitlines())
+
+
+def test_the_placeholders_are_refused_wherever_a_licence_or_a_namespace_is_read():
+    from mime.blocks._definition import id_problem
+    from mime.push._defaults import namespace_problem
+    from mime.terms import PLACEHOLDER_LICENCE, PLACEHOLDER_NAMESPACE, licence_problem
+
+    assert "placeholder" in (licence_problem(PLACEHOLDER_LICENCE) or "")
+    assert "placeholder" in (namespace_problem(PLACEHOLDER_NAMESPACE) or "")
+    assert "placeholder" in (id_problem(f"{PLACEHOLDER_NAMESPACE}.probe") or "")
+    assert licence_problem("LicenseRef-Mine") is None and id_problem("labx.probe") is None

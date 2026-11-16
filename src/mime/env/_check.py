@@ -497,11 +497,14 @@ def gpu_precision_refusals(recorded: str | None, gpu: str | None) -> list[Refusa
     matmuls silently corrupt low-magnitude float32 physics, and a run in the lock's precision would carry that."""
     if gpu is None or recorded == HIGHEST:
         return []
+    held = f"{recorded!r} (a CPU run records none)" if recorded is None else repr(recorded)
+    article = "an" if gpu[:1].upper() in "AEFHILMNORSX" else "a"  # by how its first letter is said: an A100, an H100, a T4
     return [Refusal("env.precision", RefusalClass.USER,
-                    f"the experiment's lock records the matmul precision {recorded!r}, and a run on a {gpu} computes "
+                    f"the experiment's lock records the matmul precision {held}, and a run on {article} {gpu} computes "
                     f"matmuls at the highest",
-                    f"save the experiment again with JAX_DEFAULT_MATMUL_PRECISION={HIGHEST}, which the lock then "
-                    f"records")]
+                    f"save the experiment again with the matmul precision at the highest, which the lock then records: run "
+                    f"the script that makes it as `JAX_DEFAULT_MATMUL_PRECISION={HIGHEST} python <script>.py` (it ends "
+                    f"in built.save(folder)), on any machine, then `mime modal <folder> --gpu {gpu}`")]
 
 
 def lab_pins_of(lab: str | os.PathLike[str]) -> list[Pin]:

@@ -34,7 +34,7 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._sharing import Reader, funding_of, keyword_list, people, uploader_of
 from mime.push._toml import key_lines, value_text
 from mime.saved._versions import newer_form_refusal
-from mime.terms import licence_problem
+from mime.terms import PLACEHOLDER_NAMESPACE, licence_problem
 
 type Say = Callable[[str], None]
 
@@ -86,6 +86,9 @@ def _filled(value: object) -> bool:
 
 def namespace_problem(text: str) -> str | None:
     """Why ``text`` is not a namespace (one lower-case word, as the registry's, and not ``mime``), or ``None``."""
+    if text == PLACEHOLDER_NAMESPACE:
+        return (f"{text} is the placeholder `mime scaffold --yes` writes where it was given no namespace: choose yours, "
+                f"one lower-case word")
     if _NAMESPACE.fullmatch(text) and text != "mime":
         return None
     return f"{plain(text)} is not a namespace: one lower-case word (letters, digits, _), starting with a letter, not mime"
