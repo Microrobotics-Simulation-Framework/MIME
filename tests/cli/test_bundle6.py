@@ -132,9 +132,8 @@ def test_show_json_of_a_run_folder_is_its_manifest_and_the_tree_flags_are_refuse
 
     assert mime_main(["show", str(ran), "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["format"] == "mime-run-outputs"
-    with pytest.raises(SystemExit) as stopped:
-        mime_main(["show", str(ran), "--graph"])
-    assert stopped.value.code == 2 and "a run folder shows its outputs" in capsys.readouterr().err
+    assert mime_main(["show", str(ran), "--graph"]) == 2
+    assert "a run folder shows its outputs" in capsys.readouterr().err
 
 
 # -- (f) a study's output folder is looked at before the base loads and the plan is made ------------------------------
@@ -214,17 +213,16 @@ def test_mime_modal_into_a_folder_that_holds_only_other_files_writes_without_for
 # -- (i) an argument no command took shows that command's usage ---------------------------------------------------------
 
 
-@pytest.mark.parametrize("words, usage", [(["run", "folder", "--out", "o", "--bogus"], "usage: mime run "),
-                                          (["--plain", "study", "run", "spec", "--out", "o", "--bogus"],
-                                           "usage: mime study run "),
-                                          (["verify", "folder", "--bogus"], "usage: mime verify "),
-                                          (["--bogus"], "usage: mime [-h]")])
-def test_an_unrecognised_flag_shows_the_usage_of_its_command(capsys, words, usage):
-    with pytest.raises(SystemExit) as stopped:
-        mime_main(words)
-    assert stopped.value.code == 2
+@pytest.mark.parametrize("words, help_of", [(["run", "folder", "--out", "o", "--bogus"], "`mime run --help`"),
+                                            (["--plain", "study", "run", "spec", "--out", "o", "--bogus"],
+                                             "`mime study run --help`"),
+                                            (["verify", "folder", "--bogus"], "`mime verify --help`"),
+                                            (["--bogus"], "`mime --help`")])
+def test_an_unrecognised_flag_names_the_help_of_its_command(capsys, words, help_of):
+    """Bundle 6b made the mistake a coded refusal (``cli.usage``): its ``do:`` names the command's own help, not the top one's."""
+    assert mime_main(words) == 2
     err = capsys.readouterr().err
-    assert err.startswith(usage) and "unrecognized arguments: --bogus" in err
+    assert help_of in err and "unrecognized arguments: --bogus" in err
 
 
 # -- (k) an address that is no tcp:// endpoint has a code that says so ----------------------------------------------------
