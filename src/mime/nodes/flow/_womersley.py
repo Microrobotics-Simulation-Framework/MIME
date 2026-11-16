@@ -31,11 +31,10 @@ import numpy as np
 from jax import Array
 from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta, Reference
-from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
-    run_dtype
+from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, \
+    node_input, run_dtype
 from mime.nodes.flow._waveform import WAVEFORM_SIZE
 
 #: ``jax.lax``, whose hints name a device type from jaxlib's compiled core, which ships no stubs.

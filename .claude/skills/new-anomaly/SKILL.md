@@ -75,9 +75,10 @@ Append to the `anomalies:` list:
 
 ---
 
-## Step 5 — Update CHANGELOG.md
+## Step 5 — Write the changelog fragment
 
-Under `## [Unreleased]` → `### Known Anomalies`:
+Do not edit `CHANGELOG.md`; write `changes.d/<slug>.anomaly.md`, which a later fold puts under `## [Unreleased]` →
+`### Known Anomalies`:
 
 ```markdown
 - `MIME-ANO-XXX`: one-line summary
@@ -98,7 +99,7 @@ Must exit 0.
 ## Updating an existing anomaly (when a fix lands)
 
 1. Change `resolution_status` to `"fixed"`
-2. Add CHANGELOG entry under `### Fixed`
+2. Write a changelog fragment `changes.d/<slug>.fixed.md` (it folds into `### Fixed`)
 3. Run `python scripts/check_anomalies.py`
 
 **Never delete an anomaly entry, even after it is fixed.**

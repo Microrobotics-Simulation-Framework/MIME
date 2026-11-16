@@ -9,12 +9,12 @@ from jax import Array
 from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta
 from maddening.core.node import BoundaryInputSpec
-from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import (
     MimeNode,
     NodeFields,
+    ParamSpec,
     Symbol,
     SymbolKind,
     Units,

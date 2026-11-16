@@ -96,12 +96,12 @@ def test_mime_run_records_what_record_names_one_every_every_and_writes_the_manif
 
     full_toy().save(tmp_path / "saved")
     out = tmp_path / "run"
-    assert mime_main(["run", str(tmp_path / "saved"), "--duration", "0.24", "--out", str(out),
-                      "--record", "toy.recorder:probe.last", "--every", "0.04"]) == 0
+    assert mime_main(["run", str(tmp_path / "saved"), "--duration", "0.24s", "--out", str(out),
+                      "--record", "toy.recorder:probe.last", "--every", "0.04s"]) == 0
     result = RunResult.read(out)
     assert result.recorded == ("toy.recorder:probe.last",) and result.every == 2
     assert result["toy.recorder:probe"].last.time.to(s) == pytest.approx([0.04, 0.08, 0.12, 0.16, 0.2, 0.24])
     assert json.loads((out / RUN_MANIFEST).read_text())["recorded"] == ["toy.recorder:probe.last"]
-    assert mime_main(["run", str(tmp_path / "saved"), "--duration", "0.24", "--out", str(tmp_path / "bad"),
+    assert mime_main(["run", str(tmp_path / "saved"), "--duration", "0.24s", "--out", str(tmp_path / "bad"),
                       "--record", "toy.recorder:probe.samples"]) == 2
     assert not (tmp_path / "bad").exists()

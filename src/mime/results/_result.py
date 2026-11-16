@@ -777,9 +777,10 @@ class RunResult:
                 "again with this one: `mime run <folder> ...`")])
         try:
             return cls._shaped(manifest, npz)
-        except MimeError:
-            raise
-        except (KeyError, TypeError, ValueError, AttributeError, IndexError, OverflowError, RecursionError) as error:
+        except (MimeError, KeyError, TypeError, ValueError, AttributeError, IndexError, OverflowError,
+                RecursionError) as error:
+            if isinstance(error, MimeError) and error.kept_when_wrapped:
+                raise
             raise ArgumentRefused([Refusal(
                 "result.format", RefusalClass.USER,
                 f"the manifest is not shaped as {MANIFEST_FORMAT!r} version {manifest.get('version')!r} is written, or "

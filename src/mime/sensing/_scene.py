@@ -188,6 +188,8 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
             try:
                 route = route_of(part.kind)
             except ArgumentRefused as error:
+                if not error.kept_when_wrapped:  # a unit bug in the route's code is not a kind the camera cannot trace
+                    raise
                 refuse(subject_name, part.kind, error)
                 continue
             settings = _in_body(part.settings, part.rotation, part.centre) if route == ROUTES[0] else \
@@ -208,6 +210,8 @@ def subjects_of(roster: Roster, hide: Sequence[str], absorbers: Mapping[str, flo
         try:
             route = route_of(structure.kind)
         except ArgumentRefused as error:
+            if not error.kept_when_wrapped:  # nor is it a drawn mesh's kind with no route: the tube would build unseen
+                raise
             if structure.drawn is None:
                 refuse(name, structure.kind, error)
                 continue

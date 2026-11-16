@@ -40,7 +40,7 @@ import jax
 import model_rounding
 import numpy as np
 import pytest
-from allocation_draws import Problem, bvls, region, tie_window, verdict
+from allocation_draws import Problem, bvls, region, two_sided_window, verdict
 from believed_cases import LIMIT, OWNER, believed_sphere
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -407,7 +407,7 @@ def test_the_flake_ci_found_is_the_laws_documented_tie_not_a_rounding_error():
     reference = bvls(problem, "float32")
     nearby = np.asarray([0.64944434, -17.13034248, 25.0])
     a, b = problem.scaled("float32")
-    window = tie_window(problem, nearby, "float32") + tie_window(problem, reference, "float32")
+    window = two_sided_window(problem, reference, nearby, "float32")
     gap = float(np.linalg.norm(a @ nearby - b) - np.linalg.norm(a @ reference - b))
     assert 0.0 <= gap <= window < 1.0 and np.max(np.abs(nearby - reference)) > 1.0
     assert verdict(problem, nearby, "float32") == []

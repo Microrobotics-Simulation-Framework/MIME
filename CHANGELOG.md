@@ -9,18 +9,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Crease measures on the camera's sampled route** (`mime.sensing`; `Geometry.crease_measure`, `CreaseMeasure` with its
-  `faces`; `Cylinder.crease_measure`; `mime.testing.crease_measure_problems`; dev2, camera PR 5b-i). A creased kind (a
-  solid whose body is two or more regions' intersection) takes the sampled route with its crease measure: its caps exact,
-  each branch of the march read with its other regions at its least, each corner cell the exact share of their composition
-  (`composed_covered`). `camera.crease-unmeasured` now refuses only a creased kind without the measure (the box; the
-  screw until its measure comes). The cylinder declares its measure; its default stays the closed form, and
-  `route="sampled"` images it by the march (against the exact image within lines fixed before the gate's draws,
-  `scripts/camera_route2/crease_line.py`: the scan's largest error at its 360 poses, by an exact numpy re-implementation
-  of the scheme, times 1.25, a margin declared, not derived, which the drawn views test). A face narrower than two
-  sub-pixels raises `thin_cap`. New switches: `camera.composed.{end,low,high,empty}`, `camera.sampled.body`,
-  `cylinder.cap_side`. Known gap, recorded and not changed: camera PR 5a's `union_covered` reads 0.125 more than the
-  exact share for a line repeated along a cell's side (a case of measure zero; `composed_covered` is exact there).
+- **The unit system, finished** (usability bundle 2). One page, `docs/units.md`, holds it.
+  - **The unit label grammar.** `parse_unit` reads every label MIME writes: the SI base symbols and the named units `N Pa J W T
+    Hz rad`, products by spaces, one quotient by `/` with a single factor after it (more than one term in a denominator in
+    parentheses: `m/(s Pa)` is read, `J/mol K` is refused, so a label is never read two ways), integer powers by `^`,
+    parentheses, and `1`; the factors of a product are separated by whitespace (`m1` is refused, a tab is as good as a space).
+    `Hz` stays `FREQUENCY` and `rad/s` `ANGULAR_VELOCITY`, equal as dimensions and different in what they count; `rad` alone
+    is dimensionless; a label that counts both is refused, and so is a rate per second that counts its angle other than once
+    (`1/(rad s)`, `rad^2/s`, `s^-1/rad`, `1/(Hz s^2)`: each was read as `rad/s` or `Hz`). `unit_symbol` writes what it always wrote.
+    `parse_label` reads a composite label's `;`-separated parts. The vocabulary's own reader (`_dimension`) is gone: one
+    grammar. A label MIME cannot read is the new refusal `units.label`, naming the character it stopped at and the nearest
+    name. A test collects every label MIME writes (the registry's node classes' symbol tables and typed states, the
+    vocabulary, every `units=`/`Units(...)` literal of the source) and parses each, printing the counts.
+  - **G1: a label is checked where it is defined.** `Interface(units=...)`, `Units(...)`, `node_input(...)`, a symbol-table
+    row (`Symbol(...)`, unless it says its units are prose with `prose_units=True`) and `mime.core.ParamSpec(...)`
+    (MADDENING's `ParamSpec` with its units read, which every node of MIME declares its parameters with) read their label when it is made; a typo, or a value that is not text
+    (`Units(3)`), is `units.label` and not a label nothing parses. A module that postpones its annotations makes `Units(...)`
+    when the typed state's hints are read, which the typed state now refuses on a bad one instead of reading the state as
+    untyped. A registration's interface (it carries no values) may still have empty units.
+  - **G2: labels from dimension markers.** `Units(Length)`, `Units(Length, DIMENSIONLESS)` (a pose's), and
+    `mime.units.unit_label(...)` for a place that holds a string (an interface's `units=`), stored as the canonical string,
+    so saved forms are unchanged.
+  - **F7a: a `UnitError` is a `MimeError` and a `ValueError`.** `speed.to(mm)` is refused with the code `call.units` and a
+    "do:" line. Its `str` is its plain message, so the sites that quote it read what they always did; the refusal's lines are
+    its notes, made when it is raised, which Python prints under the message; the notes are the exception's own, so `add_note`
+    and Hypothesis's failing-example note survive (they were lost when the notes were a property); `except ValueError`,
+    `except UnitError` and `except MimeError` catch it. **Where it is raised decides the
+    refusal it is:** raised in code MIME is checking or reading (an entry's `setting_problems`, `plan`, `build` or stage code,
+    a controller's `law()`, a results manifest) it takes that code's own path, as a `ValueError` from there did before
+    (`entry.defect`, `result.format`), never the user's `call.units`; raised from a script's own expression it keeps
+    `call.units`. To make this
+    possible without an import cycle, the refusal classes moved to `mime/_refusals.py` (`mime.build._refusals` re-exports
+    them, so every import of them keeps working).
+  - **F7c: `**`, `abs` and `sum` on quantities.** An integer power raises the value and the dimension; a fractional power is
+    refused with what to write instead; `abs` keeps the dimension (a vector quantity has no one absolute value and is
+    refused); `sum` starts at the int `0`, which `0 + quantity` accepts (a Python `int` equal to 0 and nothing else, because `sum`
+    starts there: `0.0`, `False`, NumPy zeros and an array of zeros are refused, and an array plus a quantity is no array
+    of quantities), and any other bare number is still refused on both sides of a `+`. A quantity times or over an array is refused by what an array quantity is. `==` with a bare number stays
+    `False` and is documented (F7b is dropped).
+  - **F17: seven units.** `kPa`, `MPa`, `mmHg` (the conventional 133.322387415 Pa), `mL`, `cP`, `rpm` (counts turns, apart from
+    `rad/s` as `Hz` is) and `deg_per_s` (counts radians), each with its conversion held by a test.
+  - **F13: `--override` reads the unit names `mime.units` exports** (`2mPa_s`, `1.5mm_per_s`, `3N_m`, `3rpm`) beside the symbols
+    it read (`2 mPa s`, `1.5mm/s`), on the same parser a study's spec file uses; its refusal shows each form, and a test holds
+    each to the parser. A bare number is still a dimensionless value, which a setting that needs a unit refuses. The unit's
+    spaces are kept (they were removed before the lookup, so `3 m s` read as 3 ms, `3 m m` as 3 mm and `2 m T` as 2 mT):
+    `3 m s` is a product, judged against the setting's dimension. **A value carries the whole of its unit, what a rate counts
+    included**: `10 rad / s`, `10 rad s^-1`, `10 s^-1 rad` and `10 rad/(s)` count radians, and are refused where a setting takes
+    Hz (`setting.units`, with both conversions) and never read as 10 Hz (a fix round's first reader dropped the angle and ran
+    them as 10 Hz); a slash with spaces about it reads as before (`mm / s`).
+  - **The re-check's minors.** A `UnitError` raised in `mime.sensing`'s route lookup is the entry's defect (`entry.defect`), not
+    the camera's refusal of a kind or a drawn tube built unseen. `mime.core.ParamSpec` is MADDENING's `ParamSpec` with its units
+    label read where the spec is made, and every node of MIME declares its parameters with it (it replaces the one-off
+    `param_spec` helper that only one node used). A NumPy function on a quantity (`np.sqrt(q)`) is a coded refusal that says
+    what to write, not NumPy's own `TypeError`; the operators it hands to the quantity are as they were, and so are
+    `np.negative`, `np.positive`, `np.absolute` and `np.square`, which keep the unit (and what a rate counts).
+  - **The second re-check's minors.** A study's spec writes a rate of radians with its angle (`0.0, 0.0, 1.0 rad/s`, not `Hz`),
+    so a study re-read from its spec counts the rate it was written with and no longer refuses every point (`state.units`);
+    the study folder's own writer (`study.json`) is as it was, so no saved form or content hash changes. A label typo in a
+    node's `param_specs()` is read where the specs are (a fit or gradient study, the docs pages, the trainable helper), not
+    at import or at build, and is the node's defect (`entry.defect`, internal, naming the node and the label), not the
+    user's `units.label`; MIME's own literals are also covered by CI's source scan.
+  - **CI's first run of the second re-check's fixes.** `np.negative`, `np.positive`, `np.absolute` and `np.square` on a quantity are
+    the quantity's own operators again (they keep the unit and what a rate counts), as before the coded ufunc refusal.
+    `mime.core` reads a label through `mime.core._labels`, which `mime.units` hands its reader when it is imported (`mime` imports
+    `mime.units` before its other modules), so `core` imports nothing above it. A spec writes a rate that counts no angle as
+    `s^-1`, not `Hz`, which read back as turns.
+
 - **The camera's sampled route: any kind with a cheap sign function** (`mime.sensing`, route 2; `Geometry.sign_function`,
   `SignValue`, `sign_zone`; `Geometry.crease_measure`, `CreaseMeasure`; dev2, camera PR 5a). A kind whose geometry declares a
   cheap sign function is imaged without a closed form: each ray's line through its enclosing ball is sampled (32 samples by
@@ -80,6 +134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `route="sampled"` is a route. New switches: `camera.sampled.least`, `.basin`, `.second`, `.branch`, and the helix's
     `helix.end.low`, `.high`. `mime.testing.sign_function_problems` holds a kind's sign function to its regions' sign at
     drawn points and its gradient's length. The saved form gains nothing.
+
 - **A coil array on a frame of its own chain, and the exposure envelope** (apparatus lane, AP3b, dev2).
   - **`CoilArray(mount="<segment>.<frame>", at=..., orientation=...)`** (the calibrated multipole 0.1.0's new setting):
     the array placed by `at` and `orientation` in a frame of its own apparatus's chain, which carries it (a mobile
@@ -1544,6 +1599,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`mime run --duration 3` is refused: a bare number is no duration** (`--duration`, `--every`, `--stage-every`, and `mime serve`'s
+  `--idle-timeout` and `--max-wall`; dev2, usability bundle 1, F4). The command line read a bare number as seconds, so `--duration 3`
+  ran 3 s, 30,000 steps of a 0.1 ms step and 1000 times what `3ms` runs, with no word, where the Python API refuses every bare
+  number. **This changes the command line** (0.3.0.dev1 is a pre-release: the cheap moment): write the unit, `10s`, `500ms`,
+  `250us`, `2min` or `1h`. The refusal (`run.duration`, `run.every`, `run.stage-every`, `live.timeout`) says the number has no
+  unit and writes the same number with two units; `--duration 3 s` (the unit apart) says to write `3s`, or `"3 s"` in quotes, and every command line a refusal prints (`run.non-finite`'s rerun too) is written with its unit and read back by a test. `mime serve --chunk` and the Modal script's `--duration <seconds>` are their own
+  options and unchanged (the script passes the unit on to `mime run`).
+- **A run is written only into a new folder, an empty one or MIME's own run folder, else refused before it starts** (`mime run --out`,
+  `BuiltExperiment.run_to`; `run.out-not-empty`; usability bundle 1, F2). A run replaced the files of its own names (`outputs.json`,
+  `run.json`, `report.json`, `topology.json`, `experiment/`'s saved form) in any folder, saying nothing: a user's folder with an
+  `outputs.json` of its own lost it. A MIME run folder is judged by what it holds: `run.json` that reads as a run's record, every other entry a file of a name a run writes and reading as one (an `outputs.npz` that is a zip, an `outputs.json` of the manifest's format), and no symbolic link inside; a stranger's `run.json`, a user's `outputs.npz` beside a MIME `run.json` and a link in the folder each make it someone else's. A file or a link to nowhere as `--out` is refused before the run (not `error.uncoded` after it), `--force` or not. The folder is judged again where writing begins, after the run, and refused if a chunk hook (or anything else) changed it meanwhile; the moment between that second look and the first file written is the one window left. `Study.run_to` and `mime study run --out` refuse a file or a link to nowhere (`study.folder-not-empty`) and a folder inside the saved experiment they read (`run.out-over-source`) as well; a folder holding anything but a study was already refused by them.
+  **`--force`** (`force=True`) runs into any other folder: a warning at the start says what it holds, **Ctrl+C before writing starts
+  cancels the run** (exit 130, nothing written, the folder as it was), and an amber notice says when writing begins; a file that is not
+  of a run's names is kept byte for byte. `run_to` takes `before_writing=`, called once after the run and before the first file, which
+  may raise to cancel. `mime serve --out` and `Experiment.save` are not changed.
+- **A mass, a density or a volume that cannot be what it is declared is refused** (`value.not-positive`; usability bundle 1, F1). A
+  body's mass is above zero where a dynamics divides by it (`rigid_inertial`'s step: a body no dynamics reads may be massless, and
+  the rule is read from `Dynamics.values`), below zero never; a part's density, an apparatus part's mass and density and a medium's
+  density are above zero; a buoyant volume is zero or more. A negative mass ran at 4.13 m/s, a negative medium density flipped
+  buoyancy, a part density of zero was an uncoded `ZeroDivisionError`, and a negative part density was refused as an indefinite
+  inertia tensor whose line sent the user to declare an inertia: each is now this refusal naming the value. `AboveZero` gained `zero`
+  (`ZeroIs`) and `not_above_zero` takes the dynamics that divides.
+- **A study with no member is refused** (`study.axis-values`, `study.no-member`; usability bundle 1, F3). An axis with no values in `grid` or
+  `along`, and a study that `drop_refused=True` leaves with no point (a refusal that applies to every point is a mistake in the
+  base, not a bad point), are refused by `Study.run`, `run_to` and `gradient`; a result of zero members reads "0 members", not "no
+  flag raised in any member".
 - **`observation.field-read` is lifted where a law reads the field at the same point** (apparatus lane, AP3b): an
   observation's read of a field that varies in space now shares the slot a law bound to the body already reads at the
   same point (the same pose read and the same point fixed in it), as a uniform field's read already shared a law's, so
@@ -1929,6 +2010,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **Two commands writing one program into the user's XLA cache no longer leave an entry that warns on every later run**
+  (`mime run`, `mime serve`, `mime study run`). JAX writes an entry in place with no lock unless it is given a cache size
+  limit, so two processes that compile one program together could leave a complete frame plus the longer writer's tail;
+  JAX never rewrites it, so each run that read it printed `UserWarning: Error reading persistent compilation cache entry
+  ... Unknown frame descriptor` (Python 3.14, zstd) and compiled again. `user_xla_cache` now gives JAX a 64 MB limit on the directory in use
+  (`jax_compilation_cache_max_size`; about 3,300 entries, a write takes a median 62 ms when full), so JAX takes a file lock around each read and write of an entry and evicts the
+  least recently used when it adds one; this needs the **`filelock` package, a new dependency** (`filelock>=3.12`, locked at
+  4.2.10). MIME's own pruning at the start of a command now keeps only what JAX's limit cannot reach, the directories of
+  other jaxlib releases, platforms and CPUs, to what is left of 2 GB (the cache holds at most 2 GB in all). A `.lockfile`
+  the user cannot write is the existing "cannot be written" note, not a warning per program. **Measured** (two
+  children through `user_xla_cache`, 150 programs, 13 trials of 152 entries): with the limit unset 121 damaged entries in
+  13 of 13 trials on Python 3.14 and 16 in 9 of 13 on 3.12 (where JAX reads such a file without complaint); with it set,
+  none in 13 of 13 on each. The lock costs 0.3 to 1 ms per entry read: 20 ms of a 2.8 s warm `mime run` of the toy (0.7 %).
+  Also fixed: two commands starting at once shared one write-probe file, so the second one's delete failed and it ran without
+  its cache. It does not reach an entry already damaged on disk (`mime cache clear` removes the cache: `mime serve` and
+  `mime study run` now print that beside the warning on a terminal, as `mime run` did) nor a command killed mid-write. See
+  [XLA's compilation cache](docs/compilation_cache.md).
+- **One plugin that cannot register its namespace no longer takes the registry of the whole environment with it** (`mime registry`,
+  `mime.docs.load_namespaces`; `load.namespace-import`; G11). A distribution whose namespace is the first word of one of MIME's
+  entries (it registers `helix`) made `mime registry --json` exit 3 with an uncoded `ValueError` and list nothing. Now the refusal names
+  the distribution and its module, every other namespace is listed, and the command exits 2 (the user's or the environment's reason,
+  never MIME's defect). Any other failure of a plugin's import is the same refusal; `load_namespaces()` without a list to collect
+  into raises it.
+- **An entry setting named like an attribute of its class is refused at registration** (G12). A setting `gradient` replaced the entry's
+  `gradient` record and its declared switches went missing. The reserved names are read from the entry's base classes, naming the
+  setting and the attribute; a base's own settings (`rate`) stay settings with their own rule. As the registry's other
+  registration problems it is the `TypeError` "cannot register ...", with no code of its own. No MIME entry and no packaged plugin
+  is refused (a test walks the registry).
 
 - **SECURITY: a hostile folder could make MIME allocate gigabytes from an NPZ of a few kilobytes** (`mime verify`, any
   load of a saved folder, `RunResult.read`). NumPy allocates the array an entry's header names before it reads a byte of

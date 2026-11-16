@@ -10,10 +10,9 @@ from jax import Array
 from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
-from maddening.core.params import ParamSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_input, typed_view
+from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, as_run_array, jnp, node_input, typed_view
 from mime.nodes.actuation._turns import advance_phase
 
 EQUATIONS = (r"\mathbf{B} = \frac{B_{0}}{\left\| \mathbf{d} - (\mathbf{d} \cdot \mathbf{a}) \mathbf{a} \right\|} "

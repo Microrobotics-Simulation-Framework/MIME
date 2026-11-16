@@ -8,13 +8,15 @@ for the 40 GB and the 80 GB A100 alike), not by the device kind's string, which 
 own key still decides whether an entry is a hit, so a directory shared by two device kinds is never a wrong hit; whether
 the entries of one kind are hits for the other is JAX's, and was not measured.
 
-``mime run`` and ``mime serve`` keep the cache in the user's cache directory (:func:`user_xla_cache`), capped in size;
+``mime run`` and ``mime serve`` keep the cache in the user's cache directory (:func:`user_xla_cache`), capped in size and
+written under JAX's own lock (``jax_compilation_cache_max_size``, set in that function);
 ``mime env check --xla-cache`` and the Modal script name their own directory."""
 
 from __future__ import annotations
 
 import contextlib
 import importlib.metadata
+import os
 import re
 import shutil
 import sys
@@ -51,11 +53,16 @@ def xla_cache_dir(root: str | Path, *, jaxlib: str, platform: str, device_kind: 
     return Path(root) / f"jaxlib-{_segment(jaxlib)}" / _segment(platform) / _segment(device)
 
 
+def _this_process_dir(root: str | Path) -> Path:
+    """The directory under ``root`` this process's jaxlib, platform and CPU or GPU use (:func:`xla_cache_dir`)."""
+    platform, kind = devices()[0]
+    return xla_cache_dir(root, jaxlib=importlib.metadata.version("jaxlib"), platform=platform, device_kind=kind,
+                         cpu_flags_sha256=cpu_record()["flags_sha256"], compute_capability=capability_of_jax())
+
+
 def use_xla_cache(root: str | Path) -> Path:
     """Point JAX's persistent compilation cache at this process's directory under ``root``, creating it."""
-    platform, kind = devices()[0]
-    held = xla_cache_dir(root, jaxlib=importlib.metadata.version("jaxlib"), platform=platform, device_kind=kind,
-                         cpu_flags_sha256=cpu_record()["flags_sha256"], compute_capability=capability_of_jax())
+    held = _this_process_dir(root)
     held.mkdir(parents=True, exist_ok=True)
     point_xla_cache(str(held))
     return held
@@ -70,12 +77,20 @@ def point_xla_cache(directory: str | None) -> None:
     compilation_cache.reset_cache()
 
 
-#: What the user's cache may hold, in bytes, before the oldest entries go at the start of the next command.
+#: What the user's cache may hold in all, in bytes: the directory a command uses is JAX's to keep to
+#: ``DIRECTORY_LIMIT_BYTES`` (``jax_compilation_cache_max_size``, evicting the least recently used entry when one is
+#: added), and the directories of other jaxlib releases, platforms and CPUs are MIME's to hold to the rest, oldest file
+#: first, at the start of a command.
 USER_CACHE_CAP_BYTES = 2 * 1024**3
+#: JAX's limit on the directory in use. JAX scans the directory at every write it makes to evict (about 60 ms at this size,
+#: full: measured, ``tests/env/test_parallel_cache_writes.py``), so the limit is held low: the mean entry is about 19 kB
+#: (493 entries measured on one experiment: median 3.3 kB, largest 0.83 MB), so it holds about 3,300, and the largest
+#: entry measured fits 77 times. An entry over the limit is not stored (JAX warns, ``put`` returns before it evicts).
+DIRECTORY_LIMIT_BYTES = 64 * 1024**2
 #: The thresholds the cache is written with (CI's): every program is stored, however quick to compile or small.
 _MIN_COMPILE_SECONDS, _MIN_ENTRY_BYTES = 0, -1
 _SETTINGS = ("jax_compilation_cache_dir", "jax_persistent_cache_min_compile_time_secs",
-             "jax_persistent_cache_min_entry_size_bytes")
+             "jax_persistent_cache_min_entry_size_bytes", "jax_compilation_cache_max_size")
 
 
 def user_xla_cache_root() -> Path:
@@ -97,10 +112,11 @@ def _files(root: Path) -> list[tuple[float, int, Path]]:
     return found
 
 
-def prune_to_cap(root: Path, cap: int = USER_CACHE_CAP_BYTES) -> int:
+def prune_to_cap(root: Path, cap: int = USER_CACHE_CAP_BYTES, *, keep: Path | None = None) -> int:
     """Delete the oldest files under ``root`` (by when they were written; a read does not touch an entry) until what
-    is left is at most ``cap`` bytes; the bytes deleted. A file another process deleted first costs nothing."""
-    found = sorted(_files(root))
+    is left is at most ``cap`` bytes; the bytes deleted. Files under ``keep`` are neither counted nor deleted (the
+    directory JAX is keeping to its own cap). A file another process deleted first costs nothing."""
+    found = sorted(item for item in _files(root) if keep is None or not item[2].is_relative_to(keep))
     total = sum(size for _, size, _ in found)
     freed = 0
     for _, size, path in found:
@@ -138,12 +154,18 @@ def _to_stderr(line: str) -> None:
 
 @contextlib.contextmanager
 def user_xla_cache(*, root: Path | None = None, cap: int = USER_CACHE_CAP_BYTES,
-                   say: Callable[[str], None] = _to_stderr) -> Generator[Path | None]:
+                   directory_limit: int = DIRECTORY_LIMIT_BYTES, say: Callable[[str], None] = _to_stderr) -> Generator[Path | None]:
     """XLA's persistent compilation cache in the user's cache directory for the length of the block, with the
-    thresholds CI uses, and JAX's settings as they were afterwards. The oldest entries are deleted first if the cache
-    holds more than ``cap`` bytes. Yields the directory in use, or ``None`` when nothing was changed: JAX's cache
-    directory was already set (the user's, or CI's, is not overridden), or the cache cannot be written (a read-only
-    home, a full disk), which ``say`` is told once and which costs the block only the cache."""
+    thresholds CI uses, and JAX's settings as they were afterwards. JAX is given ``directory_limit`` (at most ``cap``) as
+    its own cache size for the directory in use (``jax_compilation_cache_max_size``): with a limit set, it takes a file
+    lock on every read and write of an entry (waiting up to 10 s for a holder, then skipping that read or write with its
+    own warning) and evicts the least recently used when one is added, which is what keeps two commands that compile one
+    program at once from leaving an entry written by both in one file (without it, JAX writes in place, with no lock).
+    At the start, the directories of other jaxlib releases, platforms and CPUs, which JAX's limit does not reach, are
+    held to what ``cap`` leaves after that limit, oldest file first: the cache holds at most ``cap`` in all. Yields the
+    directory in use, or ``None`` when nothing was changed: JAX's cache directory was already set (the user's, or CI's, is
+    not overridden), or the cache cannot be written (a read-only home, a full disk, a lock file that is not the user's
+    to write), which ``say`` is told once and which costs the block only the cache."""
     config = cast(Any, jax.config)
     if config.jax_compilation_cache_dir is not None:
         yield None
@@ -151,15 +173,18 @@ def user_xla_cache(*, root: Path | None = None, cap: int = USER_CACHE_CAP_BYTES,
     held = {name: getattr(config, name) for name in _SETTINGS}
     base = user_xla_cache_root() if root is None else root
     chosen: Path | None
+    limit = min(directory_limit, cap)
     try:
         if base.exists():
-            prune_to_cap(base, cap)
+            prune_to_cap(base, cap - limit, keep=_this_process_dir(base))
         config.update("jax_persistent_cache_min_compile_time_secs", _MIN_COMPILE_SECONDS)
         config.update("jax_persistent_cache_min_entry_size_bytes", _MIN_ENTRY_BYTES)
+        config.update("jax_compilation_cache_max_size", limit)
         chosen = use_xla_cache(base)
-        probe = chosen / ".mime-write-probe"
+        probe = chosen / f".mime-write-probe-{os.getpid()}"  # one per process: two commands start at once
         probe.write_bytes(b"")
         probe.unlink()
+        (chosen / ".lockfile").open("ab").close()  # JAX's lock file: one that cannot be opened warns on every program
     except OSError as error:
         say(f"mime: XLA's compilation cache under {base} cannot be written ({error.strerror or error}); compiling "
             f"without it (--no-xla-cache leaves it out)")

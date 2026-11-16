@@ -10,7 +10,7 @@ names its generated page. How to read one, and how to reach its full traceback:
 
 - **The boundary** (`_boundary.py`). `public` makes a function a public call. An error raised inside one that is not a
   MIME error is translated into one, keeping it as `original`, and of its class too (`standing_for`, in
-  `mime.build._refusals`), so that a handler written for it still catches it; where its class cannot be a base, the
+  `mime._refusals`), so that a handler written for it still catches it; where its class cannot be a base, the
   original leaves unchanged. The full chain (every frame from the script's first down to the raise, every chained error)
   is kept as `chain`. By default the error leaves with the script's own frames alone; with `MIME_TRACEBACK=full`, with
   every frame and the original as its cause. A public call made inside another is left to the outer one, and a defect of
@@ -39,7 +39,7 @@ names its generated page. How to read one, and how to reach its full traceback:
   set before MIME's is handed a MIME error after its short form, unless it is Python's own.
 
 The classes themselves (`MimeError`, `BuildRefused`, `ArgumentRefused`, `RunFailed`, ...) and `Refusal` live in
-`mime.build._refusals`, below everything that raises them; each that was a `ValueError`, `TypeError`, `KeyError` or
+`mime._refusals` (re-exported by `mime.build._refusals`), below everything that raises them; each that was a `ValueError`, `TypeError`, `KeyError` or
 `RuntimeError` is still one.
 
 ## Status

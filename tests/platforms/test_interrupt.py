@@ -113,7 +113,7 @@ def test_ctrl_c_in_process_stops_the_run_at_a_chunk_and_main_returns_130(saved, 
 
     monkeypatch.setattr(Interrupt, "running", running)
     steps = 64 * 4 * 10**6
-    assert mime_main(["run", str(saved), "--duration", repr(steps * dt_of(saved)), "--out", str(out)]) == INTERRUPTED
+    assert mime_main(["run", str(saved), "--duration", f"{steps * dt_of(saved)!r}s", "--out", str(out)]) == INTERRUPTED
     captured = capfd.readouterr()
     assert captured.err.count("Ctrl+C: stopping at the end of this chunk") == 1
     result = RunResult.read(out)
@@ -130,7 +130,7 @@ def test_ctrl_c_while_the_experiment_builds_ends_the_command_130_and_writes_noth
 
     monkeypatch.setattr(Experiment, "build", building)
     out = tmp_path / "run"
-    assert mime_main(["run", str(saved), "--duration", "1", "--out", str(out)]) == INTERRUPTED
+    assert mime_main(["run", str(saved), "--duration", "1s", "--out", str(out)]) == INTERRUPTED
     assert "interrupted before the run began; nothing was written" in capfd.readouterr().out and not out.exists()
     assert mime_main(["verify", str(saved)]) == INTERRUPTED
 

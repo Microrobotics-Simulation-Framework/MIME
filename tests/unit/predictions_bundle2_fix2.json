@@ -1,0 +1,115 @@
+{
+  "written": "2026-11-16, committed before the plant, import-time and bits measurements of PR 328's second fix round (the commit that adds this file is the timestamp)",
+  "phase": "usability bundle 2, fix round 2: a rate written in the other angle kind, and the re-check's minors",
+  "labels": "the fix agent (Sonnet), from the re-check's evidence (plants/spell-mine.log: 29/30; probes/rates.py, rate_override2.py) and this round's own probes of the code; nothing below was measured by the gate scripts yet",
+  "seen_before": [
+    "probes/rates.py on the head before this round: '2 rad / s', '2 rad /s', '2 rad s^-1', '2 s^-1 rad' and '2 rad/(s)' read with angle None and are taken at a Hz site as Hz; '10 rad / s' ran bit for bit as the 10 Hz run (rate_override2.py)",
+    "after the fix, the same probe: each reads angle=radian and the Hz site refuses it with setting.units and the two conversions",
+    "the spellings property already draws a rate in one draw of four (style 'rate' of four) at the head; the re-check's 29/30 was against a mutant the strategy reached rarely, which is not in the repository, so the mutant below is this round's own reading of 'a quotient that drops the angle'"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, this laptop, JAX_PLATFORMS=cpu, shared with other sessions",
+    "sizes_and_parameters": "label parsing is pure Python on strings of at most 30 characters; the bits gate builds script A, A0 and the sphere and reads the derived hash and saved files",
+    "seeds_and_draws": "Hypothesis default settings, never filtered; seed bases 5000 and 6000 (fresh: the earlier rounds used 1000-4000 and the re-check 7100-9100)"
+  },
+  "gate_1_the_regression_is_caught_every_run": {
+    "claim": "the fallback that drops a rate's angle (Quantity(magnitude, parse_unit(symbol)) with no angle) fails the new rate tests and the oracle test on every run",
+    "kind": "equality",
+    "case": "MIME_PLANT_PARSE_VALUE=drops-the-angle swaps mime.study._override.parse_value_unit for one that returns no angle; tests/unit/test_unit_review_fixes.py::test_a_rate_written_in_the_other_angle_kind_is_refused_never_read_as_the_number and ::test_every_value_form_the_docs_and_tests_write_reads_as_it_did_at_the_base",
+    "prediction": {
+      "value": "30/30 per test, clean 0/30",
+      "band": [
+        30,
+        30
+      ],
+      "unit": "runs caught of 30",
+      "basis": "derived",
+      "why": "neither test draws: each reads a fixed table of forms, so the plant is caught by construction; the measurement shows the table holds it in a fresh process"
+    },
+    "control": {
+      "plant": "MIME_PLANT_PARSE_VALUE=drops-the-angle",
+      "environment_variable": "MIME_PLANT_PARSE_VALUE",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30"
+    },
+    "if_wrong": "a miss is a form the tables lack: add it, never narrow the plant",
+    "cannot_discriminate_if": "the plant is not applied (the clean arm and the planted arm both pass)"
+  },
+  "gate_2_the_spellings_property_catches_a_quotient_that_drops_the_angle": {
+    "claim": "a quotient that drops the angle of what it divides (rad/s read as s^-1) fails the spellings property, drawn with rates weighted, on every run",
+    "kind": "equality",
+    "case": "tests/unit/test_unit_grammar.py::test_every_spelling_of_a_dimension_reads_as_it under MIME_PLANT_UNIT_GRAMMAR=quotient-forgets-angle, default settings, no filter",
+    "prediction": {
+      "value": "30/30, clean 0/30",
+      "band": [
+        29,
+        30
+      ],
+      "unit": "runs caught of 30 fresh seeds",
+      "basis": "derived",
+      "why": "a rate is one draw in three after this round (the strategy builds it from its parts), about 33 of 100 draws, and half of its spellings divide by s: the chance of no catching draw in 100 is below 1e-12"
+    },
+    "control": {
+      "plant": "MIME_PLANT_UNIT_GRAMMAR=quotient-forgets-angle",
+      "environment_variable": "MIME_PLANT_UNIT_GRAMMAR",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30"
+    },
+    "if_wrong": "a miss is a spelling the strategy does not draw: add it to what the strategy builds, never filter",
+    "cannot_discriminate_if": "the property draws no rate (the strategy's own count of rate draws, printed by the test, is zero)"
+  },
+  "gate_3_import_time": {
+    "claim": "ParamSpec checked at construction adds no time to `import mime`",
+    "kind": "estimates",
+    "case": "median wall time of `python -c 'import mime'`, 15 alternating runs, the head before this round (249b2e75 plus the merge) against after, with a 50 ms sleep control",
+    "prediction": {
+      "value": 0.0,
+      "band": [
+        -0.05,
+        0.05
+      ],
+      "unit": "seconds, after minus before, median",
+      "basis": "derived",
+      "why": "a ParamSpec is made inside a node's param_specs(), which runs when a node is built, not when its module is imported; the only import-time cost is one class definition"
+    },
+    "control": {
+      "plant": "a 50 ms sleep added where the module is imported",
+      "expected_rate": "the difference is above 0.04 s",
+      "clean_expected": "inside the band"
+    },
+    "if_wrong": "a difference above 0.05 s would mean a ParamSpec is made at import somewhere",
+    "cannot_discriminate_if": "the spread of the runs is over 0.05 s: the measurement then bounds the difference from above only, and says so"
+  },
+  "bits": {
+    "cases": "the derived hash and saved files of script A, A0 and the sphere in float32 and float64, base (origin/release/v0.3.0 before this PR) against head; three saved fixtures; the control moves the hash by one ulp of the frequency",
+    "prediction": "every hash and file equal; the control differs",
+    "why": "this round changes how a value written as text is read, a ParamSpec's construction (a check), numpy's ufunc dispatch for a quantity and two handlers' error paths, none of which a run that reads no text value reaches"
+  },
+  "outcomes": {
+    "recorded": "2026-11-16, in a commit after every gate ran; the predictions above are unchanged",
+    "gate_1_the_regression_is_caught_every_run": {
+      "result": "30/30 on each of: the oracle test, the radians-at-a-Hz-site test, the turns-at-a-radian-site test; 30/30 on the end-to-end Hz-site test (clean 5); clean 0/30 on each",
+      "outcome": "as predicted",
+      "where": "local, CPU"
+    },
+    "gate_2_the_spellings_property_catches_a_quotient_that_drops_the_angle": {
+      "first_measurement": "29/30 (seed 5007) on the spellings property, clean 0/30: the prediction's band [29, 30] held but not its aim, and its reason was wrong: Hypothesis does not draw the sampled style evenly, and under seed 5007 the property drew ONE rate in 100 examples (seed 5008 drew 16), so 'a third of draws' is a mean the seed does not promise",
+      "fix": "two properties over rates alone (every draw a rate; one a product, one a quotient with a slash in it), no draw filtered, default example count; the spellings property keeps its rate style; a premise test that asserted a third of the draws would itself have flaked and was removed",
+      "second_measurement": "quotient-forgets-angle on the rate-quotient property 30/30, rate-swapped 30/30 on it and 30/30 on the rate-product property; clean 0/30 each (Hypothesis seeds 6000-6029)"
+    },
+    "gate_3_import_time": {
+      "measured": "after minus before median -0.042 s (before 1.653 s, after 1.611 s; 15 alternating runs each); sleep control +0.106 s over after",
+      "spread": "interquartile range 0.16 to 0.22 s per arm",
+      "result": "inside the band, but the spread is over 0.05 s, so this bounds the difference from above only; a ParamSpec is made when a node's param_specs() runs, not at import, which is the reason it adds nothing there. A pytest of mine ran during part of the timing"
+    },
+    "bits": {
+      "result": "equal: script A, A0 and the sphere (derived hash, graph text, report, every saved file) and all 26 saved fixtures (load, save, verify), float32 and float64, release 9f6deba9 against this head: 0 differences; the control (script A's frequency one ulp up) moves the derived hash (377acf97... to 75be1976...)"
+    }
+  }
+}

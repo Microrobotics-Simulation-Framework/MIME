@@ -199,10 +199,16 @@ def addition_line(nodeid: str, s: Stats) -> str:
 
 
 def apply_allowlist(text: str, proposal: Proposal) -> str:
+    """The allowlist with the removals dropped and the additions put in node-id order among its lines (the file is
+    kept sorted, so that two changes that each add a test do not conflict; ``tests/docs/test_sorted_lists.py``), its
+    header of comments left where it is."""
     drop = set(proposal.removals)
-    kept = [ln for ln in text.splitlines() if ln.partition(" # ")[0].strip() not in drop]
-    kept += [addition_line(n, s) for n, s in sorted(proposal.additions.items())]
-    return "\n".join(kept) + "\n"
+    lines = text.splitlines()
+    header_end = next((i for i, ln in enumerate(lines) if ln.strip() and not ln.startswith("#")), len(lines))
+    entries = [ln for ln in lines[header_end:] if ln.partition(" # ")[0].strip() not in drop]
+    entries += [addition_line(n, s) for n, s in proposal.additions.items()]
+    entries.sort(key=lambda ln: ln.partition(" # ")[0].strip())
+    return "\n".join([*lines[:header_end], *entries]) + "\n"
 
 
 def ceilings_json(proposal: Proposal, *, today: datetime.date, source: str, medians: dict[str, float] | None = None) -> str:

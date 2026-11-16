@@ -78,7 +78,7 @@ Add the benchmark to the relevant algorithm guide's Verification Evidence sectio
 
 If this test proves a previously open anomaly is fixed:
 1. Update the anomaly's `resolution_status` to `"fixed"` in `known_anomalies.yaml`
-2. Add CHANGELOG entry under `### Fixed`
+2. Write a changelog fragment `changes.d/<slug>.fixed.md` (it folds into `### Fixed`)
 
 ---
 

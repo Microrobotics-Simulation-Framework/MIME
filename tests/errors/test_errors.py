@@ -348,11 +348,11 @@ def test_the_command_exits_two_on_a_refusal_three_on_a_defect_and_takes_its_flag
     monkeypatch.setenv(DIRECTORY_VARIABLE, str(tmp_path / "tracebacks"))
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv(TRACEBACK_VARIABLE)
-    assert cli.main(["run", "missing", "--duration", "1", "--out", "out"]) == cli.REFUSED
+    assert cli.main(["run", "missing", "--duration", "1s", "--out", "out"]) == cli.REFUSED
     shown = capsys.readouterr().err
     assert shown.startswith("mime run is refused:") and "BuildRefused" not in shown and 'File "' not in shown
     assert "load.missing-folder" in shown
-    assert cli.main(["run", "missing", "--traceback", "--duration", "1", "--out", "out"]) == cli.REFUSED
+    assert cli.main(["run", "missing", "--traceback", "--duration", "1s", "--out", "out"]) == cli.REFUSED
     assert 'File "' in capsys.readouterr().err and TRACEBACK_VARIABLE not in os.environ, "the flag is undone"
     assert cli.refused(ZeroDivisionError("below"), "run") == cli.FAILED
     assert "error.unrecognised" in capsys.readouterr().err
@@ -708,14 +708,14 @@ def test_mime_run_on_a_state_that_is_not_finite_writes_its_outputs_and_says_what
 
         return (out / "outputs.npz").is_file() and "non_finite" in json.loads((out / "outputs.json").read_text())
 
-    assert cli.main(["run", str(tmp_path / "saved"), "--duration", "5", "--out", str(tmp_path / "out")]) == cli.REFUSED
+    assert cli.main(["run", str(tmp_path / "saved"), "--duration", "5s", "--out", str(tmp_path / "out")]) == cli.REFUSED
     shown = capsys.readouterr().err
     assert marked(tmp_path / "out") and (tmp_path / "out" / "run.json").is_file()
     assert "run.non-finite" in shown and "--history" in shown and DOCUMENT_FILE in shown, shown
     assert "history=True" not in shown and "Experiment(..., dt=" not in shown, "no Python for a command line's user"
     finite, _ = rod()
     finite.build().save(tmp_path / "finite", steps=2)
-    assert cli.main(["run", str(tmp_path / "finite"), "--duration", "0.002", "--out", str(tmp_path / "fine")]) == 0
+    assert cli.main(["run", str(tmp_path / "finite"), "--duration", "0.002s", "--out", str(tmp_path / "fine")]) == 0
     assert not marked(tmp_path / "fine"), "the control: a finite run's folder is not marked"
 
 

@@ -14,7 +14,6 @@ from numpy.typing import NDArray
 from jaxtyping import Float
 from maddening.core.compliance.metadata import DiscretizationOrder, NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
-from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import (
@@ -23,6 +22,7 @@ from mime.core import (
     HeldPoints,
     MimeNode,
     NodeFields,
+    ParamSpec,
     Symbol,
     SymbolKind,
     Units,

@@ -6,7 +6,6 @@ command.ambiguous         # no test names it
 dynamics.wrong-thing      # no test names it
 frame.gravity-invalid     # no test names it
 group.no-dynamics         # no test names it
-load.namespace-import     # no test names it
 maddening.compile         # no test names it
 maddening.dtype           # no test names it
 magnet.no-part            # no test names it

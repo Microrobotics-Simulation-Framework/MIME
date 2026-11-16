@@ -147,7 +147,7 @@ def assert_a_range_warning_is_a_line_with_no_source(done: subprocess.CompletedPr
 
 
 def test_under_mime_run_a_range_warning_is_a_line_with_no_source_and_not_the_console_scripts(turning_folder, tmp_path):
-    done = run_in_a_process([console_script(), "run", str(turning_folder), "--duration", "0.01",
+    done = run_in_a_process([console_script(), "run", str(turning_folder), "--duration", "0.01s",
                              "--out", str(tmp_path / "run")], tmp_path)
     assert done.returncode == 0, done.stderr
     assert_a_range_warning_is_a_line_with_no_source(done)
@@ -161,7 +161,7 @@ def test_control_the_same_warning_from_a_script_that_calls_the_command_names_tha
     script.write_text(textwrap.dedent(f"""
         import sys
         from mime.cli import main
-        sys.exit(main(["run", {str(turning_folder)!r}, "--duration", "0.01", "--out", {str(tmp_path / "run")!r}]))
+        sys.exit(main(["run", {str(turning_folder)!r}, "--duration", "0.01s", "--out", {str(tmp_path / "run")!r}]))
         """), encoding="utf-8")
     done = run_in_a_process([sys.executable, str(script)], tmp_path)
     assert done.returncode == 0, done.stderr

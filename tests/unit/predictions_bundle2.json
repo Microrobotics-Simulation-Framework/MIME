@@ -1,0 +1,158 @@
+{
+  "written": "2026-11-15, committed before any gate of bundle 2 ran: the unit label grammar, labels checked at definition (G1), dimension markers as labels (G2), UnitError as a MimeError (F7a), **, abs and sum on quantities (F7c), seven more units (F17), --override on the unit names (F13)",
+  "phase": "usability bundle 2: the unit system finished",
+  "labels": "the builder (Sonnet), from the source at the branch point (origin/release/v0.3.0 at 1bf528b0) and one exploratory read of the registry; nothing below was measured by the gate scripts yet",
+  "seen_before": [
+    "an exploratory script over the registered entries' node classes (their symbol-table rows and typed-state Units) and the vocabulary found 44 distinct label strings (3 of them prose or empty: '', \"the command's own\", \"the command's own per second\"); it did not scan ParamSpec/expected_units/output_units. The final count below is therefore a fit to that number plus a prediction of what the source scan adds.",
+    "the vocabulary's own parser (mime.vocabulary._ports._dimension) already reads J, W, rad and quotients, with '/' binding the next term only; parse_unit reads none of them (UX-1, read in the source)"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64",
+      "float32"
+    ],
+    "platform": "CPU, this laptop, JAX_PLATFORMS=cpu",
+    "sizes_and_parameters": "label parsing is pure Python on strings of at most 30 characters; the bits gate builds A0, script A and the sphere and reads the derived hash and canonical text only (no step runs)",
+    "seeds_and_draws": "Hypothesis default settings, never filtered; dimensions drawn with exponents in -6..6, which covers every exponent MIME's labels carry (the largest magnitude in a MIME label is 3)"
+  },
+  "gate_1_label_count": {
+    "claim": "every unit label MIME writes parses, and the collection finds at least as many as an exploratory read did",
+    "kind": "equality",
+    "case": "tests/unit/test_unit_labels.py: the labels of the registry's node classes (symbol table, typed Units), the vocabulary, and every units= and Units(...) literal of src/mime",
+    "prediction": {
+      "value": 60,
+      "band": [
+        50,
+        90
+      ],
+      "unit": "distinct label strings, prose rows excluded",
+      "basis": "guess",
+      "why": "41 distinct non-prose strings were seen; the source scan adds ParamSpec, expected_units and output_units literals, which repeat most of them and add few"
+    },
+    "metric": "the number of distinct strings, printed by the test, and the number that fail to parse (0)",
+    "control": {
+      "plant": "a label with a typo ('m/s^') added to the collected set",
+      "expected_rate": "1/1 (deterministic: the parse of that string raises)",
+      "resolution": "not applicable: the control is a string"
+    },
+    "if_wrong": "a count below 41 means the collection lost a source; above 90, the scan is picking up strings that are not labels",
+    "cannot_discriminate_if": "the collection finds nothing (count 0): the test fails on a floor"
+  },
+  "gate_2_plant_rate": {
+    "claim": "a grammar bug is caught on every run of the round-trip property",
+    "kind": "equality",
+    "case": "tests/unit/test_unit_grammar.py's round-trip property run under each of three planted parser bugs: '/' distributing over only the first factor of a parenthesised group; '^' dropped on a parenthesised group; a quotient's right-hand side added instead of subtracted",
+    "prediction": {
+      "value": "30/30 per plant",
+      "band": [
+        27,
+        30
+      ],
+      "unit": "caught out of 30 fresh processes, each with its own Hypothesis seed",
+      "basis": "derived",
+      "why": "unit_symbol writes a parenthesis only where the dimension has none of its own symbols, which the drawn dimensions reach in most draws; but 'equivalent spellings parse equal' is a table of cases that holds the plants on every run, so the property's rate is the lower number and the test's the upper"
+    },
+    "metric": "caught / runs from .github/probe/detection_rate.py, with the clean arm at 0/30",
+    "control": {
+      "plant": "as above, switched on by MIME_PLANT_UNIT_GRAMMAR",
+      "environment_variable": "MIME_PLANT_UNIT_GRAMMAR",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30"
+    },
+    "if_wrong": "a rate below 30/30 is a plant the draws do not reach: strengthen the table of cases or the strategy, never filter the draws",
+    "cannot_discriminate_if": "the property draws only dimensions whose symbols are named (no parenthesis written)"
+  },
+  "gate_3_import_time": {
+    "claim": "labels checked at definition add no measurable time to `import mime`",
+    "kind": "estimates",
+    "case": "python -X importtime-free wall clock of `python -c 'import mime'`, median of 15 runs, base and head alternating, on this machine, nothing else of mine running",
+    "prediction": {
+      "value": 0.0,
+      "band": [
+        -0.05,
+        0.05
+      ],
+      "unit": "seconds, head minus base, median",
+      "basis": "derived",
+      "why": "only the vocabulary's Interface entries (about 40) parse at import: every Units(...) sits in an annotation the modules postpone (from __future__ import annotations), so it is built when the typed state is first read, not at import; 40 parses of strings under 30 characters cost well under 5 ms, against an import of seconds. The machine is shared with other sessions, so the run-to-run spread, not the parse, sets the band."
+    },
+    "metric": "median wall time of 15 alternating runs, with their spread",
+    "control": {
+      "plant": "a 50 ms sleep added to the vocabulary's define()",
+      "expected_rate": "the measured difference is above 0.04 s",
+      "clean_expected": "inside the band"
+    },
+    "if_wrong": "a difference above 0.05 s would mean the parse is slower than derived, or the import path moved",
+    "cannot_discriminate_if": "the spread of the 15 runs is over 0.05 s: the measurement then bounds the difference from above only, and says so"
+  },
+  "bits": {
+    "cases": "the derived hash and the canonical text of A0, script A and the sphere, in float32 and float64, base (origin/release/v0.3.0) and head, one machine; every saved form under examples/ and tests fixtures: bytes identical after save, load and verify",
+    "prediction": "every hash and text equal, every saved form byte-identical",
+    "controls": {
+      "repeat": "the head recorded twice: identical",
+      "differs": "the same program with a unit label changed in one saved form, and a setting one ulp up: the comparison reports a difference"
+    }
+  },
+  "outcomes": {
+    "recorded": "2026-11-16, in a commit after every gate ran; the predictions above are unchanged",
+    "gate_1_label_count": {
+      "measured": "48 distinct label strings (45 parse, 3 declared prose); 240 symbol-table rows, 1377 typed-state Units, 31 vocabulary entries, 372 source literals",
+      "prediction_band": [
+        50,
+        90
+      ],
+      "result": "MISSED: 48 is below the band (above the 41 seen before); the guess of 60 was wrong and the source scan added fewer new strings than guessed",
+      "failing_to_parse": 0
+    },
+    "gate_2_plant_rate": {
+      "first_measurement": {
+        "quotient-one-term": "30/30",
+        "quotient-multiplies": "30/30",
+        "power-first-term-only": "29/30 (seed 1005)",
+        "clean": "0/30"
+      },
+      "result_of_first": "the third plant was missed once: the property drew a parenthesised group raised to a power other than 1 rarely, because a random exponent vector is seldom a whole multiple of 2 or 3. The prediction's lower number (the property's) was in its band [27, 30] but the aim was every run, which it did not meet",
+      "fix": "the strategy builds groups (inside and power drawn, the dimension their product); no draw filtered, no example count changed",
+      "second_measurement": {
+        "quotient-one-term": "30/30",
+        "quotient-multiplies": "30/30",
+        "power-first-term-only": "30/30",
+        "clean": "0/30 flagged on each of the three clean arms",
+        "seeds": "Hypothesis seeds 2000 to 2029",
+        "lower_bound_95_for_30_of_30": 0.905
+      },
+      "node": "tests/unit/test_unit_grammar.py::test_every_spelling_of_a_dimension_reads_as_it",
+      "where": "local, this laptop, CPU"
+    },
+    "gate_3_import_time": {
+      "measured": "head minus base median +0.013 s (base 1.664 s, head 1.677 s; 15 alternating runs each)",
+      "spread": "interquartile range 0.19 to 0.23 s per arm; min to max 0.34 s",
+      "control": "a 50 ms sleep added at the import of the vocabulary: +0.080 s over head",
+      "result": "inside the band [-0.05, 0.05], but the spread is over 0.05 s, so by the cannot_discriminate clause this bounds the difference from above only (the machine is shared); it does not show 0.0"
+    },
+    "bits": {
+      "result": "equal: the derived hash and the saved-form file hashes of script A, A0 and the sphere, in float32 and float64, are identical between base (1bf528b0) and head; every saved fixture folder under tests/ (load, save, verify) identical in both dtypes except the 400-character truncation of the 11 load-refused fixtures' error text, which holds a tree path of a different length in the two trees (the text equal up to it)",
+      "repeat_control": "head twice: all 8 files identical, 0 differences",
+      "differs_control": "a copy of the head tree whose unit_symbol writes N as 'kg m s^-2': script A's and A0's mime.lock differ (hash changed) while their derived hash does not: the comparison sees a label's change in a saved file; the derived hash did not move under that plant, so no control shows its sensitivity to a label here. The one-ulp setting control was not run",
+      "where": "local, this laptop, CPU, one machine"
+    },
+    "review_fix_round": {
+      "recorded": "2026-11-16, after the Opus review's fix round; the predictions above are unchanged",
+      "gate_2_plant_rate": {
+        "spellings property (default examples, seeds 3000 to 3029)": {
+          "quotient-one-term": "30/30",
+          "quotient-multiplies": "30/30",
+          "power-first-term-only": "30/30",
+          "rate-swapped (a Hz/rad swap)": "30/30"
+        },
+        "round-trip property (seeds 4000 to 4029)": {
+          "rate-swapped": "30/30"
+        },
+        "clean arms": "0/30 on the first clean arm, 0/5 on the others, 0/30 on the round trip's",
+        "note": "the properties compare the full dimension (exponents and what a rate counts); the round trip draws the writer's own symbols from its table",
+        "where": "local, this laptop, CPU"
+      }
+    }
+  }
+}

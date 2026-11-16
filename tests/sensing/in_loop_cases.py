@@ -11,6 +11,7 @@ from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from mime import Body, Experiment, State, Structure
 from mime.dynamics import RigidInertial
@@ -34,6 +35,22 @@ RADIUS_UM = 20.0
 #: The balls' places along the tube (um) and the speed they move at (m/s): 2 um a step at a 1 ms base step, 1.5 px.
 PLACES_UM = (-50.0, 50.0)
 SPEED = 2e-3
+
+
+#: The memory the camera's reverse-mode check is given in a test that differentiates in reverse mode, and the one it is
+#: refused at: stated, not read from the host. The check compares its estimate (about 1.6 GiB with its margin, 1.8 GiB
+#: with its headroom, for a 160 x 120 frame over a few steps) with the memory a run can have, and on a CI runner the host's
+#: available memory is whatever the other xdist workers leave (0.75 and 1.65 GiB in two runs of one shard). A test's
+#: premise is not its neighbours'.
+STATED_MEMORY = 8 * 2 ** 30
+TOO_LITTLE_MEMORY = 2 ** 30
+
+
+def stated_memory(monkeypatch: pytest.MonkeyPatch, held: int) -> None:
+    """The memory ``CameraNode.derivative_problem`` reads, ``held`` bytes, in place of the host's."""
+    from mime.sensing import _node
+
+    monkeypatch.setattr(_node, "device_memory", lambda: ("a stated memory", held))
 
 
 def planted(name: str) -> bool:
