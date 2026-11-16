@@ -185,7 +185,7 @@ import sys
 import numpy as np
 
 from mime.build._maddening import fed_inputs, scan_chunk
-from mime.env import apply_lock_precision
+from mime.env._check import apply_lock_precision
 from mime.experiment import Experiment
 
 folder, steps = sys.argv[1], int(sys.argv[2])

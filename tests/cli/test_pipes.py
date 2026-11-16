@@ -17,7 +17,7 @@ import pytest
 import mime.cli
 import mime.env
 from mime.cli import main as mime_main
-from mime.env import apply_lock_precision
+from mime.env._check import apply_lock_precision
 from mime.experiment import Experiment
 from mime.results import RunResult
 from mime.saved import read_folder

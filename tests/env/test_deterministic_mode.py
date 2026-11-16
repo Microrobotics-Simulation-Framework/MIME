@@ -19,7 +19,8 @@ import jax
 import pytest
 
 from mime.build import BuildRefused
-from mime.env import CPU_DETERMINISTIC, deterministic_mode
+from mime.env import deterministic_mode
+from mime.env._host import CPU_DETERMINISTIC
 from mime.saved import LOCK_FILE
 
 #: ``when``: set the flag before ``import jax``, after ``import mime.cli`` (which starts no backend), or after

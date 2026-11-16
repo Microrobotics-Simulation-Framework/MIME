@@ -21,7 +21,10 @@ import mime.env._modal_script as generator
 from mime import __version__
 from mime.build import BuildRefused
 from mime.cli import main as mime_main
-from mime.env import EXACT_GPUS, LOOSE_GPUS, bases, modal_script, requirements_bytes, series_of
+from mime.env import EXACT_GPUS
+from mime.env._gpus import LOOSE_GPUS
+from mime.env._pins import bases, requirements_bytes, series_of
+from mime.env._modal_script import modal_script
 from mime.env._pins import uv_digest, uv_image
 from mime.env._modal_script import IMAGE_BUILDER_VERSION, UV_VERSION, pypi_wheel_sha256
 from mime.saved import LOCK_FILE

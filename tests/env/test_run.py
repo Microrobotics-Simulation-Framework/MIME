@@ -11,7 +11,9 @@ import numpy as np
 import pytest
 
 from mime.cli import main as mime_main
-from mime.env import cpu_record, use_xla_cache, xla_cache_dir
+from mime.env import use_xla_cache
+from mime.env._host import cpu_record
+from mime.env._xla_cache import xla_cache_dir
 from mime.env._xla_cache import point_xla_cache
 from mime.saved import read_folder
 from mime.testing.toys import full_toy
@@ -116,7 +118,7 @@ def test_mime_verify_without_applying_the_lock_reports_a_float64_experiment_move
 
 
 def test_the_apis_run_to_writes_what_mime_run_does(saved, tmp_path):
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
     from mime.experiment import RUN_EXPERIMENT, RUN_OUTPUTS, RUN_RECORD, Experiment
     from mime.units import s
 

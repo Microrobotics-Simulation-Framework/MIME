@@ -20,7 +20,7 @@ from checkout import ROOT
 from sorted_lists import code_key, order_problems
 
 from mime.build import REFUSAL_TABLE, read_table
-from mime.docs import RatchetList
+from mime.docs._lists import RatchetList
 from mime.docs._lists import list_from_text, read_list
 
 FLOOR = Path(__file__).parent / "refusal_floor.txt"

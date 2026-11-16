@@ -269,7 +269,7 @@ def what_the_terminal_had(child: Served, raw: str, final: list[str]) -> str:
 @pytest.fixture(scope="module")
 def load_text(folder) -> str:
     """The load report as the command prints it, read once from the objects the command holds."""
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
     from mime.experiment import Experiment
 
     apply_lock_precision(folder)

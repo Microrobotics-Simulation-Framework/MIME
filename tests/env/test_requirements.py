@@ -18,14 +18,26 @@ from packaging.tags import Tag, compatible_tags, cpython_tags
 from packaging.utils import canonicalize_name, parse_wheel_filename
 from uv import find_uv_bin
 
-from mime.env import EXPORT_ARGUMENTS, OPTIONAL_EXPORT_ARGUMENTS, OPTIONAL_EXTRAS, OPTIONAL_FILE, OPTIONAL_GROUPS, \
-    VARIANTS, applicable, bases, optional_pins, parse_requirements, pins, requirements_bytes
+from mime.env._pins import (
+    EXPORT_ARGUMENTS,
+    OPTIONAL_EXPORT_ARGUMENTS,
+    OPTIONAL_EXTRAS,
+    OPTIONAL_FILE,
+    OPTIONAL_GROUPS,
+    VARIANTS,
+    applicable,
+    bases,
+    optional_pins,
+    parse_requirements,
+    pins,
+    requirements_bytes,
+)
 from mime.env._modal_script import UV_VERSION
 from mime.env._pins import uv_digest, uv_image
 
 ROOT = Path(__file__).resolve().parents[2]
 SHIPPED = ROOT / "src" / "mime" / "data" / "env"
-REGENERATE = "uv export, as mime.env.EXPORT_ARGUMENTS gives it, into src/mime/data/env/requirements-<variant>.txt"
+REGENERATE = "uv export, as mime.env._pins.EXPORT_ARGUMENTS gives it, into src/mime/data/env/requirements-<variant>.txt"
 
 
 def export(project: Path, variant: str) -> bytes:
@@ -57,7 +69,7 @@ def test_each_requirements_file_is_the_locks_export_byte_for_byte(variant, tmp_p
 def test_the_optional_file_is_the_locks_export_with_mimes_own_extras_and_groups(tmp_path):
     exported = export(committed_project(tmp_path), "optional")
     assert exported == (SHIPPED / OPTIONAL_FILE).read_bytes(), \
-        "the lock changed: regenerate with uv export, as mime.env.OPTIONAL_EXPORT_ARGUMENTS gives it, into " \
+        "the lock changed: regenerate with uv export, as mime.env._pins.OPTIONAL_EXPORT_ARGUMENTS gives it, into " \
         f"src/mime/data/env/{OPTIONAL_FILE}"
     assert {pin.name for pin in optional_pins()} >= {"pytest", "pyright", "hypothesis", "sortedcontainers"}
 

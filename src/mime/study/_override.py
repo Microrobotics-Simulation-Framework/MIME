@@ -336,7 +336,7 @@ def verify_run(folder: Any) -> Any:
     import json
     from pathlib import Path
 
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
     from mime.experiment import Experiment
     from mime.experiment._experiment import RUN_EXPERIMENT, RUN_RECORD
     from mime.results import RunResult, Series

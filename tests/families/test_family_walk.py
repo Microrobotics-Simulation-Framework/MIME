@@ -24,7 +24,7 @@ from mime.build import InteractionBuilder
 from mime.core import VELOCITY_RULES
 from mime.interactions import Contact, Gravity
 from mime.nodes.body import GravityNode
-from mime.docs import load_namespaces
+from mime.docs._export import load_namespaces
 from mime.registry import (
     BuildContext,
     Confinement,
