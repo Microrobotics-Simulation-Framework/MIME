@@ -73,17 +73,76 @@ def test_a_pipe_closed_by_its_reader_ends_the_command_quietly():
     assert err == b"", err.decode()
 
 
-def test_a_broken_pipe_met_inside_a_command_is_not_a_mime_error(monkeypatch, capsys):
-    """The control for the test above in-process: the same error raised by a command's print, wrapped or not."""
+@pytest.fixture
+def close_stdout_reader(monkeypatch):
+    """A call that makes standard output a pipe whose reader has gone (the descriptor is the test's own; ``_pipe_closed``,
+    which redirects the process's real streams, is replaced by a stand-in). Called inside the test: ``capsys`` puts its
+    own capture back at the start of the test's call, over anything a fixture set."""
+    import os
+
     from mime import cli
 
-    def broken(*_: object) -> int:
-        raise BrokenPipeError(32, "Broken pipe")
+    streams = []
 
-    monkeypatch.setattr(cli, "_registry", broken)
-    monkeypatch.setattr(cli, "_pipe_closed", lambda: 141)
+    def close() -> None:
+        reader, writer = os.pipe()
+        os.close(reader)
+        streams.append(os.fdopen(writer, "w"))
+        monkeypatch.setattr(sys, "stdout", streams[-1])
+        monkeypatch.setattr(cli, "_pipe_closed", lambda: 141)
+
+    yield close
+    monkeypatch.undo()
+    for stream in streams:
+        try:
+            stream.close()
+        except BrokenPipeError:
+            pass
+
+
+def raising(error: BaseException):
+    def command(*_: object) -> int:
+        raise error
+
+    return command
+
+
+def test_a_broken_pipe_on_a_closed_standard_output_ends_quietly(monkeypatch, capsys, close_stdout_reader):
+    """The control for the test above in-process: the error a command's print raises, with standard output's reader
+    gone, is the reader's choice and no MIME error."""
+    from mime import cli
+
+    monkeypatch.setattr(cli, "_registry", raising(BrokenPipeError(32, "Broken pipe")))
+    close_stdout_reader()
     assert mime_main(["registry"]) == 141
-    assert "error.uncoded" not in capsys.readouterr().err
+    assert capsys.readouterr().err == ""
+
+
+def test_a_connection_error_raised_from_a_sockets_broken_pipe_is_shown_not_swallowed(monkeypatch, capsys):
+    """``mime push`` or ``mime serve`` writing to a socket whose peer left: a ``ConnectionError`` caused by a
+    ``BrokenPipeError`` is a failure to report (standard output is open, and the cause is no write to it), as the same
+    error unchained is."""
+    from mime import cli
+
+    def chained(*_: object) -> int:
+        try:
+            raise BrokenPipeError(32, "Broken pipe")
+        except BrokenPipeError as error:
+            raise ConnectionError("the server closed the connection") from error
+
+    monkeypatch.setattr(cli, "_pipe_closed", lambda: pytest.fail("a socket's failure ended as a closed pipe"))
+    monkeypatch.setattr(cli, "_registry", chained)
+    assert mime_main(["registry"]) in (2, 3)
+    assert "the server closed the connection" in capsys.readouterr().err
+    monkeypatch.setattr(cli, "_registry", raising(BrokenPipeError(32, "Broken pipe")))
+    assert mime_main(["registry"]) in (2, 3), "a socket's own broken pipe, with both streams open, is no closed pipe"
+    assert "Broken pipe" in capsys.readouterr().err
+
+
+def test_a_chained_broken_pipe_is_shown_even_where_standard_output_is_closed(monkeypatch, capsys,
+                                                                            close_stdout_reader):
+    """The chain is not walked: only the error raised directly by the write is the closed pipe."""
+    from mime import cli
 
     def wrapped(*_: object) -> int:
         try:
@@ -92,7 +151,16 @@ def test_a_broken_pipe_met_inside_a_command_is_not_a_mime_error(monkeypatch, cap
             raise RuntimeError("write failed") from error
 
     monkeypatch.setattr(cli, "_registry", wrapped)
-    assert mime_main(["registry"]) == 141
+    close_stdout_reader()
+    assert mime_main(["registry"]) in (2, 3)
+
+
+def test_an_error_that_is_no_broken_pipe_is_shown(monkeypatch, capsys):
+    from mime import cli
+
+    monkeypatch.setattr(cli, "_registry", raising(RuntimeError("something else broke")))
+    assert mime_main(["registry"]) == 3
+    assert "something else broke" in capsys.readouterr().err
 
 
 # -- (d) (e) (j) a run folder where a saved experiment is read; mime show reads a run -----------------------------------
@@ -203,6 +271,17 @@ def test_mime_modal_refuses_to_replace_a_script_without_force_and_names_what_it_
     assert (out / "notes.txt").read_text(encoding="utf-8") == "mine\n", "what is not the script's is never touched"
 
 
+def test_mime_modal_refuses_a_link_to_nowhere_named_like_the_script(saved, tmp_path, capsys):
+    """``.exists()`` is false for a dangling link, so the script's write would have followed it out of the folder."""
+    out = tmp_path / "script"
+    out.mkdir()
+    elsewhere = tmp_path / "elsewhere.py"
+    (out / "modal_app.py").symlink_to(elsewhere)
+    assert mime_main(modal_words(saved, out)) == 2
+    assert "modal.out-exists" in capsys.readouterr().err
+    assert not elsewhere.exists(), "nothing was written through the link"
+
+
 def test_mime_modal_into_a_folder_that_holds_only_other_files_writes_without_force(saved, tmp_path, capsys):
     out = tmp_path / "script"
     out.mkdir()
@@ -247,7 +326,8 @@ def test_a_docs_build_outside_a_checkout_says_what_it_left_out_twice(tmp_path, c
     lines = capsys.readouterr().out.splitlines()
     notes = [line for line in lines if "left out" in line]
     assert len(notes) == 2 and "--root <checkout>" in notes[0] and "--root <checkout>" in notes[1]
-    assert lines.index(notes[0]) < len(lines) - 1 and lines[-1] == notes[1], "again in the closing summary"
+    assert lines[0] == notes[0], "first, before the summary lines"
+    assert lines[-1] == notes[1], "again in the closing summary"
     assert lines[-1].startswith("mime docs build: wrote ")
 
 

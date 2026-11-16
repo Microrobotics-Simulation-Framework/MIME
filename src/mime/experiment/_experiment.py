@@ -1066,8 +1066,8 @@ def not_a_folder(out: Path) -> bool:
 
 
 def refuse_out_not_own(out: Path, force: bool, *, meanwhile: bool = False, own_too: bool = False) -> None:
-    """Refuse, before a run starts, a folder that is neither new, empty nor MIME's own run folder (:func:`own_run_folder`):
-    the run replaces the files of its own names in it (``outputs.json``, ``run.json``, ``experiment/``'s saved form), and
+    """Refuse, before a run starts, a folder that is neither new, empty nor MIME's own run folder (:func:`own_run_folder`;
+    with ``own_too``, one that is not new or empty, MIME's own included): the run replaces the files of its own names in it (``outputs.json``, ``run.json``, ``experiment/``'s saved form), and
     a file of yours of one of those names is lost, with nothing said. ``force`` runs into it all the same, but not into
     what is no folder (a file, a link to nowhere): there is nothing to run into. ``meanwhile`` says the folder was
     judged once already and has changed since, while the run computed (:meth:`BuiltExperiment.run_to` judges it again
@@ -1085,7 +1085,7 @@ def refuse_out_not_own(out: Path, force: bool, *, meanwhile: bool = False, own_t
         "run.out-not-empty", RefusalClass.USER,
         f"{changed}the run would be written into {out}, which holds {shown} and is "
         + ("a MIME run folder already: the run would replace that run" if ours else
-           "not an empty folder or a MIME run folder") if what is None else
+           ("not an empty folder" if own_too else "not an empty folder or a MIME run folder")) if what is None else
         f"{changed}the run would be written into {out}, which is {what}, not a folder",
         "write it to a new folder or an empty one: --out <a new folder> (or out=); or run into this one with --force "
         "(or force=True): it warns at the start of what the folder holds, Ctrl+C cancels the run until writing begins "

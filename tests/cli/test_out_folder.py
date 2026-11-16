@@ -124,7 +124,8 @@ def test_any_other_folder_is_refused_before_the_run_and_left_as_it_was(saved, tm
     with untouched(out):
         assert run(saved, out) == 2
     err = capsys.readouterr().err
-    assert CODE in err and "not an empty folder or a MIME run folder" in err and "--force" in err
+    assert CODE in err and "not an empty folder" in err and "or a MIME run folder" not in err
+    assert "--force" in err
     assert "Ctrl+C cancels the run until writing begins" in err and "amber notice" in err
     assert files(out) == before
 
