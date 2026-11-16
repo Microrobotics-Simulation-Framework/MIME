@@ -268,7 +268,7 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float, built: Mapping[s
         # A believed number its step does not read is no leaf, and nothing to refuse: the law reads the model as a
         # whole (``ctx.believed``), and an axis never names one.
         unread = sorted(set(leaf_values) - in_step - in_start - {name for name in leaf_values
-                                                                 if name.startswith(BELIEVED)})
+                                                                 if name not in plan.leaves})
         if unread:
             return [], [], [Refusal(
                 "controller.setting-unread", RefusalClass.USER,
