@@ -529,7 +529,8 @@ def _asset_row(held: LockAsset) -> str:
 def _record(root: Path) -> Sharing | None:
     """``[record]`` of the folder's ``mime.toml``, where it holds one (refused as push refuses it, since the card is the
     record's description; a folder holding ``sharing.yaml`` is refused with the route to ``mime.toml``)."""
-    from mime.push._manifest import MANIFEST_FILE, OLD_FILE, read_record
+    from mime._manifest_file import MANIFEST_FILE, OLD_FILE
+    from mime.push._manifest import read_record
 
     if not (root / MANIFEST_FILE).is_file() and not (root / OLD_FILE).is_file():
         return None
