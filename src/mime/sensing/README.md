@@ -26,9 +26,10 @@ stages:
 - **The route is chosen by capability**: a kind with a closed form registered (`register_closed_form`) takes the closed-form
   route; one whose geometry kind declares a cheap sign function (`Geometry.sign_function`) takes the sampled route (below);
   a creased kind (a solid whose body is the intersection of two or more regions: the cylinder, the box, the screw) takes
-  the sampled route only with its crease measure (`Geometry.crease_measure`), and is refused without it
-  (`camera.crease-unmeasured`: the box and the screw, until the screw's measure comes); one with neither is refused
-  (`camera.no-route`). The choice never reads a measured time. `route=` is an override only: `"closed form"` on a kind
+  the sampled route only with its crease measure (`Geometry.crease_measure`) and a cheap sign function, and is refused
+  without the measure (`camera.crease-unmeasured`: the box and the screw, until the screw's measure comes); one with
+  neither is refused (`camera.no-route`). The cylinder declares its measure, but its default stays the closed form:
+  it takes the sampled route only under `route="sampled"`. The choice never reads a measured time. `route=` is an override only: `"closed form"` on a kind
   without one is refused (`camera.no-closed-form`), and `"sampled"` takes the sampled route where a closed form exists
   (the swap test's use). In the in-loop camera a *structure* of a kind the stage draws with no closed form (an ellipsoid,
   a box, a helix, a screw) stands still, and is imaged by its drawing as a static mesh (below), as the mesh tracer measured it,
@@ -63,6 +64,23 @@ stages:
   it; the tighter measurements (the worst-position step sweep, the derivative against the sign-only truth) are the
   probe scripts' in `scripts/camera_route2/`, which CI does not collect, and are in
   `tests/sensing/predictions_camera_pr5a_round5_gates.json`.
+- **A creased body** (camera PR 5b): its crease measure (`Geometry.crease_measure`, `mime.registry.CreaseMeasure`)
+  gives its creases' exact edge functions on the rays (a capped body's caps, each by its cone from the pinhole, and each
+  cap's bounding ball, `mime.scene._creases`) and its composition: the caps and, for each of the march's two branches,
+  the intersection of its regions' first-order distances at its least (the marched region's, and each other region's,
+  a span's, read at the same place, the place moving with its derivative by one implicit step whose curvature is the
+  profile's second difference a march spacing wide: finite at a kink of the profile, a ray through a cylinder's axis).
+  A least at the samples' ends is not the marched region's (a cylinder's side and a screw's thread reach past the
+  enclosing ball, and the body is not there): that branch is moved out. The crease pieces are taken as turning, so a
+  frame with a cap in view takes its corner sub-samples, and each cell takes the **exact share of the composition** of
+  its pieces' lines (`_coverage.composed_covered`: the union of intersections by inclusion and exclusion, each subset's
+  convex polygon by its boundary integral, coinciding lines keeping half of their chord each); a second branch read at
+  the first's point is moved out, as one that is not there. A face of a crease narrower than two sub-pixels in view
+  raises `thin_cap`, as route 1's caps do (`CreaseMeasure.faces`). An attenuating creased body's chord is its body's
+  sign (the greatest of its regions' first-order distances) at the samples. `mime.testing.crease_measure_problems`
+  holds a kind's measure to its regions' signs (G17's conformance). Measured: the cylinder by the sampled route
+  against the exact image and the closed form (`tests/sensing/test_crease.py`, its lines derived before its draws by
+  `scripts/camera_route2/crease_line.py`).
 - **The kinds' sign functions** (`mime.scene._signs`, `Geometry.sign_function`): the sphere, capsule, cylinder (side and
   span) and slab their exact signed distances; the ellipsoid its radius in units of its semi-axes, less one, with its gradient's length;
   the screw's thread its radius less its modulated cross-section's, with its gradient's length in closed form; the helix the distance from its centreline's
@@ -214,8 +232,8 @@ the static structure**, by a bounding volume hierarchy, so a run's frames cost 1
 
 ## What it does not do yet
 
-The tracker and the controller that reads the in-loop camera, the crease measures (and so the screw, the cylinder and the box
-on the sampled route), moving meshes (a refit tree for offline renders and the display view) and the display view's
+The tracker and the controller that reads the in-loop camera, the screw's and the box's crease measures (and so the screw
+and the box on the sampled route), moving meshes (a refit tree for offline renders and the display view) and the display view's
 lighting and colour, X-ray detectors: each comes in a later piece of the camera lane. Its switch sites (the box edge's pieces, the chords'
 intersections) go through `mime.core.switch` where a switch has a branch a derivative can take, under the owners
 `camera.*` (`_switches.py`, declared on the `camera` entry, each a row of the switch harness); the sites that stay raw are

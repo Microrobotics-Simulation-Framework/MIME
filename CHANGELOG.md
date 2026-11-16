@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Crease measures on the camera's sampled route** (`mime.sensing`; `Geometry.crease_measure`, `CreaseMeasure` with its
+  `faces`; `Cylinder.crease_measure`; `mime.testing.crease_measure_problems`; dev2, camera PR 5b-i). A creased kind (a
+  solid whose body is two or more regions' intersection) takes the sampled route with its crease measure: its caps exact,
+  each branch of the march read with its other regions at its least, each corner cell the exact share of their composition
+  (`composed_covered`). `camera.crease-unmeasured` now refuses only a creased kind without the measure (the box; the
+  screw until its measure comes). The cylinder declares its measure; its default stays the closed form, and
+  `route="sampled"` images it by the march (against the exact image within lines derived before the gate's draws,
+  `scripts/camera_route2/crease_line.py`). A face narrower than two sub-pixels raises `thin_cap`. New switches:
+  `camera.composed.{end,low,high,empty}`, `camera.sampled.body`, `cylinder.cap_side`.
 - **The camera's sampled route: any kind with a cheap sign function** (`mime.sensing`, route 2; `Geometry.sign_function`,
   `SignValue`, `sign_zone`; `Geometry.crease_measure`, `CreaseMeasure`; dev2, camera PR 5a). A kind whose geometry declares a
   cheap sign function is imaged without a closed form: each ray's line through its enclosing ball is sampled (32 samples by

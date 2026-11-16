@@ -1,6 +1,5 @@
-"""G11, refusals: a creased kind without its crease measure (the box, the screw), a kind that declares one (the sampled
-route reads none yet) and a lab's kind with neither a closed form nor a sign function are refused for the camera with
-their reasons; a route override naming no route, and the
+"""G11, refusals: a creased kind without its crease measure (the box, the screw) and a lab's kind with neither a closed
+form nor a sign function are refused for the camera with their reasons, and a creased kind with its measure is not; a route override naming no route, and the
 closed form forced on a kind without one; a subject written against its kind; subjects named
 twice, a parent no subject is, a cycle of parents, a moving subject with no pose, a stage's display opacity outside 0
 to 1; a stale static cache and one given while its numbers are traced.
@@ -38,24 +37,24 @@ def test_a_kind_with_no_route_is_refused_with_its_reason(kind, refused, monkeypa
     assert kind in message and ("crease" in message or "sign function" in message)
 
 
-def test_a_kind_declaring_a_crease_measure_is_refused_the_sampled_route(monkeypatch):
-    """The sampled route marches a kind's first region and reads no crease measure yet, so a lab's kind that declares
-    one, creased (a cylinder's two regions) or not (a sphere's one), would be imaged as if smooth: each is refused by
-    name, before the march sees it."""
-    from mime.registry import CreaseMeasure
-    from mime.scene import Cylinder, Sphere
+def test_a_creased_kind_takes_the_sampled_route_with_its_crease_measure_and_is_refused_without(monkeypatch):
+    """The refusal lifted (camera PR 5b): a creased kind (a solid whose body is two or more regions' intersection) takes
+    the sampled route exactly when it declares its crease measure and a cheap sign function, and is refused without the
+    measure: a lab's cylinder that declares the measure takes it; the same kind with the measure removed is refused by
+    name, as the box and the screw are."""
+    from mime.registry import Geometry
+    from mime.scene import Cylinder
 
-    def crease_measure(self, parameters, o, d):
-        return CreaseMeasure((), lambda marched, creases, lesser, greater: marched[0])
+    class Unmeasured(Cylinder):
+        crease_measure = Geometry.crease_measure  # the capability's refusal: no measure
 
-    kinds = {"labx.rimmed": type("Rimmed", (Cylinder,), {"crease_measure": crease_measure}),
-             "labx.seamed": type("Seamed", (Sphere,), {"crease_measure": crease_measure})}
+    kinds = {"labx.rimmed": type("Rimmed", (Cylinder,), {}), "labx.unmeasured": Unmeasured}
     monkeypatch.setattr(subjects_module.sampled_route, "kind_named", lambda name: kinds.get(name))
-    for kind in kinds:
-        with pytest.raises(ArgumentRefused) as error:
-            subjects_module.route_of(kind)
-        assert code(error) == {"camera.crease-unmeasured"}
-        assert kind in str(error.value) and "crease measure" in str(error.value)
+    assert subjects_module.route_of("labx.rimmed") == "sampled"
+    with pytest.raises(ArgumentRefused) as error:
+        subjects_module.route_of("labx.unmeasured")
+    assert code(error) == {"camera.crease-unmeasured"}
+    assert "labx.unmeasured" in str(error.value) and "crease measure" in str(error.value)
 
 
 def test_a_route_that_is_no_route_is_refused():

@@ -1567,13 +1567,24 @@ class SignValue(NamedTuple):
 
 
 class CreaseMeasure(NamedTuple):
-    """The exact edge functions of a body's creases on rays (:meth:`Geometry.crease_measure`): ``pieces``, each below
-    zero where the ray meets the crease's face and vanishing linearly on its outline, and ``compose(marched, creases,
-    lesser, greater)``, the body's edge from the marched surface's pieces and the creases', given the least and the
-    greatest of two pieces (a union's and an intersection's)."""
+    """The exact edge functions of a body's creases on rays (:meth:`Geometry.crease_measure`) and how the body's edge
+    is made from them.
+
+    - ``pieces``: per-ray arrays, each below zero where the ray meets a crease's face (a cap) or a region bounding one
+      (the cap's ball), and vanishing linearly on its outline.
+    - ``compose(marched, creases, lesser, greater)``: the body's edge, given the least and the greatest of two pieces
+      (a union's and an intersection's). ``creases`` are ``pieces``. ``marched`` holds one entry per branch of the
+      march (the camera's sampled route holds two): the first-order distance of each of the kind's ``regions``, in
+      their order, at that branch's least along the ray (the marched region, ``regions[0]``, first). A capped body's
+      edge is the union of its caps and, for each branch, the intersection of its regions there.
+    - ``faces``: the planar face each of the first ``len(faces)`` pieces lies on, as its centre, unit normal and the
+      radius of the disc about the centre that holds it (in the frame its samples are in), from which a camera judges
+      whether its sub-pixels resolve the face's outline; empty where the creases' faces are not planar."""
 
     pieces: tuple[Any, ...]
-    compose: Callable[[Sequence[Any], Sequence[Any], Callable[[Any, Any], Any], Callable[[Any, Any], Any]], Any]
+    compose: Callable[[Sequence[Sequence[Any]], Sequence[Any], Callable[[Any, Any], Any], Callable[[Any, Any], Any]],
+                      Any]
+    faces: tuple[tuple[Any, Any, Any], ...] = ()
 
 
 class WallDistance(NamedTuple):
@@ -1758,8 +1769,9 @@ class Geometry(Entry):
                        d: tuple[Any, Any, Any]) -> CreaseMeasure:
         """The exact edge functions of the body's creases (where two of a solid's regions' boundaries meet: a cap's
         rim) on the rays ``o + t d`` (``t >= 0``, ``|d| = 1``, per-ray arrays in the frame its samples are in), and how
-        they compose with the marched surface's pieces (:class:`CreaseMeasure`). A solid whose body is the intersection
-        of two or more regions is creased, and the camera's sampled route refuses it without this."""
+        they compose with each branch's regions' first-order distances at its least (:class:`CreaseMeasure`). A solid
+        whose body is the intersection of two or more regions is creased, and the camera's sampled route refuses it
+        without this. ``mime.testing.crease_measure_problems`` holds a kind's measure to its regions' signs."""
         raise NotImplementedError
 
 

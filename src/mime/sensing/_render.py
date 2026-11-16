@@ -433,9 +433,33 @@ def _factor(subject: Subject, parent: Subject | None, parent_pose: tuple[Any, An
         flags[f"corner_unverified:{name}"] = flags.get(f"corner_unverified:{name}", 0) + jnp.sum(seen.unverified > 0.0)
         flags[f"corner_bound:{name}"] = jnp.maximum(flags.get(f"corner_bound:{name}", 0.0), jnp.max(seen.unverified))
     if subject.placed.form.turning:
-        flags[f"thin_cap:{name}"] = flags.get(f"thin_cap:{name}", False) | _thin_cap(
+        thin = (_thin_cap if subject.placed.sampled is None else _thin_faces)(
             subject, rotation, origin, camera, pose, dtype, corner_samples)
+        flags[f"thin_cap:{name}"] = flags.get(f"thin_cap:{name}", False) | thin
     return factor, pixel
+
+
+def _thin_faces(subject: Subject, rotation: Any, origin: Any, camera: Pinhole, pose: CameraPose, dtype: Any,
+                corner_samples: int) -> Any:
+    """Whether a creased body on the sampled route shows a planar face in view (a cap: its crease measure's
+    ``faces``) whose ellipse is narrower than ``THIN_CAP_SUBPIXELS`` sub-pixels, as ``_thin_cap`` judges a capped
+    cylinder's: twice ``f R |cos|`` over its depth, the cosine between the line of sight and the face's normal."""
+    marched = subject.placed.sampled
+    assert marched is not None
+    position = jnp.asarray(pose.position, dtype=dtype)
+    found = jnp.zeros((), dtype=bool)
+    for centre, normal, radius in sampled_route.faces(marched, _parameters(subject, dtype)):
+        at = origin + rotation @ jnp.stack([jnp.asarray(c, dtype=dtype) for c in centre])
+        axis = rotation @ jnp.stack([jnp.asarray(c, dtype=dtype) for c in normal])
+        sight = at - position
+        distance = jnp.sqrt(jnp.sum(sight * sight))
+        pixel, depth = project(camera, pose, at)
+        across = 2.0 * camera.fx * radius * jnp.abs(jnp.sum(sight * axis)) / (distance * depth)
+        reach = camera.fx * radius / depth
+        seen = (pixel[0] > -reach) & (pixel[0] < camera.width + reach) & (pixel[1] > -reach) \
+            & (pixel[1] < camera.height + reach) & (depth > 0)
+        found = found | (seen & (across < THIN_CAP_SUBPIXELS / max(corner_samples, 1)))
+    return found
 
 
 def _window_size(window: tuple[int, int], camera: Pinhole) -> tuple[int, int]:

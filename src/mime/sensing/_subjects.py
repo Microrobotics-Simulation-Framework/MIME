@@ -26,6 +26,7 @@ from typing import Any, cast
 import numpy as np
 
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
+from mime.core._node import jnp
 from mime.registry import Solid, implements
 from mime.scene import display_primvars
 from mime.sensing import _sampled as sampled_route
@@ -152,8 +153,7 @@ type ClosedForm = Callable[[Mapping[str, Any], str], Placed]
 
 _closed_forms: dict[str, tuple[ClosedForm, tuple[str, ...]]] = {}
 
-#: Why each of MIME's kinds without a closed form takes no route yet, and what comes instead: the creased ones until
-#: their crease measure (camera PR 5b).
+#: Why each of MIME's creased kinds without a crease measure takes no route yet, and what comes instead.
 NO_CLOSED_FORM = {
     "box": "the box's body is three slabs' intersection, creased at its edges, and declares no crease measure; it gains "
            "route 1 with its run-time shape",
@@ -181,25 +181,10 @@ ROUTES = ("closed form", "sampled")
 
 
 def _sampled_refusal(kind: str) -> Refusal | None:
-    """Why ``kind`` cannot take route 2, or ``None``."""
+    """Why ``kind`` cannot take route 2, or ``None``: a creased kind without its crease measure, or a kind without a
+    cheap sign function."""
     found = sampled_route.kind_named(kind)
-    if found is None or (not sampled_route.has_sign(found) and not sampled_route.creased(found)):
-        reason = f"no closed form is registered for the kind {kind!r} and it declares no cheap sign function"
-        return Refusal(
-            "camera.no-route", RefusalClass.USER, f"a {kind} cannot be imaged: {reason}",
-            "image a kind with a closed form (a sphere, a capsule, a cylinder, a straight tube) or one that declares a "
-            "cheap sign function (Geometry.sign_function: the ellipsoid, the helix), or register the kind's closed form: "
-            "register_closed_form(kind, closed_form)")
-    if implements(found, "crease_measure"):
-        return Refusal(
-            "camera.crease-unmeasured", RefusalClass.USER,
-            f"a {kind} cannot be imaged by the sampled route yet: it declares a crease measure, which the route does "
-            f"not read until the next piece of the camera, and its march takes only its first region "
-            f"({found.regions[0]!r}), so its creases would be imaged wrongly",
-            "image it once the sampled route reads crease measures, give it a closed form "
-            "(register_closed_form(kind, closed_form)), or hide it: hide=(...)",
-            why="the sampled route marches one region and does not yet read a crease measure")
-    if sampled_route.creased(found):
+    if found is not None and sampled_route.creased(found) and not implements(found, "crease_measure"):
         reason = NO_CLOSED_FORM.get(kind, f"the {kind}'s body is the intersection of its regions "
                                           f"{', '.join(found.regions)}, creased where they meet")
         return Refusal(
@@ -207,6 +192,13 @@ def _sampled_refusal(kind: str) -> Refusal | None:
             f"a {kind} cannot be imaged by the sampled route without its crease measure: {reason}",
             f"give the kind its crease measure (Geometry.crease_measure), or hide it: hide=(...)",
             why="the first-order march reads a crease's edge wrongly at any sample count (camera truth 1)")
+    if found is None or not sampled_route.has_sign(found):
+        reason = f"no closed form is registered for the kind {kind!r} and it declares no cheap sign function"
+        return Refusal(
+            "camera.no-route", RefusalClass.USER, f"a {kind} cannot be imaged: {reason}",
+            "image a kind with a closed form (a sphere, a capsule, a cylinder, a straight tube) or one that declares a "
+            "cheap sign function (Geometry.sign_function: the ellipsoid, the helix), or register the kind's closed form: "
+            "register_closed_form(kind, closed_form)")
     return None
 
 
@@ -245,6 +237,13 @@ def _sampled(kind: str, settings: Mapping[str, Any], region: str) -> Placed:
     feature = sampled_route.smallest_length(found, settings)
     rotation = settings.get("rotation", ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)))
     marched = Sampled(made, found.regions[0], feature, enclosing, sampled_route.samples_for(enclosing, feature))
+    if implements(found, "crease_measure"):
+        zero = jnp.zeros(())
+        measure = made.crease_measure({name: jnp.asarray(value) if not isinstance(value, int) else value
+                                       for name, value in parameters.items()},
+                                      (zero, zero, zero), (zero, zero, jnp.ones(())))
+        marched = dataclasses.replace(marched, regions=tuple(found.regions[1:]), creases=len(measure.pieces),
+                                      compose=measure.compose)
     return Placed(sampled_route.form(marched), parameters, _vector(settings, "centre", (0.0, 0.0, 0.0)),
                   tuple(tuple(float(x) for x in row) for row in rotation), marched, feature)
 

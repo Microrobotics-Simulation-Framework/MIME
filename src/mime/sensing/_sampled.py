@@ -40,7 +40,7 @@ lie at most ``SPACING`` of its smallest feature apart (``samples_for``): a struc
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, NamedTuple, cast
 
@@ -57,6 +57,7 @@ lax: Any = jax.lax
 #: JAX's jit and linearize, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
 _jit: Any = cast(Any, jax).jit
 _linearize: Any = cast(Any, jax).linearize
+_jvp: Any = cast(Any, jax).jvp
 
 #: Samples a ray by default: camera truth 1's count, within 1 % of the physical silhouette in motion off the crease.
 SAMPLES = 32
@@ -112,13 +113,18 @@ COST_LINE = 1.0e9
 @dataclass(frozen=True)
 class Sampled:
     """A body route 2 images: its geometry kind (made from its settings), the region it marches, its smallest
-    feature's size and its enclosing radius (m), and the samples a ray."""
+    feature's size and its enclosing radius (m), and the samples a ray. A body whose kind declares a crease measure
+    (``Geometry.crease_measure``) also holds its other ``regions`` (read at each branch's least), its measure's count of
+    pieces (``creases``) and its composition (``compose``)."""
 
     kind: Geometry
     region: str
     feature: float
     enclosing: float
     samples: int
+    regions: tuple[str, ...] = ()
+    creases: int = 0
+    compose: Callable[..., Any] | None = None
 
 
 def kind_named(name: str) -> type[Geometry] | None:
@@ -153,6 +159,23 @@ def evaluate(sampled: Sampled, p: Mapping[str, Any], x: Any, y: Any, z: Any) -> 
     return found.value / found.slope
 
 
+def _region(sampled: Sampled, p: Mapping[str, Any], region: str, x: Any, y: Any, z: Any) -> Any:
+    found = sampled.kind.sign_function(p, region, (x, y, z))
+    return found.value / found.slope
+
+
+def body(sampled: Sampled, p: Mapping[str, Any], x: Any, y: Any, z: Any) -> Any:
+    """The body's first-order distance where it is creased: the greatest of its regions' (its sign is the body's), the
+    marched region's where it is not."""
+    found = evaluate(sampled, p, x, y, z)
+    for region in sampled.regions:
+        other = _region(sampled, p, region, x, y, z)
+        held = found
+        found = switch.maximum(held, other, owner="camera.sampled.body", resolution=lambda: switch.rounding(
+            sampled.enclosing), indicator=lambda: held - other)
+    return found
+
+
 class March(NamedTuple):
     """The march's held result on each ray: the least sample's refined point and the least other local minimum's,
     whether there is another, the samples' points and spacing, which spacings lie inside the body, which it is entered
@@ -171,6 +194,7 @@ class March(NamedTuple):
     corner: Any = None
     du: Any = None
     dv: Any = None
+    interior: Any = None
 
 
 def _margins(v: Any) -> Any:
@@ -227,14 +251,19 @@ def march(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, du: Vec) -> Ma
 
     ta = refined(first)
     tb = refined(second)
+    if sampled.regions:
+        v = body(sampled, held_p, *(o[i] + t * d[i][..., None] for i in range(3)))
     entering = (v[..., :-1] >= 0.0) & (v[..., 1:] < 0.0)
     leaving = (v[..., :-1] < 0.0) & (v[..., 1:] >= 0.0)
     inside = (v[..., :-1] < 0.0) & (v[..., 1:] < 0.0)
     across = t[..., :-1] + dt[..., None] * v[..., :-1] / jnp.where(entering | leaving, v[..., :-1] - v[..., 1:], 1.0)
     interval = (jnp.min(jnp.where(entering, across, forms.FAR), axis=-1),
                 jnp.max(jnp.where(leaving, across, -forms.FAR), axis=-1))
+    # A creased body's marched region reaches past its enclosing ball (a cylinder's side, a screw's thread): a least at
+    # the ends of the samples is not the region's least along the ray, and the body is not there.
+    interior = None if sampled.compose is None else (first > 0) & (first < n - 1)
     return March(ta, tb, has2, t, dt, inside.astype(v.dtype), entering.astype(v.dtype), leaving.astype(v.dtype),
-                 interval)
+                 interval, interior=interior)
 
 
 def chord(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, held: March) -> Any:
@@ -242,7 +271,7 @@ def chord(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, held: March) -
     and where it found the body entered or left, the share inside by linear interpolation of the live values at the
     held samples. The masks are held: a sample crossing the surface moves the crossing from one spacing to its
     neighbour, where the interpolation puts it at the same place, so the chord is continuous across it."""
-    v = evaluate(sampled, p, *(o[i] + held.t * d[i][..., None] for i in range(3)))
+    v = (body if sampled.regions else evaluate)(sampled, p, *(o[i] + held.t * d[i][..., None] for i in range(3)))
     a, b = v[..., :-1], v[..., 1:]
     changes = (held.entering + held.leaving) > 0.0
     share = a / switch.domain_guard(changes, a - b, 1.0)
@@ -501,10 +530,71 @@ def _verified(sampled: Sampled, held: March, p: Mapping[str, Any], o: Vec, d: Ve
     return jnp.where(lost & ~second_lost, point, first), jnp.where(lost & second_lost, point, second), bound
 
 
+def _moving(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, at: Any, spacing: Any) -> Any:
+    """A branch's held least ``at`` along the rays with the derivative of the least's place: one Newton step on the
+    marched function's slope along the ray, its value taken off (so the place is the held one), its derivative the
+    implicit function's. The step's curvature is the profile's second difference at the march's ``spacing``, held: at a
+    kink of the profile (a ray through the region's medial set, a cylinder's axis) the least's place moves with the
+    kink, and the curvature a spacing wide keeps the step's derivative finite there; where it is not convex the place is
+    held."""
+    def along(t: Any) -> Any:
+        return evaluate(sampled, p, *(o[i] + t * d[i] for i in range(3)))
+
+    live = _jvp(along, (at,), (jnp.ones_like(at),))[1]
+    curvature = lax.stop_gradient((along(at + spacing) - 2.0 * along(at) + along(at - spacing)) / (spacing * spacing))
+    convex = curvature > 0.0
+    step = (live - lax.stop_gradient(live)) / switch.domain_guard(convex, curvature, 1.0)
+    return at - switch.domain_guard(convex, step, jnp.zeros_like(step))
+
+
+def _creased_pieces(sampled: Sampled, held: March) -> Any:
+    """A creased body's pieces on rays: the two branches' (as ``pieces``), each branch's other regions' first-order
+    distances at its least (``Sampled.regions``, the least's place moving with its derivative, ``_moving``), and the
+    crease measure's pieces; on a frame's corner sub-samples followed by the bound. A second branch read at the
+    first's point is moved out by the enclosing radius, as one that is not there: the two would repeat one term of the
+    composition."""
+
+    def made(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
+        def at(t: Any) -> Any:
+            return evaluate(sampled, p, *(o[i] + t * d[i] for i in range(3)))
+
+        at_first, at_second, bound = _leasts(sampled, held, p, o, d)
+        first, second = at(at_first), at(at_second)
+        second = jnp.where(held.has2 & (at_second != at_first), second, first + sampled.enclosing)
+        # The least at the ends of the samples lies past the enclosing ball's margin, two footprints from the body.
+        first = jnp.where(held.interior, first, first + 2.0 * sampled.enclosing)
+        regions: list[Any] = []
+        for place in (at_first, at_second):
+            moving = _moving(sampled, p, o, d, place, held.dt)
+            regions += [_region(sampled, p, region, *(o[i] + moving * d[i] for i in range(3)))
+                        for region in sampled.regions]
+        found = sampled.kind.crease_measure(p, o, d)
+        made_pieces = (first, second, *regions, *found.pieces)
+        return made_pieces if held.corner is None else (*made_pieces, bound)
+
+    return made
+
+
+def creased_compose(sampled: Sampled) -> Any:
+    """A creased body's composition of its pieces (``_creased_pieces``' order): its crease measure's, given each
+    branch's regions and the creases."""
+    count = len(sampled.regions)
+    compose = sampled.compose
+    assert compose is not None
+
+    def composed(parts: Sequence[Any], lesser: Any, greater: Any) -> Any:
+        marched = [(parts[0], *parts[2:2 + count]), (parts[1], *parts[2 + count:2 + 2 * count])]
+        return compose(marched, parts[2 + 2 * count:2 + 2 * count + sampled.creases], lesser, greater)
+
+    return composed
+
+
 def pieces(sampled: Sampled, held: March) -> Any:
     """The two branches' pieces on rays: each the first-order distance at its ray's own least near its held point
     (``_leasts``); the second, where there is no second minimum, the first moved out by the enclosing radius; on a
     frame's corner sub-samples (``March.corner``) followed by the bound where the reading is not verified."""
+    if sampled.compose is not None:
+        return _creased_pieces(sampled, held)
 
     def made(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
         def at(t: Any) -> Any:
@@ -541,6 +631,8 @@ def form(sampled: Sampled, held: March | None = None) -> Form:
     def enclosing(settings: Mapping[str, float]) -> float:
         return sampled.enclosing
 
+    if sampled.compose is not None:
+        return _creased_form(sampled, held, interval, enclosing)
     if held is None:
         def unmarched(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
             raise TypeError("a sampled form's pieces are made from its march (form(sampled, held))")
@@ -557,6 +649,40 @@ def form(sampled: Sampled, held: March | None = None) -> Form:
                 at_corners=at_corners)
 
 
+def _creased_form(sampled: Sampled, held: March | None, interval: Any, enclosing: Any) -> Form:
+    """A creased body's form: its pieces (``_creased_pieces``), composed by its crease measure, each cell the exact
+    share of that composition of the pieces' half-planes (``coverage.composed_covered``), the creases' pieces taken as
+    turning (a cap's outline turns within a pixel where it is seen near edge-on)."""
+    compose = creased_compose(sampled)
+    count = 2 + 2 * len(sampled.regions) + sampled.creases
+    terms = coverage.terms_of(compose, count)
+    turning = tuple(range(2 + 2 * len(sampled.regions), count))
+
+    def cover(lines: Sequence[Any], size: float) -> Any:
+        return coverage.composed_covered(terms, list(lines), size)
+
+    if held is None:
+        def unmarched(p: Mapping[str, Any], o: Vec, d: Vec) -> tuple[Any, ...]:
+            raise TypeError("a sampled form's pieces are made from its march (form(sampled, held))")
+
+        return Form(interval, unmarched, enclosing, compose, corners=True, turning=turning, cover=cover)
+    if held.corner is not None:
+        return Form(interval, pieces(sampled, held), enclosing, compose, corners=True, turning=turning, cover=cover,
+                    unverified=1)
+
+    def at_corners(corner: Any, du: Vec, dv: Vec) -> Form:
+        return form(sampled, held._replace(corner=corner, du=du, dv=dv))
+
+    return Form(interval, pieces(sampled, held), enclosing, compose, corners=True, turning=turning, cover=cover,
+                at_corners=at_corners)
+
+
+def faces(sampled: Sampled, p: Mapping[str, Any]) -> tuple[tuple[Any, Any, Any], ...]:
+    """A creased body's planar faces (``CreaseMeasure.faces``), in its kind's frame."""
+    zero = jnp.zeros(())
+    return sampled.kind.crease_measure(p, (zero, zero, zero), (zero, zero, jnp.ones(()))).faces
+
+
 def evaluation_cost(sampled: Sampled, parameters: Mapping[str, Any], dtype: Any) -> float:
     """The flops-equivalents of one evaluation of the marched function (flops plus ``TRANSCENDENTAL_WEIGHT`` times
     the transcendentals), from XLA's cost analysis of the lowered program on one point: a count of the program, never
@@ -571,12 +697,53 @@ def evaluation_cost(sampled: Sampled, parameters: Mapping[str, Any], dtype: Any)
     return float(cost.get("flops", 0.0)) + TRANSCENDENTAL_WEIGHT * float(cost.get("transcendentals", 0.0))
 
 
+def _counted(function: Any, *shapes: Any) -> float:
+    cost: Mapping[str, float] = _jit(function).lower(*shapes).cost_analysis() or {}
+    return float(cost.get("flops", 0.0)) + TRANSCENDENTAL_WEIGHT * float(cost.get("transcendentals", 0.0))
+
+
+def crease_cost(sampled: Sampled, parameters: Mapping[str, Any], dtype: Any) -> tuple[float, float]:
+    """A creased body's counts besides its marched function's, in flops-equivalents: its crease measure's pieces and its
+    other regions on one ray, and the exact share of its composition in one cell (``coverage.composed_covered``)."""
+    point = jax.ShapeDtypeStruct((), dtype)
+    held = {name: (value if isinstance(value, int) else jnp.asarray(value, dtype=dtype))
+            for name, value in parameters.items()}
+
+    def measured(ox: Any, oy: Any, oz: Any, dx: Any, dy: Any, dz: Any) -> Any:
+        found = sampled.kind.crease_measure(held, (ox, oy, oz), (dx, dy, dz)).pieces
+        regions = [_region(sampled, held, region, ox, oy, oz) for region in sampled.regions]
+        return sum((*found, *regions), start=jnp.zeros((), dtype))
+
+    count = 2 + 2 * len(sampled.regions) + sampled.creases
+    terms = coverage.terms_of(creased_compose(sampled), count)
+
+    def covered(values: Any) -> Any:
+        lines = [coverage.Line(values[3 * k], values[3 * k + 1], values[3 * k + 2]) for k in range(count)]
+        return coverage.composed_covered(terms, lines, 1.0 / coverage.CORNER_SAMPLES)
+
+    return (_counted(measured, *([point] * 6)),
+            _counted(covered, jax.ShapeDtypeStruct((3 * count,), dtype)))
+
+
+#: Evaluations of the marched function a creased body adds to each set of its pieces (a ray's, and each corner
+#: sub-sample's): each branch's least's place moving with its derivative, its slope along the ray (two) and its second
+#: difference (three, ``_moving``).
+CREASE_EVALUATIONS = 10
+
+
 def frame_cost(sampled: Sampled, parameters: Mapping[str, Any], rays: int, sub_frames: int, dtype: Any) -> float:
     """The structural cost estimate of a body's frame, in flops-equivalents: its rays (its window's) times the
     sub-frames times one evaluation's count times the evaluations a ray takes (its samples, its pieces, and the corner
-    sub-samples, counted as running: a frame with a corner in view runs them on every ray)."""
-    per_ray = sampled.samples + PIECE_EVALUATIONS + CORNER_EVALUATIONS
-    return float(rays) * sub_frames * per_ray * evaluation_cost(sampled, parameters, dtype)
+    sub-samples, counted as running: a frame with a corner in view runs them on every ray); for a creased body, each set
+    of pieces' crease measure, other regions and moving leasts, and each corner sub-sample's exact share of its
+    composition."""
+    one = evaluation_cost(sampled, parameters, dtype)
+    per_ray = (sampled.samples + PIECE_EVALUATIONS + CORNER_EVALUATIONS) * one
+    if sampled.compose is not None:
+        measure, cover = crease_cost(sampled, parameters, dtype)
+        sub_cells = coverage.CORNER_SAMPLES ** 2
+        per_ray += (1 + sub_cells) * (CREASE_EVALUATIONS * one + measure) + sub_cells * cover
+    return float(rays) * sub_frames * per_ray
 
 
 def made_kind(kind: type[Geometry], settings: Mapping[str, Any]) -> Geometry:
@@ -616,6 +783,6 @@ def smallest_length(kind: type[Geometry], settings: Mapping[str, Any]) -> float:
     return min(positive) if positive else math.inf
 
 
-__all__ = ["COST_LINE", "MARGIN_PX", "SAMPLES", "SPACING", "Sampled", "chord", "creased", "evaluate", "evaluation_cost",
-           "form", "frame_cost",
+__all__ = ["COST_LINE", "MARGIN_PX", "SAMPLES", "SPACING", "Sampled", "body", "chord", "crease_cost", "creased",
+           "creased_compose", "evaluate", "evaluation_cost", "faces", "form", "frame_cost",
            "has_sign", "kind_named", "made_kind", "march", "samples_for", "smallest_length"]

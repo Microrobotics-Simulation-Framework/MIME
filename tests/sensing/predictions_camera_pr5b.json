@@ -1,0 +1,30 @@
+{
+ "written": "2026-11-16, camera PR 5b-i, before any draw of its gates (the composition's share, the cylinder's crease measure, the cylinder on the sampled route against the exact image, the creased derivative)",
+ "disclosed": "Before the lines were derived, development renders of the cylinder by route 2 at turns 0, 10 and 20 degrees (roll 0, no offset) were made against the exact image while the code was being fixed (a least at the samples' ends read as the side's; the least's place's derivative at the side's medial kink); the derivation (scripts/camera_route2/crease_line.py) reads neither them nor the renderer, and its simulation reproduced the renderer's pixel error at turn 10 to 1e-11 (0.00568987).",
+ "lines": {
+  "pixel_line": {
+   "float64": 0.05015091762931918,
+   "float32": 0.05090956090251528
+  },
+  "motion_line": 0.015286380823400104,
+  "derivation": "scripts/camera_route2/crease_line.py: SAFETY (1.25) times the scan's largest error of the scheme re-implemented on the exact geometry, plus float32's rounding of a sub-ray's point in float32 (camera PR 5a's term)",
+  "scan": {
+   "file": "tests/sensing/crease_line_pr5b.json",
+   "largest_pixel_error": 0.04012073410345535,
+   "largest_motion_error": 0.012229104658720083,
+   "note": "the half-density scan's largest are the same points (turn 0, roll 0 for the pixel; turn 1.5, roll 0 for the motion), so it does not test the factor between the scan's points: the factor 1.25 is a declaration, the space between the points a stated risk the drawn views measure"
+  }
+ },
+ "predictions": {
+  "composed_share": "the composed share equals the clipped polygons' area to 1e-12 on 100 drawn line sets; two one-line terms equal union_covered to 1e-12; CAMERA_PLANT=composed-sign fails on every run",
+  "conformance": "the cylinder's crease measure passes crease_measure_problems on 40 drawn settings and ray sets; CAMERA_PLANT=wide-cap (caps one per cent wide) fails on every run",
+  "g18_pixel": "every pinned and drawn view within the pixel line in both dtypes; the largest ratio to the line at most 0.8",
+  "g18_motion": "every pinned and drawn view's motion within the motion line",
+  "thin_cap": "raised exactly where a cap's ellipse is narrower than two sub-pixels",
+  "controls": "CAMERA_PLANT=single-edge-crease and CAMERA_PLANT=no-crease-measure each fail the pinned views (turns 0, 2, 4) on every run, in both dtypes",
+  "g17_derivative": "the jvp of the equivalent radius and centroid within the central difference's own error (the sweep's line) at turns 0, 2, 4 and 15, on the pixels about the rims and on the rest; CAMERA_PLANT=no-crease-measure fails",
+  "bits": "route 1's compiled programs (step, run, jvp, render and a mesh scene; float32 and float64) and camera PR 5a's helix and ellipsoid programs equal the base 24e955bf; a one-ulp control differs",
+  "cost": "a creased cylinder's structural frame estimate is 2 to 4 times that of a ray of an uncreased body of the same evaluation cost"
+ },
+ "outcomes": {}
+}

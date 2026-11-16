@@ -998,7 +998,8 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "camera.sampled.least", "camera.sampled.basin", "camera.sampled.second", "camera.sampled.branch",
                  "camera.union.share.low", "camera.union.share.high", "camera.union.nested", "camera.union.apart",
                  "camera.union.ends", "camera.union.chord_start", "camera.union.chord_end", "camera.union.chord_empty",
-                 "helix.end.low", "helix.end.high"])
+                 "camera.composed.end", "camera.composed.low", "camera.composed.high", "camera.composed.empty",
+                 "camera.sampled.body", "cylinder.cap_side", "helix.end.low", "helix.end.high"])
 
 
 def test_every_owner_mime_declares_has_a_row():

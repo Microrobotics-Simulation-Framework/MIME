@@ -397,7 +397,19 @@ def sign_rows(declared) -> list[SwitchRow]:
         found = kind.sign_function(parameters, "solid", tuple(jnp.asarray([c]) for c in point))
         return {"sign_function": found.value}
 
-    return [SwitchRow(declared[f"helix.end.{end}"], lambda o, end=end: value(o, end), 1e-3) for end in ("low", "high")]
+    from mime.scene import Cylinder
+
+    cylinder = Cylinder(radius=um(300.0), length=um(2000.0), axis=(0.0, 0.0, 1.0))
+    held = {"radius": jnp.asarray(300e-6), "length": jnp.asarray(2000e-6), "axis": jnp.asarray((0.0, 0.0, 1.0))}
+
+    def cap_side(o):
+        """The upper cap's piece on a ray from a pinhole the offset (um) above its plane, rising steeply across it."""
+        origin = (jnp.asarray([150e-6]), jnp.asarray([-400e-6]), jnp.asarray([1000e-6 + o * 1e-6]))
+        direction = (jnp.asarray([0.0]), jnp.asarray([0.8]), jnp.asarray([0.6]))
+        return {"crease_measure": cylinder.crease_measure(held, origin, direction).pieces[1]}
+
+    return [*(SwitchRow(declared[f"helix.end.{end}"], lambda o, end=end: value(o, end), 1e-3) for end in ("low", "high")),
+            SwitchRow(declared["cylinder.cap_side"], cap_side, 1e-3)]
 
 
 # -- route 2's exact union of two branches ----------------------------------------------------------------------------
@@ -440,9 +452,44 @@ def union_rows(declared) -> list[SwitchRow]:
     ]
 
 
+def composed_rows(declared) -> list[SwitchRow]:
+    """A creased body's owners, each on the helper that evaluates it: ``end`` a function along a segment whose change
+    is the offset (its middle held, so its share is one either side: it measures nothing, as declared); ``low``,
+    ``high`` and ``empty`` two intervals' intersection whose start, end, or length the offset places; ``body`` a
+    cylinder's first-order distance at a point whose span's lies the offset beyond its side's."""
+    import dataclasses
+
+    import mime.sensing._sampled as sampled_route
+    from mime.scene import Cylinder
+    from mime.units import um
+
+    def kept(o):
+        return shared(jnp.stack(coverage._kept(jnp.asarray(0.3), jnp.asarray(o))))
+
+    def within(bounds):
+        return shared(coverage._within([tuple(jnp.asarray(v) for v in bound) for bound in bounds]))
+
+    kind = Cylinder(radius=um(300.0), length=um(2000.0), axis=(0.0, 0.0, 1.0))
+    held = sampled_route.Sampled(kind, "side", 300e-6, 1.044e-3, 32)
+    held = dataclasses.replace(held, regions=("span",))
+    parameters = {"radius": jnp.asarray(300e-6), "length": jnp.asarray(2000e-6), "axis": jnp.asarray((0.0, 0.0, 1.0))}
+
+    def body(o):
+        point = (jnp.asarray([360e-6]), jnp.asarray([0.0]), jnp.asarray([1060e-6 + o * 1e-6]))
+        return {"expected": sampled_route.body(held, parameters, *point)}
+
+    return [
+        SwitchRow(declared["camera.composed.end"], kept, 1e-3),
+        SwitchRow(declared["camera.composed.low"], lambda o: within([(-0.2, 0.4), (-0.2 + o, 0.4)]), 1e-3),
+        SwitchRow(declared["camera.composed.high"], lambda o: within([(-0.2, 0.3), (-0.2, 0.3 - o)]), 1e-3),
+        SwitchRow(declared["camera.composed.empty"], lambda o: within([(-0.2, 0.3), (0.3 - o, 0.4)]), 1e-3),
+        SwitchRow(declared["camera.sampled.body"], body, 1e-3),
+    ]
+
+
 def camera_rows(declared) -> list[SwitchRow]:
     return [*edge_rows(declared), *pieces_rows(declared), corner_row(declared), *disc_rows(declared),
-            *form_rows(declared), *sampled_rows(declared), *union_rows(declared)]
+            *form_rows(declared), *sampled_rows(declared), *union_rows(declared), *composed_rows(declared)]
 
 
 __all__ = ["camera_rows"]

@@ -524,6 +524,96 @@ def sign_function_problems(kind: Geometry, settings: Mapping[str, Magnitude], po
     return found
 
 
+#: A crease measure's face piece on a ray through a drawn rim vertex, in units in the last place of the ray's distance
+#: to the face's centre times its direction's part along the face's normal: zero but for the drawing's and the
+#: arithmetic's rounding.
+CREASE_RIM_ULPS = 256.0
+
+
+def crease_measure_problems(kind: Geometry, settings: Mapping[str, Magnitude], origins: np.ndarray, targets: np.ndarray,
+                            segments: int = 256, dtype: Any = None) -> list[str]:
+    """Every way ``kind``'s crease measure (``Geometry.crease_measure``), with its ``settings`` in SI, fails on the rays
+    from ``origins`` towards ``targets`` (each ``(n, 3)``, the frame its samples are in), face by face (its ``faces``,
+    each the piece of the same index): a face's piece has another sign than the body's at the ray's crossing of the
+    face's plane (below zero where the crossing lies ahead and inside every other region, above zero otherwise), at a
+    crossing decided beyond rounding; on a ray from the first origin through each point of the face's rim (the kind's
+    edge features' points on the face's plane, traced at its enclosing size over ``segments``, or its drawing's
+    vertices there for a kind with no features), the piece is not zero to rounding; a face's disc does not hold those
+    points; or its normal is not of unit length. Evaluated in ``dtype`` (float64 by default) against the regions' sign
+    functions in float64. None for a kind that declares no measure."""
+    if not implements(kind, "crease_measure"):
+        return []
+    label = kind.label()
+    found: list[str] = []
+    dtype = jnp.float64 if dtype is None else dtype
+    epsilon = float(jnp.finfo(dtype).eps)
+
+    def parameters_in(held: Any) -> dict[str, Any]:
+        return {name: (jnp.asarray(value, dtype=held) if isinstance(value, (float, tuple)) else value)
+                for name, value in settings.items()}
+
+    parameters, exact = parameters_in(dtype), parameters_in(jnp.float64)
+    origins, targets = np.asarray(origins, dtype=np.float64), np.asarray(targets, dtype=np.float64)
+    directions = targets - origins
+    directions /= np.linalg.norm(directions, axis=1, keepdims=True)
+    o, d = tuple(jnp.asarray(origins[:, i], dtype=dtype) for i in range(3)), \
+        tuple(jnp.asarray(directions[:, i], dtype=dtype) for i in range(3))
+    measure = kind.crease_measure(parameters, o, d)
+    faces = kind.crease_measure(exact, o, d).faces
+    size = float(np.max(np.linalg.norm(origins, axis=1)))
+    enclosing = float(kind.enclosing_radius(settings)) if isinstance(kind, Solid) else size
+    edges = [feature.points for feature in kind.features(settings, enclosing / segments) if feature.form == "edge"] \
+        if implements(kind, "features") else []
+    drawn = np.concatenate([np.asarray(points, dtype=np.float64) for points in edges]) if edges else np.asarray(
+        kind.drawing(settings, segments).points, dtype=np.float64)
+    for index, (centre, normal, radius) in enumerate(faces):
+        centre, normal = np.asarray(centre, dtype=np.float64), np.asarray(normal, dtype=np.float64)
+        radius = float(radius)
+        if abs(float(np.linalg.norm(normal)) - 1.0) > 64.0 * float(np.finfo(np.float64).eps):
+            found.append(f"{label}: face {index}'s normal is {float(np.linalg.norm(normal)):.17g} long, not one")
+        piece = np.asarray(measure.pieces[index], dtype=np.float64)
+        along = directions @ normal
+        height = (centre - origins) @ normal
+        t = height / np.where(np.abs(along) > 0.0, along, 1.0)
+        crossing = origins + t[:, None] * directions
+        inside = np.full(len(origins), -np.inf)
+        for region in kind.regions:
+            value = np.asarray(kind.sign_function(exact, region, tuple(jnp.asarray(crossing[:, i])
+                                                                       for i in range(3))).value)
+            on_plane = np.abs(value) <= KIND_ROUNDING_ULPS * float(np.finfo(np.float64).eps) * enclosing
+            inside = np.maximum(inside, np.where(on_plane, -np.inf, value))
+        expected = np.where((t > 0.0) & (np.abs(along) > 0.0), inside, np.inf)
+        floor = KIND_ROUNDING_ULPS * epsilon * (size + enclosing)
+        decided = np.abs(expected) > floor
+        wrong = decided & (np.sign(piece) != np.sign(expected))
+        if np.any(wrong):
+            worst = int(np.argmax(np.where(wrong, np.abs(np.where(np.isfinite(expected), expected, 0.0)), -1.0)))
+            found.append(f"{label}: face {index}'s piece has the wrong sign on {int(wrong.sum())} of {len(origins)} "
+                         f"rays (one {float(expected[worst]):.3g} m inside the body at its crossing reads "
+                         f"{float(piece[worst]):.3g})")
+        rim = drawn[(np.abs((drawn - centre) @ normal) <= 1e-9 * enclosing)
+                    & (np.linalg.norm(drawn - centre, axis=1) > 1e-6 * radius)]
+        if not len(rim):
+            found.append(f"{label}: no traced point lies on face {index}'s rim, so its zero is unchecked")
+            continue
+        if np.max(np.linalg.norm(rim - centre, axis=1)) > radius * (1.0 + 1e-12):
+            found.append(f"{label}: face {index}'s disc, radius {radius:.6g} m, does not hold its rim")
+        start = np.repeat(origins[:1], len(rim), axis=0)
+        toward = rim - start
+        toward /= np.linalg.norm(toward, axis=1, keepdims=True)
+        on_rim = np.asarray(kind.crease_measure(parameters, tuple(jnp.asarray(start[:, i], dtype=dtype)
+                                                                  for i in range(3)),
+                                                tuple(jnp.asarray(toward[:, i], dtype=dtype)
+                                                      for i in range(3))).pieces[index], dtype=np.float64)
+        allowed = CREASE_RIM_ULPS * epsilon * np.linalg.norm(rim - start, axis=1) * np.abs(toward @ normal) \
+            + CREASE_RIM_ULPS * epsilon * radius
+        if not np.all(np.abs(on_rim) <= allowed):
+            worst = int(np.argmax(np.abs(on_rim) / allowed))
+            found.append(f"{label}: face {index}'s piece reads {float(on_rim[worst]):.3g} on a ray through a vertex of "
+                         f"its rim, past rounding ({float(allowed[worst]):.3g})")
+    return found
+
+
 def sampling_kinds(kinds: list[type[Geometry]]) -> list[type[Geometry]]:
     """The kinds among ``kinds`` that sample their surface: those the harness checks."""
     return [kind for kind in kinds if implements(kind, "samples")]
@@ -536,5 +626,6 @@ def drawing_kinds(kinds: list[type[Geometry]]) -> list[type[Geometry]]:
     return [kind for kind in kinds if implements(kind, "drawing")]
 
 
-__all__ = ["KIND_ROUNDING_ULPS", "NORMAL_ROUNDING_ULPS", "SIGN_SLOPE_ULPS", "VOLUME_CONVERGENCE", "drawing_checks",
-           "drawing_kinds", "drawing_problems", "kind_problems", "sampling_kinds", "sign_function_problems"]
+__all__ = ["CREASE_RIM_ULPS", "KIND_ROUNDING_ULPS", "NORMAL_ROUNDING_ULPS", "SIGN_SLOPE_ULPS", "VOLUME_CONVERGENCE",
+           "crease_measure_problems", "drawing_checks", "drawing_kinds", "drawing_problems", "kind_problems",
+           "sampling_kinds", "sign_function_problems"]
