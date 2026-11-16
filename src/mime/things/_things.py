@@ -30,7 +30,9 @@ def _frozen(mapping: Mapping[str, Any] | None) -> Mapping[str, Any]:
 
 class State(Mapping[str, Any]):
     """A body's initial state, by the names its dynamics declares (``State(position=mm((0, 0, 1)))``). Phase 1 checks
-    the names against the dynamics and each value's units."""
+    the names against the dynamics and each value's units. An ``orientation`` is a unit quaternion in the order
+    ``(w, x, y, z)``, the real part first: ``(1.0, 0.0, 0.0, 0.0)`` is no turn, and an ``(x, y, z, w)`` from ROS or
+    SciPy is a different rotation, not refused. ``mime.scene.rotation(axis, angle)`` writes one."""
 
     def __init__(self, **values: Any) -> None:
         self._values = dict(values)

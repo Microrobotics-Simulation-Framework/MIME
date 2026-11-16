@@ -776,11 +776,29 @@ def _study(arguments: argparse.Namespace) -> int:
     return 0
 
 
-def _registry(as_json: bool) -> int:
+def _named_entries(exported: str, entry: str | None) -> str:
+    """The export with only the entries called ``entry`` (every version and kind of the name), as JSON, or whole where
+    none is asked for; the name no entry has is refused (``registry.unknown-entry``) with the nearest names."""
+    if entry is None:
+        return exported
+    from mime.things._handles import did_you_mean
+
+    found = json.loads(exported)
+    names = sorted({held["name"] for held in found["entries"]})
+    if entry not in names:
+        raise BuildRefused([Refusal(
+            "registry.unknown-entry", RefusalClass.USER, f"no registered entry is called {entry!r}",
+            f"name one `mime registry` lists, in its own spelling (a lab's is prefixed with its namespace, "
+            f"`labx.slender_tail`). {did_you_mean(entry, names)}")])
+    found["entries"] = [held for held in found["entries"] if held["name"] == entry]
+    return json.dumps(found, indent=2, sort_keys=True)
+
+
+def _registry(as_json: bool, entry: str | None = None) -> int:
     from mime.docs._export import export_json
 
     refused: list[Refusal] = []
-    exported = export_json(refused)
+    exported = _named_entries(export_json(refused), entry)
     if as_json:
         print(exported)
         if refused:
@@ -795,8 +813,8 @@ def _registry(as_json: bool) -> int:
                       found["not_loaded"], sys.stdout)
 
     if not _drawn(draw):
-        for entry in found["entries"]:
-            print(f"{entry['kind']}  {entry['name']}  {entry['version']}")
+        for held in found["entries"]:
+            print(f"{held['kind']}  {held['name']}  {held['version']}")
         for name, reason in found["not_loaded"].items():
             print(f"not loaded: {name} ({reason})")
     if refused:
@@ -815,11 +833,29 @@ def _assets_named(arguments: Sequence[str]) -> list[AssetRef]:
     return refs
 
 
+def _assets_of_source(namespace: str) -> list[AssetRef]:
+    """The records one asset source holds (``mime`` for MIME's own, an installed package's by the name of its
+    ``mime.assets`` entry point, which is its namespace's), each as that source states it; a source none is called
+    is refused (``asset.unknown``) with the sources there are."""
+    from mime.assets._sources import shared
+    from mime.things._handles import did_you_mean
+
+    held = shared().records
+    sources = sorted({each.source for each in (sourced for group in held.values() for sourced in group)})
+    if namespace not in sources:
+        raise BuildRefused([Refusal(
+            "asset.unknown", RefusalClass.USER, f"no asset source is called {namespace!r}",
+            f"name a source that holds records, `mime assets list --namespace <source>`. "
+            f"{did_you_mean(namespace, sources)}")])
+    return [each.ref for name in sorted(held) for each in held[name] if each.source == namespace]
+
+
 def _assets(command: str, arguments: Sequence[str], accept_licences: Sequence[str] = (), yes: bool = False,
-            force: bool = False) -> int:
+            force: bool = False, namespace: str | None = None) -> int:
     from mime import assets
 
-    refs = _assets_named(arguments) if arguments else list(assets.known().values())
+    refs = _assets_named(arguments) if arguments else \
+        _assets_of_source(namespace) if namespace is not None else list(assets.known().values())
     if command == assets.LIST:
         def draw() -> None:
             from mime.cli._display import show_assets
@@ -1595,6 +1631,8 @@ def build_parser() -> _guide.MimeParser:
     show.add_argument("--open", action="store_true", help="with --out, open the page in the default browser")
     registry = commands.add_parser("registry", help="every registered entry and what it declares")
     registry.add_argument("--json", action="store_true", help="the whole export, as JSON")
+    registry.add_argument("--entry", metavar="NAME", help="only the entries called NAME (every version and kind of "
+                                                          "it), as `mime registry` lists them or in the JSON export")
     # A skip flag of the documentation's checks is only ever spelled in full: argparse would take ``--skip-ex`` for
     # ``--skip-example-runs``, and a guard that reads workflows for the full spelling would not see it.
     docs = commands.add_parser("docs", help="the documentation's sources", allow_abbrev=False)
@@ -1634,7 +1672,10 @@ def build_parser() -> _guide.MimeParser:
 
     held = commands.add_parser(assets.GROUP, help="large files referenced by sha256 and fetched on request")
     held_commands = held.add_subparsers(dest="assets_command", required=True)
-    held_commands.add_parser(assets.LIST, help="every known asset, cached or missing, with its size")
+    listed = held_commands.add_parser(assets.LIST, help="every known asset, cached or missing, with its size")
+    listed.add_argument("--namespace", metavar="NS", help="only the records of one source: `mime` for MIME's own, "
+                                                          "or the name of an installed package's `mime.assets` "
+                                                          "entry point (its namespace's)")
     fetch = held_commands.add_parser(assets.FETCH, help="store assets in the cache (the cache, then the primary location, then backups), then hash "
                                    "them in full")
     fetch.add_argument("names", nargs="*", metavar="name-or-folder",
@@ -2015,13 +2056,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     ``mime completion bash|zsh|fish``: a completion script for the shell, written to standard output from this parser
     (every command, flag and choice in it), which runs no Python when Tab is pressed.
 
-    ``mime registry [--json]``: every registered entry, MIME's and each installed namespace's, in a fresh process.
+    ``mime registry [--json] [--entry NAME]``: every registered entry, MIME's and each installed namespace's, in a fresh
+    process; ``--entry`` only those called NAME.
 
     ``mime docs check [--root <checkout>] [--base <revision>]``: the documentation's sources and their checks, in a
     checkout of MIME; with ``--base``, the README start list against that revision's too. Exits 0 when every check
     passes, 1 when one fails, 2 without the ``verify`` extra.
 
-    ``mime assets list | fetch <name>... | fetch --all | check``: the large files MIME references by sha256, in the
+    ``mime assets list [--namespace SOURCE] | fetch <name>... | fetch --all | check``: the large files MIME references by sha256, in the
     cache. ``fetch`` stores them (and refuses with 2), ``check`` re-hashes the cached ones in full (1 when one is
     corrupt).
 
@@ -2135,7 +2177,7 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         return _show(arguments.folder, arguments.graph, arguments.tree, arguments.json, arguments.out, arguments.cdn,
                      arguments.caption, arguments.open)
     if arguments.command == "registry":
-        return _registry(arguments.json)
+        return _registry(arguments.json, arguments.entry)
     if arguments.command == "run":
         duration = option_seconds("--duration", arguments.duration)
         every = option_seconds("--every", arguments.every)
@@ -2182,7 +2224,7 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
             parser.error("fetch takes asset names, or --all")
         return _assets(arguments.assets_command, arguments.names if arguments.assets_command == assets.FETCH else (),
                        getattr(arguments, "accept_licence", ()), getattr(arguments, "yes", False),
-                       getattr(arguments, "force", False))
+                       getattr(arguments, "force", False), getattr(arguments, "namespace", None))
     if arguments.command == "pack":
         return _pack(arguments.folder, arguments.out)
     if arguments.command == "card":

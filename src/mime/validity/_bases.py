@@ -18,8 +18,9 @@ from typing import cast, override
 @dataclass(frozen=True)
 class Pending:
     """A reason left for later (:func:`pending`). Exploratory records it and stamps every output with it; research
-    refuses it by name. It is the one placeholder MIME writes and so can tell: a text that only looks like a reason
-    (``"TODO"``) passes, until a1's named bases and strict's evidence judge what a reason says."""
+    refuses it by name. It is the one placeholder MIME writes: a text that is only a placeholder word (``"TODO"``,
+    ``"pending"``) is refused with "did you mean ``pending()``"; any other text passes, until a1's named bases and
+    strict's evidence judge what a reason says."""
 
     @override
     def __str__(self) -> str:
@@ -57,15 +58,29 @@ def chosen(text: str) -> Chosen:
     return Chosen(text)
 
 
+#: The words a text is refused for being: a placeholder where a reason goes, which ``pending()`` says honestly.
+PLACEHOLDER_WORDS = frozenset({"pending", "todo", "tbd", "fixme"})
+
+
+def _placeholder(text: str) -> str | None:
+    """The refusal of a text that is only a placeholder word (``"TODO"``, ``"pending"``), with the call it meant."""
+    word = text.strip().rstrip(".!:;").strip().lower()
+    return (f"the reason is the text {text.strip()!r}, a placeholder and not a reason: did you mean `pending()`, "
+            f"without the quotes?") if word in PLACEHOLDER_WORDS else None
+
+
 def basis_problem(value: object) -> str | None:
-    """Why ``value`` is not a basis, or ``None``: a non-empty text, ``chosen(...)`` with its text, or ``pending()``."""
+    """Why ``value`` is not a basis, or ``None``: a non-empty text that is not only a placeholder word (``"TODO"``:
+    ``pending()`` says it), ``chosen(...)`` with its text, or ``pending()``."""
     if isinstance(value, Pending):
         return None
     if isinstance(value, Chosen):
         held = cast(object, value.text)  # a script is not type-checked
-        return None if isinstance(held, str) and held.strip() else "chosen(...) is given no text"
+        if not (isinstance(held, str) and held.strip()):
+            return "chosen(...) is given no text"
+        return _placeholder(held)
     if isinstance(value, str):
-        return None if value.strip() else "the reason is an empty text"
+        return _placeholder(value) if value.strip() else "the reason is an empty text"
     return f"{value!r} is not a reason: write a text, chosen(\"...\"), or pending()"
 
 

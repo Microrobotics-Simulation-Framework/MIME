@@ -31,11 +31,14 @@ from mime.build import RefusalClass
 CODE_SHAPE = re.compile(r"[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)+")
 #: The shape the design's count of tuple codes used, which leaves out a hyphen in the first word.
 CENSUS_SHAPE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_-]+)+")
-CONSTRUCTORS = frozenset({"Refusal", "refuse", "_refuse", "refused", "refuse_problems", "Problem", "pending"})
+CONSTRUCTORS = frozenset({"Refusal", "refuse", "_refuse", "refused", "refuse_problems", "Problem", "pending",
+                          "refuse_by_author"})
 #: The class of a construction that names none: a helper that fixes it, by the file it is called in and its name. A
 #: problem an entry's plan returns is refused as the user's.
 IMPLIED: Mapping[tuple[str, str], RefusalClass] = {
     ("build/_checks.py", "_refuse"): RefusalClass.INTERNAL,
+    ("build/_checks.py", "refuse_by_author"): RefusalClass.INTERNAL,
+    ("build/_construct.py", "refuse_by_author"): RefusalClass.INTERNAL,
     ("saved/_reconstruct.py", "refuse"): RefusalClass.USER,
     ("materials/_read.py", "refused"): RefusalClass.USER,
     ("build/_plan.py", "pending"): RefusalClass.USER,

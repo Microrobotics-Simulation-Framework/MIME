@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import warnings
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast
 
 from maddening import GraphManager
@@ -15,9 +15,9 @@ from maddening.core.node import BoundaryInputSpec
 from mime.build._control import Mode, ReadClass
 from mime.build._ledger import EnergyBoundary, misattributed
 from mime.build._maddening import edge_transform, external_inputs, graph_edges, inputs, node_dict, node_fields_of
-from mime.build._plan import PlanSet, Section
+from mime.build._plan import EntryPlan, PlanSet, Section
 from mime.things import did_you_mean
-from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
+from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass, entry_defect
 from mime.build._report import graph_config
 from mime.core import ledger
 from mime.core.solves import sites_of
@@ -44,6 +44,27 @@ def ledger_wiring_refusals(graph: GraphManager, plans: PlanSet, energy: EnergyBo
 
 def _refuse(code: str, message: str) -> Refusal:
     return Refusal(code, RefusalClass.INTERNAL, message, MIME_DEFECT)
+
+
+def entry_of(plans: PlanSet, node: str) -> EntryPlan | None:
+    """The entry that built ``node``, or ``None`` for a node no entry planned."""
+    return next((plan for plan in plans.entries if node in plan.node_names()), None)
+
+
+def refuse_by_author(code: str, plans: PlanSet, nodes: Sequence[str], message: str, fix: str) -> list[Refusal]:
+    """The refusal of a check on the graph, to the party whose code it faults: a node an entry that is not MIME's
+    built is that entry's package's to change (``fix`` says what, and the refusal names the entry and its package as
+    :func:`~mime.build._refusals.entry_defect` does, one for each such entry the check implicates); where every node
+    is MIME's own, or none was planned by an entry, it is MIME's defect, as it was."""
+    blamed: dict[type, str] = {}
+    for node in nodes:
+        plan = entry_of(plans, node)
+        if plan is not None and plan.registered.cls.__module__.split(".", 1)[0] != "mime":
+            blamed.setdefault(plan.registered.cls, node)
+    if not blamed:
+        return [_refuse(code, message)]
+    return [entry_defect(cls, message, context=f" (its node {node})", code=code, fix=fix)
+            for cls, node in blamed.items()]
 
 
 def starting_inputs(graph: GraphManager, name: str) -> dict[str, Any]:
@@ -132,7 +153,7 @@ def _inputs(graph: GraphManager, node: str) -> dict[str, BoundaryInputSpec]:
     return inputs(graph.get_node(node))
 
 
-def _units_refusals(graph: GraphManager, built_by: Callable[[str], str]) -> list[Refusal]:
+def _units_refusals(graph: GraphManager, plans: PlanSet, built_by: Callable[[str], str]) -> list[Refusal]:
     """Every node input declares its units, and every edge is labelled at both ends with its target input's units:
     MIME converts no units on an edge, so a label that differs anywhere is a value read in units it was not
     computed in."""
@@ -140,16 +161,19 @@ def _units_refusals(graph: GraphManager, built_by: Callable[[str], str]) -> list
     for name in graph.node_names:
         for field, spec in _inputs(graph, name).items():
             if not spec.expected_units:
-                refusals.append(_refuse("post-build.input-units",
-                                        f"input {field!r} of node {built_by(name)} declares no expected_units: every "
-                                        f"node input declares its units, spelt as the vocabulary spells them"))
+                refusals += refuse_by_author("post-build.input-units", plans, [name],
+                    f"input {field!r} of node {built_by(name)} declares no expected_units: every node input declares "
+                    f"its units, spelt as the vocabulary spells them",
+                    f"give input {field!r}'s BoundaryInputSpec an expected_units in the node's boundary_input_spec(), "
+                    f"spelt as the vocabulary spells the interface's units")
     for edge in graph.edges:
         what = f"the edge {built_by(edge.source_node)}.{edge.source_field} -> {edge.target_node}.{edge.target_field}"
         spec = _inputs(graph, edge.target_node).get(edge.target_field)
         if spec is None:
-            refusals.append(_refuse("post-build.input-units",
-                                    f"{what} delivers into an input its node does not declare, so nothing states "
-                                    f"the units it takes"))
+            refusals += refuse_by_author("post-build.input-units", plans, [edge.target_node],
+                f"{what} delivers into an input its node does not declare, so nothing states the units it takes",
+                f"declare input {edge.target_field!r} in the node's boundary_input_spec(), or have the entry connect "
+                f"into an input the node declares")
             continue
         if edge.source_units is None or edge.target_units is None:
             refusals.append(_refuse("post-build.units",
@@ -157,9 +181,12 @@ def _units_refusals(graph: GraphManager, built_by: Callable[[str], str]) -> list
                                     f"{'source' if edge.source_units is None else 'target'}: every edge is labelled "
                                     f"from the vocabulary"))
         elif not (edge.source_units == edge.target_units == spec.expected_units):
-            refusals.append(_refuse("post-build.units",
-                                    f"{what} is labelled {edge.source_units!r} -> {edge.target_units!r}, and its "
-                                    f"target takes {spec.expected_units!r}: MIME converts no units on an edge"))
+            refusals += refuse_by_author("post-build.units", plans, [edge.source_node, edge.target_node],
+                f"{what} is labelled {edge.source_units!r} -> {edge.target_units!r}, and its target takes "
+                f"{spec.expected_units!r}: MIME converts no units on an edge",
+                f"make input {edge.target_field!r}'s expected_units in the node's boundary_input_spec() the units the "
+                f"vocabulary gives the interface the edge carries ({edge.source_units!r}), or have the entry "
+                f"connect the interface the node takes")
     return refusals
 
 
@@ -265,13 +292,16 @@ def post_build_checks(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
                                     f"{spec['target_field']}) is also an external input: an external input replaces "
                                     f"everything delivered into its field, so a target is never one"))
     refusals += _writer_refusals(graph, plans) + _read_refusals(graph, plans)
-    refusals += _units_refusals(graph, built_by)
+    refusals += _units_refusals(graph, plans, built_by)
     refusals += node_refusals(graph, built_by)
     for name in graph.node_names:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             node_dict(graph.get_node(name))
         for warning in caught:
-            refusals.append(_refuse("post-build.unsaved-arguments",
-                                    f"node {built_by(name)} would not be saved whole: {warning.message}"))
+            refusals += refuse_by_author("post-build.unsaved-arguments", plans, [name],
+                f"node {built_by(name)} would not be saved whole: {warning.message}",
+                "hand every constructor argument on to the base class's constructor, "
+                "super().__init__(name, timestep, <argument>=<argument>), so that the node keeps it among its "
+                "params and a saved form holds it")
     return refusals

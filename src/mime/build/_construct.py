@@ -26,7 +26,7 @@ from mime.build._builders import (
     ProviderBuilder,
     RestrictedBuilder,
 )
-from mime.build._checks import ledger_wiring_refusals, node_lines, post_build_checks, solving_lines
+from mime.build._checks import ledger_wiring_refusals, node_lines, post_build_checks, refuse_by_author, solving_lines
 from mime.build._control import Mode
 from mime.build._declared_lags import net_of_declared_lags
 from mime.build._derived import DerivedGraph, derive
@@ -363,7 +363,28 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
     return builder, [*builder.finish()]
 
 
-def _validate(graph: GraphManager) -> tuple[list[ReportedWarning], list[Refusal], list[str]]:
+def _nodes_in(issue: str, graph: GraphManager) -> list[str]:
+    """The nodes a MADDENING issue is about: the ends of the edge it names, or the nodes it quotes."""
+    edges = [edge for edge in graph.edges
+             if f"{edge.source_node}.{edge.source_field} -> {edge.target_node}.{edge.target_field}" in issue]
+    if edges:
+        return [node for edge in edges[:1] for node in (edge.source_node, edge.target_node)]
+    return [name for name in graph.node_names if f"'{name}'" in issue]
+
+
+#: What the author of an entry changes for each kind of issue MADDENING's ``validate()`` stops a compile for.
+_AUTHOR_FIXES = {
+    "maddening.shape": "make the shape of the node's state field, and of the receiving input's BoundaryInputSpec, the "
+                       "shape the vocabulary gives the interface the edge carries",
+    "maddening.dtype": "give the node's state field and the receiving input's BoundaryInputSpec the dtype the "
+                       "build runs in",
+    "maddening.units": "give the receiving input's BoundaryInputSpec the units the vocabulary spells for the "
+                       "interface the edge carries",
+    "maddening.error": "hold the field the entry reads or publishes in the node's state, spelt as the entry names it",
+}
+
+
+def _validate(graph: GraphManager, plans: PlanSet) -> tuple[list[ReportedWarning], list[Refusal], list[str]]:
     """MADDENING's own checks of the graph: each issue that would stop ``compile()`` is a refusal, a units warning
     among them (MIME labels every edge from the vocabulary, so one means a node and the vocabulary disagree); every
     other warning is reported. Its ``INFO`` lines describe the schedule: the report lists it from MIME's own lag
@@ -374,13 +395,14 @@ def _validate(graph: GraphManager) -> tuple[list[ReportedWarning], list[Refusal]
     for issue in issues:
         code = next((code for prefix, code in _REFUSED_ISSUES.items() if issue.startswith(prefix)), None)
         if code is not None:
-            refusals.append(Refusal(code, RefusalClass.INTERNAL, f"MADDENING's validate(): {issue}", MIME_DEFECT))
+            refusals += refuse_by_author(code, plans, _nodes_in(issue, graph), f"MADDENING's validate(): {issue}",
+                                         _AUTHOR_FIXES[code])
         elif issue.startswith("WARNING"):
             reported.append(ReportedWarning("MADDENING GraphManager.validate()", issue))
     return reported, refusals, [issue for issue in issues if issue.startswith("INFO")]
 
 
-def _compile(graph: GraphManager, reported: list[ReportedWarning]) -> list[Refusal]:
+def _compile(graph: GraphManager, reported: list[ReportedWarning], plans: PlanSet) -> list[Refusal]:
     """``compile()``, with what it warns caught into the report rather than left on stderr: a
     ``UnitMismatchWarning`` is a refusal, and any other warning is reported with its class, once."""
     seen = {w.message for w in reported}
@@ -395,8 +417,8 @@ def _compile(graph: GraphManager, reported: list[ReportedWarning]) -> list[Refus
     for warning in caught:
         message = str(warning.message)
         if issubclass(warning.category, UnitMismatchWarning):
-            refusals.append(Refusal("maddening.units", RefusalClass.INTERNAL,
-                                    f"MADDENING's compile(): {message}", MIME_DEFECT))
+            refusals += refuse_by_author("maddening.units", plans, _nodes_in(message, graph),
+                                         f"MADDENING's compile(): {message}", _AUTHOR_FIXES["maddening.units"])
         elif message not in seen:
             seen.add(message)
             reported.append(ReportedWarning(f"MADDENING GraphManager.compile(): {warning.category.__name__}", message))
@@ -579,11 +601,11 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
     if _testing.refusing_unplanned_loops():
         refusals += unplanned_refusals(lags, dict(owners))
     refusals += order_refusals(plans.controller, lags, physics_lags)
-    reported, refused_by_maddening, schedule_lines = _validate(graph)
+    reported, refused_by_maddening, schedule_lines = _validate(graph, plans)
     refusals += refused_by_maddening
     if refusals:
         raise BuildRefused(refusals, report_of(plans, order, refusals, external, reported, lags=lags))
-    refusals = _compile(graph, reported)
+    refusals = _compile(graph, reported, plans)
     if not refusals and not math.isclose(graph.timestep, plans.dt, rel_tol=1e-12):
         refusals = [Refusal("post-build.base-step", RefusalClass.INTERNAL,
                             f"MADDENING's base step is {graph.timestep!r} s, not dt = {plans.dt!r} s", MIME_DEFECT)]
