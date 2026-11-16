@@ -13,10 +13,17 @@ last place of the scale each result came from (CLAUDE.md: no absolute part), com
   0.4.0 resolves (its own ends from the pose's entries one ulp up and down stay within ``NEWTON_ULPS`` of the hull's
   size of its end at the pose, and its converged flag outside a band of that width), the steps' point and the support
   there within ``NEWTON_ULPS`` of 0.4.0's where the search converged, and the converged flag the same off the band.
-  A group seeded far off the wall may end anywhere on the body (``_contact.shallower``), and there 0.4.0's own end
+  0.4.0's own ends are also taken from ``RATTLES`` copies of its search whose every step's point is moved by up to the
+  rounding that step's solve may leave (its matrix's condition number times the dtype's resolution times the point's
+  size), because a pose's last place does not reach the rounding a differently compiled program makes inside the
+  iteration: at ``SHALLOW_BASIN`` the first step overshoots to 50 hull sizes, its rounding is amplified a thousandfold
+  by the second, and 0.4.0 ends at the deepest point from every pose one ulp away and at a point 1 mm shallower from one
+  in ten of its rattled copies. A group seeded far off the wall may end anywhere on the body
+  (``_contact.shallower``), and there 0.4.0's own end
   moves by millimetres under a change of one ulp: neither its point nor its value is resolved, and it is reported, not
   judged. Two draws on which the versions ended 1.7 mm apart on CI's runners are checked on every run, with a
-  control: the looped search from each group's neighbour's start. The property counts the groups it leaves unjudged and
+  control: the looped search from each group's neighbour's start. A third (``SHALLOW_BASIN``) is checked with its own
+  control: the poses alone read its group as resolved, the rattled searches do not. The property counts the groups it leaves unjudged and
   all it drew, per dtype, reports both (``record_property``, printed) and fails above ``UNJUDGED_CEILING`` of them; its
   control sets the rule's width to zero, so that most groups read unresolved. It does not hold the Newton count to the
   last step: a search one step short of ``CONTACT_NEWTON`` (11 of 12) passes, as searches converge in 9 to 11.
@@ -325,8 +332,37 @@ def searches(name: str, dtype: str):
         within = contact.search_tolerance(x.dtype, node._size) - jnp.sqrt(jnp.sum((x - reached) ** 2, axis=-1))
         return x, reached, within
 
+    def rattle(q, pose, seeds_, kicks):
+        """The unrolled search with each step's point moved by ``kicks`` (``CONTACT_NEWTON x groups x 3``, each entry
+        drawn from -1 to 1) times the rounding the step's solve may leave: the dtype's resolution times the condition
+        number of the step's matrix (``I - S R^T N R``) times the point's size. A differently compiled program rounds
+        inside the iteration, which a change of the pose's last place does not reach."""
+        found = pair(q, pose, False)
+        x = seeds_
+        for kick in kicks:
+            _, slope = contact._supported(found, x, found.body.pose, found.body.parameters, found.other)
+            x = contact.climbed(found, x, 1)[0]
+            x = x + kick * jnp.finfo(x.dtype).eps * jnp.linalg.cond(slope)[:, None] * jnp.linalg.norm(
+                x, axis=-1, keepdims=True)
+        reached = contact._supported(found, x, found.body.pose, found.body.parameters, found.other)[0]
+        within = contact.search_tolerance(x.dtype, node._size) - jnp.sqrt(jnp.sum((x - reached) ** 2, axis=-1))
+        return x, reached, within
+
     return (p, node._size, jax.jit(seeds), jax.jit(partial(search, loops=False)),
-            jax.jit(partial(search, loops=True)))
+            jax.jit(jax.vmap(rattle, in_axes=(None, None, None, 0))), jax.jit(partial(search, loops=True)))
+
+
+#: How many rattled copies of 0.4.0's search (``searches``) stand beside the one-ulp poses in judging whether 0.4.0
+#: resolves a group. One copy moves a group that sits at a basin's edge about one time in ten (FL-9's group 1 at the draw
+#: of ``SHALLOW_BASIN``: 43 of 400 copies), so 64 leave it unmoved about one time in a thousand.
+RATTLES = 64
+
+
+@cache
+def kicks_for(groups: int, dtype: str) -> np.ndarray:
+    """``RATTLES`` tables of kicks for a search of ``groups`` groups, each entry from -1 to 1: fixed numbers, so that a
+    pose's judgement is the same on every run and every replay."""
+    return np.random.default_rng(groups).uniform(-1.0, 1.0, (RATTLES, contact.CONTACT_NEWTON, groups, 3)).astype(dtype)
 
 
 def one_ulp_away(values: np.ndarray) -> list[np.ndarray]:
@@ -345,9 +381,11 @@ class Searched(NamedTuple):
     """The looped search at a pose judged against 0.4.0's own resolution there, per group, in units of the hull's
     size: ``alone``, how far its point and its support stand from 0.4.0's at the pose (zero where neither converged;
     infinite where their converged flags differ off the flag's band); ``spread``, how far 0.4.0's own ends from the
-    poses one ulp away (``one_ulp_away``) stand from its end at the pose, on the same measure; ``missed``, ``alone`` on
+    poses one ulp away (``one_ulp_away``) and from its rattled searches (``RATTLES``) stand from its end at the pose, on
+    the same measure; ``missed``, ``alone`` on
     the groups 0.4.0 resolves (``resolved``), zero on the rest, where 0.4.0 alone ends elsewhere under a change of one
-    ulp; ``resolved``, the groups whose ``spread`` is within the rule's width (``NEWTON_ULPS``); and ``value``, how far
+    ulp or of its rounding; ``resolved``, the groups whose ``spread`` is within the rule's width (``NEWTON_ULPS``);
+    and ``value``, how far
     the wall's gap at its support stands from the gap at 0.4.0's (the support's value there)."""
 
     missed: np.ndarray
@@ -358,16 +396,21 @@ class Searched(NamedTuple):
 
 
 def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: Any = None,
-                           width: float = NEWTON_ULPS) -> Searched:
+                           width: float = NEWTON_ULPS, rattles: int = RATTLES) -> Searched:
     """``Searched`` at ``pose``; ``planted``, a looped arm's search in place of 0.5.0's, given the node's constants, the
-    pose and the kept starts; ``width``, how far 0.4.0's own ends one ulp away may stand from its end at the pose for
-    a group to be judged (``NEWTON_ULPS``; the rule's widening is the control of ``UNJUDGED_CEILING``)."""
+    pose and the kept starts; ``width``, how far 0.4.0's own ends one ulp away, and from its rattled searches
+    (``rattles`` of them, ``RATTLES``; none to judge by the poses alone), may stand from its end at the pose for a
+    group to be judged (``NEWTON_ULPS``; the rule's widening is the control of ``UNJUDGED_CEILING``)."""
     with jax.enable_x64(DTYPES[dtype]):
-        p, size, seeds, unrolled, looped = searches(name, dtype)
+        p, size, seeds, unrolled, rattled, looped = searches(name, dtype)
         q, at = traced(p, dtype), np.asarray(jnp.asarray(pose, dtype=dtype))
         kept = seeds(q, jnp.asarray(at))
         ends = [[np.asarray(v, dtype=np.float64) for v in unrolled(q, jnp.asarray(moved), kept)]
                 for moved in (at, *one_ulp_away(at))]
+        if rattles:
+            kicks = jnp.asarray(kicks_for(kept.shape[0], dtype)[:rattles])
+            rattled_ends = [np.asarray(v, dtype=np.float64) for v in rattled(q, jnp.asarray(at), kept, kicks)]
+            ends += [[v[k] for v in rattled_ends] for k in range(rattles)]
         x_l, s_l, w_l = (np.asarray(v, dtype=np.float64) for v in (planted or looped)(q, jnp.asarray(at), kept))
     (x_u, *x_moved), (s_u, *s_moved), (w_u, *w_moved) = zip(*ends, strict=True)
     unit = float(np.finfo(dtype).eps) * size
@@ -392,9 +435,12 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
 #: The most groups of a run, in a dtype, that the Newton steps' property may leave unjudged (its groups where 0.4.0's own
 #: ends one ulp away stand past ``NEWTON_ULPS``): a share of all the groups its draws held. Measured on the pull
 #: request's review, the committed property replayed under seven seeds of 100 draws: float32 10 of 5,600 groups
-#: (0.18 %; on the screw alone 8 of 1,448, 0.55 %), float64 none of 4,800. The ceiling is about four times the worst
-#: of those, so that the set can grow a little before anything shows and cannot grow unseen; each run reports its own
-#: count (``record_property``, and printed).
+#: (0.18 %; on the screw alone 8 of 1,448, 0.55 %), float64 none of 4,800. With the rattled searches (``RATTLES``) in the
+#: rule, on draws as the property's: float32 37 of 9,600 groups (0.39 %) and 13 of 2,000 (0.65 %) on two samples, float64
+#: 16 of 6,400 (0.25 %); on 24,000 groups of screw draws near the wall and tilted, float32 0.65 % (the poses alone left
+#: 0.49 %). The ceiling stays at about three times the worst of those, so that the
+#: set can grow a little before anything shows and cannot grow unseen; each run reports its own count
+#: (``record_property``, and printed).
 UNJUDGED_CEILING = 0.02
 
 
@@ -485,13 +531,50 @@ def test_control_the_looped_search_from_the_next_groups_start_ends_where_0_4_0_d
     """The looped search started from each group's neighbour's kept start, at the draws above: on the groups 0.4.0
     resolves it ends far from 0.4.0's, so leaving out the groups 0.4.0 does not resolve leaves the comparison able to
     fail at a draw that holds one."""
-    *_, looped = searches("screw", dtype)
+    looped = searches("screw", dtype)[-1]
 
     def from_the_next(q, at, kept):
         return looped(q, at, jnp.roll(kept, 1, axis=0))
 
     found = searched_against_0_4_0("screw", dtype, ended_elsewhere_pose(draw), planted=from_the_next)
     assert float(np.max(found.missed)) > PLANT_FACTOR * NEWTON_ULPS
+
+
+#: The draw on which the looped search's group 1 ended in a stationary point of the support 1 mm shallower than 0.4.0's,
+#: FL-9 in float32 (the release push run's ``openmaterica-main`` lane, shard 12, and a laptop's CPU on the default
+#: lanes' OpenMaterica alike): the spin, tilt, about, towards and share of the property above. The group's start stands
+#: 0.74 mm off the wall, its first step overshoots to 50 hull sizes and the second amplifies that step's rounding about
+#: a thousandfold; the loop's body rounds the first step 17 units in its last place away from the unrolled program's
+#: (one looped step and one unrolled step from the same point are bit for bit the same), and the end moves. Six other groups
+#: hold the deepest point in both versions, so the net wrench does not change. In float64 both end at the deepest.
+SHALLOW_BASIN = (0.0, 1.0, 0.08979514983112065, 5.320289449654194, 0.0)
+SHALLOW_GROUP = 1
+
+
+def shallow_basin_pose() -> np.ndarray:
+    spin, tilt, about, towards, share = SHALLOW_BASIN
+    return placed("screw", spin, tilt, about, towards, share * MARGIN)
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_the_looped_newton_steps_at_the_shallow_basin_draw_are_the_unrolled_ones_where_0_4_0_resolves_them(
+        dtype, record_property):
+    found = searched_against_0_4_0("screw", dtype, shallow_basin_pose())
+    measured = {"cpu": cpu_model(), "missed": found.missed.tolist(), "alone": found.alone.tolist(),
+                "spread": found.spread.tolist(), "value": found.value.tolist()}
+    record_property("measured", json.dumps(measured))
+    print(f"\nthe shallow basin draw {dtype}: {measured}")
+    assert float(np.max(found.missed)) <= NEWTON_ULPS
+
+
+def test_control_the_poses_alone_read_the_shallow_basin_group_as_resolved_and_the_rattled_searches_do_not():
+    """0.4.0's own end of group 1 at ``SHALLOW_BASIN`` stays within one unit of the pose's under a change of one ulp
+    of any entry of the pose, and moves by millions under its rounding rattled: the rule that judged by the poses alone
+    held the group to 0.4.0's end, and the looped search's rounding put it elsewhere."""
+    alone = searched_against_0_4_0("screw", "float32", shallow_basin_pose(), rattles=0)
+    rattled = searched_against_0_4_0("screw", "float32", shallow_basin_pose())
+    assert alone.resolved[SHALLOW_GROUP] and alone.spread[SHALLOW_GROUP] < 0.1 * NEWTON_ULPS
+    assert not rattled.resolved[SHALLOW_GROUP] and rattled.spread[SHALLOW_GROUP] > PLANT_FACTOR * NEWTON_ULPS
 
 
 # -- the whole step ----------------------------------------------------------------------------------------------------
