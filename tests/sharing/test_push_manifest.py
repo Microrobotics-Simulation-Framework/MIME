@@ -356,7 +356,6 @@ def test_mime_push_init_on_the_command_line(toy: Path, tmp_path: Path, capsys: p
     assert "kept" in capsys.readouterr().out
 
 
-def test_mime_push_requires_to(toy: Path, capsys: pytest.CaptureFixture[str]):
-    with pytest.raises(SystemExit) as stopped:
-        main(["push", str(toy), "--init"])
-    assert stopped.value.code == 2 and "--to" in capsys.readouterr().err
+def test_mime_push_requires_to_but_for_init_and_setup(toy: Path, capsys: pytest.CaptureFixture[str]):
+    assert main(["push", str(toy), "--status"]) == 2
+    assert "--to" in capsys.readouterr().err

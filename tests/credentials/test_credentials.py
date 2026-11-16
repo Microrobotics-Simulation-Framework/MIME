@@ -299,9 +299,7 @@ def check_no_token_is_echoed_by_the_argument_parser(root: Path, capsys: pytest.C
                  ["credentials", secret], ["credentials", "set", f"--token={secret}"],
                  ["credentials", "set", "zenodo", "--token", secret], ["credentials", secret, "zenodo"],
                  ["credentials", "status", secret]):
-        with pytest.raises(SystemExit) as exit_:
-            main(argv)
-        assert exit_.value.code == 2, argv
+        assert main(argv) == 2, argv
         out, err = capsys.readouterr()
         assert not shown(secret, out + err) and secret[-8:] not in out + err, (argv, err)
         assert "never an argument" in err, "the refusal does not say where a token goes"
@@ -402,8 +400,7 @@ def test_set_reads_the_token_with_getpass_and_takes_none_on_the_command_line(fol
     monkeypatch.setattr("getpass.getpass", lambda prompt="": asked.append(prompt) or secret + "\n")
     assert main(["credentials", "set", "zenodo"]) == 0 and len(asked) == 1
     assert credentials.token("zenodo").reveal() == secret  # type: ignore[union-attr]
-    with pytest.raises(SystemExit):
-        main(["credentials", "set", "elsewhere"])
+    assert main(["credentials", "set", "elsewhere"]) == 2
     monkeypatch.setattr("getpass.getpass", lambda prompt="": (_ for _ in ()).throw(EOFError()))
     assert main(["credentials", "set", "zenodo"]) == 2
 

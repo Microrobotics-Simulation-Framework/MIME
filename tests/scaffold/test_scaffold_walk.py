@@ -291,9 +291,7 @@ def test_dry_run_on_the_command_line_writes_nothing(tmp_path: Path, capsys: pyte
 
 
 def test_mime_new_is_retired_and_scaffold_is_the_one_start(capsys: pytest.CaptureFixture[str]):
-    with pytest.raises(SystemExit) as stopped:
-        mime_main(["new", "experiment"])
-    assert stopped.value.code == 2
+    assert mime_main(["new", "experiment"]) == 2
     assert "scaffold" in capsys.readouterr().err, "the nearest command is named"
     start = dict(_guide.GROUPS)["Start"]
     assert start == ("scaffold",) and ("scaffold",) in _guide.EXAMPLES

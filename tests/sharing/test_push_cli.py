@@ -146,6 +146,5 @@ def test_dry_run_shows_the_plan_and_sends_nothing(toy: Path, fake: FakeRecords, 
     assert "Pushing 'full_toy'" in out and "  up: " in out, "the plan is shown"
     assert "dry run: nothing was sent" in out and "made the draft" not in out
     assert fake.drafts() == [] and push.read_state(fake.service(), "full_toy") is None
-    with pytest.raises(SystemExit):
-        main(["push", str(folder), "--to", "zenodo-sandbox", "--dry-run", "--publish"])
+    assert main(["push", str(folder), "--to", "zenodo-sandbox", "--dry-run", "--publish"]) == 2
     assert "not allowed with argument" in capsys.readouterr().err, "a mode of its own"

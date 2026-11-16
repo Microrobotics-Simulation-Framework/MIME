@@ -398,10 +398,8 @@ def test_the_commands_refuse_with_exit_two(commanded: assets.AssetRef, rig: Rig,
     monkeypatch.setenv("MIME_OFFLINE", "1")
     assert main(["assets", "fetch", "served_blob"]) == 2
     assert "asset.offline" in capsys.readouterr().err and rig.requests == 0
-    with pytest.raises(SystemExit):
-        main(["assets", "fetch"])
-    with pytest.raises(SystemExit):
-        main(["assets", "fetch", "served_blob", "--all"])
+    assert main(["assets", "fetch"]) == 2
+    assert main(["assets", "fetch", "served_blob", "--all"]) == 2
 
 
 

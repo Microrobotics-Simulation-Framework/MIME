@@ -1204,9 +1204,7 @@ def test_a_publish_refused_for_its_scope_names_deposit_actions(toy: Path, tmp_pa
 
 
 def test_keeping_and_overwriting_site_edits_cannot_be_asked_together(toy: Path, tmp_path: Path):
-    with pytest.raises(SystemExit) as stopped:
-        main(["push", str(toy), "--to", "zenodo-sandbox", "--keep-site-edits", "--overwrite-site-edits"])
-    assert stopped.value.code == 2
+    assert main(["push", str(toy), "--to", "zenodo-sandbox", "--keep-site-edits", "--overwrite-site-edits"]) == 2
 
 
 @pytest.mark.parametrize("value", ["first second", "first second", "first\x85second", "first\x0csecond",

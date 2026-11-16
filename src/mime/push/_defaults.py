@@ -244,7 +244,7 @@ def write_defaults(values: Mapping[str, object] | None = None, *, licences: Mapp
 
 
 def defaults_lines(say: Say | None = None) -> list[str]:
-    """What ``mime defaults`` (and ``mime push --defaults``) says: where the defaults live, and each, as the file holds
+    """What ``mime defaults`` says: where the defaults live, and each, as the file holds
     it, one a line."""
     path, old = defaults_path(), old_defaults_path()
     found = read_all(say)

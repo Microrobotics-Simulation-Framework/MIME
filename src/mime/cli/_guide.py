@@ -11,9 +11,12 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast, override
+from typing import TYPE_CHECKING, Any, cast, override
 
 from mime.cli._shell import quoted
+
+if TYPE_CHECKING:
+    from mime.build import Refusal
 
 #: The commands, by what one is doing. Every command is in exactly one group (a test holds it).
 GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -119,11 +122,58 @@ class MimeParser(argparse.ArgumentParser):
 
     @override
     def error(self, message: str) -> Any:
+        """A mistake in the command line is a coded refusal, ``cli.usage``, drawn as every refusal is (what is wrong, what
+        to do, where to read): it is raised here, and ``mime.cli.main`` shows it, so that no mistake of the line has a
+        frame of its own (a usage block and a bare line)."""
+        from mime.build import BuildRefused
+
         hints = hints_for(message, self, MimeParser.words)
-        # argparse parses the whole line with the top parser, so an argument no command took is reported by it, under
-        # the top usage: the usage and name of the command the line was for are the help (``mime run --bogus``)
+        # argparse parses the whole line with the top parser, so an argument no command took is reported by it: the
+        # command the line was for is the one whose options and example are named (``mime run --bogus``)
         target = _command_of(self, MimeParser.words) if "unrecognized arguments" in message else self
-        argparse.ArgumentParser.error(target, message + "".join(f"\n  {hint}" for hint in hints))
+        raise BuildRefused([usage_refusal(target, message, hints, MimeParser.words)])
+
+
+def command_words(top: argparse.ArgumentParser, words: Sequence[str]) -> tuple[str, ...]:
+    """The words of the deepest command a line names (``mime --plain study run x`` is ``("study", "run")``), read in
+    order, stopping at the first word that is not a command's name once one was found."""
+    here, found = top, ()
+    for word in words:
+        child = _children(here).get(word)
+        if child is not None:
+            here, found = child, (*found, word)
+        elif found and not word.startswith("-"):
+            break
+    return found
+
+
+#: What argparse says of a group of commands (``mime study``) given no command.
+_NO_SUBCOMMAND = re.compile(r"the following arguments are required: \w+_command\b")
+
+
+def _first_clause(help_text: str | None) -> str:
+    """A command's help up to its first colon, semicolon or bracket: what it is, for a list of commands."""
+    return re.split(r"[:;(]", help_text or "", maxsplit=1)[0].strip()
+
+
+def usage_refusal(target: argparse.ArgumentParser, message: str, hints: Sequence[str], words: Sequence[str]) -> Refusal:
+    """The refusal for a mistake in the command line: ``message`` is argparse's, and what to do names the command's own
+    help and its example (a group given no command lists the commands there are)."""
+    from mime.build import Refusal, RefusalClass
+
+    top = MimeParser.top
+    path = command_words(top, words) if top is not None else ()
+    named = " ".join(("mime", *path))
+    example = EXAMPLES.get(path)
+    sub = _subparsers_of(target) if _NO_SUBCOMMAND.search(message) else None
+    if sub is not None:
+        listed = "; ".join(f"`{named} {action.dest}` ({_first_clause(action.help)})" for action in sub._get_subactions())
+        action = (f"name one of its commands: {listed}. `{named} <command> --help` shows one's options, with an "
+                  "example")
+        return Refusal("cli.usage", RefusalClass.USER, f"{named} is a group of commands, and none was named", action)
+    action = " ".join([*hints, f"`{named} --help` shows its options"
+                       + (f"; for example `{example}`" if example is not None else "") + "."])
+    return Refusal("cli.usage", RefusalClass.USER, message, action)
 
 
 def _subparsers_of(parser: argparse.ArgumentParser) -> argparse._SubParsersAction[argparse.ArgumentParser] | None:  # pyright: ignore[reportPrivateUsage]
