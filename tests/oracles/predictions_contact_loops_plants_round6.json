@@ -1,0 +1,19 @@
+{
+  "written": "2026-11-16, committed before the sixth probe round ran: round 5 (run 43859475399) found the clean looped arm unflagged on 96,000 draws but a replay of a round-3 flagged draw reproduced a flag by the residual rule (factor 2 of the arms' largest residual) on two AMD EPYC runners: the looped end converged at another point of an unresolved group with a residual of 23 units against the arms' 5 (4.6 times); the same draw's looped end differed between rounds on one runner model (round 4: residual 1.6, same basin as 0.4.0), so the end is not a function of the draw on the runners",
+  "phase": "PR 337 fix round 2, the residual rule's factor raised from 2 to 8 (three steps behind a linear convergence)",
+  "labels": "predictions by the builder (Sonnet) from rounds 1 to 5 and a local measurement of the plants' residuals over the arms' largest at the review's four cylinder draws",
+  "seen_before": [
+    "local, the review's four cylinder draws: arms' largest residual 3 to 6 units; a 7-step loop 181, 477, 226 and 40,214 units, a stale carry 28,000 to 400,000, an early stop at 1e-5 of the hull's size 60 at one draw (15 times) and 0.2 at the others",
+    "round 5 with factor 2: clean 0 of 96,000 draws; catches cylinder short 16 (base 18), stale 39 (38), early 709 (318); mixed short 681 (672), stale 1239 (1229), early 906 (833); lost per draw cylinder short 3, stale 3, early 0; mixed short 10, stale 10, early 1"
+  ],
+  "operating_point": {"dtype": ["float32"], "platform": "CPU, GitHub runners of 4 vCPU", "sizes_and_parameters": "as round 1", "seeds_and_draws": "arms cyl_1 to cyl_4, mix_1 to mix_4 (3,000 draws each), hunt_11 to hunt_22 (6,000 mixed draws each, clean arm only), replay_1 to replay_3; the same seeds as rounds 1, 3 and 5"},
+  "gate_6_factor_eight": {
+    "claim": "with a converged looped end of an unresolved group held to 8 times the arms' largest residual, the clean looped arm is flagged on 0 of 96,000 draws and the replayed draws are not flagged on any arm; the plants' catches stay at or above 95 percent of the base's counts (cylinder short 18, stale 38, early 318; mixed short 672, stale 1229, early 833)",
+    "kind": "acceptance",
+    "case": "probe/rates.py and probe/replay.py through tests/oracles/test_contact_loops.py",
+    "prediction": {"value": "clean 0 of 96,000; replays unflagged; catches per kind between 95 and 140 percent of the base's (the early stop below round 5's 709: fewer of its unresolved-group catches clear 8 times)", "basis": "derived", "why": "the clean alternative end stood at 4.6 times and passes; the plants' 15 to 80 times are over 8; plants between 4.6 and 8 times pass unflagged, which loses some of the early stop's catches"},
+    "control": {"plant": "short, stale, early", "expected_rate": "at least 95 percent of the base's catches", "runs": 24000, "clean_expected": "0/96000", "resolution": "the property's bound of 128 units, infinite for a group not stationary"},
+    "if_wrong": "a clean flag names the draw; catches under 95 percent of the base's name the plant"
+  },
+  "outcomes": null
+}
