@@ -1413,5 +1413,21 @@
    "memory": "each arm's peak 1.5 to 5.9 GiB against the estimator's 0.42 GiB for the raw program (its known underestimate: each arm failed its memory step after its script, as in the tenth probe); every arm under 12 GiB",
    "bits_after_second_merge": "MET: the twelfth probe (probe/cam-pr5b-i12, run 43902193783, head 391aaeef: e46bc79c, the branch after merging the release tip 2ebd69f8, with the probe's files; its predictions committed before the launch): route 1's ten programs and camera PR 5a's two equal to 2ebd69f8 in every array, each repeat equal and each one-ulp move different (12 of 12); the creased images equal to d3e7ea26 in every image and flag array, the forward count +1056768 as before; bumped differs in all 8 views a dtype"
   }
+ },
+ "review358_controls": {
+  "written": "2026-11-16, camera PR 5b-i's eighth agent, after the refuting review of 238cc6dc (one major, three minors) and before any run of the plant or of the controls on the form b883dc70 gave the band-tails test; committed before the fourteenth probe",
+  "finding": "under 8 degrees the sliver's line (18.5) has no control of its own: every catch of grown-sliver 2 there is the ripple class's (the plant reaches WIDENED = 4 times the class's own reach); a plant confined to the class (reach 1, size 2) passes the 4 tails under 8 degrees, and crosses the line, the review measured, above about 3.7 at the turn-6 tail",
+  "controls": {
+   "confined-sliver": "CAMERA_PLANT=confined-sliver, CAMERA_PLANT_SIZE=s: the grown-sliver plant at reach 1 (a sub-ray within NEAR_AXIS of the side's axis), so only the sliver class's pixels move; tested at the turn-6 tail alone (the pose that sets the 18.5 line, 14.9 px^2 a px)"
+  },
+  "predictions": {
+   "confined_sliver": "at test level on that tail, 8 planted runs and 8 clean (detection_rate.py): size 5 not every run (machine to machine the pose's sliver moves by about a quarter, 14.9 +- 3.7, so size 5 crosses 18.5 where the sliver is at or above its own 13.5: caught on most runs, perhaps not all); size 8 and size 12 caught 8 of 8 (the error at least 11.2 + 8 against 18.5); clean 0 of 8 at every size. The control is added to the gate at the smallest size caught 8 of 8 with clean 0 of 8, and at the next size up if that one is a hair above the line, else it is not added and the docstring says there is none",
+   "held_caps": "caught 8 of 8 at the turn-15 view, clean 0 of 8 (as the eleventh probe)",
+   "near_axis": "caught 8 of 8 at the turn-6 singular view, clean 0 of 8 (as the eleventh probe)",
+   "single_edge_crease": "caught 8 of 8 on the whole band-tails test in its two-program form, clean 0 of 8",
+   "grown_ripple_1.5": "caught 8 of 8 on the whole band-tails test, clean 0 of 8",
+   "grown_sliver_2": "caught 8 of 8 on the whole band-tails test, clean 0 of 8, by the ripple class under 8 degrees and by the sliver class from 8 up (the review's reading, which this round corrects in the text)"
+  },
+  "outcomes": null
  }
 }

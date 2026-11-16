@@ -332,7 +332,7 @@ def plant_scheme(monkeypatch) -> None:
             return place + jnp.where(apart < NEAR_AXIS * PIXEL, (PLANT_SIZE or 1.0) * motion, 0.0)
 
         monkeypatch.setattr(sampled_route, "_place", near_axis)
-    if planted("grown-ripple") or planted("grown-sliver"):
+    if planted("grown-ripple") or planted("grown-sliver") or planted("confined-sliver"):
         # The image's own derivative error grown: each pixel's share moved GROWTH px^2 a px of the body's motion from
         # the view's own place (along x and z), times its weight, as a ripple of period RIPPLE px (its value within
         # GROWTH x RIPPLE / 2 pi of the scheme's). Value and derivative alike, so the jvp and the central difference
@@ -340,7 +340,10 @@ def plant_scheme(monkeypatch) -> None:
         # 4c(1 - c); grown-sliver weighs by 1 each pixel a sub-ray of which passes within WIDENED px of the side's axis
         # (the sliver's class, four times as wide: in it and beside it).
         found_box = render_module._box_coverage
-        sliver = planted("grown-sliver")
+        sliver = planted("grown-sliver") or planted("confined-sliver")
+        # grown-sliver reaches WIDENED times the class's own reach, so its catches under 8 degrees come through the ripple
+        # class too; confined-sliver reaches no further than the class does (a refuting review's finding).
+        reach = 1.0 if planted("confined-sliver") else WIDENED
         growth = PLANT_SIZE or 1.0
 
         def grown(subject, p, o, d, du, dv, corner_samples, form=None, unverified=None):
@@ -359,7 +362,7 @@ def plant_scheme(monkeypatch) -> None:
                 cross = (ray[1] * a[2] - ray[2] * a[1], ray[2] * a[0] - ray[0] * a[2], ray[0] * a[1] - ray[1] * a[0])
                 apart = jnp.abs(sum(h_o[i] * cross[i] for i in range(3))) / jnp.sqrt(sum(c * c for c in cross))
                 least = jnp.minimum(least, apart)
-            return share + jnp.where(least < WIDENED * NEAR_AXIS * PIXEL, ripple, 0.0)
+            return share + jnp.where(least < reach * NEAR_AXIS * PIXEL, ripple, 0.0)
 
         monkeypatch.setattr(render_module, "_box_coverage", grown)
 
