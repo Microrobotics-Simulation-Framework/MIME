@@ -8,7 +8,11 @@ a mesh or outside); 192 rays (three tiles), two in three aimed at a point inside
 In the dtype of the run: the tree is traced in it, the oracle in float64.
 
 **What is judged, and where.** A ray passing within rounding of a triangle's edge may be claimed by either triangle, so
-rays whose barycentric margin (``Crossings.margin``) is below ``MARGIN`` in the run's dtype are left out; the rest must
+rays whose barycentric margin (``Crossings.margin``) is below ``MARGIN`` in the run's dtype are left out, and so are the
+rays that ``tied``: an origin on a triangle (a camera on a wall; a draw puts a mesh's vertex at the origin) crosses it at a
+``t`` of zero, whose sign is below the rounding of the crossing test, bounded in ``mesh_cases.t_rounding``. (The renderer
+itself counts a crossing at ``t`` of about 2e-12 in float32 when a ray starts on a surface: a degenerate pose, the camera on
+the wall, which the derived band leaves out of the judged set; it is not fixed in ``src/``.) The rest must
 have the oracle's crossings exactly, its chord within rounding on the scale it came from (each crossing's ``t``, its
 inputs' size over the cosine of incidence, summed: not the chord, since the signed sum cancels, and not ``t`` alone,
 since a grazing crossing's ``t`` is ill-conditioned), its nearest ``t`` within the same rounding and its triangle where
@@ -19,7 +23,9 @@ cross most:
 
 - ``dropped-leaf``: that triangle's leaf emptied (spike 2's control): its crossings are lost;
 - ``flipped-winding``: that triangle's winding reversed, which moves the signed chord by twice its ``t`` on each ray
-  through it.
+  through it;
+- ``shrunk-box``: that triangle's leaf box shrunk to a tenth of its extent about its centre, far beyond the rounding of
+  the slab test (the ``slab_pad``): the crossings its box no longer holds are lost.
 
 Both must fail on every draw: a draw always holds judged rays aimed at triangles."""
 
@@ -30,7 +36,7 @@ import math
 import jax
 import jax.numpy as jnp
 import numpy as np
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 from in_loop_cases import PLANT
 from mesh_cases import box, brute, placed, rotation, tube, uv_sphere
@@ -87,7 +93,12 @@ def planted(arrays: dict[str, np.ndarray], slots: np.ndarray, triangle: int) -> 
     """The tree with the control's change at ``triangle``'s slot."""
     leaf, slot = (int(i[0]) for i in np.nonzero(slots == triangle))
     held = {key: value.copy() for key, value in arrays.items()}
-    if PLANT == "dropped-leaf":
+    if PLANT == "shrunk-box":
+        node = arrays["mesh_v0"].shape[0] + leaf
+        centre = 0.5 * (arrays["mesh_lo"][node] + arrays["mesh_hi"][node])
+        half = 0.5 * (arrays["mesh_hi"][node] - arrays["mesh_lo"][node])
+        held["mesh_lo"][node], held["mesh_hi"][node] = centre - 0.1 * half, centre + 0.1 * half
+    elif PLANT == "dropped-leaf":
         for key in ("mesh_v0", "mesh_v1", "mesh_v2"):
             held[key][leaf] = 0.0
     elif PLANT == "flipped-winding":
@@ -96,6 +107,15 @@ def planted(arrays: dict[str, np.ndarray], slots: np.ndarray, triangle: int) -> 
     return held
 
 
+def on_the_wall() -> tuple[list[tuple[np.ndarray, np.ndarray]], np.ndarray, int]:
+    """The draw that failed in CI: a tube, its outer wall's vertex column through the ray origin, so the origin
+    is on the wall, on the diagonal of two coplanar triangles, at a ``t`` of zero to rounding."""
+    size = 6.788434854395295e-4
+    points, faces = tube(0.5 * size, size, 2 * size, 8)
+    return [(placed(points, np.array([size, 0.0, 0.0]), rotation((1.0, 0.0, 0.0, 0.0))), faces)], np.zeros(3), 0
+
+
+@example(scene=on_the_wall())
 @settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture,
                                                                  HealthCheck.too_slow], print_blob=True)
 @given(scene=scenes())
@@ -111,8 +131,9 @@ def test_the_tree_finds_every_crossing_brute_force_finds(dtype, scene):
     held_triangles = triangles.astype(run).astype(np.float64)
     held_origin = origin.astype(run).astype(np.float64)
     held_directions = directions.astype(run).astype(np.float64)
-    oracle = brute(held_triangles, owners, len(meshes), held_origin, held_directions)
-    judged = oracle.margin >= MARGIN[dtype]
+    eps = float(np.finfo(run).eps)
+    oracle = brute(held_triangles, owners, len(meshes), held_origin, held_directions, eps=eps, edge=MARGIN[dtype])
+    judged = (oracle.margin >= MARGIN[dtype]) & ~oracle.tied
     built = tree(triangles, owners)
     arrays = dict(built.arrays)
     if PLANT:
@@ -129,7 +150,6 @@ def test_the_tree_finds_every_crossing_brute_force_finds(dtype, scene):
     nearest, slot = np.asarray(found.nearest, dtype=np.float64), np.asarray(found.slot)
     assert np.array_equal(count[judged], oracle.count[judged]), \
         f"crossings differ on {int(np.sum(np.any(count[judged] != oracle.count[judged], axis=1)))} judged rays"
-    eps = float(np.finfo(run).eps)
     allowed = 64.0 * eps * oracle.reach
     error = np.abs(chord - oracle.chord).max(axis=1)
     assert np.all(error[judged] <= allowed[judged]), \
