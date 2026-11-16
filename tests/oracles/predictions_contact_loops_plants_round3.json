@@ -1,0 +1,21 @@
+{
+  "written": "2026-11-16, committed before the third probe round ran: round 2 (run 43854771370) did not reproduce round 1's one clean-arm flag on arm mix_3 (0 of 3,000), so the flag is not a function of the draw alone on the runners",
+  "phase": "PR 337 fix round 2, hunting the clean looped arm's false flag",
+  "labels": "predictions by the builder (Sonnet) from rounds 1 and 2",
+  "seen_before": ["round 1: clean flagged 1 of 12,000 mixed draws, none in 12,000 cylinder draws; round 2: 0 of 3,000 (mix_3) and 0 of 3,000 (cyl_1); local laptop replay of mix_3: none"],
+  "operating_point": {
+    "dtype": ["float32"],
+    "platform": "CPU, a GitHub runner of 4 vCPU (the probe workflow)",
+    "sizes_and_parameters": "as round 1",
+    "seeds_and_draws": "12 arms hunt_11 to hunt_22, 6,000 mixed-kind draws each, clean arm only (no plants), seeds 11 to 22: 72,000 draws"
+  },
+  "gate_3_clean_flag_rate": {
+    "claim": "the rate at which the clean looped arm is flagged on a runner, with each flagged draw named with its groups' flags, spreads and misses",
+    "kind": "estimates",
+    "case": "probe/rates.py, arms hunt_*",
+    "prediction": {"value": "about 6 flagged draws of 72,000 (1 of 12,000, round 1's rate), between 0 and 15", "basis": "measured-before", "why": "one flag in 12,000 draws in round 1 and none in 18,000 since; a rate of 1 in 12,000 is a guess from one event"},
+    "control": {"plant": "none: this arm estimates a false-alarm rate; the plants' rates are round 1's", "expected_rate": "n/a", "runs": 72000, "clean_expected": "see value", "resolution": "a flagged draw is named or none is"},
+    "if_wrong": "none flagged in 72,000 puts the rate under 1 in 24,000 at 95 percent and round 1's flag a rare codegen event; many flagged names the draws to read"
+  },
+  "outcomes": null
+}
