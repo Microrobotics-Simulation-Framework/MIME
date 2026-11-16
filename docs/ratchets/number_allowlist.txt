@@ -273,6 +273,7 @@ src/mime/sensing/README.md  26 24 40  #1  # single-edge-crease's power on fresh 
 src/mime/sensing/README.md  10 15.5  #1  # the turns in degrees below which single-edge-crease caught every drawn view and from which it caught almost none (the same outcome)
 src/mime/sensing/README.md  40 40  #1  # no-crease-measure caught of drawn in each dtype, and crease-lag's start of the same count (the same outcome)
 src/mime/sensing/README.md  40 40 0.05 0.025  #1  # crease-lag caught of drawn, and its smallest lag caught on every pinned view against the predicted (outcomes.motion_control_pinned)
+src/mime/sensing/README.md  1.0  #1  # the creased forward program's structural count, larger by that per cent with the held-point derivative (the bits arm's creased_compare, probe run 43839821841; ef2ef17c against d3e7ea26, measured locally to the digit)
 src/mime/sensing/README.md  0.5  #1  # the held march's term at its one singular pixel, which the read points no longer leave out (tests/sensing/crease_march_line_pr5b.json; predictions_camera_pr5b.json, march_derivation_finding)
 src/mime/sensing/README.md  360  #1  # the image-error scan's poses (tests/sensing/crease_image_line_pr5b.json)
 src/mime/sensing/README.md  0.0025 14.9  #1  # the sliver's reach from the side's axis and its largest image error, px^2 a px (tests/sensing/crease_image_sweep_pr5b.json, crease_held_point_check_pr5b.json; predictions_camera_pr5b.json, image_check.outcomes)

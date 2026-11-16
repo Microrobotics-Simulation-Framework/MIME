@@ -70,8 +70,9 @@ stages:
   the intersection of its regions' first-order distances at its least (the marched region's, and each other region's,
   a span's, read at the same place). **The read place's derivative is the image's own held point's** (`_sampled._place`:
   the march's points and spacing as they move with the body, the quartic's least through its five live values, its
-  steps and branches as they fell, as a custom derivative whose value is the held point, so an image computes nothing
-  more); across the pixel the place moves with the ray's direction by one implicit step whose curvature is the
+  steps and branches as they fell, as a custom derivative whose value is the held point, so an image is bit for bit
+  what it was, its forward program's structural count 1.0 % larger, cause not traced); across the pixel the place
+  moves with the ray's direction by one implicit step whose curvature is the
   profile's second difference a march spacing wide (finite at a kink of the profile, a ray through a cylinder's axis),
   read at the place as it moves. So the jvp is the rendered image's derivative on its branch in the body's place (G17's
   derivative, within the central difference's own error: the held march's term, up to 0.5 px a px at one pixel where a
