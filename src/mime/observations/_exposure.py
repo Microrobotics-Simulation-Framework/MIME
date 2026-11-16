@@ -27,7 +27,7 @@ from mime.registry import (
 )
 from mime.units import FIELD_GRADIENT, FIELD_RATE, MAGNETIC_FLUX_DENSITY, FieldGradient, FieldRate, \
     MagneticFluxDensity, Quantity
-from mime.validity import is_pending
+from mime.validity._bases import is_pending
 from mime.vocabulary import FLUX_DENSITY, GRADIENT, POSE, Capability
 
 if TYPE_CHECKING:

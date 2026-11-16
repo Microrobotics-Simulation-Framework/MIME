@@ -18,7 +18,7 @@ from mime.cli import main as mime_main
 from mime.results import RUN_MANIFEST, RunResult
 from mime.saved import LOCK_FILE
 from mime.units import mm, ms
-from mime.validity import Stamp
+from mime.validity._pending import Stamp
 
 SEALED = Paperwork(profile="research", acceptance="water is Newtonian at a settling ball's shear rates",
                    density="a steel ball's density", spacing=mm(0.2, reason="converged at half this spacing"),

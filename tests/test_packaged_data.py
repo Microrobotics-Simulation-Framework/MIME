@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from mime.data import PACKAGED, asset, asset_bytes
-from mime.surrogates import read_cholesky_mlp
+from mime.surrogates._cholesky_mlp import read_cholesky_mlp
 
 ROOT = Path(__file__).resolve().parent.parent
 PINNED = "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345"

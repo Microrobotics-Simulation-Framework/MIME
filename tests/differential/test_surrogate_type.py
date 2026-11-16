@@ -22,20 +22,10 @@ import pytest
 import mime.nodes.hydro._surrogate_drag as drag_module
 from mime.data import asset
 from mime.nodes.hydro import SurrogateDragNode
-from mime.surrogates import (
-    CHOLESKY_MLP,
-    DEJONGH_MLP_V2,
-    SCREW_FEATURES,
-    Evaluator,
-    Provenance,
-    Surrogate,
-    _cholesky_mlp,
-    evaluator_named,
-    evaluators,
-    predict_resistance,
-    read_cholesky_mlp,
-    register_evaluator,
-)
+from mime.surrogates import Evaluator, Provenance, Surrogate, _cholesky_mlp, evaluator_named, register_evaluator
+from mime.surrogates._cholesky_mlp import CHOLESKY_MLP, predict_resistance, read_cholesky_mlp
+from mime.surrogates._screw import DEJONGH_MLP_V2, SCREW_FEATURES
+from mime.surrogates._type import evaluators
 
 REFERENCES = Path(__file__).parent / "references"
 PORT = np.load(REFERENCES / "port_drag.npz")

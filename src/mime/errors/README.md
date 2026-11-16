@@ -38,7 +38,7 @@ names its generated page. How to read one, and how to reach its full traceback:
   `mime-<stamp>-<pid>-<code>.txt`; only the newest `KEPT` of that name are kept, and no other file is touched. A hook
   set before MIME's is handed a MIME error after its short form, unless it is Python's own.
 
-The classes themselves (`MimeError`, `BuildRefused`, `ArgumentRefused`, `RunFailed`, ...) and `Refusal` live in
+The classes themselves (`MimeError`, `BuildRefused`, `RunFailed`, ...) and `Refusal` live in
 `mime._refusals` (re-exported by `mime.build._refusals`), below everything that raises them; each that was a `ValueError`, `TypeError`, `KeyError` or
 `RuntimeError` is still one.
 

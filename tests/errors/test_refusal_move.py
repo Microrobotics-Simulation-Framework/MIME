@@ -17,7 +17,7 @@ import mime._refusals as home
 import mime.build as build_package
 import mime.build._refusals as shim
 from mime.build import ArgumentRefused, InternalError, RunFailed, UnrecognisedError
-from mime.errors import public
+from mime.errors._boundary import public
 from mime.units import UnitError, m
 
 ROOT = Path(__file__).resolve().parents[2]

@@ -227,7 +227,7 @@ OLD_RUNG, NEW_RUNG = "bem", "mrs"
 OLD_NODE, NEW_NODE = "BEMDragNode", "MRSDragNode"
 _DRAG = "drag"
 #: A body's inertia, the value version 9 resolves to the full tensor where its parts give it, and how the resolved
-#: record says it came from its parts (``mime.materials.DERIVED_FROM_PARTS``).
+#: record says it came from its parts (``mime.materials._values.DERIVED_FROM_PARTS``).
 _INERTIA = ".inertia"
 _FROM_PARTS = "derived from its parts"
 #: A declaration's source naming the inertia the parts would give in its place: its numbers, then its unit.

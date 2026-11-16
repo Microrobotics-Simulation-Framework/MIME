@@ -35,7 +35,9 @@ from mime.assets import AssetRef, CheckResult, DerivationInput, DerivationRecord
 from mime.build import BuildRefused
 from mime.data import asset
 from mime.nodes.hydro.mrs._tube import UNIT_TUBE, table_provenance
-from mime.surrogates import DEJONGH_MLP_V2, SURROGATES, UNJUDGED_ROLES, current_inputs, staleness
+from mime.surrogates import SURROGATES, staleness
+from mime.surrogates._screw import DEJONGH_MLP_V2
+from mime.surrogates._type import UNJUDGED_ROLES, current_inputs
 
 TABLE = assets.reference(UNIT_TUBE)
 #: Another table's reference: the unit tube at the first truncation, superseded.

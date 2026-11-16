@@ -30,7 +30,7 @@ import pytest
 from profile_cases import Paperwork, settling_ball
 
 from mime.registry import Entry
-from mime.validity import Stamp
+from mime.validity._pending import Stamp
 
 ROOT = Path(__file__).resolve().parents[2]
 #: The task names of the development walks and the phrases that carried them.

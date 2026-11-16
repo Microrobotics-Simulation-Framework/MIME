@@ -1,12 +1,14 @@
 """A user must be able to annotate what a public function hands them or takes (maintainer's rule, SURFACE-REDUCTION item
-100: keep public every type a user would annotate), so no public signature names a class of ``mime.push``, ``mime.credentials``, ``mime.cli``, ``mime.scaffold`` or
-``mime.blocks`` that no package exports.
+100: keep public every type a user would annotate), so no public signature names a class of ``mime.push``, ``mime.credentials``, ``mime.cli``, ``mime.scaffold``,
+``mime.blocks``, ``mime.terms``, ``mime.errors``, ``mime.validity``, ``mime.walls``, ``mime.surrogates`` or
+``mime.materials`` that no package exports.
 
 The walk reads each name of the ``__all__`` of every public ``mime`` package: a function's parameters and return, a
 class's fields and the signatures of its public methods and properties. A class of the tooling packages that an
 annotation names must be in the ``__all__`` of some ``mime`` package (the other packages' own gaps wait for their
-surface reduction, which extends ``TOOLING``). The control
-plants a public function whose return type is private and must be found.
+surface reduction, which extends ``TOOLING``). A type alias (``type Tier = Literal[...]``, or a name bound to a ``Literal`` or union) is a type a user annotates with, so it
+counts as one: an alias a public signature names must be exported too. The controls plant a public function whose
+return type is private, and one whose return is a private alias of each kind, and must find them.
 
 The paradigm packages ``mime.units``, ``mime.things``, ``mime.fields``, ``mime.dynamics``, ``mime.interactions`` and
 ``mime.drives`` are read the same way; a class a public submodule exports (``mime.dynamics.flow``) is exported."""
@@ -18,15 +20,19 @@ import functools
 import importlib
 import inspect
 import pkgutil
+import sys
 import types
 import typing
 from collections.abc import Iterator
 from typing import Any
 
+import pytest
+
 import mime
 from mime.push._draft import Drafted
 
-TOOLING = ("mime.push", "mime.credentials", "mime.cli", "mime.scaffold", "mime.blocks")
+TOOLING = ("mime.push", "mime.credentials", "mime.cli", "mime.scaffold", "mime.blocks",
+           "mime.terms", "mime.errors", "mime.validity", "mime.walls", "mime.surrogates", "mime.materials")
 
 #: The small paradigm packages (SURFACE-REDUCTION, PR 4). Their public subpackages (``mime.dynamics.flow``) count as
 #: places a class is exported from, as they are paths a script writes.
@@ -66,30 +72,75 @@ def names_in(text: str) -> Iterator[str]:
 
 
 @functools.cache
-def imported_names(module: types.ModuleType) -> dict[str, Any]:
-    """What a module's source imports anywhere, including under ``TYPE_CHECKING`` (which its globals do not hold)."""
-    found: dict[str, Any] = {}
-    for node in ast.walk(ast.parse(inspect.getsource(module))):
+def imported_names(module: types.ModuleType) -> dict[str, tuple[Any, str]]:
+    """What a module's source imports anywhere, including under ``TYPE_CHECKING`` (which its globals do not hold), each
+    with the module it came from."""
+    found: dict[str, tuple[Any, str]] = {}
+    try:
+        tree = ast.parse(inspect.getsource(module))
+    except OSError:  # a module built in memory (the controls') has no source to read
+        return found
+    for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module and node.level == 0 and node.module.startswith("mime"):
             for each in node.names:
                 try:
-                    found[each.asname or each.name] = getattr(importlib.import_module(node.module), each.name)
+                    found[each.asname or each.name] = (getattr(importlib.import_module(node.module), each.name),
+                                                       node.module)
                 except (ImportError, AttributeError):
                     continue
     return found
 
 
-def classes_named(annotation: object, module: types.ModuleType) -> Iterator[type]:
+def is_alias(thing: object) -> bool:
+    """A ``type X = ...`` alias, or a name bound to a subscripted ``Literal``, ``Union`` or ``X | Y`` (an alias a
+    module writes as an assignment)."""
+    return isinstance(thing, typing.TypeAliasType) or (
+        typing.get_origin(thing) in (typing.Literal, typing.Union, types.UnionType))
+
+
+def value_of(alias: typing.TypeAliasType) -> object:
+    """What an alias names, or nothing where a name in it is imported only under ``TYPE_CHECKING``."""
+    try:
+        return alias.__value__
+    except NameError:
+        return None
+
+
+def named(thing: object, module: str, name: str) -> tuple[str, object]:
+    """(qualified name, object) of a class or alias an annotation names, ``module`` being where its name lives."""
+    if isinstance(thing, type):
+        return f"{thing.__module__}.{thing.__qualname__}", thing
+    if isinstance(thing, typing.TypeAliasType):
+        return f"{thing.__module__}.{thing.__name__}", thing
+    return f"{module}.{name}", thing
+
+
+def classes_named(annotation: object, module: types.ModuleType, seen: frozenset[int] = frozenset()
+                  ) -> Iterator[tuple[str, object]]:
+    """(qualified name, object) of each class and each alias (a type of the vocabulary a user annotates with) an
+    annotation names; an alias is read through to what it names too."""
     if isinstance(annotation, str):
-        scope = {**imported_names(module), **vars(module)}
+        scope = {**{key: value for key, value in imported_names(module).items()}, **{
+            key: (value, module.__name__) for key, value in vars(module).items()}}
         for name in names_in(annotation):
-            if isinstance(scope.get(name), type):
-                yield scope[name]
+            found = scope.get(name)
+            if found is None:
+                continue
+            thing, home = found
+            if isinstance(thing, type) or is_alias(thing):
+                yield named(thing, home, name)
+                if isinstance(thing, typing.TypeAliasType) and id(thing) not in seen:
+                    yield from classes_named(value_of(thing), importlib.import_module(thing.__module__),
+                                             seen | {id(thing)})
         return
     if isinstance(annotation, type):
-        yield annotation
+        yield named(annotation, annotation.__module__, annotation.__name__)
+    elif isinstance(annotation, typing.TypeAliasType) and id(annotation) not in seen:
+        yield named(annotation, annotation.__module__, annotation.__name__)
+        yield from classes_named(value_of(annotation), importlib.import_module(annotation.__module__),
+                                 seen | {id(annotation)})
     for part in typing.get_args(annotation):
-        yield from classes_named(part, module)
+        yield from classes_named(part, module, seen)
 
 
 def signatures(name: str, thing: object) -> Iterator[tuple[str, object, types.ModuleType]]:
@@ -115,6 +166,15 @@ def signatures(name: str, thing: object) -> Iterator[tuple[str, object, types.Mo
 #: exported or no signature names it: the test fails on a line that no longer applies, so the list only shrinks.
 UNDECIDED = {
     "mime.push._sharing.Sharing": "decided with Manifest in the DUPLICATES work (rule 4)",
+    "mime.validity._profiles.Judge": "decide() is named in one docs page's prose and no script calls it: its types follow its decision",
+    "mime.validity._profiles.Finding": "as Judge: decide()'s parameter",
+    "mime.validity._profiles.Action": "as Judge: decide()'s parameter",
+    "mime.validity._profiles.Decision": "as Judge: decide()'s return",
+    "mime.validity._profiles.FindingClasses": "using_tables() is named in one docs page's prose and no script calls it",
+    "mime.validity._profiles.ProfileRules": "as FindingClasses: using_tables()'s parameter",
+    "mime.validity._pending.Stamp": "results.Layout.stamp: plumbing of the results package, which waits for its own reduction",
+    "mime.materials._values.ResolvedValue": "build.EntryPlan.values and ResolvedRegistration.values: plumbing of the build package, which waits for its reduction",
+    "mime.materials._records.LoadedRecord": "saved.SavedRecord.records: plumbing of the saved package, which waits for its own reduction",
 }
 
 #: The paradigm packages' own, kept apart from the tooling list above. Each is judged by one line: would a user write
@@ -123,7 +183,6 @@ UNDECIDED = {
 UNDECIDED_PARADIGM = {
     "mime.fields._solved.ExchangeFrame": "plumbing of the flow seam (BuildContext.exchanges, FVM.exchange_frame): decided with the registry and the flow's reduction",
     "mime.fields._solved.SolvedField": "plumbing of the flow seam (FVM.field_for, Womersley.field): decided with the registry and the flow's reduction",
-    "mime.things._parts.PartMass": "named only by materials.PartPlan, plumbing of the resolver that leaves mime.materials with the policy PR (#351): delete this line when both have merged",
     "mime.things._handles._Names": "what ApparatusHandle.commands and BodyHandle.initial hand back, underscore-named by design: the maintainer decides whether a user annotates the namespace of typed paths",
 }
 
@@ -132,9 +191,9 @@ def private_types(public: set[int], names: dict[str, object]) -> list[str]:
     problems: list[str] = []
     for name, thing in names.items():
         for where, annotation, module in signatures(name, thing):
-            for each in classes_named(annotation, module):
-                if each.__module__.startswith("mime") and id(each) not in public:
-                    problems.append(f"{where} names {each.__module__}.{each.__qualname__}, which no package exports")
+            for label, each in classes_named(annotation, module):
+                if label.startswith("mime") and id(each) not in public:
+                    problems.append(f"{where} names {label}, which no package exports")
     return problems
 
 
@@ -166,6 +225,28 @@ def test_the_walk_finds_a_public_function_that_returns_a_private_type():
     assert found and "Drafted" in found[0], found
     assert not private_types(exported(), {"planted": lambda: None}), "the control found a defect where there is none"
 
+
+
+def planted_module(monkeypatch: pytest.MonkeyPatch, source: str) -> types.ModuleType:
+    """A module named like MIME's (``mime._planted``) holding ``source``, in ``sys.modules`` for the test."""
+    module = types.ModuleType("mime._planted")
+    module.__file__ = "mime/_planted.py"
+    exec(source, module.__dict__)
+    monkeypatch.setitem(sys.modules, "mime._planted", module)
+    return module
+
+
+def test_the_walk_finds_a_public_function_that_returns_a_private_alias(monkeypatch: pytest.MonkeyPatch):
+    """The controls: a ``type`` statement's alias and a name bound to a ``Literal`` are no package's export, so a function
+    that returns either is found, and one that returns a plain ``str`` is not."""
+    module = planted_module(monkeypatch, "from __future__ import annotations\nfrom typing import Literal\n"
+                            "type Tier = Literal['open', 'closed']\nKind = Literal['a', 'b']\n"
+                            "def by_type() -> Tier: ...\ndef by_literal() -> Kind: ...\ndef plain() -> str: ...\n"
+                            "def deep() -> tuple[Tier, ...]: ...\n")
+    for function, name in (("by_type", "Tier"), ("by_literal", "Kind"), ("deep", "Tier")):
+        found = private_types(exported(), {function: getattr(module, function)})
+        assert found and f"mime._planted.{name}" in found[0], (function, found)
+    assert not private_types(exported(), {"plain": module.plain}), "the control found a defect where there is none"
 
 
 def test_the_walk_reads_the_paradigm_packages_and_counts_a_public_submodule_as_an_export():

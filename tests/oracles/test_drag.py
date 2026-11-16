@@ -49,7 +49,7 @@ from mime.interactions import Drag, Lubrication
 from mime.nodes.hydro import GAP_FLOOR, SurrogateDragNode
 from mime.registry import Delivery, Geometry, register_geometry, register_interaction
 from mime.scene import Sphere
-from mime.surrogates import DEJONGH_MLP_V2, DeclaredRange
+from mime.surrogates._screw import DEJONGH_MLP_V2, DeclaredRange
 from mime.things import Part
 from mime.units import Length, Quantity, dimensionless, kg, kg_m2, m, m_per_s, m_per_s2, mm, mPa_s, rad_per_s, s
 from mime.vocabulary import Interface, TargetKind, define, register_namespace

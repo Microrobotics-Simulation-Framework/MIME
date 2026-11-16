@@ -157,4 +157,4 @@ class PlaneWall(WallKind):
     )
 
 
-__all__ = ["RESERVED", "TUBE_SWITCHES", "FreeSpaceWall", "PlaneWall", "TubeWall"]
+__all__ = ["FreeSpaceWall", "PlaneWall", "TubeWall"]
