@@ -39,7 +39,7 @@ def test_every_bound_prim_is_in_the_stage_and_every_field_in_the_state(built):
     assert {"rpm.motor.base", "rpm.motor.rotor", "rpm.arm.link_6"} <= set(names)
     assert [entry.kind for entry in binding.entries].count("vector") == 1
     assert binding.problems(prims_of(built.stage_text), built.current_state()) == []
-    assert json.loads(json.dumps(binding.record()))["format"] == "mime.binding/1"
+    assert json.loads(json.dumps(binding.record()))["format"] == "mime.binding/2"
 
 
 @pytest.mark.parametrize("planted", ["prim", "field", "row"])

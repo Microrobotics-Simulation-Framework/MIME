@@ -32,6 +32,7 @@ TYPED = [
     (toys.ToyRecorderNode("r", DT), toys.ToyRecorderState, toys.ToyRecorderInputs, set()),
     (toys.ToyRegionProbeNode("p", DT, shape="sphere", centre=(0.0, 0.0, 0.0), radius=1e-3),
      toys.ToyRegionProbeState, toys.ToyRegionProbeInputs, set()),
+    (toys.ToyIndentedSheetNode("i", DT, count=5), toys.ToyIndentedSheetState, None, set()),
 ]
 
 

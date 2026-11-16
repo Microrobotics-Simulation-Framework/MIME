@@ -28,6 +28,7 @@ from mime.scene import ARROW, VECTOR_SCALE, VECTOR_UNITS, VECTOR_VALUE
 from mime.scene._pxr import Gf, Usd, UsdGeom
 from mime.viz._apparatus import APPARATUS_ROOT, ApparatusShape, draw, time_codes
 from mime.viz._gltf import Settings, convert, up_turn
+from mime.viz._gltf._converter import MORPH_TARGETS
 from mime.viz._primitives import SEGMENTS
 from mime.viz._tiers import SHAREABLE_TIERS, refuse_unshareable
 from mime.viz._visuals import _target, view  # pyright: ignore[reportPrivateUsage]
@@ -123,6 +124,11 @@ class GltfResult:
     #: The motors and magnets drawn for the view alone (:mod:`mime.viz._apparatus`), and whether they were asked for.
     shapes: list[ApparatusShape] = field(default_factory=list[ApparatusShape])
     apparatus_shapes: bool = True
+    #: Each surface drawn with morph targets (``mime.viz._gltf``'s record: its prim, vertices, samples recorded and
+    #: drawn, targets and fields with the range each is coloured over), for the page's legend and picker.
+    morphs: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    #: The GLB's animations: ``run``, then ``run:<field>`` for each further field.
+    animations: list[str] = field(default_factory=list[str])
 
     def lines(self) -> list[str]:
         """What a reader of the view is told: the meshes left out and missing, then every set's terms."""
@@ -147,6 +153,16 @@ class GltfResult:
                         f"{ARROW_BODY_FACTOR:g} times the largest extent of its body, or {ARROW_CAP_FRACTION:.0%} of the "
                         f"scene's size without its arrows, whichever is less ({shown}{more}). A capped arrow still points "
                         f"along its vector; the stage and the recording hold its full length.")
+        for morph in self.morphs:
+            if morph["drawn"] < morph["samples"]:
+                held.append(f"{morph['prim'].removeprefix('/World/')} is drawn at {morph['drawn']} of its "
+                            f"{morph['samples']} recorded samples, evenly chosen: a view holds at most "
+                            f"{MORPH_TARGETS} shapes of a surface; the recording holds every sample.")
+            for each in morph["fields"]:
+                if not each["declared"]:
+                    held.append(f"{each['name']} on {morph['prim'].removeprefix('/World/')} declares no range, so it is "
+                                f"coloured over the range the recording holds, {each['low']:.4g} to {each['high']:.4g} "
+                                f"{each['unit']}.")
         for shape in self.shapes:
             if shape.placeholder:
                 held.append(f"{shape.name} is drawn as a placeholder, a {shape.kind} of {_size_text(shape)}, for the view "
@@ -474,7 +490,7 @@ def gltf(target: str | Path, *, slow: float | None = None, segments: int = SEGME
     return GltfResult(converted.glb, source, name, unit, shown, simulated, samples, across, converted.triangles,
                       found.drawn, dict(found.withheld), dict(found.missing), list(found.notices),
                       dict(converted.skipped), dict(found.fetch), capped, _arrow_keys(stage, capped, {p: c * meters for p, c in arrows.caps.items()}), tracks, shapes,
-                      apparatus_shapes)
+                      apparatus_shapes, list(converted.morphs), list(converted.animations))
 
 
 __all__ = ["ARROW_BODY_FACTOR", "ARROW_CAP_FRACTION", "ArrowCap", "ArrowKey", "BodyTrack", "GltfResult", "body_tracks", "arrows_of", "gltf", "length_text", "motion_bounds", "slowed"]
