@@ -49,7 +49,14 @@ does. The term there is narrow in the pose (0.50 at an offset of 0.3 px, 7e-6 at
 fresh view nearer that alignment can read more. The scan's band (0.62 px a px on the crease pixels) is therefore no
 bound of the term, and as a line it would pass any missing term of the jvp under about a tenth of the crease pixels'
 motion; the gate's form is the maintainer's to choose (``predictions_camera_pr5b.json``,
-``march_derivation_finding``)."""
+``march_derivation_finding``).
+
+**Since the fix** (option (c) with design (i), ``predictions_camera_pr5b.json``, ``held_point_check``): the ``held`` arm
+here is the jvp as it was. Each read point now carries the derivative of the image's own held point
+(``_sampled._place``), and the implicit step's slope and curvature are read at it as it moves (``_sampled._moving``):
+the jvp's arm is this script's ``live`` arm, so the term is zero by construction, every pose, and the derivative's line
+is the central difference's own error (``test_crease.derivative_line``). The scan above is kept as the record of what
+the term was."""
 
 from __future__ import annotations
 

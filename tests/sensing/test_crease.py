@@ -26,10 +26,13 @@ the march's branches and their regions, each corner cell the exact share of that
   image unchanged) fails the motion line, every run, the pixel line passing.
 - **G17, the derivative**: the jvp of the darkness's equivalent radius and centroid in the body's x and z against the
   central difference of the same renderer, judged on the pixels about the caps' rims and on the rest apart; the line is
-  the central difference's own error at its last step, stated by the step sweep (``derivative_line``), and the held
-  march's own derivative error, camera PR 5a's committed band (``ENVELOPE_BAND``), never a round number of this file's.
-  **Control** (``CAMERA_PLANT=held-caps``): the crease measure read from a held pinhole, the caps' derivative in the
-  body's place gone."""
+  the central difference's own error at its last step, stated by the step sweep (``derivative_line``). The held
+  march's term is zero: each read point carries the derivative of the image's own held point. The rule grew after its
+  first failure (the jvp 2.56 and 3.44 times the difference's own error at turns 4 and 15, the held march's term) and
+  was settled by fixing the derivative, not by widening the line; the views it is confirmed on were drawn after.
+  Reported beside it, never judged: the image's own term against the exact image's derivative. **Controls**
+  (``CAMERA_PLANT=held-caps``, the caps' derivative in the body's place gone; ``CAMERA_PLANT=near-axis``, the read points
+  of sub-rays passing the side's axis moved in the derivative only)."""
 
 from __future__ import annotations
 
@@ -279,6 +282,26 @@ def plant_scheme(monkeypatch) -> None:
             return measured(self, parameters, tuple(jax.lax.stop_gradient(c) for c in o), d)
 
         monkeypatch.setattr(kind_cls, "crease_measure", held)
+    if planted("near-axis"):
+        # The read points of sub-rays within NEAR_AXIS px of the side's axis (where the singular poses' sub-rays pass
+        # it) moved an extra PLANT_SIZE (default one) of the body's motion along x and z, in the derivative only.
+        found_place = sampled_route._place
+
+        def near_axis(sampled, p, o, d, held, read, made):
+            place = found_place(sampled, p, o, d, held, read, made)
+            a = jax.lax.stop_gradient(jnp.asarray(p["axis"]))
+            a = a / jnp.linalg.norm(a)
+            h_o, h_d = jax.lax.stop_gradient(o), jax.lax.stop_gradient(d)
+            cross = (h_d[1] * a[2] - h_d[2] * a[1], h_d[2] * a[0] - h_d[0] * a[2], h_d[0] * a[1] - h_d[1] * a[0])
+            apart = jnp.abs(sum(h_o[i] * cross[i] for i in range(3))) / jnp.sqrt(sum(c * c for c in cross))
+            motion = -((o[0] - h_o[0]) + (o[2] - h_o[2]))
+            return place + jnp.where(apart < NEAR_AXIS * PIXEL, (PLANT_SIZE or 1.0) * motion, 0.0)
+
+        monkeypatch.setattr(sampled_route, "_place", near_axis)
+
+
+#: The near-axis plant's reach from the side's axis, in pixels.
+NEAR_AXIS = 0.01
 
 
 def rod(axis, route: str | None = "sampled") -> Subject:
@@ -416,20 +439,30 @@ def test_g18_route_one_and_route_two_each_hold_to_the_exact_image(dtype):
 #: within a sub-pixel), so the central difference reaches its own small-step behaviour only below about 1/1000 of a
 #: pixel; float64's rounding is still far below it at the last step.
 STEPS = tuple(4.0 ** -k for k in range(3, 8))
-#: The held march's own derivative error, which the jvp carries and the central difference does not: camera PR 5a's
-#: committed band for route 2's derivative (``predictions_camera_pr5a_round5_gates.json``, ``gate_deriv``: the central
-#: difference within 3e-4 of the motion's norm of the jvp at steps at or below 1/512 of a pixel), the envelope rule's
-#: error in a branch's held point, second order in the march's spacing.
-ENVELOPE_BAND = 3e-4
+#: The exact image's step for the image's term (``hull_oracle``'s central difference, settled at it in the singular
+#: check), in pixels.
+EXACT_STEP = 1e-4
+#: The derivative's views (turn, roll, offset in pixels). ``DERIVATIVE_SEEN``: the first forms' views, measured before
+#: the held march's term was found (their failure at turns 4 and 15 is why it was looked for); ``DERIVATIVE_SINGULAR``:
+#: the three poses where a sub-ray passes the side's axis at the rod's end (``crease_singular_check.py``), measured in
+#: ``crease_held_point_check.py``. Both kept, neither evidence. ``DERIVATIVE_FRESH``: drawn from fresh entropy after
+#: this line was committed, their predictions committed before they ran (``predictions_camera_pr5b.json``,
+#: ``g17_fresh``).
+DERIVATIVE_SEEN = tuple((turn, 20.0, (0.0, 0.0)) for turn in (0.0, 2.0, 4.0, 15.0))
+DERIVATIVE_SINGULAR = ((6.0, 75.0, (0.3, 0.8)), (3.0, 0.0, (0.0, 0.0)), (2.0, 0.0, (0.0, 0.0)))
+DERIVATIVE_FRESH: tuple[tuple[float, float, tuple[float, float]], ...] = ()
 
 
 def derivative_line(differences: list[np.ndarray], floor: np.ndarray) -> float:
     """What the jvp's motion may lie from the central difference's at the sweep's last step, in the norm of the motion
-    (the equivalent radius and the centroid, in pixels): the difference's own error, twice the change between its last
-    two steps (a quarter apart, so where its error is second order in the step, thirty times its error at the last),
-    and its rounding there; and the held march's ``ENVELOPE_BAND`` of the motion."""
-    return float(np.linalg.norm(2.0 * (differences[-1] - differences[-2])) + np.linalg.norm(floor)
-                 + ENVELOPE_BAND * np.linalg.norm(differences[-1]))
+    (the equivalent radius and the centroid, in pixels a pixel): the difference's own error, twice the change between
+    its last two steps (a quarter apart, so where its error is second order in the step, thirty times its error at the
+    last), and its rounding there. The held march's own term is zero: each read point carries the derivative of the
+    image's own held point (``_sampled._place``), and the implicit step's slope and curvature are read at it as it moves
+    (``_sampled._moving``), so the jvp is the rendered image's derivative on its branch in the body's place; the term
+    ``scripts/camera_route2/crease_march_line.py`` derived (the jvp's held points against the image's, at most 9.8e-5
+    px a px at 357 of its 360 poses and 0.50 at one pixel of three) is the one the read points no longer leave out."""
+    return float(np.linalg.norm(2.0 * (differences[-1] - differences[-2])) + np.linalg.norm(floor))
 
 
 def crease_mask(centre: np.ndarray, axis: np.ndarray) -> np.ndarray:
@@ -442,17 +475,28 @@ def crease_mask(centre: np.ndarray, axis: np.ndarray) -> np.ndarray:
     return mask
 
 
-@pytest.mark.parametrize("turn", PINNED + (15.0,))
-def test_g17_the_creased_derivative_is_the_images(float64, turn, monkeypatch):
+def _view_id(view) -> str:
+    turn, roll, (du, dv) = view
+    return f"t{turn:g}-r{roll:g}-u{du:g}-v{dv:g}"
+
+
+@pytest.mark.parametrize("view", DERIVATIVE_SEEN + DERIVATIVE_SINGULAR + DERIVATIVE_FRESH, ids=_view_id)
+def test_g17_the_creased_derivative_is_the_images(float64, view, monkeypatch):
     """The jvp of the darkness's equivalent radius and centroid, on the pixels about the caps' rims and on the rest
     apart, in the body's x and z, against the central difference of the same renderer at the sweep's last step, within
-    ``derivative_line``. **Control** (``CAMERA_PLANT=held-caps``): the crease measure read from a held pinhole, the caps'
-    derivative in the body's place gone."""
+    ``derivative_line``. Beside it, never judged here, **the image's term**: the rendered image's difference less the
+    exact image's (``hull_oracle``), the scheme's own departure from the outline's motion at a point, which a sub-cell's
+    spurious sliver can make large (the first singular pose) while the jvp follows the image exactly. **Controls**
+    (``CAMERA_PLANT``): ``held-caps`` (the crease measure read from a held pinhole, the caps' derivative in the body's
+    place gone) and ``near-axis`` (the read points of sub-rays within a hundredth of a pixel of the side's axis moved an
+    extra one of the body's motion, in the derivative only: at the singular poses)."""
     plant_scheme(monkeypatch)
-    axis = axis_of(turn, 20.0)
+    turn, roll, offset = view
+    axis = axis_of(turn, roll)
+    centre = CENTRE + np.array([offset[0], 0.0, -offset[1]]) * PIXEL
     body = rod(axis)
-    crease = jnp.asarray(crease_mask(CENTRE, axis), jnp.float64)
-    masks = jnp.stack([crease, 1.0 - crease])
+    crease = crease_mask(centre, axis)
+    masks = jnp.stack([jnp.asarray(crease, jnp.float64), 1.0 - jnp.asarray(crease, jnp.float64)])
     v, u = (jnp.asarray(x, jnp.float64) for x in np.indices((HEIGHT, WIDTH)))
 
     def aggregates_on(at):
@@ -461,26 +505,33 @@ def test_g17_the_creased_derivative_is_the_images(float64, turn, monkeypatch):
         return jnp.stack([jnp.sqrt(total / math.pi), jnp.sum(dark * u, axis=(1, 2)) / total,
                           jnp.sum(dark * v, axis=(1, 2)) / total], axis=1)
 
+    def exact_on(at):
+        shares = hull_oracle.shares(hull_oracle.cylinder_outline(at, axis, RADIUS, LENGTH), FOCAL, DISTANCE, WIDTH,
+                                    HEIGHT)
+        return np.stack([aggregates(shares * mask) for mask in (crease, ~crease)])
+
     values = jax.jit(aggregates_on)
     tangents = jax.jit(lambda at, e: jax.jvp(aggregates_on, (at,), (e,))[1])
-    scale = np.abs(np.asarray(values(jnp.asarray(CENTRE))))
+    scale = np.abs(np.asarray(values(jnp.asarray(centre))))
     floor = 64 * float(np.finfo(np.float64).eps) * scale / (PIXEL * STEPS[-1])
-    worst, strict = 0.0, 0.0
+    worst = 0.0
     for axis_index in (0, 2):
         e = np.zeros(3)
         e[axis_index] = 1.0
-        tangent = np.asarray(tangents(jnp.asarray(CENTRE), jnp.asarray(e))) * PIXEL
-        differences = [(np.asarray(values(jnp.asarray(CENTRE + PIXEL * step * e)))
-                        - np.asarray(values(jnp.asarray(CENTRE - PIXEL * step * e)))) / (2 * step)
+        tangent = np.asarray(tangents(jnp.asarray(centre), jnp.asarray(e))) * PIXEL
+        differences = [(np.asarray(values(jnp.asarray(centre + PIXEL * step * e)))
+                        - np.asarray(values(jnp.asarray(centre - PIXEL * step * e)))) / (2 * step)
                        for step in STEPS]
-        for mask in range(2):
+        exact = (exact_on(centre + PIXEL * EXACT_STEP * e) - exact_on(centre - PIXEL * EXACT_STEP * e)) / (2 * EXACT_STEP)
+        for mask, name in enumerate(("crease", "rest")):
             held = [difference[mask] for difference in differences]
+            line = derivative_line(held, floor[mask] * PIXEL)
             apart = float(np.linalg.norm(tangent[mask] - held[-1]))
-            worst = max(worst, apart / derivative_line(held, floor[mask] * PIXEL))
-            strict = max(strict, apart / (derivative_line(held, floor[mask] * PIXEL)
-                                          - ENVELOPE_BAND * float(np.linalg.norm(held[-1]))))
-            print(f"\nturn {turn}, axis {axis_index}, {('crease', 'rest')[mask]}: jvp {tangent[mask]} (px a px)\n"
-                  f"  differences {np.asarray(held)}\n  apart {apart:.3g}, line {derivative_line(held, floor[mask] * PIXEL):.3g}")
-    print(f"\nturn {turn}: the jvp's largest distance from the central difference, as a share of the line {worst:.3g} "
-          f"(of the difference's own error alone {strict:.3g})")
+            worst = max(worst, apart / line)
+            print(f"\n{_view_id(view)}, axis {axis_index}, {name}: jvp {tangent[mask]} (px a px)\n"
+                  f"  differences {np.asarray(held)}\n  apart {apart:.3g}, line {line:.3g} ({apart / line:.3g} of it); "
+                  f"the image's term {float(np.linalg.norm(held[-1] - exact[mask])):.3g} (the exact image's "
+                  f"{exact[mask]})")
+    print(f"\n{_view_id(view)}: the jvp's largest distance from the central difference, as a share of the line "
+          f"{worst:.3g}")
     assert worst <= 1.0

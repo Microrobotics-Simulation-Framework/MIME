@@ -68,8 +68,15 @@ stages:
   gives its creases' exact edge functions on the rays (a capped body's caps, each by its cone from the pinhole, and each
   cap's bounding ball, `mime.scene._creases`) and its composition: the caps and, for each of the march's two branches,
   the intersection of its regions' first-order distances at its least (the marched region's, and each other region's,
-  a span's, read at the same place, the place moving with its derivative by one implicit step whose curvature is the
-  profile's second difference a march spacing wide: finite at a kink of the profile, a ray through a cylinder's axis).
+  a span's, read at the same place). **The read place's derivative is the image's own held point's** (`_sampled._place`:
+  the march's points and spacing as they move with the body, the quartic's least through its five live values, its
+  steps and branches as they fell, as a custom derivative whose value is the held point, so an image computes nothing
+  more); across the pixel the place moves with the ray's direction by one implicit step whose curvature is the
+  profile's second difference a march spacing wide (finite at a kink of the profile, a ray through a cylinder's axis),
+  read at the place as it moves. So the jvp is the rendered image's derivative on its branch in the body's place (G17's
+  derivative, within the central difference's own error: the held march's term, up to 0.5 px a px at one pixel where a
+  sub-ray passes the side's axis at the rod's end, is gone); a turn's share through a sub-ray's own direction is the
+  implicit step's.
   A least at the samples' ends is not the marched region's (a cylinder's side and a screw's thread reach past the
   enclosing ball, and the body is not there): that branch is moved out. The crease pieces are taken as turning, so a
   frame with a cap in view takes its corner sub-samples, and each cell takes the **exact share of the composition** of
