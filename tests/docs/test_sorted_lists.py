@@ -8,55 +8,15 @@ A line out of order fails naming the line and the place it belongs; a duplicate 
 each fault in a copy of the real list and show the check naming it, and a list read in a shuffled order failing, every
 run (there is no draw: the plants are fixed)."""
 
-from bisect import bisect_right
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from checkout import ROOT
+from sorted_lists import duration_key, items, order_problems, switch_key
 
 DURATIONS = Path("tests/duration_allowlist.txt")
 SWITCHES = Path("docs/ratchets/raw_switches.txt")
-
-
-def duration_key(line: str) -> tuple[str, ...]:
-    """A node id, which the line starts with, up to the `` # `` before its reason."""
-    return (line.partition(" # ")[0].strip(),)
-
-
-def switch_key(line: str) -> tuple[str, str, str, int]:
-    """``file function family occurrence``, the first four words of a line, the occurrence as a number (``sqrt 2``
-    before ``sqrt 10``); a line that does not start so raises ``ValueError``."""
-    file, function, family, occurrence = line.split()[:4]
-    return file, function, family, int(occurrence)
-
-
-def items(text: str) -> list[tuple[int, str]]:
-    """``(line number, line)`` for every line that is no comment and no blank."""
-    return [(number, line) for number, line in enumerate(text.splitlines(), start=1)
-            if line.strip() and not line.startswith("#")]
-
-
-def order_problems(name: str, text: str, key: Callable[[str], tuple]) -> list[str]:
-    """What is wrong with the order of the list ``text`` (named ``name``): a line that sorts before the one above it
-    (the place it belongs is named), a line whose key an earlier line has, a line the key cannot read."""
-    found: list[str] = []
-    kept: list[tuple[tuple, int]] = []          # the keys in order, and each one's line number, of the lines in place
-    for number, line in items(text):
-        try:
-            here = key(line)
-        except ValueError:
-            found.append(f"{name}:{number}: {line[:60]!r} does not start as the list's lines do")
-            continue
-        twin = next((n for k, n in kept if k == here), None)
-        if twin is not None:
-            found.append(f"{name}:{number}: has the key of line {twin}; delete one of the two")
-        elif kept and here < kept[-1][0]:
-            place = kept[bisect_right([k for k, _ in kept], here)][1]
-            found.append(f"{name}:{number}: sorts before the line above it; move it up to just above line {place}")
-        else:
-            kept.append((here, number))
-    return found
 
 
 def test_the_duration_allowlist_is_sorted_by_node_id_without_a_duplicate():
