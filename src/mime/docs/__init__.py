@@ -1,102 +1,12 @@
-"""The documentation's machine-readable sources and their checks: the registry export (``mime registry --json``), the
-checks on a node's ``NodeMeta`` and symbol table, the refusal scan the refusal table is generated from, the
-ratchets kept as lists, and the evidence resolver with the claims' shape (``mime.docs._evidence``), which the evidence
-report and ``scripts/check_anomalies.py`` read. ``mime docs check`` runs them all over a checkout, and needs the ``verify`` extra; nothing
-imported here needs it, so ``mime registry --json`` runs on a base install. The pages themselves are generated
-later, from these sources."""
+"""The documentation's machine-readable sources and their checks, run by ``mime docs check`` and ``mime docs build`` and by
+``mime registry --json`` (the export the pages are generated from) over a checkout; ``mime docs check`` needs the ``verify``
+extra, and nothing imported here needs it, so ``mime registry --json`` runs on a base install.
 
-from mime.docs._evidence import (
-    Claim,
-    Collection,
-    Resolution,
-    claim,
-    claim_problems,
-    collect,
-    junit_outcomes,
-    read_claims,
-    resolve,
-)
-from mime.docs._export import (
-    ENTRY_POINT_GROUP,
-    Unencodable,
-    class_vars,
-    completeness_problems,
-    encode,
-    entry_record,
-    export,
-    export_json,
-    load_namespaces,
-    registry_export,
-)
-from mime.docs._lists import Line, RatchetList, floor_problems, list_problems, read_list
-from mime.docs._refusal_scan import CODE_SHAPE, Census, Derived, Scan, Site, census, derive, name_rule, scan_package
-from mime.docs._symbols import (
-    STRUCTURE,
-    FrozenId,
-    TableReport,
-    Token,
-    instance_problems,
-    meta_of,
-    next_id,
-    path_problem,
-    read_frozen_ids,
-    row_key,
-    rows_of,
-    static_problems,
-    symbols_of,
-    table_problems,
-    tokens,
-    unrowed,
-)
+What is public is the evidence resolver's reading of a record's claims: :func:`claim` hands a test the number a record
+states, as a :class:`Claim`, so that it is held once, in the record (``docs/validation/README.md``). The rest (the
+registry export, the checks on a node's ``NodeMeta`` and symbol table, the refusal scan the refusal table is generated
+from, the ratchets kept as lists, the pages) is the commands' own."""
 
-__all__ = [
-    "CODE_SHAPE",
-    "Claim",
-    "Collection",
-    "Resolution",
-    "claim",
-    "claim_problems",
-    "collect",
-    "junit_outcomes",
-    "read_claims",
-    "resolve",
-    "ENTRY_POINT_GROUP",
-    "STRUCTURE",
-    "Census",
-    "Derived",
-    "FrozenId",
-    "Line",
-    "RatchetList",
-    "Scan",
-    "Site",
-    "TableReport",
-    "Token",
-    "Unencodable",
-    "census",
-    "class_vars",
-    "completeness_problems",
-    "derive",
-    "encode",
-    "entry_record",
-    "export",
-    "export_json",
-    "floor_problems",
-    "instance_problems",
-    "list_problems",
-    "load_namespaces",
-    "meta_of",
-    "name_rule",
-    "next_id",
-    "path_problem",
-    "read_frozen_ids",
-    "read_list",
-    "registry_export",
-    "row_key",
-    "rows_of",
-    "scan_package",
-    "static_problems",
-    "symbols_of",
-    "table_problems",
-    "tokens",
-    "unrowed",
-]
+from mime.docs._evidence import Claim, claim
+
+__all__ = ["Claim", "claim"]

@@ -457,7 +457,7 @@ class ExperimentDocument(TypedDict, closed=True):
 
 
 class GpuRecordDoc(TypedDict, closed=True):
-    """The GPU a build ran on (``mime.env.GpuRecord``'s keys and types, which a test holds together): JAX's device
+    """The GPU a build ran on (``mime.env._host.GpuRecord``'s keys and types, which a test holds together): JAX's device
     kind, the driver's release, and the CUDA driver's, CUDA runtime's and cuDNN's versions as JAX reports them."""
 
     device_kind: ReadOnly[str]
@@ -468,7 +468,7 @@ class GpuRecordDoc(TypedDict, closed=True):
 
 
 class CpuRecordDoc(TypedDict, closed=True):
-    """The CPU a build ran on (``mime.env.CpuRecord``'s keys and types): its model and the hash of its flags."""
+    """The CPU a build ran on (``mime.env._host.CpuRecord``'s keys and types): its model and the hash of its flags."""
 
     model: ReadOnly[str | None]
     flags_sha256: ReadOnly[str | None]

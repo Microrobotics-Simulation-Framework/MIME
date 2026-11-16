@@ -486,7 +486,7 @@ def refused_env_check(tmp_path) -> list[str]:
     at most CI's lab fixture. ``--strict``: without it a version inside the ranges the installed distributions
     declare is a note, and only a handful of the pins would refuse (no longer many reasons for the grouping to
     shorten)."""
-    from mime.env import optional_pins, pins
+    from mime.env._pins import optional_pins, pins
 
     added = sorted({pin.name for pin in optional_pins()} - {pin.name for pin in pins("cpu")})
     lab = tmp_path / "lab_pins.txt"

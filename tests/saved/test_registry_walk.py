@@ -27,7 +27,7 @@ from cases import CASES, Case
 from screw_grid import FL9, HELIX_SETTINGS
 
 from mime.core import SCREW, jnp
-from mime.docs import load_namespaces
+from mime.docs._export import load_namespaces
 from mime.registry import Drawing, EntryKind, Samples, implements
 from mime.registry import registered as registered_entries
 from mime.scene import DRAWING_SEGMENTS, Box, Ellipsoid, Screw, Tube

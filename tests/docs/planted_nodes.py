@@ -110,7 +110,7 @@ PlantedMimeMetaOnly = planted(
 
 def first_free() -> str:
     """The first algorithm id past the frozen list's and every id MIME's own nodes carry."""
-    from mime.docs import meta_of, next_id, read_frozen_ids
+    from mime.docs._symbols import meta_of, next_id, read_frozen_ids
     from mime.docs._check import node_classes
     from mime.docs._export import load_namespaces
     from mime.registry import registered

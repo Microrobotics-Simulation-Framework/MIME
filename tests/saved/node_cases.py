@@ -22,6 +22,19 @@ RIGID_BODY = NodeCase(
              "constrain_boundary": lambda given: {**given, "resistance": positive_semidefinite(given["resistance"])}},
     ladders={"": (OrderLadder(RefinementAxis.TIME, rigid_oracles.velocity_error, (25, 50, 100, 200)),)})
 
+#: The ramp's hold acts only where the step's middle, ``(steps - 1/2) dt``, falls inside the ramp (here 0.5 to 1.5 ms),
+#: and a step counter drawn over all of int32 with a timestep drawn from 0.1 to 10 ms puts about one example in twenty
+#: there: ``params_effective`` saw no example where ``hold`` matters in about one run in 400, and failed the node for a
+#: gradient that is zero outside the ramp. Three of every four drawn counters are folded into the first 21 steps, where
+#: a ramp of this case's size lives (about one example in eight is then inside it); the fourth keeps its draw, the
+#: whole of int32 included.
+def steps_near_the_ramp(state):
+    steps = np.asarray(state["steps"])
+    return {**state, "steps": np.where(steps % 4 == 0, steps, steps % 21).astype(steps.dtype)}
+
+
+RAMP = NodeCase(options={"constrain_state": steps_near_the_ramp})
+
 #: A chain segment's drawn mount poses hold unit quaternions, as every frame pose a segment publishes does.
 def unit_poses(poses):
     held = np.asarray(poses)
@@ -272,7 +285,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
                 "verified under arm's case)"),
     ("response", "response.ideal", "0.1.0"): NodeCase(
         no_node="a response: it builds no node, and delivers what the stage's slew drove, as it is"),
-    ("drive", "drive.ramp", "0.1.0"): NodeCase(),
+    ("drive", "drive.ramp", "0.1.0"): RAMP,
     ("dynamics", "arm", "0.1.0"): ARM,
     ("dynamics", "motor", "0.2.0"): MOTOR,
     ("dynamics", "labx.gantry", "0.1.0"): NodeCase(),

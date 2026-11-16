@@ -103,7 +103,7 @@ def in_child_piped(tmp_path, *words) -> subprocess.CompletedProcess[str]:
 def old_verify_text(folder: Path) -> tuple[str, str]:
     """What ``mime verify`` printed before the table, written out from the objects it holds: the load report, the
     verification (and the verification's verdict line)."""
-    from mime.env import apply_lock_precision
+    from mime.env._check import apply_lock_precision
 
     apply_lock_precision(folder)
     loaded = Experiment.load(folder)

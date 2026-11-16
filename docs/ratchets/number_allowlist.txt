@@ -291,3 +291,12 @@ src/mime/fields/README.md  2.3 9.4  #1  # the scan of 72 random chain poses and 
 src/mime/observations/README.md  1  #1  # the step index n - 1 in the one-step difference's formula, not a quantity
 src/mime/observations/README.md  0 0  #1  # step indices of a run (the first step is step 0, the field switched on before step 1), and the value held there (zero), a definition of what is measured, not a quantity
 docs/guide/camera_loop.md  43691394582 3c  #1  # a GitHub Actions run id and a branch name (probe/camera-3c-r2): identifiers that locate the probe whose rates the page cites, not claims
+docs/live.md  512  #1  # the recording's default budget in memory, RECORD_BYTES in mime.live._session, a setting the page states (his item 106, a bounded record)
+docs/live.md  359,833 100 60  #1  # a measurement by scripts/live_message_sizes.py: A0's default recording budget in samples and what it lasts at about 60 frames a second, sizes no machine changes, never a CI check (his item 106)
+docs/live.md  40,000 670  #1  # a measurement by scripts/live_message_sizes.py: the default recording budget of the indented sheet of 40,000 vertices, sizes no machine changes, never a CI check (his item 106)
+docs/live.md  0 65535  #1  # the range of a TCP port, a fixed property of the protocol, not a measured quantity (his item 106, minor (a))
+docs/live.md  -2 -3  #1  # the suffixes of the default run folder's name for a second and a third session in one second, names, not quantities (his item 106)
+docs/live.md  64 93 24 700 2,500  #1  # the request limit and a measurement by scripts/live_message_sizes.py: A0's largest set at the longest float text, the margin and the numbers it leaves room for, sizes no machine changes, never a CI check (his item 106)
+docs/live.md  64 1  #1  # the subscription limit and the subscription MIME's client sends, a byte (his item 106)
+docs/live.md  64 0.71 40,000 59.4 90  #1  # the reply limit and a measurement by scripts/live_message_sizes.py: the largest hello, a sheet of 40,000 vertices, and A0's, and the margin, sizes no machine changes, never a CI check (his item 106)
+docs/live.md  256 5.3 0.80 888 48  #1  # the frame limit and a measurement by scripts/live_message_sizes.py: the largest frame as JSON and binary, A0's, and the margin, sizes no machine changes, never a CI check (his item 106)

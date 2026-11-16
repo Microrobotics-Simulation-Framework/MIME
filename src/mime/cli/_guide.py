@@ -236,20 +236,24 @@ def usage_refusal(target: argparse.ArgumentParser, message: str, hints: Sequence
                        f"example")
     nearest = "".join(f"{hint} " for hint in hints)
     shown = f"; for example `{example}`" if example is not None else ""
-    return Refusal("cli.usage", RefusalClass.USER, _in_users_words(message, named),
+    return Refusal("cli.usage", RefusalClass.USER, _in_users_words(message, named, target),
                    f"{nearest}`{named} --help` shows its options{shown}.")
 
 
 #: argparse's words for a command mistyped where a command was wanted: its ``dest`` (``defaults_command``, ``command``)
-#: is a name in the program, and not a word a person knows.
-_INVALID_COMMAND = re.compile(r"argument (?:\w+_)?command: invalid choice: '([^']*)' \(choose from ([^)]*)\)")
+#: is a name in the program, and not a word a person knows. Only the mistyped word is read from them: how argparse
+#: writes the list of choices after it changed between Python versions (3.12.8 and 3.14 quote each), so the list is
+#: written here from the command's own choices.
+_INVALID_COMMAND = re.compile(r"argument (?:\w+_)?command: invalid choice: '([^']*)' \(choose from [^)]*\)")
 
 
-def _in_users_words(message: str, named: str) -> str:
+def _in_users_words(message: str, named: str, target: argparse.ArgumentParser) -> str:
     """``message`` with argparse's name for a command's place (``argument defaults_command``) said as the command or group
-    it is in: ``'foo' is not a command of `mime defaults` (choose from show, edit)``."""
-    return _INVALID_COMMAND.sub(lambda found: f"'{found.group(1)}' is not a command of `{named}` (choose from "
-                                              f"{found.group(2)})", message)
+    it is in, and its choices listed from ``target``'s commands: ``'foo' is not a command of `mime defaults` (choose from
+    show, edit)``."""
+    choices = ", ".join(_children(target))
+    return _INVALID_COMMAND.sub(lambda found: f"'{found.group(1)}' is not a command of `{named}` (choose from {choices})",
+                                message)
 
 
 def _subparsers_of(parser: argparse.ArgumentParser) -> argparse._SubParsersAction[argparse.ArgumentParser] | None:  # pyright: ignore[reportPrivateUsage]

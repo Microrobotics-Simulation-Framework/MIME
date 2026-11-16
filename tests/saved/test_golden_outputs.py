@@ -30,7 +30,8 @@ from cases import CASES
 from node_cases import NODE_CASES
 
 from mime.build._plan import Section
-from mime.docs import load_namespaces, read_list
+from mime.docs._export import load_namespaces
+from mime.docs._lists import read_list
 from mime.docs._check import LISTS, list_path
 from mime.registry import EntryKind, lookup
 from mime.testing import covered, first_steps, installed_entries, nodes_by_entry
