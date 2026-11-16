@@ -32,8 +32,8 @@ a run's speeds); an array quantity is a result and never a declaration.
   is a quantity plus the int zero. An array of numbers plus a quantity is that refusal too, not an array of one quantity per
   number. The start is the one bare number accepted so that `sum` works, and it opens no hole in `+`.
 - **NumPy's functions are not a quantity's.** A quantity is not an array of numbers: `np.abs(q)`, `np.sqrt(q)` and the like
-  are refused with `call.units` and what to write (`abs(q)`, `q ** 2`, `q.to(unit)`; `q.value` is the number in SI). The
-  operators that a NumPy scalar on the left hands to the quantity (`np.float64(2) * q`, `np.float64(2) / q`, and the order
+  are refused with `call.units` and what to write (`abs(q)`, a power by `**`, `q.to(unit)`; `q.value` is the number in SI). The
+  operators that a NumPy scalar on the left hands to the quantity (its product and quotient with one, and the order
   comparisons, which are refused as a bare number is) are the quantity's own, as they were.
 - **`==` with a bare number is `False`, not an error.** A quantity compared for equality with a bare number is `False` (and
   `!=` is `True`), where an order (`<`) with a bare number is refused. Python's equality must not raise without breaking
@@ -179,11 +179,12 @@ is that unit.
 --override x="3 N m"      a unit's symbol as printed
 --override field.commands.frequency="10 rad / s"   radians a second: refused where Hz goes, never read as 10 Hz
 --override field.commands.frequency="10 rad s^-1"  the same rate in SI base units: refused there too
+--override field.commands.frequency="10 s^-1 rad"  and in the other order
 ```
 
 **A value carries the whole of its unit**, what a rate counts included. A rate written in radians (`rad/s` with the slash
-spaced or not, `rad s^-1`, `s^-1 rad`, `rad/(s)`) counts radians, and one written with `Hz` counts turns, in whichever
+spaced or not, or as SI base units in either order, `rad/(s)` too) counts radians, and one written with `Hz` counts turns, in whichever
 spelling; a setting that takes the other refuses it with its own code (`setting.units`, `state.units`) and the two
 conversions to write, as it does a quantity made in Python. It is never converted, and never read as the same number of the
-other. A unit that counts an angle other than once (`rad^2`) is not a value's unit, and `2 Hz s` is two turns, which a site
-that takes a number refuses.
+other. A unit that counts an angle other than once (a squared radian) is not a value's unit, and a frequency times a time is a
+number of turns, which a site that takes a number refuses.
