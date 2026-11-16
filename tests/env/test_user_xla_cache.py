@@ -74,7 +74,7 @@ def entries(root: Path) -> list[Path]:
 
 
 def duration_of(folder: Path, steps: int) -> str:
-    return repr(steps * read_folder(folder).lock["resolved"]["run"]["dt"])
+    return f'{steps * read_folder(folder).lock["resolved"]["run"]["dt"]!r}s'
 
 
 def test_the_default_cache_is_under_the_users_cache_directory_and_is_restored_afterwards(saved, home, tmp_path):

@@ -70,7 +70,7 @@ def planted_colour(text: str) -> bool:
 def test_piped_output_is_exactly_the_old_commands_and_holds_no_escape(saved, capsys, tmp_path):
     duration = 4 * dt_of(saved)
     out = tmp_path / "run"
-    assert mime_main(["run", str(saved), "--duration", repr(duration), "--out", str(out)]) == 0
+    assert mime_main(["run", str(saved), "--duration", f"{duration!r}s", "--out", str(out)]) == 0
     captured = capsys.readouterr()
     assert captured.err == ""
     assert captured.out == what_mime_run_printed_before(saved, out, duration, 4)
@@ -92,7 +92,7 @@ def test_the_control_a_colour_code_planted_in_piped_output_is_found(saved, capsy
     original = RunResult.text
     monkeypatch.setattr(RunResult, "text", lambda self: f"\x1b[1m{original(self)}\x1b[0m")
     out = tmp_path / "run"
-    assert mime_main(["run", str(saved), "--duration", repr(2 * dt_of(saved)), "--out", str(out)]) == 0
+    assert mime_main(["run", str(saved), "--duration", f"{2 * dt_of(saved)!r}s", "--out", str(out)]) == 0
     printed = capsys.readouterr().out
     assert planted_colour(printed)
     monkeypatch.undo()
@@ -104,14 +104,14 @@ def test_the_control_output_drawn_for_a_terminal_is_not_the_old_commands(saved, 
     above is a test that a pipe is not drawn for."""
     monkeypatch.setattr(mime.cli, "styled", lambda stream: True)
     out = tmp_path / "run"
-    assert mime_main(["run", str(saved), "--duration", repr(2 * dt_of(saved)), "--out", str(out)]) == 0
+    assert mime_main(["run", str(saved), "--duration", f"{2 * dt_of(saved)!r}s", "--out", str(out)]) == 0
     printed = capsys.readouterr().out
     assert "Needs attention" in printed or "Nothing needs attention" in printed
     assert printed != what_mime_run_printed_before(saved, out, 2 * dt_of(saved), 2)
 
 
 def test_a_refusal_on_a_pipe_is_the_old_text_with_no_block(saved, capsys, tmp_path):
-    assert mime_main(["run", str(saved), "--duration", repr(1.5 * dt_of(saved)), "--out", str(tmp_path / "run")]) == 2
+    assert mime_main(["run", str(saved), "--duration", f"{1.5 * dt_of(saved)!r}s", "--out", str(tmp_path / "run")]) == 2
     captured = capsys.readouterr()
     assert captured.out.startswith("load report: ") and not planted_colour(captured.out + captured.err)
     assert "mime run is refused:\n[user] run.duration: a run of " in captured.err
@@ -122,7 +122,7 @@ def test_a_refusal_on_a_pipe_is_the_old_text_with_no_block(saved, capsys, tmp_pa
 def test_a_child_process_piped_prints_what_the_function_prints(saved, tmp_path):
     """Through the real command and real pipes, as a CI log or a script reads it (the one test of the file whose
     subprocess is the installed console script's module)."""
-    duration = repr(2 * dt_of(saved))
+    duration = f"{2 * dt_of(saved)!r}s"
     done = subprocess.run([sys.executable, "-m", "mime.cli", "run", str(saved), "--duration", duration, "--out",
                            str(tmp_path / "run")], capture_output=True, text=True, check=False,
                           env={**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path),
@@ -147,7 +147,7 @@ def printed_with(environment, saved, capsys, tmp_path, monkeypatch, *, plant=Fal
         monkeypatch.setattr(mime.cli, "styled",
                             lambda stream: bool(os.environ.get("FORCE_COLOR")) or real(stream))
     out = tmp_path / "run"
-    assert mime_main(["run", str(saved), "--duration", repr(2 * dt_of(saved)), "--out", str(out)]) == 0
+    assert mime_main(["run", str(saved), "--duration", f"{2 * dt_of(saved)!r}s", "--out", str(out)]) == 0
     captured = capsys.readouterr()
     return captured.out, captured.err, out
 

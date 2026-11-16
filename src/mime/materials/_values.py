@@ -4,6 +4,7 @@ it is read from when a record provides it, and a value declared in the experimen
 
 from __future__ import annotations
 
+import enum
 import math
 from collections.abc import Mapping
 import dataclasses
@@ -60,16 +61,28 @@ class RecordField:
     require: Mapping[str, tuple[str, ...]] = dataclasses.field(default_factory=_no_tokens)
 
 
+class ZeroIs(enum.Enum):
+    """What zero is for a value that may never be below it: ``REFUSED`` (the value is above zero), ``UNREAD`` (zero is a
+    value a thing can have where no dynamics divides by it: refused only where one does) or ``ALLOWED`` (zero or
+    more)."""
+
+    REFUSED = "refused"
+    UNREAD = "unread"
+    ALLOWED = "allowed"
+
+
 @dataclass(frozen=True)
 class AboveZero:
-    """A value that is above zero by what it is: why, and how a script writes one, its unit's constructor in
-    ``mime.units`` with that unit's SI factor and a typical value in it, with what it is typical of."""
+    """A value that is above zero by what it is (or, by ``zero``, at least zero): why, and how a script writes one, its
+    unit's constructor in ``mime.units`` with that unit's SI factor and a typical value in it, with what it is typical
+    of."""
 
     why: str
     unit: str
     factor: float
     typical: float
     typical_of: str
+    zero: ZeroIs = ZeroIs.REFUSED
 
 
 @dataclass(frozen=True)
@@ -92,15 +105,29 @@ _APPARENT: Mapping[str, tuple[str, ...]] = MappingProxyType({"density_kind": ("a
 _ROUGH = AboveZero("a surface's roughness is a length above zero: at zero the film's resistance between two surfaces "
                    "grows without bound as their gap closes", "um", 1e-6, 1.0, "a smooth machined or moulded surface")
 
+_MASS = AboveZero("an inertial body's acceleration is its force over its mass: at zero the step divides by it, and "
+                  "below it a force accelerates the body against itself", "kg", 1.0, 8.5e-5, "a small steel bead",
+                  ZeroIs.UNREAD)
+_VOLUME = AboveZero("a displaced volume is zero (nothing displaced) or more: below zero buoyancy pushes the body the "
+                    "wrong way", "mm3", 1e-9, 1.0, "a millimetre-sized body", ZeroIs.ALLOWED)
+_DENSITY = AboveZero("a mass density is above zero: at zero a mass has no volume to be, and below it a body falls up "
+                     "and buoyancy pushes the wrong way", "kg_per_m3", 1.0, 998.0, "water near 20 degC")
+_PART_DENSITY = AboveZero("a part's mass is its density times its volume and a body's inertia divides by it: at zero "
+                          "the part has no mass, and below it a force accelerates the body against itself",
+                          "kg_per_m3", 1.0, 7850.0, "steel")
+_PART_MASS = AboveZero("a part's mass is above zero: at zero it is not a part of the chain's inertia, and below it a "
+                       "force accelerates the chain against itself (leave the mass out for a massless part)",
+                       "kg", 1.0, 0.1, "a small camera")
+
 #: Every value a thing has, by the kind of thing. A body's are derived from its parts when it has parts; a medium's
 #: are read from its record when it has one; either may be declared in the experiment.
 VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
     ThingKind.BODY: {
-        "mass": ValueKind(MASS, (), "the body's mass"),
+        "mass": ValueKind(MASS, (), "the body's mass", above_zero=_MASS),
         "inertia": ValueKind(MOMENT_OF_INERTIA, (3,), "the inertia about the centre of mass in the body frame: the "
                                                       "three principal moments along its axes, or the symmetric 3 x 3 "
                                                       "tensor's nine numbers, row-major", also=(9,)),
-        "buoyant_volume": ValueKind(VOLUME, (), "the volume of fluid the body displaces"),
+        "buoyant_volume": ValueKind(VOLUME, (), "the volume of fluid the body displaces", above_zero=_VOLUME),
         "centre_of_buoyancy": ValueKind(LENGTH, (3,), "the centre of the displaced volume, from the centre of mass, "
                                                        "in the body frame"),
         "magnetic_moment": ValueKind(MAGNETIC_MOMENT, (3,), "the body's permanent magnetic moment, in the body "
@@ -137,7 +164,8 @@ VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
                                                             "that part's frame"),
     },
     ThingKind.MEDIUM: {
-        "density": ValueKind(DENSITY, (), "the medium's mass density", RecordField("bulk.density", "kg/m3", _APPARENT)),
+        "density": ValueKind(DENSITY, (), "the medium's mass density", RecordField("bulk.density", "kg/m3", _APPARENT),
+                             _DENSITY),
         "viscosity": ValueKind(DYNAMIC_VISCOSITY, (), "the medium's dynamic viscosity",
                                RecordField("fluid.dynamic_viscosity", "Pa.s"), AboveZero(
                                    "a fluid's viscosity is above zero: at zero a drag vanishes, and below it a drag "
@@ -148,7 +176,8 @@ VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
 #: Every value of a body's part, read from the part's material or declared in the experiment
 #: (``umr.parts.shell.density``): what the part resolver derives the body's values from.
 PART_VALUE_KINDS: dict[str, ValueKind] = {
-    "density": ValueKind(DENSITY, (), "the part's mass density", RecordField("bulk.density", "kg/m3", _APPARENT)),
+    "density": ValueKind(DENSITY, (), "the part's mass density", RecordField("bulk.density", "kg/m3", _APPARENT),
+                         _PART_DENSITY),
     "remanence": ValueKind(MAGNETIC_FLUX_DENSITY, (), "the remanence B_r of a magnet part's material",
                            RecordField("magnetic.remanence", "T")),
 }
@@ -159,8 +188,9 @@ PART_VALUE_KINDS: dict[str, ValueKind] = {
 #: massless, and changes nothing.
 APPARATUS_PART_VALUE_KINDS: dict[str, ValueKind] = {
     "density": ValueKind(DENSITY, (), "the part's mass density, uniform over its solid",
-                         RecordField("bulk.density", "kg/m3", _APPARENT)),
-    "mass": ValueKind(MASS, (), "the part's mass, uniform over its solid: in place of its density times its volume"),
+                         RecordField("bulk.density", "kg/m3", _APPARENT), _PART_DENSITY),
+    "mass": ValueKind(MASS, (), "the part's mass, uniform over its solid: in place of its density times its volume",
+                      above_zero=_PART_MASS),
 }
 
 
@@ -304,21 +334,29 @@ def declaration_problems(declared: Declared, things: Mapping[str, ThingKind], di
     return []
 
 
-def not_above_zero(path: str, kind: ValueKind, value: Magnitude, source: str) -> tuple[str, str, str] | None:
+def not_above_zero(path: str, kind: ValueKind, value: Magnitude, source: str,
+                   divided_by: str | None = None) -> tuple[str, str, str] | None:
     """The refusal of ``value`` (SI, from ``source``) at ``path`` where its kind is above zero by what it is and the
     value is zero or less, or not finite, as ``(code, message, action)``; ``None`` where it is a value the kind can
-    have. The line to write is the magnitude written, where it is below zero, or a typical value."""
+    have. A kind whose zero is ``UNREAD`` refuses zero only where ``divided_by``, the dynamics that reads the value as
+    inertia, is given; one whose zero is ``ALLOWED`` refuses a value below zero only. The line to write is the
+    magnitude written, where it is below zero, or a typical value."""
     held = kind.above_zero
     if held is None or isinstance(value, tuple) or (math.isfinite(value) and value > 0.0):
         return None
     signed = math.isfinite(value) and value < 0.0
+    if value == 0.0 and (held.zero is ZeroIs.ALLOWED or (held.zero is ZeroIs.UNREAD and divided_by is None)):
+        return None
     written = -value / held.factor if signed else held.typical
     typical = (f" if the minus sign was the slip ({held.typical_of} is about {held.typical:g} in it)" if signed else
                f" ({held.typical_of} is about {held.typical:g} in it)")
+    bound = "of zero or less" if held.zero is ZeroIs.REFUSED else "below zero" if signed else "of zero"
+    reader = f" ({divided_by} divides by it)" if value == 0.0 and divided_by is not None else ""
+    wanted = "zero or more" if held.zero is ZeroIs.ALLOWED else "above zero"
     return ("value.not-positive",
-            f"{path} is {value!r} {unit_symbol(kind.dimension)} ({source}), {kind.meaning} of zero or less: "
+            f"{path} is {value!r} {unit_symbol(kind.dimension)} ({source}), {kind.meaning} {bound}{reader}: "
             f"{held.why}",
-            f"declare it above zero, in its unit: exp.declare({path!r}, {held.unit}({written!r}), reason=\"...\")"
+            f"declare it {wanted}, in its unit: exp.declare({path!r}, {held.unit}({written!r}), reason=\"...\")"
             f"{typical}")
 
 

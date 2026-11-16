@@ -43,7 +43,7 @@ def test_a_run_writes_its_outputs_and_its_own_saved_form_in_the_locks_precision(
     jax.config.update("jax_enable_x64", False)
     dt = read_folder(saved).lock["resolved"]["run"]["dt"]
     out = tmp_path / "run"
-    assert mime_main(["run", str(saved), "--duration", repr(4 * dt), "--out", str(out), "--history"]) == 0
+    assert mime_main(["run", str(saved), "--duration", f"{4 * dt!r}s", "--out", str(out), "--history"]) == 0
     assert jax.config.jax_enable_x64 is True
     record = json.loads((out / "run.json").read_text())
     assert record["steps"] == 4 and record["environment"]["runner"] == {"runner": "a test"}
@@ -61,7 +61,7 @@ def test_a_run_writes_its_outputs_and_its_own_saved_form_in_the_locks_precision(
 
 def test_a_duration_that_is_not_whole_steps_is_refused(saved, tmp_path, capsys):
     dt = read_folder(saved).lock["resolved"]["run"]["dt"]
-    assert mime_main(["run", str(saved), "--duration", repr(1.5 * dt), "--out", str(tmp_path / "run")]) == 2
+    assert mime_main(["run", str(saved), "--duration", f"{1.5 * dt!r}s", "--out", str(tmp_path / "run")]) == 2
     assert "not a whole number of base steps" in capsys.readouterr().err and not (tmp_path / "run").exists()
 
 
@@ -126,7 +126,7 @@ def test_the_apis_run_to_writes_what_mime_run_does(saved, tmp_path):
     written = experiment.build().run_to(tmp_path / "api", s(3 * dt), history=True, source=saved)
     assert written.steps == 3 and written.outputs.name == RUN_OUTPUTS and written.experiment.name == RUN_EXPERIMENT
     assert (tmp_path / "api" / RUN_RECORD).is_file() and json.loads(written.record_file.read_text()) == written.record
-    assert mime_main(["run", str(saved), "--duration", repr(3 * dt), "--out", str(tmp_path / "cli"), "--history"]) == 0
+    assert mime_main(["run", str(saved), "--duration", f"{3 * dt!r}s", "--out", str(tmp_path / "cli"), "--history"]) == 0
     with np.load(tmp_path / "api" / RUN_OUTPUTS) as api, np.load(tmp_path / "cli" / RUN_OUTPUTS) as cli:
         assert sorted(api.files) == sorted(cli.files)
         assert all(np.array_equal(api[key], cli[key]) for key in api.files)
