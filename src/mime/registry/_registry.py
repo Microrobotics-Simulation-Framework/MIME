@@ -7,7 +7,7 @@ import math
 import re
 import types
 import typing
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Annotated, Any, cast
@@ -18,6 +18,7 @@ from numpy.typing import NDArray
 from mime.core import shape_named, shape_names
 from mime.gradients import GradientStatus
 from mime.registry._entries import (
+    CheckedByEntry,
     Commanded,
     CommandedRate,
     Controller,
@@ -134,6 +135,40 @@ def _groups_of(hint: object) -> list[type[SettingGroup]]:
     return [m for m in _members(hint) if isinstance(m, type) and issubclass(m, SettingGroup)]
 
 
+def _parts(hint: object, seen: frozenset[int] = frozenset()) -> Iterator[object]:
+    """Every type an annotation is made of, as the reader's scan sees it: the annotation, what it takes as arguments
+    (a union's members, a container's items, an ``Annotated``'s held type and its metadata) and the value of a ``type``
+    statement's alias, which the reader itself never reads."""
+    yield hint
+    if isinstance(hint, typing.TypeAliasType):
+        if id(hint) not in seen:
+            yield from _parts(hint.__value__, seen | {id(hint)})
+        return
+    for argument in typing.get_args(hint):
+        for item in cast("tuple[object, ...]", argument) if isinstance(argument, (list, tuple)) else (argument,):
+            yield from _parts(item, seen)
+
+
+def _unread(name: str, hint: object, inner: object) -> str | None:
+    """Why a setting that no marker was read from is not understood, or ``None`` where it needs none: its annotation holds
+    a :class:`Quantity`, a setting group or a dimension marker in a form the reader does not read (a ``|`` or an
+    ``Optional`` around the ``Annotated``, a ``type`` alias, a container of quantities, metadata that is no dimension).
+    ``inner`` is the annotation less its outermost ``Annotated``, whose markers the caller has read. Every such setting is
+    refused at registration; one left out would plan, and go to the entry as a number nothing checked."""
+    parts = list(_parts(inner))
+    nested = any(typing.get_origin(part) is Annotated and any(isinstance(m, (Dimension, SettingKind))
+                                                              for m in typing.get_args(part)[1:]) for part in parts)
+    quantity = any(part is Quantity for part in parts)
+    group = any(isinstance(part, type) and issubclass(part, SettingGroup) for part in parts)
+    if not (nested or quantity or group):
+        return None
+    holds = "a dimension marker" if nested else "a Quantity" if quantity else "a setting group"
+    write = ("write the Annotated outermost, Annotated[Quantity | None, Length] where it may be None" if nested or quantity
+             else "a setting holds a group alone, or with None (Group | None), or one of several groups (A | B)")
+    return (f"setting {name!r} holds {holds} in an annotation the reader does not read, {hint!r}: {write}; a union or "
+            f"Optional around the Annotated, a type alias, a container and metadata that is no dimension are not read")
+
+
 def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list[str]]:
     """The dimension each setting of ``cls`` declares in its annotation, and every problem with those declarations:
     a marker on a setting that does not hold a :class:`Quantity`, a :class:`Quantity` with no marker, a default of
@@ -173,7 +208,9 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
             if kinds:
                 if len(kinds) > 1 or any(isinstance(m, Dimension) for m in metadata):
                     problems.append(f"setting {setting.name!r} is annotated {hint!r}: one marker, a dimension or "
-                                    f"one of {Direction!r}, {Commanded!r} and {CommandedRate!r}")
+                                    f"one of {Direction!r}, {Commanded!r}, {CommandedRate!r} and {CheckedByEntry!r}")
+                elif kinds[0] is CheckedByEntry:
+                    pass  # the entry reads these quantities and checks their dimensions itself: none is recorded
                 elif kinds[0] in (Commanded, CommandedRate) and Quantity not in _members(held):
                     problems.append(f"setting {setting.name!r} is marked {kinds[0]!r} and holds no Quantity")
                 else:
@@ -182,6 +219,8 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
                 continue
             markers = [m for m in metadata if isinstance(m, Dimension)]
             if not markers:
+                if setting.name != _RATE and (unread := _unread(setting.name, hint, held)) is not None:
+                    problems.append(unread)
                 continue
             members = set(_members(held))
             if len(markers) > 1 or Quantity not in members or not members <= {Quantity, type(None)}:
@@ -203,6 +242,8 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
         elif setting.name != _RATE and Quantity in _members(hint):
             problems.append(f"setting {setting.name!r} holds a Quantity and declares no dimension: annotate it with "
                             f"its marker from mime.units, as {setting.name}: Annotated[Quantity, Length]")
+        elif setting.name != _RATE and (unread := _unread(setting.name, hint, hint)) is not None:
+            problems.append(unread)
     return found, problems
 
 

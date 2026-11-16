@@ -10,6 +10,7 @@ from mime.units import (
     LENGTH,
     TIME,
     Hz,
+    N,
     Quantity,
     UnitError,
     deg,
@@ -111,8 +112,10 @@ def test_to_refuses_a_unit_of_another_dimension_naming_both_and_reads_the_same_v
         speeds.to(mm)
     with pytest.raises(UnitError, match=r"of time \(s\) .* in mm/s, a unit of velocity"):
         ms(20).to(mm_per_s)
+    with pytest.raises(UnitError, match=r"in mm, a unit of length"):
+        speeds.to("mm")
     with pytest.raises(TypeError, match="takes a unit of mime.units"):
-        speeds.to("mm/s")  # type: ignore[arg-type]
+        speeds.to(3.0)  # type: ignore[arg-type]
     assert ms(20).to(ms) == pytest.approx(20.0) and ms(20).to(s) == pytest.approx(0.02)
 
 
@@ -186,3 +189,56 @@ def test_an_offset_unit_is_refused_by_to_with_the_reason_and_the_kelvin_it_reads
         K(293.15).to(degC)  # type: ignore[arg-type]
     assert K(293.15).to(K) == pytest.approx(293.15)
     assert degC(20.0).to(K) == pytest.approx(293.15)
+
+
+def test_a_unit_written_as_text_reads_as_the_unit_object_does_wherever_to_takes_a_unit():
+    """A force read in a unit written as text (the friction log's ``.to("N")``, refused as a TypeError before): a name of
+    ``mime.units``, its symbol, with or without spaces about a slash, and SI base units."""
+    from mime.units import N_m, mm_per_s, mN
+
+    force = N(2.5)
+    assert force.to("N") == force.to(N) == 2.5
+    assert force.to("mN") == force.to(mN) == pytest.approx(2500.0)
+    assert Quantity.of([1e-3, 2e-3], mm_per_s.dimension).to("mm/s") == pytest.approx([1.0, 2.0])
+    assert Quantity.of([1e-3, 2e-3], mm_per_s.dimension).to("mm / s") == pytest.approx([1.0, 2.0])
+    assert Quantity.of([1e-3], mm_per_s.dimension).to("mm_per_s") == pytest.approx([1.0])
+    assert N_m(3.0).to("N m") == 3.0 and N(4.0).to("kg m s^-2") == 4.0
+    assert mm(2.0).to(" mm ") == pytest.approx(2.0), "the text's own spaces are the writer's"
+
+
+def test_a_unit_written_as_text_that_is_none_is_refused_coded_naming_the_nearest_units():
+    with pytest.raises(UnitError) as caught:
+        N(1.0).to("mn")
+    assert caught.value.codes() == ["units.label"]
+    assert "'mn' is not a unit MIME reads" in str(caught.value) and "mN" in str(caught.value)
+    assert "name a unit of mime.units" in caught.value.refusals[0].action
+    for text in ("", "furlong", "N^"):
+        with pytest.raises(UnitError) as caught:
+            N(1.0).to(text)
+        assert caught.value.codes() == ["units.label"], text
+
+
+def test_a_unit_of_another_dimension_written_as_text_is_refused_as_the_unit_object_is():
+    with pytest.raises(UnitError, match=r"cannot read a quantity of force \(N\).* in m, a unit of length"):
+        N(1.0).to("m")
+
+
+def test_millinewtons_and_square_millimetres_are_units_of_the_dimension_and_scale_they_name():
+    from mime.units import AREA, FORCE, cm, m2, mm2, mN, um2, units_by_name
+
+    assert mN(1.0) == N(1e-3) and mN(1.0).dimension == FORCE and mN.symbol == "mN"
+    assert mm2(1.0) == m2(1e-6) and mm2(1.0).dimension == AREA and mm2.symbol == "mm^2"
+    assert mm2(1.0).to(um2) == pytest.approx(1e6) and mm(1.0).to(cm) == pytest.approx(0.1)
+    assert units_by_name()["mN"] is mN and units_by_name()["mm2"] is mm2
+    assert si(mN(2.0), FORCE, what="a force") == pytest.approx(2e-3)
+
+
+def test_an_angle_site_takes_deg_and_rad_and_refuses_what_is_not_an_angle():
+    from mime.units import ANGLE, rad
+
+    assert si(deg(90), ANGLE, what="an angle") == pytest.approx(math.pi / 2) == si(rad(math.pi / 2), ANGLE, what="a")
+    for wrong, said in ((30.0, "the bare value 30.0"), (mm(1), "length"), (Hz(1) * s(0.1), "turns"), (s(1), "time")):
+        with pytest.raises(UnitError, match=said):
+            si(wrong, ANGLE, what="an angle")
+    assert si(30.0, DIMENSIONLESS, what="a number") == 30.0, "a dimensionless site still takes a bare number"
+    assert si(deg(30), DIMENSIONLESS, what="a number") == pytest.approx(math.pi / 6)
