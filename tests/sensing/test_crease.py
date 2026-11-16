@@ -352,9 +352,19 @@ def test_g18_the_pinned_views_are_within_the_lines(dtype, turn, monkeypatch):
     assert not failures(found), failures(found)
 
 
-@settings(max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
-@given(turn=st.floats(0.0, 30.0), roll=st.floats(0.0, 90.0), du=st.floats(0.0, 1.0), dv=st.floats(0.0, 1.0))
-def test_g18_drawn_views_are_within_the_lines(dtype, turn, roll, du, dv, monkeypatch):
+#: The drawn views' turns, 0 to 30 degrees, in ``DRAWN_GROUPS`` bands each drawn apart, ``DRAWN_A_GROUP`` views a band
+#: (40 a dtype, where one test drew 30 over the whole range): about a minute a test on a runner, every band of the range
+#: drawn on every run.
+DRAWN_GROUPS = 10
+DRAWN_TURNS = 30.0
+DRAWN_A_GROUP = 4
+
+
+@pytest.mark.parametrize("group", range(DRAWN_GROUPS))
+@settings(max_examples=DRAWN_A_GROUP, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(within=st.floats(0.0, 1.0), roll=st.floats(0.0, 90.0), du=st.floats(0.0, 1.0), dv=st.floats(0.0, 1.0))
+def test_g18_drawn_views_are_within_the_lines(dtype, group, within, roll, du, dv, monkeypatch):
+    turn = (group + within) * DRAWN_TURNS / DRAWN_GROUPS
     found = judged_view(turn, roll, (du, dv), dtype, monkeypatch)
     assert not failures(found), failures(found)
 
