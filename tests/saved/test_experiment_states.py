@@ -32,7 +32,7 @@ from script_a import EXTENT, INERTIA, LENGTH, MASS, MOMENT, NU, RADIUS, VISCOSIT
 import mime.saved._folder as folder_module
 from mime import Apparatus, Body, Experiment, Medium, State, Structure
 from mime.build import BuildRefused, Refusal
-from mime.data import asset
+from mime.assets import asset
 from mime.dynamics import RigidInertial
 from mime.experiment import _experiment
 from mime.fields import UniformRotating

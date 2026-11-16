@@ -18,7 +18,7 @@ from typing import Any, cast
 
 from mime._shell import quoted
 from mime._terminal import plain
-from mime.assets import size_text
+from mime.assets._cache import size_text
 from mime.build import BuildRefused
 from mime.results._study_folder import BASE_DIR, DONE, STUDY_FORMAT, STUDY_VERSION
 from mime.saved._card import NO_EVIDENCE, notice_text, own_licence_text

@@ -32,7 +32,8 @@ from typing_extensions import ReadOnly, TypedDict
 
 from mime._manifest_file import MANIFEST_FILE, MANIFEST_FORMAT
 from mime._terminal import plain
-from mime.assets import AssetRef, size_text
+from mime.assets import AssetRef
+from mime.assets._cache import size_text
 from mime.blocks._definition import (
     ASSETS,
     CASES,
@@ -367,7 +368,7 @@ def cached_folder(container: str | os.PathLike[str]) -> Path:
     (and checked as :func:`unpack_block` checks it), for a use to read."""
     import hashlib
 
-    from mime.assets import cache_dir
+    from mime.assets._cache import cache_dir
 
     with Path(container).open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()

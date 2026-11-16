@@ -335,7 +335,8 @@ def swinging_rotor(dt: float) -> Any:
     from mime.fields import PointDipole
     from mime.interactions import Magnetic
     from mime.observations import EnergyLedger
-    from mime.scene import Cylinder, Scene, Z, asset
+    from mime.scene import Cylinder, Scene, Z
+    from mime.assets import asset
     from mime.things import Apparatus, Body, Part, PermanentMagnet, State
     from mime.units import A_m2, N_m, N_m_s, kg, kg_m2, kg_per_m3, m, m_per_s, ms, rad, rad_per_s, standard_gravity
 

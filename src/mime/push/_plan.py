@@ -47,7 +47,9 @@ from mime._said import (
 )
 from mime._shell import quoted
 from mime._terminal import plain
-from mime.assets import AssetRef, folder_assets, locate, size_text
+from mime.assets import AssetRef
+from mime.assets._cache import locate, size_text
+from mime.assets._lock import folder_assets
 from mime.assets._cache import NO_ROUTE
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._client import Json
@@ -150,7 +152,8 @@ def asset_choices(refs: Sequence[AssetRef], judged: FolderTerms, lock: Lock,
     DOI), whose files a new version links rather than uploads again. A record with no location (saved form 14) is
     never uploaded, whatever its licence: its publisher makes it available by request alone, and it travels as its
     record."""
-    from mime.assets import derived_verdicts, known_bytes
+    from mime.assets._audit import known_bytes
+    from mime.assets._derivation import derived_verdicts
     from mime.saved._terms import lock_records
 
     travelling = {file.referenced: file for file in judged.files if file.referenced is not None}
@@ -902,7 +905,7 @@ def upload_problems(files: Sequence[RecordFile], lock: Lock) -> list[Refusal]:
     travel (``mime.assets.known_bytes``: the shared sources', the lock's, a derived file's inputs, a mesh baked into the
     local cache from a referenced source), whatever the folder's own records say and whatever chose it. The bundle's
     own files are held so by ``pack``."""
-    from mime.assets import known_bytes
+    from mime.assets._audit import known_bytes
     from mime.saved._terms import lock_records
 
     known = known_bytes([(ref, "in the folder's lock") for ref in lock_records(lock)])

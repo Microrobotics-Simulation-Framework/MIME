@@ -46,7 +46,7 @@ from mime.units import kg, kg_m2, m_per_s, mm, rad, rad_per_s
 from mime.vocabulary import register_namespace
 
 lab = pytest.importorskip("mime_lab_fixture")
-MARKER, NC = assets.reference("labx_marker.usda"), assets.reference("labx_finish_nc.usda")
+MARKER, NC = assets.reference("labx.marker.usda"), assets.reference("labx.finish_nc.usda")
 
 
 def rig(*, gantry: object | None = None, field: object | None = None) -> Experiment:
@@ -87,7 +87,7 @@ def test_a_field_provider_declaring_a_record_has_it_in_the_lock(tmp_path: Path):
 
 def test_one_record_declared_by_two_entries_is_listed_once(tmp_path: Path):
     folder = saved(tmp_path, rig(gantry=lab.FinishedGantry))
-    assert names(folder) == ["labx_marker.usda"]
+    assert names(folder) == ["labx.marker.usda"]
 
 
 def test_an_experiment_whose_entries_declare_none_writes_no_key(tmp_path: Path):
@@ -102,7 +102,7 @@ def test_the_bundles_notice_names_an_asset_only_an_entry_declares(tmp_path: Path
     with zipfile.ZipFile(pack(folder, out=tmp_path / "rig.mimebundle")) as archive:
         held = archive.read("NOTICE").decode()
     assert held == notice(folder)
-    assert "labx_marker.usda\n  sha256 " + MARKER.sha256 in held and "CC-BY-4.0" in held
+    assert "labx.marker.usda\n  sha256 " + MARKER.sha256 in held and "CC-BY-4.0" in held
     assert "None named." not in held
 
 
@@ -113,10 +113,10 @@ def test_an_entry_choosing_its_record_by_a_setting_puts_only_the_chosen_one_in_t
     open_folder = saved(tmp_path / "open", rig(gantry=partial(lab.FinishedGantry, finish="marker"),
                                                           field=unmarked_field()))
     nc_folder = saved(tmp_path / "nc", rig(gantry=partial(lab.FinishedGantry, finish="nc"), field=unmarked_field()))
-    assert names(open_folder) == ["labx_marker.usda"] and names(nc_folder) == ["labx_finish_nc.usda"]
-    assert lab.FinishedGantry.assets == ("labx_marker.usda",), "the class variable is the default, not the choice"
-    wanted = {open_folder: ("labx_marker.usda", "CC-BY-4.0", "labx_finish_nc.usda", "CC-BY-NC-4.0"),
-              nc_folder: ("labx_finish_nc.usda", "CC-BY-NC-4.0", "labx_marker.usda", "CC-BY-4.0")}
+    assert names(open_folder) == ["labx.marker.usda"] and names(nc_folder) == ["labx.finish_nc.usda"]
+    assert lab.FinishedGantry.assets == ("labx.marker.usda",), "the class variable is the default, not the choice"
+    wanted = {open_folder: ("labx.marker.usda", "CC-BY-4.0", "labx.finish_nc.usda", "CC-BY-NC-4.0"),
+              nc_folder: ("labx.finish_nc.usda", "CC-BY-NC-4.0", "labx.marker.usda", "CC-BY-4.0")}
     for folder, (read, licence, unread, other) in wanted.items():
         held = notice(folder)
         assert read in held and licence in held
@@ -133,12 +133,12 @@ def test_control_a_lock_without_an_asset_only_an_entry_declares_is_refused_when_
     with pytest.raises(LoadRefused) as refused:
         Experiment.load(broken)
     assert refused.value.codes() == ["load.assets"]
-    assert "labx_marker.usda" in str(refused.value)
+    assert "labx.marker.usda" in str(refused.value)
 
 
 # -- every geometry a build uses, and every kind that is collected --------------------------------------------------
 
-MARKER_NAME = "labx_marker.usda"
+MARKER_NAME = "labx.marker.usda"
 register_namespace("entryassets", "0.0.1")
 
 

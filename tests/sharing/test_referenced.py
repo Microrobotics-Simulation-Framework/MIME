@@ -26,7 +26,7 @@ from bundles import member, rewrite, write_bundle
 from terms_cases import NO_REDISTRIBUTION, V3_FIXTURE, layered, same_reference_run, write_mesh
 
 from mime import assets
-from mime.assets import AssetRef, _acceptances
+from mime.assets import AssetRef, _acceptances, _cache, _fetch, _gates
 from mime.build import BuildRefused
 from mime.cli import main
 from mime.experiment import Experiment
@@ -49,8 +49,8 @@ def codes_of(action: Callable[[], object]) -> list[str]:
 def fetched_and_accepted(ref: AssetRef) -> None:
     """The asset is in the cache and its licence is accepted on this machine (a first use of a cached file asks, and a
     file is placed from the cache only once its licence is accepted)."""
-    assets.fetch(ref, accept_licences={NO_REDISTRIBUTION.id})
-    _acceptances.remember(assets.licences_of(ref))
+    _fetch.fetch(ref, accept_licences={NO_REDISTRIBUTION.id})
+    _acceptances.remember(_gates.licences_of(ref))
 
 
 def referenced_folder(root: Path, rig: Rig) -> tuple[Path, bytes, AssetRef]:
@@ -107,7 +107,7 @@ def test_pull_without_the_licence_accepted_stops_naming_the_flag_and_keeps_the_f
             pull(bundle, into=f"pulled{len(switch)}", say=lines.append, **switch)
         assert stopped.value.codes() == ["asset.licence-not-accepted"]
         assert f"--accept-licence {NO_REDISTRIBUTION.id}" in str(stopped.value)
-    assert rig.requests == before and not assets.is_cached(ref)
+    assert rig.requests == before and not _cache.is_cached(ref)
     assert (tmp_path / "pulled0" / "mime.lock").is_file() and "not complete" in lines[1]
 
 
@@ -117,9 +117,9 @@ def test_pull_asks_at_the_first_use_of_an_asset_that_is_already_cached(tmp_path:
     folder, data, ref = referenced_folder(tmp_path, rig)
     bundle = pack(folder, out=tmp_path / "x.mimebundle")
     monkeypatch.chdir(tmp_path)
-    assets.fetch(ref, accept_licences={NO_REDISTRIBUTION.id})
+    _fetch.fetch(ref, accept_licences={NO_REDISTRIBUTION.id})
     before = rig.requests
-    with assets.asking(None):
+    with _gates.asking(None):
         with pytest.raises(BuildRefused) as stopped:
             pull(bundle, into="refused", say=lambda line: None)
         assert stopped.value.codes() == ["asset.licence-not-accepted"]
@@ -137,7 +137,7 @@ def test_pull_asks_at_the_first_use_of_an_asset_that_is_already_cached(tmp_path:
         def line(self, text: str) -> None:
             pass
 
-    with assets.asking(Yes()):
+    with _gates.asking(Yes()):
         pull(bundle, into="pulled", say=lambda line: None)
     assert asked == [(NO_REDISTRIBUTION.id,)] and (tmp_path / "pulled" / LAYER).read_bytes() == data
     assert rig.requests == before, "nothing was downloaded"
@@ -177,7 +177,7 @@ def test_a_cached_file_whose_licence_is_not_accepted_is_not_placed_until_it_is(t
     only once the licence is accepted, by a recorded acceptance or by name, and placing asks nothing."""
     folder, data, ref = referenced_folder(tmp_path, rig)
     bundle = pack(folder, out=tmp_path / "x.mimebundle")
-    assets.fetch(ref, accept_licences={NO_REDISTRIBUTION.id})  # in the cache, no acceptance recorded
+    _fetch.fetch(ref, accept_licences={NO_REDISTRIBUTION.id})  # in the cache, no acceptance recorded
     unpacked = unpack(bundle, tmp_path / "unpacked")
     assert unpacked.placed == () and unpacked.missing == (LAYER,)
     assert not (tmp_path / "unpacked" / LAYER).exists()

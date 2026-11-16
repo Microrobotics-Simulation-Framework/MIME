@@ -2,7 +2,7 @@
  "about": "An example record of the plugin ${namespace}: replace it with the data your entries read.",
  "assets": [
   {
-   "name": "${namespace}_example_record",
+   "name": "${namespace}.example_record",
    "sha256": "${sha256}",
    "size": ${size},
    "licence": ${record_licence},

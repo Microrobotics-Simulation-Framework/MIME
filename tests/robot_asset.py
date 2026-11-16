@@ -11,7 +11,8 @@ from mime import Apparatus, Body, Experiment, Medium, PermanentMagnet, Scene, St
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotating
 from mime.interactions import Contact, Gravity, Magnetic
-from mime.scene import MAGNET_API, MAGNET_DIRECTION, Asset, Cylinder, Ellipsoid, Tube, X, Z
+from mime.scene import MAGNET_API, MAGNET_DIRECTION, Cylinder, Ellipsoid, Tube, X, Z
+from mime.assets import Asset
 from mime.things import Part
 from mime.units import A_m2, Hz, Quantity, kg, kg_m2, kg_per_m3, m, m3, m_per_s, mm, ms, mT, rad_per_s, standard_gravity
 

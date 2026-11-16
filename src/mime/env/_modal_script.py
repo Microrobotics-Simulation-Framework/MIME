@@ -29,7 +29,9 @@ from pathlib import Path
 from typing import cast
 
 from mime._lock_json import read_lock
-from mime.assets import folder_assets, licences_of, read_acceptances
+from mime.assets._acceptances import read_acceptances
+from mime.assets._gates import licences_of
+from mime.assets._lock import folder_assets
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.env._check import (
     DISTRIBUTION,

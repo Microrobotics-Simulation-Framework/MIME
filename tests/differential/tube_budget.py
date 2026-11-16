@@ -38,7 +38,8 @@ def main(grids: list[tuple[int, int]]) -> None:
     jax.config.update("jax_enable_x64", True)
     from script_a import fl9
 
-    from mime.assets import locate, reference
+    from mime.assets import reference
+    from mime.assets._cache import locate
     from mime.core.tables import evaluate
     from mime.nodes.hydro.mrs import blob_squared, resistance, tube_correction, tube_table_from
 

@@ -40,7 +40,7 @@ from hypothesis import strategies as st
 from mime import Apparatus, Body, Experiment, State
 from mime.build._maddening import _held, fed_inputs
 from mime.build._refusals import ArgumentRefused
-from mime.data import asset
+from mime.assets import asset
 from mime.dynamics import RigidInertial
 from mime.fields import CalibratedMultipole, allocate
 from mime.fields._coil_array import calibration_of

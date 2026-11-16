@@ -25,7 +25,8 @@ import pytest
 from chain_cases import AR4, AR4_BASE, AR4_HOME, tracked_rpm
 
 from mime.control import ArmTracking
-from mime.scene import X, Z, asset
+from mime.scene import X, Z
+from mime.assets import asset
 from mime.testing import two_builds
 from mime.units import m, ms, rad
 

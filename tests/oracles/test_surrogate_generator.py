@@ -33,7 +33,8 @@ import numpy as np
 import pytest
 
 from mime import assets
-from mime.assets import DerivationInput
+from mime.assets import _derivation
+from mime.assets._derivation import DerivationInput
 from mime.build import BuildRefused
 from mime.nodes.hydro.mrs._tube import UNIT_TUBE, shipped_unit_tube
 import mime.scene
@@ -169,7 +170,7 @@ def parameters_of(split: str, *cases: dict, spacing: float = SPACING) -> dict:
 
 def refused_codes(builder: g.TrainingData, parameters: dict) -> list[str]:
     with pytest.raises(BuildRefused) as refused:
-        assets.derive("planted", builder, parameters, {"wall:tube": TABLE}, commit="test", domain={})
+        _derivation.derive("planted", builder, parameters, {"wall:tube": TABLE}, commit="test", domain={})
     return refused.value.codes()
 
 
@@ -215,7 +216,7 @@ def test_control_an_empty_case_set_is_refused_by_name_not_produced_with_zero_che
 
 def test_a_case_inside_a_declared_domain_passes_the_gate_and_builds():
     parameters = parameters_of("listed", {"design": "FL-9", "tube": "1/4 in", "gap": 0.2e-3}, spacing=0.6e-3)
-    content, record = assets.derive("inside", g.TrainingData(domain=COARSE_DECLARED), parameters,
+    content, record = _derivation.derive("inside", g.TrainingData(domain=COARSE_DECLARED), parameters,
                                     {"wall:tube": TABLE}, commit="test", domain=COARSE_DECLARED.as_json())
     assert content and record.checks and record.failed() == ()
     assert record.domain["near_wall"] == {"status": "declared", "ratios": {"swim_speed": 0.1}}
@@ -335,14 +336,14 @@ def test_on_the_kept_grid_screw_a_half_turn_leaves_the_resistance_unchanged_to_r
 def test_the_derived_data_record_the_shipped_tables_hash_and_are_not_stale():
     parameters = {"split": "listed", "discretisation": COARSE.as_json(),
                   "cases": [{"design": "FL-9", "tube": "1/4 in", "gap": 0.2e-3}]}
-    content, record = assets.derive("tiny", g.TrainingData(domain=COARSE_DECLARED), parameters, {"wall:tube": TABLE},
+    content, record = _derivation.derive("tiny", g.TrainingData(domain=COARSE_DECLARED), parameters, {"wall:tube": TABLE},
                                     commit="test", domain=COARSE_DECLARED.as_json())
     assert record.input("wall:tube") == DerivationInput("wall:tube", UNIT_TUBE, TABLE.sha256)
-    assert assets.stale_inputs(record, current_inputs()) == []
+    assert _derivation.stale_inputs(record, current_inputs()) == []
     with np.load(__import__("io").BytesIO(content)) as held:
         assert held["resistance"].shape == (1, 6, 6) and bool(held["accepted"][0])
     planted = replace(record, inputs=(DerivationInput("wall:tube", UNIT_TUBE, "0" * 64),))
-    assert assets.stale_inputs(planted, current_inputs())
+    assert _derivation.stale_inputs(planted, current_inputs())
 
 
 def test_control_a_case_the_table_cannot_read_produces_no_data():
@@ -354,7 +355,7 @@ def test_control_a_case_the_table_cannot_read_produces_no_data():
     # A domain wide enough to admit the case, so that the table's own refusal is what is tested.
     wide = replace(COARSE_DECLARED, margin=(-1e-3, g.MARGIN[1]), near_wall=g.DeclaredEdge({"swim_speed": -1.0}))
     with pytest.raises(BuildRefused) as refused:
-        assets.derive("too_near", g.TrainingData(domain=wide), parameters, {"wall:tube": TABLE}, commit="test",
+        _derivation.derive("too_near", g.TrainingData(domain=wide), parameters, {"wall:tube": TABLE}, commit="test",
                       domain={})
     assert refused.value.codes() == ["asset.derivation-check"] and "wall_accepted" in str(refused.value)
 

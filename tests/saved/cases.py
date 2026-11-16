@@ -21,7 +21,7 @@ from robot_asset import bound_robot, bound_robot_with_parts
 from script_a import ALL_RECORDS, EPSILON, fl9, script_a
 
 from mime.build import Attachment, ThingDeclaration
-from mime.data import asset
+from mime.assets import asset
 from mime.drives import Ramp
 from mime.fields import KEPT as KEPT_FIELDS
 from mime.fields import UniformRotating
@@ -493,7 +493,7 @@ def coil_array(*, ports: dict[str, Any] | None = None, name: str = "coil_array",
     with a background field (``settings`` written over these), its currents a constant drive, and dev1's magnetic pair
     (0.2.0) on the body, its magnet off its centre of mass: so that the walk moves the array's pose and background and
     the pair reads it at the magnet's centroid. No gravity, no medium. The apparatus's ``ports`` as given."""
-    from mime.data import asset
+    from mime.assets import asset
     from mime.dynamics import RigidInertial
     from mime.fields import CalibratedMultipole
     from mime.interactions import Magnetic
@@ -520,7 +520,7 @@ def mounted_coil_array() -> Experiment:
     """The coil array of :func:`coil_array` on the rotor of a motor turning in the world (``mount="motor.rotor"``), its
     placement in the rotor's frame, and the exposure observing the body with its three limits: the mount's round trip,
     and ``exposure``'s golden output."""
-    from mime.data import asset
+    from mime.assets import asset
     from mime.dynamics import Motor, RigidInertial
     from mime.fields import CalibratedMultipole
     from mime.interactions import Magnetic

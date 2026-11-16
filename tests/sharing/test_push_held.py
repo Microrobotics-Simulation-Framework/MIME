@@ -35,6 +35,7 @@ from terms_cases import NO_REDISTRIBUTION, layered, same_reference_run, write_me
 from zenodo_records import Entry, FakeRecords, FakeTransport, Killed
 
 from mime import assets
+from mime.assets import _fetch
 from mime.push import _client, _draft, _publish, _service, _state
 from mime.build import BuildRefused
 from mime.cli import main
@@ -1282,13 +1283,13 @@ def test_written_back_keys_read_back_and_another_keys_text_and_a_comment_stay(wo
     "https://www.doi.org/10.5072/zenodo.1/a", "https://doi.org:443/10.5072/zenodo.1/a",
     "https://doi.org/10.5072%2Fzenodo.1", "https://dx.doi.org/10.5072/zenodo.1", "http://doi.org/10.5072/zenodo.1"])
 def test_the_test_prefix_is_read_in_every_spelling_of_its_address(location: str):
-    assert assets.under_test_prefix(location)
+    assert _fetch.under_test_prefix(location)
 
 
 @pytest.mark.parametrize("location", ["https://doi.org/10.5281/zenodo.1", "https://example.org/10.5072/zenodo.1",
                                       "doi:10.5281/zenodo.1/a", "https://sandbox.zenodo.org/api/records/1"])
 def test_nothing_else_is_read_as_under_the_test_prefix(location: str):
-    assert not assets.under_test_prefix(location)
+    assert not _fetch.under_test_prefix(location)
 
 
 @pytest.mark.parametrize("source", ["https://www.doi.org/10.5072/zenodo.629529", "https://doi.org:443/10.5072/zenodo.629529",

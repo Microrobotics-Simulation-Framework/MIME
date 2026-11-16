@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._refusals import BuildRefused, Refusal, RefusalClass
 
 LOCATIONS_VARIABLE = "MIME_ASSET_LOCATIONS"
 CA_BUNDLE_VARIABLE = "MIME_CA_BUNDLE"

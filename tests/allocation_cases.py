@@ -21,7 +21,7 @@ import numpy as np
 
 from mime import Apparatus, Body, Experiment, State
 from mime.control import allocation_switch, exact_allocation
-from mime.data import asset
+from mime.assets import asset
 from mime.dynamics import RigidInertial
 from mime.fields import CalibratedMultipole
 from mime.fields._coil_array import calibration_of

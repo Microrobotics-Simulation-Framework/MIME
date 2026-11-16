@@ -98,7 +98,7 @@ from mime.core import (
     switch,
     typed_view,
 )
-from mime.data import Asset, asset_bytes
+from mime.assets import Asset
 from mime.surrogates import SURROGATES, Evaluator
 from mime.surrogates._cholesky_mlp import CholeskyMLP
 from mime.surrogates._screw import SCREW_FEATURES, ScrewSurrogate
@@ -181,7 +181,7 @@ class SurrogateDragNode(MimeNode):
                          lubrication_epsilon=lubrication_epsilon, reference_point=reference_point)
         self._surrogate: ScrewSurrogate = surrogate
         self._evaluator: Evaluator = surrogate.resolve()
-        self._network: CholeskyMLP = self._evaluator.read(asset_bytes(Asset(weights, weights_sha256)))
+        self._network: CholeskyMLP = self._evaluator.read(Asset(weights, weights_sha256).read())
 
     @property
     @override

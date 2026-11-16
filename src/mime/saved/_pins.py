@@ -7,7 +7,9 @@ from collections.abc import Generator
 from contextlib import ExitStack, contextmanager
 from typing import cast
 
-from mime.assets import AssetRef, Manifest, pinned, read_manifest_data
+from mime.assets import AssetRef, Manifest
+from mime.assets._manifest import read_manifest_data
+from mime.assets._sources import pinned
 from mime.saved._folder import SavedForm
 from mime.scene import STAGE_FILE, VISUAL_ASSET, VISUAL_FILE, VISUAL_SHA256, VisualPins, pinned_visuals
 

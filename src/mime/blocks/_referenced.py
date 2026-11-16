@@ -40,7 +40,7 @@ def kept_container(definition: Definition, source: Any, accept_licences: Collect
     """The record of the container a referenced use is read from, its bytes kept in the asset cache: the container it
     came in (with its record's location where it was pulled by DOI), or the block folder packed with no case. Its first
     use is gated, as every load of it will be: a licence with conditions is asked about once, or accepted by name."""
-    from mime.assets import require_accepted
+    from mime.assets._gates import require_accepted
     from mime.blocks._container import BLOCK_SUFFIX, container_record, pack_block, stored
 
     container = cast(Path | None, source.container)
@@ -120,7 +120,7 @@ def require_block_licence(definition: Definition, *, accept_licences: Collection
     """The gate on the block's own licence (the first use of a block's content, as the asset gates guard a file): a
     licence with conditions no acceptance is on record for is asked about once, accepted by name in ``accept_licences``,
     or refused where nobody can be asked (``asset.licence-not-accepted``, naming ``accept_with``)."""
-    from mime.assets import require_accepted
+    from mime.assets._gates import require_accepted
 
     require_accepted([own_record(definition)], accept_licences=accept_licences, accept_with=accept_with)
 
@@ -186,7 +186,7 @@ def container_root(key: str, use: BlockUseDoc, records: Sequence[Mapping[str, ob
     block folder, else the lock's record), held to the document's id, version and content hash (and, by the lock, to the
     licence the container states), and **gated on the block's own licence before anything is read from it**. The one
     place a referenced container's bytes are admitted; refused as the module says."""
-    from mime.assets import locate
+    from mime.assets._cache import locate
     from mime.blocks._container import cached_folder
 
     words = f"the block {plain(use['id'])} {plain(use['version'])} (the use {plain(key)!r})"

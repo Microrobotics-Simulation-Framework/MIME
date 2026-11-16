@@ -4,7 +4,7 @@ describes: "0.1.0"
 # A robot arm, as a chain segment
 
 **What it models.** A robot arm carrying something, a magnet or a source, as one segment of an apparatus's chain:
-`Apparatus(..., chain={"arm": Arm.Kinematic(description=asset("arm.urdf"), ...)})`. It is general over its
+`Apparatus(..., chain={"arm": Arm.Kinematic(description=asset(Path("arm.urdf")), ...)})`. It is general over its
 description: the arm is whatever multibody tree its URDF file describes, so another arm is another file. Every frame
 of the tree is published as a world pose and an angular velocity, every step, and a motor or a part mounts on one of
 them by name: the flange, or a link part-way along the arm. A segment mounts on a frame of the segment before it

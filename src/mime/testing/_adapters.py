@@ -23,16 +23,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from mime.assets import (
-    Adapter,
-    AssetRef,
-    Credential,
-    adapter_for,
-    credentials_from,
-    fetch,
-    register_adapter,
-    registered_schemes,
-)
+from mime.assets import Adapter, AssetRef, Credential, register_adapter
+from mime.assets._adapters import adapter_for, registered_schemes
+from mime.assets._fetch import credentials_from, fetch
 from mime.assets._adapters import _registered  # pyright: ignore[reportPrivateUsage]
 from mime.assets._reference import BUILT_IN_SCHEMES, scheme_of
 from mime.build import BuildRefused

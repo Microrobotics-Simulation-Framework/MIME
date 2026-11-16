@@ -49,7 +49,7 @@ from typing import TYPE_CHECKING
 
 from mime._shell import quoted
 from mime._terminal import plain
-from mime.assets import size_text
+from mime.assets._cache import size_text
 from mime.assets._cache import NO_ROUTE
 from mime.build import BuildRefused, BuildReport
 from mime.saved._based_on import based_on_words

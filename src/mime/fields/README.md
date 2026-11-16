@@ -65,8 +65,8 @@ Its sign convention is mag_manip's, which hardware has not grounded (MIME-ANO-15
 the fields a fit produces, `Source_Position`, `Source_Direction` and `B_Coeff`, and the one declared,
 `Workspace_Dimensions`), and the build report prints each instance (`calibration_instance`: the asset, its sha256,
 licence and tier, the unit its file names). **A lab's own MPEM file** is a record its package ships through the
-`mime.assets` entry point, named by the record's name and sha256, `CalibratedMultipole(calibration=Asset("labx_emns.yaml",
-"<sha256>"))`: read from the asset cache through its licence gate (`asset.missing` where it is not stored,
+`mime.assets` entry point, named by the record's name, `CalibratedMultipole(calibration=asset("labx.emns.yaml"))`, which
+pins the record's sha256: read from the asset cache through its licence gate (`asset.missing` where it is not stored,
 `asset.licence-not-accepted` where its licence has conditions nothing accepted), held to the packaged files' checks and
 float32 guard, and recorded in the lock (`assets_read`). Nothing judges its fit; its accuracy is the lab's to state.
 

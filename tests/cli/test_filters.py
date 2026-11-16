@@ -66,7 +66,7 @@ def test_the_assets_listing_filtered_by_namespace_holds_that_source_s_records_al
     code, out, err = run(capsys, "assets", "list", "--namespace", "labx")
     assert code == 0, err
     held = {line.split()[0] for line in out.splitlines() if line.strip()}
-    assert {"labx_emns.yaml", "labx_marker.usda"} <= held, held
+    assert {"labx.emns.yaml", "labx.marker.usda"} <= held, held
     everything = {line.split()[0] for line in whole.splitlines() if line.strip()}
     assert held < everything and any(name.startswith("unit_tube") or name.startswith("cylinder") for name in everything - held)
     code, out, err = run(capsys, "assets", "list", "--namespace", "mime")

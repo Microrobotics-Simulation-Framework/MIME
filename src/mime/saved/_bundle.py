@@ -47,7 +47,9 @@ from typing_extensions import ReadOnly, TypedDict
 
 from mime._manifest_file import MANIFEST_FILE, OLD_FILE
 from mime._terminal import plain
-from mime.assets import folder_assets, known_bytes, size_text
+from mime.assets._audit import known_bytes
+from mime.assets._cache import size_text
+from mime.assets._lock import folder_assets
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials._store import held_tokens
 from mime.credentials import Token
@@ -436,7 +438,7 @@ def _copy_problems(judged: FolderTerms, listed: set[str]) -> list[Refusal]:
             f"{plain(file.path)} holds the same bytes as {plain(original.path)} (sha256 {file.sha256}), which travels "
             f"as a reference ({original.verdict.words()}, by {original.verdict.by}), so the bundle would carry those "
             f"bytes at a second path ({file.verdict.words()}, by {file.verdict.by})",
-            f"declare {plain(file.path)} with the terms of {plain(original.path)}, asset(path, terms=Terms(...)), or "
+            f"declare {plain(file.path)} with the terms of {plain(original.path)}, asset(Path(...), terms=Terms(...)), or "
             f"keep one copy and reference it at each prim; then save the experiment again, built.save(folder), and "
             f"`mime pack <folder>`"))
     return found
@@ -470,7 +472,7 @@ def shipped_asset_problems(lock: Lock) -> list[Refusal]:
     the lock states otherwise than MIME ships it: the lock is outside the hashed record, so the licence a bundle's
     manifest repeats is re-derived from its source where MIME knows it. An asset that is neither MIME's nor a referenced
     file's (``referenced_members``) has no source MIME knows, and is not judged here."""
-    from mime.assets import known
+    from mime.assets._known import known
 
     shipped = {ref.sha256: ref for ref in known().values()}
     found: list[Refusal] = []
@@ -539,7 +541,7 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
         if (message := over_limit(member, path.stat().st_size, INLINE_LIMIT_BYTES, "a bundle")) is not None:
             refusals.append(_refuse(
                 "bundle.file-too-large", RefusalClass.USER, message,
-                "give its terms an origin, asset(path, terms=Terms(..., origin=(\"https://...\",))), and save the "
+                "give its terms an origin, asset(Path(...), terms=Terms(..., origin=(\"https://...\",))), and save the "
                 "experiment again, built.save(folder): it then travels as a reference that `mime assets fetch "
                 "<folder>` fetches on request"))
             continue

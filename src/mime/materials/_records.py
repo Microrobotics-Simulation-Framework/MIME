@@ -20,7 +20,9 @@ from typing import TYPE_CHECKING, Literal, cast
 
 import materica
 
-from mime.data import AssetError, PACKAGED, asset, asset_bytes
+from mime._refusals import ArgumentRefused, MimeError, Refusal, RefusalClass
+from mime.assets import asset
+from mime.assets._asset import packaged_path
 from mime.units import Quantity
 from mime.validity import Basis
 from mime.validity._bases import basis_problem
@@ -49,20 +51,29 @@ class RecordFile:
     def file_name(self) -> str:
         """The file's name, under which the saved form writes it."""
         if self.packaged is not None:
-            held = PACKAGED.get(self.packaged)
-            return Path(held.file).name if held is not None else f"{self.packaged}.json"
+            return _packaged_file(self.packaged) or f"{self.packaged}.json"
         return self.path.name if self.path is not None else ""
 
     def describe(self) -> str:
         return f"mime.data's {self.packaged!r}" if self.packaged is not None else str(self.path)
 
     def read(self) -> bytes:
-        """The file's bytes; ``OSError`` or ``mime.data.AssetError`` when they cannot be read as pinned."""
+        """The file's bytes; ``OSError``, or a :class:`~mime.errors.MimeError` with its code, when they cannot be read
+        as pinned."""
         if self.packaged is not None:
-            return asset_bytes(asset(self.packaged))
+            return asset(self.packaged).read()
         if self.path is None:
             raise OSError("a record file names neither a path nor a packaged record")
         return self.path.read_bytes()
+
+
+def _packaged_file(name: str) -> str | None:
+    """The file name of the record file MIME packages as ``name``, or ``None`` where MIME packages no record of it."""
+    from mime.assets._known import known
+
+    held = known().get(name)
+    path = packaged_path(held) if held is not None else None
+    return path.rsplit("/", 1)[-1] if path is not None and path.endswith(".json") else None
 
 
 def record_file(path: str | os.PathLike[str], *, sha256: str | None = None) -> RecordFile:
@@ -71,12 +82,15 @@ def record_file(path: str | os.PathLike[str], *, sha256: str | None = None) -> R
 
 
 def packaged_record(name: str) -> RecordFile:
-    """A copy of a record MIME ships in ``mime.data`` (``openmaterica_example_water``), pinned there."""
-    held = PACKAGED.get(name)
-    if held is None or not held.file.endswith(".json"):
-        records = sorted(n for n, a in PACKAGED.items() if a.file.endswith(".json"))
-        raise AssetError(f"no packaged record is named {name!r}; the packaged records are {records}")
-    return RecordFile(packaged=name, sha256=held.sha256)
+    """A copy of a record MIME ships in ``mime.data`` (``openmaterica_example_water``), pinned there; refused
+    (``asset.unknown``) where MIME packages no record file of that name."""
+    from mime.assets._known import known
+
+    if _packaged_file(name) is None:
+        records = sorted(held for held in known() if _packaged_file(held) is not None)
+        raise ArgumentRefused([Refusal("asset.unknown", RefusalClass.USER, f"no packaged record is named {name!r}",
+                                       f"name one of the packaged records, as `asset(name)`: {records}")])
+    return RecordFile(packaged=name, sha256=asset(name).sha256)
 
 
 def _frozen[V](mapping: Mapping[str, V] | None) -> Mapping[str, V]:
@@ -226,7 +240,7 @@ def load_record(record: Record) -> tuple[LoadedRecord | None, list[Problem]]:
     where = f"material {record.name!r}'s record {record.file.describe()}"
     try:
         content = record.file.read()
-    except (OSError, AssetError) as error:
+    except (OSError, MimeError) as error:
         return None, [("record.file", f"cannot read {where}: {error}",
                        "name a record file that exists, or a packaged record: Record(..., "
                        "packaged_record(\"<record>\"))")]

@@ -3,7 +3,7 @@
     python examples/example.py
 
 Names you type, all in the namespace `${namespace}`: the entry `${namespace}.example_load` (its class, `ExampleLoad`, with
-its settings `force` and `gain`), the record it reads `${namespace}_example_record`, and the instance on a body,
+its settings `force` and `gain`), the record it reads `${namespace}.example_record`, and the instance on a body,
 `${namespace}.example_load:probe` (the entry, a colon, the body: it is how the build report and a study name it).
 Replace the toy body with your own (`mime.things`), and run `mime registry | grep ${namespace}` to see what is installed.
 

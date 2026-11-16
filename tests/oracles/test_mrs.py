@@ -61,7 +61,7 @@ import mime.nodes.hydro.mrs._walls as walls
 from mime.build import BuildRefused
 from mime.build._maddening import node_state, parameter_leaves
 from mime.core import quaternion
-from mime.data import asset
+from mime.assets import asset
 from mime.dynamics import RigidInertial
 from mime.gradients import GradientStatus
 from mime.interactions import Drag

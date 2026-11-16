@@ -14,7 +14,7 @@ import pytest
 from typing_extensions import TypedDict
 
 from mime import assets
-from mime.assets import _known
+from mime.assets import _cache, _known, _lock
 from mime.build import BuildRefused
 from mime.cli import main
 from mime.saved import LOCK_FILE, LoadRefused, read_folder
@@ -47,7 +47,7 @@ def with_assets(saved: Path, target: Path, *refs: assets.AssetRef) -> Path:
 
 
 def test_the_lock_file_name_is_the_saved_forms():
-    assert assets.folder_assets.__module__ == "mime.assets._lock"
+    assert _lock.folder_assets.__module__ == "mime.assets._lock"
     from mime.assets._lock import LOCK_FILE as read
 
     assert read == LOCK_FILE
@@ -55,14 +55,14 @@ def test_the_lock_file_name_is_the_saved_forms():
 
 def test_a_lock_with_no_asset_key_references_none(saved_toy: Path):
     assert "assets" not in json.loads((saved_toy / LOCK_FILE).read_text(encoding="utf-8"))
-    assert assets.folder_assets(saved_toy) == ()
+    assert _lock.folder_assets(saved_toy) == ()
 
 
 def test_the_references_a_lock_names_are_read_in_order_and_once_each(saved_toy: Path, tmp_path: Path):
     first, second = reference(b"first" * 50, "https://example.org/a", name="first"), reference(
         b"second" * 50, "https://example.org/b", name="second")
     folder = with_assets(saved_toy, tmp_path / "folder", first, second, first)
-    assert assets.folder_assets(folder) == (first, second)
+    assert _lock.folder_assets(folder) == (first, second)
 
 
 @pytest.mark.parametrize("break_it", ["not json", "[]", '{"assets": 3}', '{"assets": [3]}',
@@ -70,13 +70,13 @@ def test_the_references_a_lock_names_are_read_in_order_and_once_each(saved_toy: 
 def test_an_unreadable_or_malformed_lock_is_refused(tmp_path: Path, break_it: str):
     (tmp_path / LOCK_FILE).write_text(break_it, encoding="utf-8")
     with pytest.raises(BuildRefused) as refused:
-        assets.folder_assets(tmp_path)
+        _lock.folder_assets(tmp_path)
     assert refused.value.codes() in (["asset.lock"], ["asset.reference"])
 
 
 def test_a_folder_without_a_lock_is_refused(tmp_path: Path):
     with pytest.raises(BuildRefused) as refused:
-        assets.folder_assets(tmp_path)
+        _lock.folder_assets(tmp_path)
     assert refused.value.codes() == ["asset.lock"]
 
 
@@ -88,13 +88,13 @@ def test_fetching_a_folder_stores_exactly_its_assets(saved_toy: Path, tmp_path: 
     wanted = reference(needed, rig.server.url("/needed"), name="needed")
     unwanted = reference(other, rig.server.url("/other"), name="unwanted")
     held = {ref.name: ref for ref in (wanted, unwanted)}
-    monkeypatch.setattr(assets, "known", lambda: held)
+    monkeypatch.setattr(_known, "known", lambda: held)
     monkeypatch.setattr(_known, "known", lambda: held)
     folder = with_assets(saved_toy, tmp_path / "fl9_water", wanted)
     assert main(["assets", "fetch", str(folder)]) == 0
     assert rig.server.requests == ["GET /needed"]
-    assert assets.is_cached(wanted) and not assets.is_cached(unwanted)
-    assert main(["assets", "fetch", "unwanted"]) == 0 and assets.is_cached(unwanted)
+    assert _cache.is_cached(wanted) and not _cache.is_cached(unwanted)
+    assert main(["assets", "fetch", "unwanted"]) == 0 and _cache.is_cached(unwanted)
     assert "needed: hashed in full" in capsys.readouterr().out
 
 
@@ -129,7 +129,7 @@ def test_a_lock_carrying_assets_is_read_by_the_saved_forms_reader_and_by_the_ass
     form = read_folder(folder)
     held = form.lock["assets"]
     assert held == [first.to_record(), second.to_record()]
-    assert tuple(assets.AssetRef.from_record(record) for record in held) == assets.folder_assets(folder)
+    assert tuple(assets.AssetRef.from_record(record) for record in held) == _lock.folder_assets(folder)
     assert "assets" not in read_folder(saved_toy).lock
 
 

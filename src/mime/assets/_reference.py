@@ -25,7 +25,7 @@ from urllib.parse import urlsplit
 
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._refusals import BuildRefused, Refusal, RefusalClass
 from mime.terms import ROLES, CustomLicence, Role, Verdict, licence_problem, licence_verdict
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")

@@ -33,7 +33,7 @@ from mime.build import BuildRefused
 from mime.core import SCREW, Cylinder, jnp
 from mime.core._shapes import _exact_product as exact_product
 from mime.core._shapes import _exact_sum as exact_sum
-from mime.data import asset as data_asset
+from mime.assets import asset as data_asset
 from mime.registry import Problem, Region
 from mime.dynamics import RigidInertial
 from mime.interactions import KEPT, Contact, Drag

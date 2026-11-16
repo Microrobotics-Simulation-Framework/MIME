@@ -30,7 +30,7 @@ from mount_cases import CURRENTS, exposure_sphere, term_sums
 
 from mime.build import BuildRefused
 from mime.build._report import graph_config
-from mime.data import asset
+from mime.assets import asset
 from mime.fields import CalibratedMultipole
 from mime.fields._coil_array import calibration_of
 from mime.interactions import Magnetic

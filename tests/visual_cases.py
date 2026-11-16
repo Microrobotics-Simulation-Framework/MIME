@@ -51,7 +51,8 @@ def planted(held: Manifest | None = None, *, tier: str | None = None, accepted: 
     layers by file. With ``tier``, the index and each mesh's record state it, as ``bake`` writes them; without, no
     record states one. The licences of the set are accepted on this machine, as a person who fetched the set has
     accepted them (``accepted=False`` for a cache filled before the gates, whose first use asks)."""
-    from mime.assets import _acceptances, licences_of
+    from mime.assets import _acceptances
+    from mime.assets._gates import licences_of
 
     if accepted:
         _acceptances.remember([each for ref in (held or ar4_manifest()).assets for each in licences_of(ref)])

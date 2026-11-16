@@ -117,7 +117,7 @@ RUN = dict(image=image, gpu=GPU, cpu=CPU, memory=MEMORY, env=ENV, **LIMITS,
 
 def _accepting():
     """The licences accepted where this script was written, accepted for what runs inside this block: the first read of a
-    gated file is gated (`mime.assets.locate`), and nobody can be asked in a container. A licence not named in
+    gated file is gated, and nobody can be asked in a container. A licence not named in
     ACCEPT_LICENCES is not accepted here, and the run's read of its file is refused, naming `--accept-licence <id>`."""
     from mime import assets
 

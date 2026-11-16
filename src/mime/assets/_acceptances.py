@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import cast
 
 from mime._terminal import plain
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._refusals import BuildRefused, Refusal, RefusalClass
 
 ACCEPTANCES_VARIABLE = "MIME_LICENCE_ACCEPTANCES"
 ACCEPTANCES_FILE = "licences.json"

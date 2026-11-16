@@ -26,7 +26,8 @@ from hypothesis import strategies as st
 from terms_cases import CONDITIONAL_IDS, EVERY_ID, JURISDICTION_PORTS, NO_REDISTRIBUTION, OPEN_IDS, UNKNOWN_IDS
 
 from mime import terms
-from mime.assets import AssetRef, known
+from mime.assets import AssetRef
+from mime.assets._known import known
 from mime.build import BuildRefused
 from mime.terms import (
     CustomLicence,

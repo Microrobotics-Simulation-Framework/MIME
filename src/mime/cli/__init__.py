@@ -21,7 +21,8 @@ from mime import __version__, _import_guard
 from mime._extras import VERIFY_EXTRA_MISSING
 from mime._interrupt import INTERRUPTED, Interrupt
 from mime._terminal import for_terminal
-from mime.assets import AssetRef, PlainAsker
+from mime.assets import AssetRef
+from mime.assets._gates import PlainAsker
 from mime.build import BuildRefused, InternalError, MimeError, Refusal, RefusalClass, RunFailed, UnrecognisedError
 from mime.cli import _completion, _durations, _guide
 from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
@@ -118,7 +119,7 @@ def _cache_clear() -> int:
     from mime.env import user_xla_cache_root
     from mime.env._xla_cache import clear_user_xla_cache
 
-    from mime.assets import bytes_text
+    from mime.assets._gates import bytes_text
 
     root = user_xla_cache_root()
     freed = clear_user_xla_cache(root)
@@ -709,7 +710,7 @@ def _visuals(arguments: argparse.Namespace) -> int:
         held_sets = {**shipped_visual_sets(), **visual_sets()}
 
         def draw() -> None:
-            from mime.assets import size_text
+            from mime.assets._cache import size_text
             from mime.cli._display import show_visual_sets
 
             show_visual_sets(
@@ -903,10 +904,11 @@ def _assets_named(arguments: Sequence[str]) -> list[AssetRef]:
     """The references ``mime assets fetch`` is asked for: an argument that is a directory is an experiment folder, and
     stands for the assets its lock references; any other is an asset's name."""
     from mime import assets
+    from mime.assets import _lock
 
     refs: list[AssetRef] = []
     for argument in arguments:
-        refs += assets.folder_assets(argument) if Path(argument).is_dir() else [assets.reference(argument)]
+        refs += _lock.folder_assets(argument) if Path(argument).is_dir() else [assets.reference(argument)]
     return refs
 
 
@@ -930,21 +932,27 @@ def _assets_of_source(namespace: str) -> list[AssetRef]:
 def _assets(command: str, arguments: Sequence[str], accept_licences: Sequence[str] = (), yes: bool = False,
             force: bool = False, namespace: str | None = None) -> int:
     from mime import assets
+    from mime.assets import _cache, _commands, _fetch, _known
 
     refs = _assets_named(arguments) if arguments else \
-        _assets_of_source(namespace) if namespace is not None else list(assets.known().values())
-    if command == assets.LIST:
+        _assets_of_source(namespace) if namespace is not None else list(_known.known().values())
+    if command == _commands.LIST:
+        from mime.assets._asset import packaged_path
+
+        def where_kept(ref: AssetRef) -> str:
+            """Where the file is: in MIME's own package (read in place), in the cache, or missing."""
+            return "packaged" if packaged_path(ref) is not None else "cached" if _cache.is_cached(ref) else "missing"
+
         def draw() -> None:
             from mime.cli._display import show_assets
 
-            show_assets([(ref.name, assets.size_text(ref.size), "cached" if assets.is_cached(ref) else "missing",
-                          ref.licence, ref.tier) for ref in refs], sys.stdout)
+            show_assets([(ref.name, _cache.size_text(ref.size), where_kept(ref), ref.licence, ref.tier) for ref in refs],
+                        sys.stdout)
 
         if not _drawn(draw):
             for ref in refs:
-                print(for_terminal(f"{ref.name}  {assets.size_text(ref.size)}  "
-                                   f"{'cached' if assets.is_cached(ref) else 'missing'}  {ref.licence}"))
-    elif command == assets.CHECK:
+                print(for_terminal(f"{ref.name}  {_cache.size_text(ref.size)}  {where_kept(ref)}  {ref.licence}"))
+    elif command == _commands.CHECK:
         outcomes = {ref.name: assets.check(ref) for ref in refs}
         for name, outcome in outcomes.items():
             if outcome != "not cached":
@@ -958,7 +966,7 @@ def _assets(command: str, arguments: Sequence[str], accept_licences: Sequence[st
             print("nothing to fetch: the folder's lock references no asset")
         with _gate_questions(), assets.approved(refs, accept_licences=accept_licences, yes=yes, force=force):
             for ref in refs:
-                stored = assets.fetch(ref, report=_say)
+                stored = _fetch.fetch(ref, report=_say)
                 print(f"{ref.name}: hashed in full, at {stored}")
         unplaced = [each for argument in arguments if Path(argument).is_dir()
                     for each in _place(Path(argument), accept_licences)]
@@ -969,32 +977,32 @@ def _assets(command: str, arguments: Sequence[str], accept_licences: Sequence[st
 
 def _sources(names: Sequence[str]) -> int:
     """``mime assets sources``: each asset's terms and where it can be fetched from, each location looked at now."""
-    from mime import assets
+    from mime.assets import _availability
 
-    named = [assets.assets_of(name) for name in names]
+    named = [_availability.assets_of(name) for name in names]
 
     def draw() -> None:
         from mime.cli._display import show_sources
 
-        show_sources([view for refs in named for view in assets.sources_view(refs)], sys.stdout)
+        show_sources([view for refs in named for view in _availability.sources_view(refs)], sys.stdout)
 
     if not _drawn(draw):
-        print(for_terminal("\n".join(assets.sources_text(refs) for refs in named)))
+        print(for_terminal("\n".join(_availability.sources_text(refs) for refs in named)))
     return 0
 
 
 def _licences(revoke: str | None) -> int:
     """``mime assets licences``: the licences accepted on this machine; with ``--revoke <id>``, remove one (1 where none
     of that id was kept)."""
-    from mime import assets
+    from mime.assets import _acceptances
 
     if revoke is not None:
-        if assets.revoke(revoke):
+        if _acceptances.revoke(revoke):
             print(for_terminal(f"{revoke}: no longer accepted; the next download under it asks again"))
             return 0
         print(for_terminal(f"{revoke}: no such acceptance is kept (`mime assets licences` lists them)"), file=sys.stderr)
         return 1
-    held = assets.read_acceptances()
+    held = _acceptances.read_acceptances()
 
     def draw() -> None:
         from mime.cli._display import show_acceptances
@@ -1002,7 +1010,7 @@ def _licences(revoke: str | None) -> int:
         show_acceptances(held, sys.stdout)
 
     if not held or not _drawn(draw):
-        print(for_terminal(assets.acceptances_text()))
+        print(for_terminal(_acceptances.acceptances_text()))
     return 0
 
 
@@ -1019,7 +1027,8 @@ def _place(folder: Path, accept_licences: Sequence[str] = ()) -> list[Refusal]:
 
 
 def _pack(folder: Path, out: Path | None) -> int:
-    from mime import assets, saved
+    from mime import saved
+    from mime.assets import _cache
     from mime.blocks._definition import is_block_folder
     from mime.saved._studies import is_publishing_folder, is_study_folder
 
@@ -1047,7 +1056,7 @@ def _pack(folder: Path, out: Path | None) -> int:
     referenced = referenced_of(manifest)
     form = saved.read_folder(folder)
     licence = form.document.get("licence")
-    print(for_terminal(f"packed {folder} into {shown(path)} ({assets.size_text(path.stat().st_size)})"))
+    print(for_terminal(f"packed {folder} into {shown(path)} ({_cache.size_text(path.stat().st_size)})"))
     print(f"sha256 {digest}")
     print(for_terminal(f"carried: {len(manifest['files'])} files and the NOTICE; referenced, never carried: "
                        f"{len(referenced)}" + "".join(f"\n  {each} (the asset {held['name']})"
@@ -1064,7 +1073,7 @@ def _pack(folder: Path, out: Path | None) -> int:
 
 def _pack_block(folder: Path, out: Path | None) -> int:
     """``mime pack`` of a block folder: its ``.mimeblock``, its sha256, and what it carries."""
-    from mime import assets
+    from mime.assets import _cache
     from mime.blocks._container import pack_block
     from mime.saved._container import MANIFEST_MEMBER
 
@@ -1074,7 +1083,7 @@ def _pack_block(folder: Path, out: Path | None) -> int:
     with zipfile.ZipFile(path) as archive:
         manifest = json.loads(archive.read(MANIFEST_MEMBER))
     print(for_terminal(f"packed the block {manifest['id']} {manifest['version']} into {shown(path)} "
-                       f"({assets.size_text(path.stat().st_size)})"))
+                       f"({_cache.size_text(path.stat().st_size)})"))
     print(f"sha256 {digest}")
     print(f"content {manifest['content']}")
     print(for_terminal(f"carried: {len(manifest['files'])} files and the NOTICE; referenced, never carried: "
@@ -1086,7 +1095,8 @@ def _pack_block(folder: Path, out: Path | None) -> int:
 def _pack_studies(folder: Path, out: Path | None) -> int:
     """``mime pack`` of a study folder (its ``.mimestudy``) or a publishing folder (one per study, in ``--out`` or beside
     the folder), and what a publishing folder holds that no container carries."""
-    from mime import assets, saved
+    from mime import saved
+    from mime.assets import _cache
     from mime.saved._container import MANIFEST_MEMBER
     from mime.saved._studies import is_study_folder, publishing_entries
 
@@ -1096,7 +1106,7 @@ def _pack_studies(folder: Path, out: Path | None) -> int:
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
         with zipfile.ZipFile(path) as archive:
             manifest = json.loads(archive.read(MANIFEST_MEMBER))
-        print(for_terminal(f"packed the study {manifest['name']} into {shown(path)} ({assets.size_text(path.stat().st_size)})"))
+        print(for_terminal(f"packed the study {manifest['name']} into {shown(path)} ({_cache.size_text(path.stat().st_size)})"))
         print(f"sha256 {digest}")
         print(for_terminal(f"carried: {len(manifest['files'])} files and the NOTICE; referenced, never carried: "
                            f"{len(manifest['referenced'])}"))
@@ -1188,14 +1198,14 @@ def _gate_questions(voice: _Voice | None = None) -> Generator[None]:
     order); the library's plain lines where a person can answer but nothing is drawn; and nobody where there is no one to
     answer, so that the gate refuses and names the flag. The questions and the refusals are the library's; this only
     chooses the voice."""
-    from mime import assets
+    from mime.assets import _gates
 
-    if not assets.can_ask():
-        with assets.asking(None):
+    if not _gates.can_ask():
+        with _gates.asking(None):
             yield
         return
     if voice is not None and voice.display is not None:
-        with assets.asking(voice.display):
+        with _gates.asking(voice.display):
             yield
         return
     if styled(sys.stdout):
@@ -1203,12 +1213,12 @@ def _gate_questions(voice: _Voice | None = None) -> Generator[None]:
 
         display = SaidDisplay(sys.stdout)
         try:
-            with assets.asking(display):
+            with _gates.asking(display):
                 yield
         finally:
             display.close()
         return
-    with assets.asking(_PlainTerminalAsker()):
+    with _gates.asking(_PlainTerminalAsker()):
         yield
 
 
@@ -1362,11 +1372,12 @@ def _pull_source(arguments: argparse.Namespace) -> str | Token:
 def _pull(source: str | Token, into: Path | None, no_assets: bool, yes: bool, max_bundle_bytes: int,
           from_service: str | None = None, signed_in: bool = False, force: bool = False,
           accept_licences: Sequence[str] = ()) -> int:
-    from mime import assets, saved
+    from mime import saved
+    from mime.assets import _fetch
 
     voice = _Voice("downloading")
     try:
-        with (assets.watching_downloads(voice.progress) if voice.progress is not None else nullcontext(),
+        with (_fetch.watching_downloads(voice.progress) if voice.progress is not None else nullcontext(),
               _gate_questions(voice)):
             saved.pull(source, into=into, fetch_assets=not no_assets, yes=yes,
                        confirm=voice.ask if _a_terminal() else None, say=voice.say, max_bundle_bytes=max_bundle_bytes,
@@ -1755,31 +1766,31 @@ def build_parser() -> _guide.MimeParser:
     build.add_argument("--skip-evidence", action="store_true",
                        help="do not collect the tests the evidence counts page cites: every row reads 'not read' (the "
                             "tests of the other pages pass it; CI never does)")
-    from mime import assets
+    from mime.assets import _cache, _commands, _fetch
 
-    held = commands.add_parser(assets.GROUP, help="large files referenced by sha256 and fetched on request")
+    held = commands.add_parser(_commands.GROUP, help="large files referenced by sha256 and fetched on request")
     held_commands = held.add_subparsers(dest="assets_command", required=True)
-    listed = held_commands.add_parser(assets.LIST, help="every known asset, cached or missing, with its size")
+    listed = held_commands.add_parser(_commands.LIST, help="every known asset, cached or missing, with its size")
     listed.add_argument("--namespace", metavar="NS", help="only the records of one source: `mime` for MIME's own, "
                                                           "or the name of an installed package's `mime.assets` "
                                                           "entry point (its namespace's)")
-    fetch = held_commands.add_parser(assets.FETCH, help="store assets in the cache (the cache, then the primary location, then backups), then hash "
+    fetch = held_commands.add_parser(_commands.FETCH, help="store assets in the cache (the cache, then the primary location, then backups), then hash "
                                    "them in full")
     fetch.add_argument("names", nargs="*", metavar="name-or-folder",
                        help="an asset's name, or an experiment folder: exactly the assets its lock references")
     fetch.add_argument("--all", action="store_true", help="every known asset")
     _gate_arguments(fetch)
-    held_commands.add_parser(assets.CHECK, help="re-hash every cached asset in full")
-    licences = held_commands.add_parser(assets.LICENCES, help="the licences you have accepted on this machine "
+    held_commands.add_parser(_commands.CHECK, help="re-hash every cached asset in full")
+    licences = held_commands.add_parser(_commands.LICENCES, help="the licences you have accepted on this machine "
                                                               "(downloads under one ask once); --revoke removes one")
     licences.add_argument("--revoke", metavar="ID", help="forget your acceptance of this licence, so that the next "
                                                           "download under it asks again")
-    sources = held_commands.add_parser(assets.SOURCES, help="each asset's terms, tier and locations, each looked at "
+    sources = held_commands.add_parser(_commands.SOURCES, help="each asset's terms, tier and locations, each looked at "
                                                             "now (reachable or not, and why), downloading nothing")
     sources.add_argument("names", nargs="+", metavar="name-or-folder",
                          help="an asset's name, a saved folder (its lock's assets and its meshes' manifests), a "
                               "folder holding visuals.json, or a manifest file")
-    audit = held_commands.add_parser(assets.AUDIT, help="find in a wheel, an sdist, an archive or a directory any "
+    audit = held_commands.add_parser(_commands.AUDIT, help="find in a wheel, an sdist, an archive or a directory any "
                                                         "file whose bytes may not be redistributed, and any mesh "
                                                         "with no record (exit 1 when anything is found)")
     audit.add_argument("targets", nargs="+", metavar="wheel-sdist-or-directory",
@@ -1828,9 +1839,9 @@ def build_parser() -> _guide.MimeParser:
                                                                "`mime assets fetch <folder>`")
     _gate_arguments(pull, yes_help="download assets over the size MIME asks about without asking (it never accepts a "
                                     "licence)")
-    pull.add_argument("--max-bundle-bytes", type=int, default=assets.RETRIEVE_LIMIT_BYTES, metavar="BYTES",
+    pull.add_argument("--max-bundle-bytes", type=int, default=_fetch.RETRIEVE_LIMIT_BYTES, metavar="BYTES",
                       help="the most a bundle may be when nothing states its size (default: "
-                           f"{assets.size_text(assets.RETRIEVE_LIMIT_BYTES)})")
+                           f"{_cache.size_text(_fetch.RETRIEVE_LIMIT_BYTES)})")
     pushing = commands.add_parser(
         "push", help="show the plan, then make or update the experiment's draft record on Zenodo and upload its files "
                      "(nothing is published)",
@@ -2345,7 +2356,7 @@ def _pipe_closed() -> int:
 
 
 def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> int:
-    from mime import assets
+    from mime.assets import _audit, _commands
 
     _folder_must_exist(arguments)
     if arguments.command == "verify":
@@ -2407,19 +2418,19 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
                                arguments.skip_evidence)
         return _docs_check(arguments.root, arguments.base, not arguments.skip_hash_seed_builds,
                            not arguments.skip_evidence, not arguments.skip_example_runs)
-    if arguments.command == assets.GROUP:
-        if arguments.assets_command == assets.SOURCES:
+    if arguments.command == _commands.GROUP:
+        if arguments.assets_command == _commands.SOURCES:
             return _sources(arguments.names)
-        if arguments.assets_command == assets.LICENCES:
+        if arguments.assets_command == _commands.LICENCES:
             return _licences(arguments.revoke)
-        if arguments.assets_command == assets.AUDIT:
-            reports = [assets.audit(target, manifests=arguments.manifest) for target in arguments.targets]
+        if arguments.assets_command == _commands.AUDIT:
+            reports = [_audit.audit(target, manifests=arguments.manifest) for target in arguments.targets]
             for report in reports:
                 print(for_terminal(report.text()))
             return 1 if any(report.findings for report in reports) else 0
-        if arguments.assets_command == assets.FETCH and bool(arguments.names) == arguments.all:
+        if arguments.assets_command == _commands.FETCH and bool(arguments.names) == arguments.all:
             parser.error("fetch takes asset names, or --all")
-        return _assets(arguments.assets_command, arguments.names if arguments.assets_command == assets.FETCH else (),
+        return _assets(arguments.assets_command, arguments.names if arguments.assets_command == _commands.FETCH else (),
                        getattr(arguments, "accept_licence", ()), getattr(arguments, "yes", False),
                        getattr(arguments, "force", False), getattr(arguments, "namespace", None))
     if arguments.command == "pack":

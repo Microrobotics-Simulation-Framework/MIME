@@ -27,6 +27,7 @@ from pathlib import Path
 import pytest
 
 from mime import assets
+from mime.assets import _cache, _fetch
 from mime.credentials import _store
 from mime.assets import AdapterError, LoginRefused, NotFound, Opened, Redirect, Request, Transient, _adapters, _fetch
 from mime.build import BuildRefused
@@ -86,10 +87,10 @@ def test_a_redirect_to_a_local_scheme_is_refused_and_the_local_file_never_read(c
     with LoopbackStore() as server:
         server.redirects["/hop"] = target
         ref = ref_of(data, server.url("/hop"), adapters=(("labstore", "mime-lab-fixture"),))
-        codes, text = refused_text(lambda: assets.fetch(ref))
+        codes, text = refused_text(lambda: _fetch.fetch(ref))
         assert codes == ["asset.unreachable"] and f"never to a {scheme}: location" in text
-        assert not assets.is_cached(ref)
-        probed = assets.probe(ref.locations[0], ref)
+        assert not _cache.is_cached(ref)
+        probed = _fetch.probe(ref.locations[0], ref)
         assert probed.reachable is False and "never to a" in probed.why
 
 
@@ -97,7 +98,7 @@ def test_a_redirect_among_this_machines_http_and_to_https_is_followed(cache):
     with LoopbackStore() as server, LoopbackStore("localhost") as other:
         other.files["/moved"] = PAYLOAD
         server.redirects["/hop"] = other.url("/moved")
-        assert assets.fetch(ref_of(PAYLOAD, server.url("/hop"))).read_bytes() == PAYLOAD
+        assert _fetch.fetch(ref_of(PAYLOAD, server.url("/hop"))).read_bytes() == PAYLOAD
 
 
 @pytest.mark.parametrize("answering,target,followed", [
@@ -186,8 +187,8 @@ def echoed(how: str, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> list[s
         _store.store(_store.host_service("127.0.0.1"), Token("host:127.0.0.1", HARNESS_TOKEN))
         ref = ref_of(PAYLOAD, "echoing://127.0.0.1/kept", adapters=(("echoing", ""),))
         with caplog.at_level(logging.DEBUG):
-            _, text = refused_text(lambda: assets.fetch(ref))
-            probed = assets.probe(ref.locations[0], ref)
+            _, text = refused_text(lambda: _fetch.fetch(ref))
+            probed = _fetch.probe(ref.locations[0], ref)
         cached = " ".join(path.read_bytes().decode("utf-8", "replace") for path in (tmp_path / "cache").rglob("*")
                           if path.is_file())
         said = {"the refusal": text, "the probe": probed.why + probed.location, "the log": caplog.text,
@@ -252,7 +253,7 @@ def test_the_doi_step_is_held_to_the_resolvers_timeout_and_asked_again_when_it_t
     asked: list[dict[str, object]] = []
     ref = ref_of(PAYLOAD, "doi:10.5281/zenodo.1234567/kept.bin")
     with doi_org_answering(asked, times_out=True):
-        codes, text = refused_text(lambda: assets.fetch(ref))
+        codes, text = refused_text(lambda: _fetch.fetch(ref))
     assert codes == ["asset.unreachable"] and "did not recover" not in text
     assert len(asked) == _fetch.RETRIES + 1, "a step that timed out is asked again, as any location is"
     assert all(each["timeout"] == _fetch.TIMEOUT_SECONDS for each in asked)
@@ -304,7 +305,7 @@ def test_a_busy_server_with_any_retry_after_is_asked_again_and_the_wait_is_bound
         server.files["/blob"] = PAYLOAD
         server.statuses["/blob"] = [503]
         server.retry_after["/blob"] = stated
-        assert assets.fetch(ref_of(PAYLOAD, server.url("/blob"))).read_bytes() == PAYLOAD
+        assert _fetch.fetch(ref_of(PAYLOAD, server.url("/blob"))).read_bytes() == PAYLOAD
     assert len(waits) == 1 and 0.0 <= waits[0] <= _fetch.RETRY_AFTER_CAP_SECONDS
 
 

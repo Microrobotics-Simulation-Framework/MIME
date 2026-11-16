@@ -14,16 +14,14 @@ import numpy as np
 
 from script_a import FL9, REFERENCE, CentreContact
 
-from mime import Apparatus, Body, Experiment, Medium, PermanentMagnet, State, Structure
+from mime import Apparatus, Body, Experiment, Medium, PermanentMagnet, State, Structure, asset
 from mime.control import ArmTracking
-from mime.data import asset
 from mime.drives import Constant
 from mime.dynamics import Arm, Motor, RigidInertial
 from mime.fields import PointDipole
 from mime.interactions import KEPT, Gravity, Lubrication, Magnetic
 from mime.observations import SwimSpeed
 from mime.scene import Cylinder, Scene, Tube, X, Z
-from mime.scene import asset as description
 from mime.things import Part
 from mime.units import (
     A_m2,
@@ -60,7 +58,7 @@ def rotor_magnet_on_an_arm() -> Apparatus:
     """The AR4 carrying a motor on its last link; the rotor carries de Jongh's 35 mm by 20 mm magnet."""
     return Apparatus(
         "rpm",
-        chain={"arm": Arm.Kinematic(description=description(AR4), initial_positions=rad(HOME), at=m(BASE)),
+        chain={"arm": Arm.Kinematic(description=asset(AR4), initial_positions=rad(HOME), at=m(BASE)),
                "motor": Motor.Kinematic(axis=Z, prescribed="velocity", initial_angle=rad(0.0), mount="link_6")},
         parts={"rotor_magnet": Part(Cylinder(radius=mm(17.5), length=mm(20.0), axis=(1.0, 0.0, 0.0)),
                                     mount="motor.rotor")},
@@ -105,7 +103,7 @@ def a0() -> Experiment:
 def close_the_loop(experiment: Experiment) -> Experiment:
     """The controller reads the body's pose and twist and the arm's joints, and writes the arm's joint positions
     every step."""
-    tracking = ArmTracking(description=description(AR4), end_effector="link_6", home=rad(HOME), axis=X, up=Z, at=m(BASE))
+    tracking = ArmTracking(description=asset(AR4), end_effector="link_6", home=rad(HOME), axis=X, up=Z, at=m(BASE))
     experiment.set_controller(
         tracking, reads={"body_pose": "umr.pose", "body_twist": "umr.twist", "joint_positions": "rpm.arm.joint_positions"},
         writes={"joint_positions": "rpm.arm.joint_positions"}, mode="graph", rate=ms(0.5))

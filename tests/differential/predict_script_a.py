@@ -93,10 +93,10 @@ def _network() -> Callable[[np.ndarray], np.ndarray]:
     it)."""
     import jax.numpy as jnp
 
-    from mime.data import asset, asset_bytes
+    from mime.assets import asset
     from mime.surrogates._cholesky_mlp import predict_resistance, read_cholesky_mlp
 
-    network = read_cholesky_mlp(asset_bytes(asset("dejongh_mlp_v2")))
+    network = read_cholesky_mlp(asset("dejongh_mlp_v2").read())
 
     def predict(features: np.ndarray) -> np.ndarray:
         found = np.asarray(predict_resistance(network, jnp.asarray(features, dtype=jnp.float64)))

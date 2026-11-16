@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import unquote
 
 from mime import assets
+from mime.assets import _cache, _fetch, _gates, _lock, _reference
 from mime._lock_json import lock_data
 from mime._said import DONE, PLAN_LINE, STOPPED, Said
 from mime._shell import quoted
@@ -74,7 +75,7 @@ def parse_source(text: str) -> Source:
     if Path(text).is_file():
         return Source("file", text)
     bare = next((text.removeprefix(prefix) for prefix in _DOI_PREFIXES if text.startswith(prefix)), text)
-    if (_DOI.fullmatch(bare) and bare.startswith(TEST_PREFIX)) or assets.under_test_prefix(text):
+    if (_DOI.fullmatch(bare) and bare.startswith(TEST_PREFIX)) or _fetch.under_test_prefix(text):
         number = re.search(r"zenodo\.(\d+)", unquote(bare))
         raise _refuse("pull.sandbox-doi", RefusalClass.USER,
                       f"{redacted(text)!r} is under DataCite's test prefix 10.5072, the Zenodo sandbox's, which "
@@ -87,7 +88,7 @@ def parse_source(text: str) -> Source:
         doi, _, last = bare.rpartition("/")
         return Source("doi", doi, last) if kind_of_name(last) is not None and doi.count("/") >= 1 else Source("doi", bare)
     if text.startswith(("https://", "http://")):
-        problem = assets.location_problem(text)
+        problem = _reference.location_problem(text)
         if problem is not None:
             raise _refuse("pull.source", RefusalClass.USER, f"{redacted(text)!r}: {problem}",
                           "give an https:// address, a DOI, or a file: `mime pull <doi | url | file>`")
@@ -103,8 +104,8 @@ def _held(value: object) -> Any:
 
 def _offline_refusal(what: str) -> BuildRefused:
     return _refuse("asset.offline", RefusalClass.ENVIRONMENT,
-                   f"{what} is not on this machine, and {assets.OFFLINE_VARIABLE} is set, so nothing is downloaded",
-                   f"unset {assets.OFFLINE_VARIABLE}, or give the bundle as a file: `mime pull <file>`")
+                   f"{what} is not on this machine, and {_cache.OFFLINE_VARIABLE} is set, so nothing is downloaded",
+                   f"unset {_cache.OFFLINE_VARIABLE}, or give the bundle as a file: `mime pull <file>`")
 
 
 def _stated_size(repository: Any, file: str) -> int | None:
@@ -210,7 +211,7 @@ def _limit(stated: int | None, allowed: int) -> int:
     over ``allowed`` is refused too, so that the cap holds whichever way the size came."""
     if stated is not None and stated > allowed:
         raise _refuse("asset.size-exceeded", RefusalClass.ENVIRONMENT,
-                      f"the record states a bundle of {assets.size_text(stated)}, over the {assets.size_text(allowed)} "
+                      f"the record states a bundle of {_cache.size_text(stated)}, over the {_cache.size_text(allowed)} "
                       f"MIME takes without being told to", _RAISE_LIMIT)
     return stated if stated is not None else allowed
 
@@ -237,14 +238,14 @@ def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_b
     anything is downloaded."""
     if source.kind == "file":
         return [Fetched(Path(source.value), Path(source.value).name)], None
-    if assets.offline():
+    if _cache.offline():
         raise _offline_refusal(redacted(source.value))
     if source.kind == "url":
-        return [Fetched(locate_bundle_container(assets.retrieve(source.value, name="bundle", max_bytes=max_bundle_bytes,
+        return [Fetched(locate_bundle_container(_fetch.retrieve(source.value, name="bundle", max_bytes=max_bundle_bytes,
                                                           exceeded_action=_RAISE_LIMIT, report=say, yes=yes,
                                                           force=force)),
                         unquote(source.value.split("?", 1)[0].rstrip("/").rpartition("/")[2]))], None
-    assets.downloads_doing(f"reading the file list of the record doi:{source.value}")
+    _fetch.downloads_doing(f"reading the file list of the record doi:{source.value}")
     files, named, resolved = _record_file(source.value, source.file)
     if named is not None and say is not None:
         say(f"the record: {named}")
@@ -253,7 +254,7 @@ def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_b
     fetched: list[Fetched] = []
     for file, checksum, stated in files:
         limit = _limit(stated, max_bundle_bytes)
-        fetched.append(Fetched(locate_bundle_container(assets.retrieve(
+        fetched.append(Fetched(locate_bundle_container(_fetch.retrieve(
             f"doi:{source.value}/{file}", name=_kind_word(file),
             known_hash=checksum, max_bytes=limit, exceeded_action=_RAISE_LIMIT, report=say, size=stated, yes=yes,
             force=force)), file))
@@ -279,9 +280,9 @@ def _from_service(service_name: str, record: str, say: Callable[[str], None] | N
     from mime.push._records import downloader
 
     service = _service.SERVICES[service_name]
-    if assets.offline():
+    if _cache.offline():
         raise _offline_refusal(f"the record {record} on {service.name}")
-    assets.downloads_doing(f"reading the record {record} on {service.name}")
+    _fetch.downloads_doing(f"reading the record {record} on {service.name}")
     found = _records.public_record(service, record, access)
     if say is not None:
         say(f"the record: {found.words()}")
@@ -292,7 +293,7 @@ def _from_service(service_name: str, record: str, say: Callable[[str], None] | N
     held = found.containers or (_records.RecordContainer(found.bundle, found.url, found.md5, found.size),)
     if len(held) > 1 and not into_given:
         raise _several_refused(len(held), f"the record {found.record} on {service.name}")
-    return [Fetched(locate_bundle_container(assets.retrieve(
+    return [Fetched(locate_bundle_container(_fetch.retrieve(
         each.url, name=_kind_word(each.key), known_hash=f"md5:{each.md5}",
         max_bytes=_limit(each.size, max_bundle_bytes), exceeded_action=_RAISE_LIMIT, report=say, size=each.size,
         yes=yes, force=force, fetcher=downloader(service, found.record, access) if access is not None else None)),
@@ -385,7 +386,7 @@ def adapters_needed(lock: Lock) -> list[tuple[str, str]]:
     """Each location scheme the lock's assets need an adapter for that is not registered here, with the package their
     records name for it (an empty name for an adapter a script registered): listed by ``pull``, never installed. A file
     placed in the cache by its sha256 is found without the adapter."""
-    from mime.assets import registered_schemes
+    from mime.assets._adapters import registered_schemes
 
     present = registered_schemes()
     needed: dict[str, str] = {}
@@ -430,7 +431,7 @@ class _AssetOutcome:
 def _assets_line(outcome: _AssetOutcome, folder: Path) -> str:
     parts = [text for text in (
         f"{outcome.cached} cached" if outcome.cached else "",
-        f"{outcome.downloaded} downloaded ({assets.size_text(outcome.downloaded_bytes)})" if outcome.downloaded else "",
+        f"{outcome.downloaded} downloaded ({_cache.size_text(outcome.downloaded_bytes)})" if outcome.downloaded else "",
         f"{outcome.not_downloaded} not downloaded: run `{fetch_command(folder=folder)}`"
         if outcome.not_downloaded else "") if text]
     return "Assets: " + (", ".join(parts) if parts else "none referenced")
@@ -456,26 +457,26 @@ def _fetch_assets(folder: Path | Sequence[Path], *, wanted: bool, yes: bool, for
     """The assets of the saved folder ``folder`` (or of each of several, gated once over all of them) fetched into the
     cache, unless not ``wanted``."""
     folders = [folder] if isinstance(folder, Path) else list(folder)
-    refs = list({ref.sha256: ref for each in folders for ref in assets.folder_assets(each)}.values())
-    absent = [ref for ref in refs if not assets.is_cached(ref)]
+    refs = list({ref.sha256: ref for each in folders for ref in _lock.folder_assets(each)}.values())
+    absent = [ref for ref in refs if not _cache.is_cached(ref)]
     cached = len(refs) - len(absent)
     if not wanted:
         return _AssetOutcome(cached, 0, 0, len(absent))
     total = sum(ref.size for ref in absent)
     if absent and say is not None:
         say(Said(f"Assets to download: {len(absent)} file{'s' if len(absent) != 1 else ''}, "
-                 f"{assets.size_text(total)}", PLAN_LINE))
+                 f"{_cache.size_text(total)}", PLAN_LINE))
     try:
         # Every asset the lock names is gated, cached or not: the first use of a cached file asks about its licence too.
         gate = assets.approved(refs, accept_licences=accept_licences, yes=yes, force=force, confirm=confirm)
         with gate:
             if not absent:
                 return _AssetOutcome(cached, 0, 0, 0)
-            assets.announce_downloads([(ref.name, ref.size) for ref in absent])
+            _fetch.announce_downloads([(ref.name, ref.size) for ref in absent])
             stored = 0
             try:
                 for ref in refs:
-                    assets.fetch(ref, report=say)
+                    _fetch.fetch(ref, report=say)
                     stored += ref in absent
             except BuildRefused as refused:
                 return _AssetOutcome(cached, stored, sum(ref.size for ref in absent[:stored]), len(absent) - stored,
@@ -489,7 +490,7 @@ def _fetch_assets(folder: Path | Sequence[Path], *, wanted: bool, yes: bool, for
 
 def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str] | None = None,
          fetch_assets: bool = True, yes: bool = False, confirm: Callable[[str], bool] | None = None,
-         say: Callable[[str], None] | None = None, max_bundle_bytes: int = assets.RETRIEVE_LIMIT_BYTES,
+         say: Callable[[str], None] | None = None, max_bundle_bytes: int = _fetch.RETRIEVE_LIMIT_BYTES,
          from_service: str | None = None, signed_in: bool = False, accept_licences: Collection[str] = (),
          force: bool = False) -> Path:
     """Get the bundle ``source`` names (a DOI, an address or a file), check its manifest's hashes, and unpack it into
@@ -535,12 +536,12 @@ def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str]
                       f"more studies", "pull each file by its name: `mime pull <its file or address>`")
     bundle = fetched[0].path
     destination = Path(into) if into is not None else Path(bundle_name(bundle))
-    assets.downloads_doing("unpacking the bundle, and checking each file in it")
+    _fetch.downloads_doing("unpacking the bundle, and checking each file in it")
     unpacked: Unpacked = unpack(bundle, destination)
     needed = packages_needed(unpacked.lock)
     outcome = _fetch_assets(destination, wanted=fetch_assets, yes=yes, force=force, accept_licences=accept_licences,
                             confirm=confirm, say=say)
-    assets.downloads_doing("placing the files that travel as references")
+    _fetch.downloads_doing("placing the files that travel as references")
     placed = place_referenced(destination, accept_licences=accept_licences)
     referenced = _referenced_line(placed, destination)
     name, folder = unpacked.manifest["name"], folder_argument(destination)
@@ -579,12 +580,12 @@ def _pull_block(fetched: Fetched, doi: str | None, into: str | os.PathLike[str] 
     from mime.blocks._use import requirement_rows, requires_install_line
 
     container = fetched.path
-    assets.downloads_doing("unpacking the block, and checking each file in it")
+    _fetch.downloads_doing("unpacking the block, and checking each file in it")
     with tempfile.TemporaryDirectory() as scratch:
         held = unpack_block(container, Path(scratch) / "block")
         definition = definition_of(held.folder)
         record = container_record(definition, container, [f"doi:{doi}/{fetched.named}"] if doi else [])
-        assets.require_accepted([record], accept_licences=accept_licences,
+        _gates.require_accepted([record], accept_licences=accept_licences,
                                 accept_with=f"mime pull {quoted(fetched.named)} --accept-licence <id>")
         destination = Path(into) if into is not None else Path(f"{definition.id}-{definition.version}")
         refused = destination_problem(destination)
@@ -628,7 +629,7 @@ def pulled_block(source: str, *, accept_licences: Collection[str] = (), yes: boo
     kind of container is refused (``container.kind``)."""
     from mime.saved._studies import BLOCK, container_kind
 
-    fetched, doi = _bundle_file(parse_source(source), None, assets.RETRIEVE_LIMIT_BYTES, yes, force)
+    fetched, doi = _bundle_file(parse_source(source), None, _fetch.RETRIEVE_LIMIT_BYTES, yes, force)
     if len(fetched) != 1 or container_kind(fetched[0].path, named=fetched[0].named) is not BLOCK:
         raise _refuse("container.kind", RefusalClass.USER,
                       f"{plain(source)} holds {'more than one container' if len(fetched) != 1 else 'another kind of container'}, "
@@ -654,7 +655,7 @@ def _pull_studies(fetched: Sequence[Fetched], into: str | os.PathLike[str] | Non
                       f"the record holds two studies named {plain(clashing[0][0])!r} and {plain(clashing[0][1])!r}, "
                       f"which would unpack into one folder", "pull each file by its name, each --into a folder of its "
                                                              "own: `mime pull doi:<doi>/<file>.mimestudy --into <folder>`")
-    assets.downloads_doing("unpacking the studies, and checking each file in them")
+    _fetch.downloads_doing("unpacking the studies, and checking each file in them")
     if len(fetched) == 1:
         destination = Path(into) if into is not None else Path(names[0])
         unpacked = [unpack_study(fetched[0].path, destination)]
@@ -678,7 +679,7 @@ def _pull_studies(fetched: Sequence[Fetched], into: str | os.PathLike[str] | Non
     folders = [study / where for study, held in zip(studies, unpacked, strict=True) for where in held.locks]
     outcome = _fetch_assets(folders, wanted=fetch_assets, yes=yes, force=force, accept_licences=accept_licences,
                             confirm=confirm, say=say)
-    assets.downloads_doing("placing the files that travel as references")
+    _fetch.downloads_doing("placing the files that travel as references")
     placed = [place_referenced(each, accept_licences=accept_licences) for each in folders]
     needed = sorted({row for held in unpacked for lock in held.locks.values() for row in packages_needed(lock)})
     adapters = sorted({row for held in unpacked for lock in held.locks.values() for row in adapters_needed(lock)})
@@ -709,7 +710,7 @@ def _pull_studies(fetched: Sequence[Fetched], into: str | os.PathLike[str] | Non
 def _studies_assets_line(outcome: _AssetOutcome, folders: Sequence[Path]) -> str:
     parts = [text for text in (
         f"{outcome.cached} cached" if outcome.cached else "",
-        f"{outcome.downloaded} downloaded ({assets.size_text(outcome.downloaded_bytes)})" if outcome.downloaded else "",
+        f"{outcome.downloaded} downloaded ({_cache.size_text(outcome.downloaded_bytes)})" if outcome.downloaded else "",
         f"{outcome.not_downloaded} not downloaded: run `mime assets fetch <folder>` in each saved folder "
         f"({', '.join(folder_argument(each) for each in folders)})" if outcome.not_downloaded else "") if text]
     return "Assets: " + (", ".join(parts) if parts else "none referenced")
@@ -754,13 +755,13 @@ def pulled_parent(source: str | os.PathLike[str], *, accept_licences: Collection
     that holds anything else is refused as pull refuses it (``pull.destination``).
 
     A call run again reads the DOI's record (its metadata, which names the bundle's checksum) and downloads no bundle
-    bytes: the asset cache keeps a note of which file that checksum named (:func:`mime.assets.retrieve`), and the bundle
+    bytes: the asset cache keeps a note of which file that checksum named (:func:`mime.assets._fetch.retrieve`), and the bundle
     is read from the cache. The folder is still judged by the input hashes, never by the checksum: a folder that holds
     another experiment is refused as before. With the cache cleared, or a new version of the record, the bundle is
     downloaded."""
     from mime.saved._studies import container_kind
 
-    fetched, doi = _bundle_from(_kept_secret(source), None, assets.RETRIEVE_LIMIT_BYTES, None, False, yes, force)
+    fetched, doi = _bundle_from(_kept_secret(source), None, _fetch.RETRIEVE_LIMIT_BYTES, None, False, yes, force)
     if len(fetched) != 1 or container_kind(fetched[0].path, named=fetched[0].named) is not BUNDLE:
         raise _refuse("container.kind", RefusalClass.USER,
                       f"Experiment.based_on reads a saved experiment, and {plain(redacted(str(source)))} holds "

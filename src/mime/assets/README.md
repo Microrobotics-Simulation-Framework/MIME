@@ -6,6 +6,44 @@ repository or the wheel; a robot's meshes may not be redistributed at all; a lab
 server. An experiment names each such file by the sha256 of its bytes, never by where it lives, and the file is stored
 on the machine only when someone asks.
 
+> **A maintainer's note, not the published API.** The documentation site (`mime docs build`) does not include this
+> file; its guides (`docs/guide/assets.md`, `docs/guide/lab_author.md`) and the reference are what a user reads. Only
+> the names `mime.assets.__all__` lists are public (`asset`, `Asset`, `AssetRef`, `AssetRecord`, `Resolver`, `reference`,
+> `resolve`, `check`, `CheckResult`, `Manifest`, `read_manifest`, `Acceptance`, the storage adapter's interface, and
+> `approved`, which `mime modal`'s script calls). Every other name here (`locate`, `retrieve`, `derive`, `audit` ...) is
+> internal, in `mime.assets._<module>`, and written as such where first named: it may change without notice.
+
+## Declaring a file: one `asset()`
+
+`asset(source)` (also `mime.asset`) declares every file an experiment reads, and always gives one `Asset` with a record
+behind it (`Asset.ref()`). **The source's type decides its origin**, never a string's shape:
+
+| `source` | origin | saved as | read |
+|---|---|---|---|
+| a string, `asset("dejongh_mlp_v2")`, `asset("labx.emns.yaml")` | a record's name (`named`) | `{asset, sha256}`, and the lock's `resolved.assets` with where its bytes come from | MIME's packaged file in place, or a record's file from the cache through its gate, held to the pinned sha256 |
+| a path, `asset(Path("arm.urdf"), sha256=..., terms=...)` | a local file (`file`) | `{file, sha256}`, its bytes in the folder | the file as it is |
+| an `AssetRef`, `asset(AssetRef(...))` | a whole record (`record`) | `{file, sha256}`, its bytes in the folder, the record whole in the lock's `assets` | the cache, never downloaded by a build |
+
+- **A string is a record's name, never a location.** `asset("https://...")` is refused (`asset.source`): a remote file
+  needs a record with its sha256. A name no record holds is refused (`asset.unknown`), its action `asset(Path(...))`
+  for a file on disk, first where the string is a file here. Any other type is `call.wrong-type`, with the three forms.
+- **A local file's record** is made when it is read: its sha256 and size, and the licence, credit, role and origin its
+  terms state, else `NOASSERTION` and no location, so the record alone grants nothing until a licence is declared. The
+  saved folder still judges an author's own file by the experiment's licence, as before.
+- **MIME's packaged files are records** (`mime.data/assets/packaged.json`, located at `package:mime/<path>`), read in
+  place from the installed package; `mime assets list` says `packaged` for them. **The name is MIME's:** a lock's record,
+  a pin or a script's `AssetRef` that takes a packaged name for other bytes or terms is refused (`asset.packaged-name`),
+  wherever a record enters (the lock `mime assets fetch` reads, the pins a build keeps, `asset(AssetRef(...))`); one that
+  restates MIME's own changes nothing. A plugin's scaffold may not take the first word of a packaged name as its namespace.
+- **Each setting reads the origins it says**: a surrogate's weights and a calibration a name; an arm's description and a
+  scene's layer a file or a record (a name is refused, `asset.source`).
+- **Names are dotted like entries'**: a package's records are `<source>.<name>` (`softtissue.fibrin_plasma`), MIME's own
+  have no namespace. The earlier `<source>_<name>` is still found for this release, under either spelling (with a
+  one-time `FutureWarning` naming the dotted one), and a record keeps the name its file states, so no lock changes.
+  A namespace a resolver owns is the resolver's: its dotted names are asked of it first and never respelled onto a
+  record of another source (`openmaterica.example_water` asks the `openmaterica` resolver; MIME's own
+  `openmaterica_example_water` is found by that name).
+
 ## The record
 
 One record type serves every asset. An `AssetRef` states what the file is, `name`, `sha256` and `size` (bytes); under
@@ -71,12 +109,19 @@ In this order: **the experiment's own declaration, or its lock when it is loaded
 the description in use** (`<description stem>.visuals.json`, else `visuals.json`, next to a URDF: `mime.scene`);
 **installed packages**, each through a `mime.assets` entry point (its name the source's, its value a package whose
 data holds JSON files of records and manifests, as `mime.entries` registers entries from outside MIME); and **MIME's
-own package data**, `mime.data/assets/`, for MIME's own assets only (the wall tables). `known()` is every record the
-shared sources (the last two) agree on, by name; `reference(name)` is one, under the pins.
+own package data**, `mime.data/assets/`, for MIME's own assets only (the wall tables and the packaged files). Every
+record the shared sources (the last two) agree on is known by name; `reference(name)` is one, under the pins.
+
+**A resolver** is a `mime.assets` entry point whose value names an object (`module:object`), a `Resolver`: asked for a
+name in its namespace that no pin and no folder of records holds, its `record(name)` gives that name's record or
+`None`. A DOI, a hub, OpenMaterica or a scan's derived layer becomes a source this way; its record is held as any other
+(its sha256, its licence, its locations). A resolver that answers with anything but a record of that name, or fails (an exit included; an interrupt
+propagates), is refused (`asset.resolver`). Resolvers are asked, never listed. `mime.testing.RecordResolver` answers from records
+held in memory, for a test's own source.
 
 - **The pin wins.** A loaded experiment's lock holds each record it read, whole, and its build reads that record
   whatever a shared source holds under the name now (`pinned`); the build report lists each name a shared source now
-  holds as another file, as `stale_inputs` says of a derived asset's inputs. A saved stage likewise pins each mesh by
+  holds as another file, as `mime.assets._derivation.stale_inputs` says of a derived asset's inputs. A saved stage likewise pins each mesh by
   its manifest's name and its sha256. A record the pin names that is not stored is refused as `asset.missing`, with the
   command that fetches exactly what the lock names.
 - **Two shared sources that hold one name as different files, or as the same bytes under different terms** (its
@@ -84,7 +129,7 @@ shared sources (the last two) agree on, by name; `reference(name)` is one, under
   `asset.conflict`, naming both, whichever source is read first; `known()` leaves the name out. A pin settles it, and
   the build report says a source holds the file under other terms. A new location is never a conflict: the same bytes
   under the same terms in two sources are one record with both sources' locations.
-- **A file declared by its record**: an experiment states a one-off file's whole record with `mime.scene.asset(
+- **A file declared by its record**: an experiment states a one-off file's whole record with `mime.assets.asset(
   AssetRef(...))` (a scan used in one study): its sha256 pins it, its licence, credit, role and locations are its
   terms and origin, and the build reads it from the cache, never downloading it. Saved, the lock holds the record whole.
 
@@ -164,9 +209,9 @@ or the adapter's open and close): reachable or not, and why. With `MIME_OFFLINE`
 `resolve(ref)` is the single lookup of a content-addressed file. `fetch` is its name for the command, and `mime pull`
 uses it for a bundle (a packed experiment is a content-addressed file too) and for the bundle's assets alike, so they
 share the cache, the offline switch, the hash check, the refusal codes and the size report. A bundle named by its DOI,
-or a service's record by number or link, has no hash to look up before it is downloaded, so `retrieve(location,
+or a service's record by number or link, has no hash to look up before it is downloaded, so `mime.assets._fetch.retrieve(location,
 name=..., known_hash=...)` stores such a file: the download is held to the repository's own checksum where there is one
-(Zenodo's md5), hashed in full, and stored in the cache under its sha256, where `locate` finds it. The cache also keeps
+(Zenodo's md5), hashed in full, and stored in the cache under its sha256, where `mime.assets._cache.locate` finds it. The cache also keeps
 a note of which sha256 the checksum named (`md5-<digits>.checksum`), so that the same checksum again (a notebook cell
 run again, a second pull of the same record) finds the stored bundle and downloads nothing; a cleared cache, a missing
 or changed file, or a new version of the record (another checksum) downloads as before. A bare `https://` address has no
@@ -310,11 +355,11 @@ use) asks once for all its files and the resolver then asks nothing more of them
   where it is fetched: bytes a person placed in the cache, or that `mime assets check` or a refused `resolve` recorded
   as checked, are no acceptance)**, a batch (`approved`: a bake, `mime assets fetch`, `mime pull`), the overlay (`mime.viz.overlay`: a set whose licence is
   not accepted is left out and says how to accept it), and placing a referenced file from the cache (left unplaced as
-  `NOT_ACCEPTED`; placing asks nothing, `fetch` and `pull` ask for the whole folder first). `require_accepted(refs)` is
+  `NOT_ACCEPTED`; placing asks nothing, `fetch` and `pull` ask for the whole folder first). `mime.assets._gates.require_accepted(refs)` is
   that gate alone. A file repaired because its bytes are not the record's (the right size, other bytes) is a download and
   is gated as one. Every word of a record shown at a prompt is written as plain characters (`mime._terminal.plain`): a
   manifest's or a lock's text is a stranger's. The Python asker is plain text (`PlainAsker`); the command line sets its
-  own (`asking(asker)`).
+  own (`mime.assets._gates.asking(asker)`).
   **A build with nobody to ask** (CI, a cluster job, a container) that reads a gated file is refused
   (`asset.licence-not-accepted`, whose action names these routes and no `--accept-licence`, which `mime run` does not have) until the acceptance is on record. Three remedies: accept once at a terminal
   (`mime assets fetch <folder>` asks, and the yes is written to `licences.json`); point `MIME_LICENCE_ACCEPTANCES` at a
@@ -401,7 +446,7 @@ A derived file takes the strictest terms of its inputs: the `AND` of their verdi
 one referenced input makes it referenced. Where inputs carry different conditional licences MIME does not judge
 whether their terms can hold together, and the file is referenced unless a declared permission bound to its own hash
 says otherwise (`exp.permission`). A derived asset's inputs are read from its derivation record, by hash
-(`derived_terms(record, known)`); an input no record names has terms nobody stated, and makes the file referenced. A
+(`mime.assets._derivation.derived_terms(record, known)`); an input no record names has terms nobody stated, and makes the file referenced. A
 mesh MIME bakes is a derived file of its source: its record in the cache states its tier.
 
 **Every exit applies it** (save, `pack`, `push`, a run's folder, the guard), through one function, `record_terms(ref,
@@ -415,7 +460,7 @@ such records).
 
 ## The guard
 
-`audit(target)` and `mime assets audit` read a wheel, an sdist, a zip or tar archive, or a directory, hash every file
+`mime.assets._audit.audit(target)` and `mime assets audit` read a wheel, an sdist, a zip or tar archive, or a directory, hash every file
 in it, and find **any file whose sha256 is a referenced record's** (every record known here: the shared sources',
 each manifest, lock and record file inside the target, and the manifests given), **any derived file of one** (a
 record's derivation whose inputs make it referenced, as every exit judges it, and a mesh baked from one in the local
@@ -454,12 +499,12 @@ command, since a plugin's wheel archived by sha256 is a redistribution too.
 
 An asset's truth is authored (true by declaration), measured (a fact with an uncertainty) or derived (a
 cached computation: a wall table, a surrogate's weights, its training data). The reference is the same for all three;
-a derived asset adds a **derivation record** (`DerivationRecord`): its builder and the commit it ran at, the sha256 of
+a derived asset adds a **derivation record** (`mime.assets._derivation.DerivationRecord`): its builder and the commit it ran at, the sha256 of
 each source file it ran and whether the tree was dirty (`working_state`; `None` where a build ran outside the
 repository and recorded neither), its inputs by the role each plays and its hash, its parameters, its checks with their
 results, and its validity domain.
 
-- **`derive(asset, builder, parameters, inputs, ...)`** runs a `Builder` (its name, version and `produce`) and returns
+- **`mime.assets._derivation.derive(asset, builder, parameters, inputs, ...)`** runs a `mime.assets._derivation.Builder` (its name, version and `produce`) and returns
   the bytes with their record; a check that failed, or no check at all, refuses the build (`asset.derivation-check`),
   so a failed or an unchecked build produces no asset.
 - **`stale_inputs(record, current, unjudged=...)`**: each input whose role is now played by an asset with another hash. A

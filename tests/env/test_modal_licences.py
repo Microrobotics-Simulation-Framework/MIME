@@ -22,7 +22,7 @@ from modal_stub import load
 
 import mime.env._modal_script as generator
 from mime import assets
-from mime.assets import AssetRef
+from mime.assets import AssetRef, _gates
 from mime.assets._acceptances import remember
 from mime.env._modal_script import modal_script
 from mime.saved import LOCK_FILE
@@ -41,11 +41,13 @@ spec = importlib.util.spec_from_file_location("modal_app", sys.argv[1])
 script = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(script)
 from mime import assets
+from mime.assets._cache import locate
+from mime.assets._gates import asking
 from mime.build import BuildRefused
 ref = assets.AssetRef.from_record(json.loads(sys.argv[2]))
 try:
-    with assets.asking(None), script._accepting():
-        assets.locate(ref)
+    with asking(None), script._accepting():
+        locate(ref)
     print(json.dumps({"located": True}))
 except BuildRefused as refused:
     print(json.dumps({"located": False, "codes": refused.codes(), "action": refused.refusals[0].action}))
@@ -61,19 +63,21 @@ script = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(script)
 import mime.cli
 from mime import assets
+from mime.assets._cache import locate
+from mime.assets._gates import asking
 from mime.build import BuildRefused
 ref = assets.AssetRef.from_record(json.loads(sys.argv[2]))
 
 
 def reading(arguments):
     if arguments[0] != "env":
-        assets.locate(ref)
+        locate(ref)
     return 0
 
 
 mime.cli.main = reading
 found = {}
-with assets.asking(None):
+with asking(None):
     for name, call in {"_mime": lambda: script._mime("run", "/experiment", "--duration", "1"),
                        "fetch_assets": lambda: script.fetch_assets(),
                        "verify_experiment": lambda: script.verify_experiment("", {}, {})}.items():
@@ -106,12 +110,12 @@ def written(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     accepted, refused = gated(MAKER, "accepted.bin"), gated(OTHER, "refused.bin")
     for ref in (accepted, refused):
         (cache / ref.sha256).write_bytes(DATA + ref.name.encode())
-        with assets.asking(None):
+        with _gates.asking(None):
             assert assets.check(ref) == "ok"
     lock = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
     lock["assets"] = [accepted.to_record(), refused.to_record()]
     (folder / LOCK_FILE).write_text(json.dumps(lock, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    remember(list(assets.licences_of(accepted)))
+    remember(list(_gates.licences_of(accepted)))
     script = modal_script(folder, out=tmp_path / "out", wheel_sha256=lambda version: "ab" * 32).script
     load(script, tmp_path)  # lays the stand-in for modal beside it
     return script, accepted, refused, tmp_path

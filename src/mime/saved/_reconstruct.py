@@ -36,7 +36,8 @@ from mime.saved._terms import declared_permissions, declared_terms, experiment_l
 from mime.saved._versions import SERVO_REASON
 from mime.saved._schema import BoundEntryDoc, ControllerDoc, EntryDoc, EntryRecord, ExperimentDocument, SegmentDoc, \
     SettingValue, ThingDoc
-from mime.scene import Scene, asset, up_axis_problem, within
+from mime.assets import asset
+from mime.scene import Scene, up_axis_problem, within
 from mime.things import ThingKind
 from mime.things._prims import WORLD
 from mime.things._things import MEDIUM_FIELD_ROLES

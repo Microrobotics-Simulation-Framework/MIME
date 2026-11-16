@@ -2,7 +2,7 @@
   "about": "The lab's own records: found through its mime.assets entry point, their bytes inside this package.",
   "assets": [
     {
-      "name": "labx_marker.usda",
+      "name": "labx.marker.usda",
       "sha256": "22686ed3da1c56a1b87f3f7df9bd18fbe8ec19418c3cef7aa5f1922503282670",
       "size": 131,
       "licence": "CC-BY-4.0",
@@ -14,7 +14,7 @@
       "kind": "authored"
     },
     {
-      "name": "labx_finish_nc.usda",
+      "name": "labx.finish_nc.usda",
       "sha256": "def1f2a29cb34b9d71e0b2fb4090ed0dae00ac0460ba29fc756b9a25d022fd13",
       "size": 131,
       "licence": "CC-BY-NC-4.0",
@@ -26,7 +26,7 @@
       "kind": "authored"
     },
     {
-      "name": "labx_emns.yaml",
+      "name": "labx.emns.yaml",
       "sha256": "9e9956913f1c659169a9c9b861128a295288003a756f5163d9df0af6e0478f85",
       "size": 1023,
       "licence": "Apache-2.0",

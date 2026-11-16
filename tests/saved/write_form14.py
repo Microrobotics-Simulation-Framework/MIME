@@ -42,7 +42,8 @@ def main(out: Path) -> None:
     from mime import Apparatus, Experiment
     from mime.drives import Constant
     from mime.dynamics import Arm
-    from mime.scene import Scene, Z, asset
+    from mime.scene import Scene, Z
+    from mime.assets import asset
     from mime.units import m, m_per_s2, ms, rad, s
 
     experiment = Experiment("servo_arm", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(1),

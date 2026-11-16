@@ -32,7 +32,8 @@ from mime.core.multibody import compose, forward_kinematics, read_urdf
 from mime.drives import Constant
 from mime.dynamics import Arm, Motor
 from mime.nodes.actuation import MountedNode
-from mime.scene import STAGE_FILE, Z, asset
+from mime.scene import STAGE_FILE, Z
+from mime.assets import asset
 from mime.things import Apparatus
 from mime.units import VACUUM_PERMEABILITY, m, mm, ms, rad, rad_per_s
 

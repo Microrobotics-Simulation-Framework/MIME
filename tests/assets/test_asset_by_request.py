@@ -17,7 +17,7 @@ import pytest
 from assets_rig import Rig, run_with_rig
 
 from mime import assets
-from mime.assets import AssetRef, _cache, _fetch, _sources
+from mime.assets import AssetRef, _availability, _cache, _fetch, _gates, _sources
 from mime.assets._reference import REQUEST_FORMS, request_problem
 from mime.assets._sources import Sourced
 from mime.build import BuildRefused
@@ -93,20 +93,20 @@ def test_a_route_is_no_term_two_sources_naming_different_routes_agree():
 def a_build_is_refused_by_request(rig: Rig, root: Path) -> None:
     no_locations_file(rig, root)
     ref = record(drawn(1))
-    refused = codes_of(lambda: assets.locate(ref, folder=root / "fl9"))
+    refused = codes_of(lambda: _cache.locate(ref, folder=root / "fl9"))
     assert refused == ["asset.by-request"], refused
     with pytest.raises(BuildRefused) as said:
-        assets.locate(ref, folder=root / "fl9")
+        _cache.locate(ref, folder=root / "fl9")
     (refusal,) = said.value.refusals
-    assert refusal.message == (f"MIME cannot fetch 'vessel_scan' ({assets.size_text(ref.size)}): its publisher gives "
+    assert refusal.message == (f"MIME cannot fetch 'vessel_scan' ({_cache.size_text(ref.size)}): its publisher gives "
                                f"no download location (licence CC-BY-4.0). Request it from: {REQUEST}")
     assert str(rig.cache / "vessel_scan") in refusal.action and "mime assets fetch" in refusal.action
     assert "sha256 is the record's" in refusal.action
-    assert codes_of(lambda: assets.fetch(ref)) == ["asset.by-request"]
+    assert codes_of(lambda: _fetch.fetch(ref)) == ["asset.by-request"]
     assert not _fetch.needs_download(ref) and rig.requests == 0
     no_route = record(drawn(1), request=None)
     with pytest.raises(BuildRefused) as said:
-        assets.locate(no_route)
+        _cache.locate(no_route)
     assert said.value.refusals[0].message.endswith("Request it from: no route given")
 
 
@@ -129,8 +129,8 @@ def test_a_mirror_in_the_locations_file_is_a_location(tmp_path: Path):
             f'[assets]\n"vessel_scan" = ["{rig.server.url("/scan")}"]\n', encoding="utf-8")
         os.environ["MIME_ASSET_LOCATIONS"] = str(tmp_path / "locations.toml")
         rig.server.files["/scan"] = payload
-        assert codes_of(lambda: assets.locate(ref)) == ["asset.missing"]
-        assert assets.fetch(ref).read_bytes() == payload and rig.requests >= 1
+        assert codes_of(lambda: _cache.locate(ref)) == ["asset.missing"]
+        assert _fetch.fetch(ref).read_bytes() == payload and rig.requests >= 1
 
     run_with_rig(scenario, tmp_path)
 
@@ -146,8 +146,8 @@ def a_placed_copy_is_taken(rig: Rig, root: Path, seed: int, plant: str) -> None:
         copy[at] ^= chosen.randint(1, 255)
     rig.cache.mkdir(parents=True, exist_ok=True)
     (rig.cache / ref.name).write_bytes(bytes(copy))
-    assert assets.fetch(ref).read_bytes() == payload
-    assert assets.locate(ref).read_bytes() == payload and rig.requests == 0
+    assert _fetch.fetch(ref).read_bytes() == payload
+    assert _cache.locate(ref).read_bytes() == payload and rig.requests == 0
 
 
 def test_a_copy_placed_in_the_cache_is_taken_only_by_its_hash(tmp_path: Path):
@@ -172,12 +172,12 @@ def test_a_copy_with_one_byte_changed_is_refused_and_left_where_it_is(tmp_path: 
 def test_sources_says_by_request_and_where_to_ask(tmp_path: Path):
     def scenario(rig: Rig) -> None:
         no_locations_file(rig, tmp_path)
-        (view,) = assets.sources_view([record(b"a scan")])
+        (view,) = _availability.sources_view([record(b"a scan")])
         assert view.locations == () and view.reachable == "by request"
-        text = assets.sources_text([record(b"a scan")])
+        text = _availability.sources_text([record(b"a scan")])
         assert f"no download location (by request): request it from {REQUEST}" in text
         assert "locations, in the order" not in text
-        assert "request it from no route given" in assets.sources_text([record(b"a scan", request=None)])
+        assert "request it from no route given" in _availability.sources_text([record(b"a scan", request=None)])
 
     run_with_rig(scenario, tmp_path)
 
@@ -207,17 +207,17 @@ def the_order(rig: Rig, root: Path) -> list[tuple[str, int]]:
         except BuildRefused as refused:
             seen.append((refused.codes()[0], asker.asked))
 
-    with assets.asking(asker):
-        outcome(lambda: assets.locate(ref))
+    with _gates.asking(asker):
+        outcome(lambda: _cache.locate(ref))
         rig.cache.mkdir(parents=True, exist_ok=True)
         (rig.cache / ref.name).write_bytes(payload)
-        outcome(lambda: assets.locate(ref))
-    with assets.asking(None):
-        outcome(lambda: assets.fetch(ref))
-        outcome(lambda: assets.locate(ref))
-    with assets.asking(asker):
-        outcome(lambda: assets.locate(ref))
-        outcome(lambda: assets.locate(ref))
+        outcome(lambda: _cache.locate(ref))
+    with _gates.asking(None):
+        outcome(lambda: _fetch.fetch(ref))
+        outcome(lambda: _cache.locate(ref))
+    with _gates.asking(asker):
+        outcome(lambda: _cache.locate(ref))
+        outcome(lambda: _cache.locate(ref))
     return seen
 
 
@@ -270,20 +270,20 @@ def batch_outcomes(rig: Rig, root: Path) -> list[tuple[str, int]]:
     def batch() -> None:
         try:
             with assets.approved([ref]):
-                assets.fetch(ref)
+                _fetch.fetch(ref)
             seen.append(("fetched", asker.asked))
         except BuildRefused as refused:
             seen.append((refused.codes()[0], asker.asked))
 
-    with assets.asking(None):
+    with _gates.asking(None):
         batch()
-    with assets.asking(asker):
+    with _gates.asking(asker):
         batch()
     rig.cache.mkdir(parents=True, exist_ok=True)
     (rig.cache / ref.name).write_bytes(payload)
-    with assets.asking(None):
+    with _gates.asking(None):
         batch()
-    with assets.asking(asker):
+    with _gates.asking(asker):
         batch()
     return seen
 
@@ -334,7 +334,7 @@ def would_be_unknown(argument: str) -> bool:
 
 def actions_of(ref: AssetRef, folder: Path | None) -> list[str]:
     try:
-        assets.locate(ref, folder=folder)
+        _cache.locate(ref, folder=folder)
     except BuildRefused as refused:
         return [each.action for each in refused.refusals]
     raise AssertionError("not refused")
@@ -353,7 +353,7 @@ def test_by_request_and_missing_never_name_a_command_that_is_an_unknown_asset(tm
         stub_ref = AssetRef("stub_scan", "0" * 64, 4, "CC-BY-4.0", ("https://example.org/stub",))
         (rig.cache / stub_ref.sha256).write_bytes(b"xxxx")
         unlisted = [actions_of(by_request, None), actions_of(stub_ref, None)]
-        assert [codes_of(lambda: assets.locate(each)) for each in (by_request, stub_ref)] == [
+        assert [codes_of(lambda: _cache.locate(each)) for each in (by_request, stub_ref)] == [
             ["asset.by-request"], ["asset.missing"]]
         for action in (each for actions in unlisted for each in actions):
             assert not any(would_be_unknown(argument) for argument in commands_in(action)), action

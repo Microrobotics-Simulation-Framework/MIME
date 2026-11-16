@@ -59,7 +59,7 @@ from a0_compare import (
 from a0_runs import REPORTED
 from script_a0 import a0
 
-from mime.data import asset
+from mime.assets import asset
 
 
 @pytest.fixture(autouse=True, scope="module")
