@@ -19,8 +19,8 @@ last place of the scale each result came from (CLAUDE.md: no absolute part), com
   iteration: at ``SHALLOW_BASIN`` the first step overshoots to 50 hull sizes, its rounding is amplified a thousandfold
   by the second, and 0.4.0 ends at the deepest point from every pose one ulp away and at a point 1 mm shallower from one
   in ten of its rattled copies. Where 0.4.0 does not resolve a group the looped end is not compared with its end but
-  judged by its own stationarity: its residual must stand within twice the largest 0.4.0's arms leave and the rounding of
-  the step's solve (the condition number of its matrix times the sizes, in units of the dtype's resolution), and its
+  judged by its own stationarity: a converged end's residual must stand within twice the largest 0.4.0's arms leave and
+  the rounding of the step's solve (the condition number of its matrix times the sizes, in units of the dtype's resolution), and its
   converged flag must be the flag all of 0.4.0's arms give where they agree, so that a loop too short or a carry from two steps back, which leave the iterate unconverged, are
   caught without asking for the same endpoint. A group seeded far off the wall may end anywhere on the body
   (``_contact.shallower``), and there 0.4.0's own end
@@ -444,8 +444,8 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
     alone = apart(x_l, s_l, w_l, x_u, s_u, w_u)
     spread = np.max([apart(x_k, s_k, w_k, x_u, s_u, w_u) for x_k, s_k, w_k in zip(x_moved, s_moved, w_moved)], axis=0)
     resolved = spread <= width
-    # Where 0.4.0 does not resolve a group the looped end is judged by its own stationarity: its residual must stand within
-    # what 0.4.0's arms leave, twice their largest (a search converging linearly halves its residual a step, so a looped
+    # Where 0.4.0 does not resolve a group the looped end is judged by its own stationarity: a converged end's residual must
+    # stand within what 0.4.0's arms leave, twice their largest (a search converging linearly halves its residual a step, so a looped
     # end one step behind stands at twice) and the rounding of the step's solve (the condition number of its matrix times
     # the point's size and the hull's, in units of the dtype's resolution), and its converged flag must be the one all of
     # 0.4.0's arms give where they agree.
@@ -453,7 +453,7 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
     flag_wrong = (np.all(flags >= 0, axis=0) & (w_l < -band)) | (np.all(flags < 0, axis=0) & (w_l >= band))
     residuals = np.linalg.norm(np.stack([x_u, *x_moved]) - np.stack([s_u, *s_moved]), axis=-1) / unit
     allowed = 2.0 * np.max(residuals, axis=0) + cond * (np.linalg.norm(x_l, axis=-1) / size + 1.0)
-    off_floor = np.linalg.norm(x_l - s_l, axis=-1) / unit > allowed
+    off_floor = (w_l >= 0) & (np.linalg.norm(x_l - s_l, axis=-1) / unit > allowed)
     unstationary = ~resolved & (flag_wrong | off_floor)
     reasons = (flag_wrong, off_floor)
     missed = np.where(resolved, alone, np.where(unstationary, np.inf, 0.0))
