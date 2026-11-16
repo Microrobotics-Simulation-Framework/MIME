@@ -63,8 +63,11 @@ changelog should read it (a `- ` bullet and its continuation lines); do not edit
 small pull request after the merges folds the fragments into `## [Unreleased]` with `scripts/assemble_changelog.py`
 (CONTRIBUTING.md, "The changelog: write a fragment"). The kind picks the section:
 
-- `added` / `changed` / `fixed` — **Added** / **Changed** / **Fixed**
+- `added` / `changed` / `deprecated` / `removed` / `fixed` / `security` — **Added** / **Changed** / **Deprecated** /
+  **Removed** / **Fixed** / **Security** (the commit prefixes `deprecate:` and `security:` take the last two kinds)
 - `anomaly` — **Known Anomalies** — changes to `known_anomalies.yaml`
+
+The entry holds no heading line and balanced code fences, or the script refuses it.
 
 ### 6. New Node, Entry or Refusal Code Checks (if applicable)
 

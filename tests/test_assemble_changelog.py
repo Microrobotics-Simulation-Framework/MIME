@@ -48,7 +48,8 @@ CHANGELOG = """# Changelog
 
 - **A released change.**
 """
-KIND_SECTION = {"added": "Added", "changed": "Changed", "fixed": "Fixed", "anomaly": "Known Anomalies"}
+KIND_SECTION = {"added": "Added", "changed": "Changed", "deprecated": "Deprecated", "removed": "Removed",
+                "fixed": "Fixed", "security": "Security", "anomaly": "Known Anomalies"}
 
 
 def checkout(tmp_path: Path, text: str = CHANGELOG, **fragments: str) -> Path:
@@ -223,15 +224,88 @@ def test_the_trees_own_fragments_are_named_well_and_fold_into_the_real_changelog
 def test_the_real_changelog_gets_each_kind_in_its_own_section_and_nothing_else_moves(tmp_path: Path):
     shutil.copy(ROOT / "CHANGELOG.md", tmp_path / "CHANGELOG.md")
     (tmp_path / "changes.d").mkdir()
-    entries = {kind: f"- **A planted {kind} entry.**\n" for kind in KIND_SECTION}
+    in_it = ("added", "changed", "fixed", "anomaly")  # the sections the real block holds, so no heading is made
+    entries = {kind: f"- **A planted {kind} entry.**\n" for kind in in_it}
     for kind, entry in entries.items():
         (tmp_path / "changes.d" / f"planted.{kind}.md").write_text(entry, encoding="utf-8")
     original = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert fold_in(tmp_path) == 0
     folded = (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
     found = sections_of_unreleased(folded)
-    for kind, section in KIND_SECTION.items():
+    for kind, section in ((kind, KIND_SECTION[kind]) for kind in in_it):
         assert found[section][-1] == f"- **A planted {kind} entry.**"
     for entry in entries.values():
         folded = folded.replace(entry, "", 1)
     assert folded == original
+
+
+def test_the_kinds_of_keep_a_changelog_are_made_in_their_places_among_the_existing_sections(tmp_path: Path):
+    root = checkout(tmp_path, a__security="- **S.**\n", b__removed="- **R.**\n", c__deprecated="- **D.**\n")
+    assert fold_in(root) == 0
+    found = sections_of_unreleased((root / "CHANGELOG.md").read_text(encoding="utf-8"))
+    assert list(found) == ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security", "Known Anomalies"]
+    assert [found[name] for name in ("Deprecated", "Removed", "Security")] == [["- **D.**"], ["- **R.**"], ["- **S.**"]]
+
+
+#: The reviewer's two inputs (a heading line; an unbalanced fence) and the variants the same rules refuse.
+BAD_BODIES = {
+    "a-heading-that-fakes-the-block": "- thing\n## [Unreleased]\n## 9.9 fake\n",
+    "a-level-3-heading": "- thing\n### Added\n",
+    "an-indented-heading": "- thing\n   # not a bullet\n",
+    "an-unbalanced-fence": "- thing\n```\ncode\n",
+    "an-unbalanced-indented-fence": "- thing\n  ```python\n  code\n  ```\n  ```\n",
+}
+
+
+@pytest.mark.parametrize("body", BAD_BODIES.values(), ids=list(BAD_BODIES))
+def test_a_fragment_body_that_would_change_how_the_next_fold_reads_the_file_is_refused_and_nothing_is_written(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str], body: str):
+    root = checkout(tmp_path, ok__added="- **Fine.**\n", bad__added=body)
+    for arguments in ([], ["--dry-run"]):
+        assert fold_in(root, *arguments) == 2
+        assert "bad.added.md: a fragment" in capsys.readouterr().err
+    assert (root / "CHANGELOG.md").read_text(encoding="utf-8") == CHANGELOG
+    assert sorted(path.name for path in (root / "changes.d").iterdir()) == ["README.md", "bad.added.md", "ok.added.md"]
+
+
+def test_a_balanced_fence_in_a_fragment_folds_and_leaves_the_file_foldable_again(tmp_path: Path):
+    entry = "- **With code.**\n  ```python\n  x = 1\n  ```\n"
+    root = checkout(tmp_path, a__fixed=entry)
+    assert fold_in(root) == 0
+    (root / "changes.d" / "b.fixed.md").write_text("- **After.**\n", encoding="utf-8")
+    assert fold_in(root) == 0
+    assert sections_of_unreleased((root / "CHANGELOG.md").read_text(encoding="utf-8"))["Fixed"][-1] == "- **After.**"
+
+
+UNBALANCED = CHANGELOG.replace("- **An old fix.**", "- **An old fix.**\n\n```\nan unclosed fence")
+DUPLICATED = CHANGELOG + "\n## [Unreleased]\n"
+
+
+@pytest.mark.parametrize(("text", "message"), [
+    (UNBALANCED, "code fences are not balanced"),
+    (DUPLICATED, "2 '## [Unreleased]' headings"),
+    (CHANGELOG.replace("## [Unreleased]", "## [Next]"), "0 '## [Unreleased]' headings"),
+    (CHANGELOG.replace("\n", "\r\n", 3), "mixes"),
+], ids=["an-unbalanced-fence", "two-unreleased-blocks", "none", "mixed-line-endings"])
+def test_a_changelog_the_fold_cannot_read_is_refused_and_nothing_is_written(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str], text: str, message: str):
+    root = checkout(tmp_path, a__added="- **A.**\n")
+    (root / "CHANGELOG.md").write_bytes(text.encode())
+    assert fold_in(root) == 2
+    assert message in capsys.readouterr().err
+    assert (root / "CHANGELOG.md").read_bytes() == text.encode()
+    assert (root / "changes.d" / "a.added.md").exists()
+
+
+def test_crlf_line_endings_are_kept_byte_for_byte(tmp_path: Path):
+    root = checkout(tmp_path, a__added="- **New.**\n  and more.\n", b__security="- **Sec.**\n")
+    (root / "CHANGELOG.md").write_bytes(CHANGELOG.replace("\n", "\r\n").encode())
+    assert fold_in(root) == 0
+    raw = (root / "CHANGELOG.md").read_bytes()
+    assert b"\n" not in raw.replace(b"\r\n", b""), "no bare line feed"
+    lf = CHANGELOG.replace("\n", "\r\n").encode()
+    assert raw.replace(b"- **New.**\r\n  and more.\r\n", b"").replace(b"### Security\r\n\r\n- **Sec.**\r\n\r\n", b"") == lf
+    (tmp_path / "lf").mkdir()
+    again = checkout(tmp_path / "lf", a__added="- **New.**\n  and more.\n", b__security="- **Sec.**\n")
+    fold_in(again)
+    assert raw.decode().replace("\r\n", "\n") == (again / "CHANGELOG.md").read_text(encoding="utf-8")

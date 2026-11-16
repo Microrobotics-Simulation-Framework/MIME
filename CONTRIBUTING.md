@@ -435,8 +435,8 @@ test that pins a total of something that changes is a conflict waiting: derive i
 
 Do not edit `CHANGELOG.md` in a pull request: the Unreleased block was the file most pull requests conflicted on. Write a
 fragment instead, `changes.d/<slug>.<kind>.md`, holding the entry exactly as it should read in the changelog (a `- ` bullet
-and its continuation lines). The kind is `added`, `changed`, `fixed` or `anomaly`, the sections Added, Changed, Fixed and
-Known Anomalies of the Unreleased block; the slug names the change (lower-case letters, digits, `-` and `_`). A change with
+and its continuation lines, with no heading line and balanced code fences). The kind is `added`, `changed`, `deprecated`, `removed`, `fixed`, `security` or `anomaly`, the sections Added, Changed,
+Deprecated, Removed, Fixed, Security and Known Anomalies of the Unreleased block (one the block lacks is made in its place); the slug names the change (lower-case letters, digits, `-` and `_`). A change with
 several entries writes a fragment each, with a slug each. The text in a fragment is checked by the rules of the changelog's
 own (`tests/validity/test_user_text.py`, the licence scan) before it is folded.
 
@@ -518,4 +518,4 @@ When MADDENING publishes a new version:
 3. Run MIME's full test suite against the candidate version
 4. Update the version pin in pyproject.toml
 5. Update docs/validation/soup_package.md Section 8
-6. Document the update in CHANGELOG.md
+6. Document the update in a changelog fragment (`changes.d/`, see "The changelog: write a fragment")
