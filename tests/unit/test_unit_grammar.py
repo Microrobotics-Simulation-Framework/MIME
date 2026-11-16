@@ -168,17 +168,19 @@ def product(pairs: list[tuple[str, int]], space: str) -> str:
 
 
 @st.composite
-def rate_spellings(draw: st.DrawFn, space: str) -> tuple[Dimension, str]:
+def rate_spellings(draw: st.DrawFn, space: str, form: str | None = None) -> tuple[Dimension, str]:
     """A rate per second and one spelling of it, built from its parts: a turn counted once (``Hz``) or a radian counted
     once over a second (``rad`` and ``s^-1``), with up to two base units that cancel (``m m^-1``), as a flat product in a
     drawn order, as a quotient (the angle and the cancelled units over the seconds and their partners, in parentheses
-    where more than one), or either in parentheses; in a drawn spacing, with or without spaces about the slash."""
+    where more than one), or either in parentheses; in a drawn spacing, with or without spaces about the slash. ``form``
+    fixes the choice: ``"product"`` or ``"quotient"`` (a turn then holds a cancelled unit, so that it has a slash)."""
     held = draw(st.sampled_from(RATE_DIMENSIONS))
     pairs = [("Hz" if held.angle == "turn" else "rad", 1)] + ([("s", -1)] if held.angle == "radian" else [])
-    for base in draw(st.lists(st.sampled_from(BASES), unique=True, max_size=2)):
+    smallest = 1 if form == "quotient" and held.angle == "turn" else 0
+    for base in draw(st.lists(st.sampled_from(BASES), unique=True, min_size=smallest, max_size=2)):
         pairs += [(base, 1), (base, -1)]
     pairs = draw(st.permutations(pairs))
-    if draw(st.booleans()):
+    if form == "product" or (form is None and draw(st.booleans())):
         text = product(pairs, space)
     else:
         top = [(s, e) for s, e in pairs if e > 0]
@@ -193,7 +195,8 @@ def rate_spellings(draw: st.DrawFn, space: str) -> tuple[Dimension, str]:
 def spelled(draw: st.DrawFn) -> tuple[Dimension, str]:
     """A dimension and one spelling of it: a flat product, a quotient with its negative exponents in a denominator (in
     parentheses where more than one), or a parenthesised group raised to a whole power, in a drawn order and spacing; or
-    a rate per second, which counts turns or radians (:func:`rate_spellings`), in one draw of three. A group is built, not
+    a rate per second, which counts turns or radians (:func:`rate_spellings`), in one draw of three in expectation, which
+    Hypothesis does not promise (a seed drew one rate in a hundred): the properties over rates alone below draw nothing else. A group is built, not
     found: its inside and its power are drawn and the dimension is their product, so a draw reaches a group raised to 2, 3
     or a negative power (a random exponent vector is rarely a whole multiple) in two draws of nine."""
     style = draw(st.sampled_from(["flat", "flat", "quotient", "quotient", "grouped", "grouped", "rate", "rate", "rate"]))
@@ -250,18 +253,29 @@ def test_every_spelling_of_a_dimension_reads_as_it(case):
     assert same(parse_unit(text), held), text
 
 
-def test_a_rate_is_about_a_third_of_what_the_spellings_property_draws():
-    """The strategy's weight on rates, counted over a run of it: a quotient that drops the angle can only be caught on a
-    draw that is a rate. Hypothesis's default 100 examples; the floor is a third of the weight, far below any draw."""
-    drawn: list[bool] = []
+@st.composite
+def rate_products(draw: st.DrawFn) -> tuple[Dimension, str]:
+    return draw(rate_spellings(draw(st.sampled_from([" ", "  ", "\t"])), "product"))
 
-    @settings(database=None)  # this meta-test function only: its examples are counted, never replayed
-    @given(case=spelled())
-    def counting(case: tuple[Dimension, str]) -> None:
-        drawn.append(case[0].angle is not None)
 
-    counting()
-    assert len(drawn) >= 100 and sum(drawn) / len(drawn) >= 0.10, (sum(drawn), len(drawn))
+@st.composite
+def rate_quotients(draw: st.DrawFn) -> tuple[Dimension, str]:
+    return draw(rate_spellings(draw(st.sampled_from([" ", "  ", "\t"])), "quotient"))
+
+
+@given(case=rate_products())
+def test_every_rate_spelled_as_a_product_reads_as_it(case):
+    """Every draw is a rate, because a property over everything drew one in a hundred under a seed: a quotient that drops the
+    angle was then caught 29 runs of 30."""
+    held, text = case
+    assert same(parse_unit(text), held), text
+
+
+@given(case=rate_quotients())
+def test_every_rate_spelled_as_a_quotient_reads_as_it(case):
+    """Every draw is a rate with a slash in it, for the same reason: the plant of a quotient that forgets its angle."""
+    held, text = case
+    assert "/" in text and same(parse_unit(text), held), text
 
 
 def test_the_property_compares_what_a_rate_counts():
@@ -359,6 +373,14 @@ def test_the_spellings_property_fails_under_each_planted_bug(name):
         pytest.skip("a run with a plant set measures the properties' rate")
     with planted(name), pytest.raises(AssertionError):
         test_every_spelling_of_a_dimension_reads_as_it()  # type: ignore[call-arg]  # a @given test: it draws its own
+
+
+@pytest.mark.parametrize("name", ["rate-swapped", "quotient-forgets-angle"])
+def test_the_rate_quotient_property_fails_under_each_plant_that_misreads_a_rate(name):
+    if os.environ.get("MIME_PLANT_UNIT_GRAMMAR"):
+        pytest.skip("a run with a plant set measures the properties' rate")
+    with planted(name), pytest.raises(AssertionError):
+        test_every_rate_spelled_as_a_quotient_reads_as_it()  # type: ignore[call-arg]
 
 
 def test_the_round_trip_property_fails_under_the_swapped_rates():
