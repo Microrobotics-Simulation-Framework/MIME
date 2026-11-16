@@ -920,6 +920,12 @@ class Entry:
         lock, its NOTICE and what ``mime assets fetch`` takes hold what the run reads and no more."""
         return self.assets
 
+    def surface_meshes(self, settings: Mapping[str, Magnitude]) -> tuple[SurfaceMesh, ...]:
+        """The surfaces this entry's nodes move (:class:`SurfaceMesh`), from its settings in SI: none by default. Each is
+        drawn in the stage at rest, below its thing's prim, and recorded with its fields."""
+        del settings
+        return ()
+
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
         """What makes settings whose dimensions are right wrong all the same (a radius below zero, a direction along
         an axis it must not lie on), given in SI, one line each: each is refused in phase 1."""
@@ -1407,6 +1413,66 @@ class Response(Entry):
         stage), over the base step ``dt``. It reads its numbers from ``settings`` alone, never from an instance: the
         stage, rebuilt from its saved form, holds the numbers and calls it on the class."""
         raise NotImplementedError
+
+
+#: How a surface is shown when it is not the solver's own: a two-dimensional or axisymmetric section turned or swept into a
+#: surface for display alone (``mime:display`` on its prim).
+MESH_DISPLAYS = ("revolved", "extruded")
+
+
+@dataclass(frozen=True)
+class MeshField:
+    """A value a surface carries at each of its vertices: its name (an identifier), its units as the vocabulary spells
+    them, the node field that holds it each step (``(V,)``), and the range a view maps it over (``None``: the range the
+    recording holds). It is a physics value; colour is the view's."""
+
+    name: str
+    unit: str
+    port: Port
+    range: tuple[float, float] | None = None
+
+
+@dataclass(frozen=True, eq=False)
+class SurfaceMesh:
+    """A surface an entry's node moves, declared when the experiment is built: fixed triangles (``faces``, ``(F, 3)``
+    vertex indices, counter-clockwise seen from the side shown) over ``V`` vertices, its rest shape (``rest``,
+    ``(V, 3)``, metres, in its thing's frame, near its origin), the node field that holds its points each step
+    (``points``, ``(V, 3)``, metres, the thing's frame) and its fields. ``display`` is ``None`` for the solver's own
+    surface, or one of :data:`MESH_DISPLAYS` for a section shown as a surface. No remeshing: the triangles are the
+    build's."""
+
+    name: str
+    rest: np.ndarray
+    faces: np.ndarray
+    #: ``None`` for a surface that stands at rest and carries changing values (a wall's shear stress).
+    points: Port | None
+    fields: tuple[MeshField, ...] = ()
+    display: str | None = None
+    #: The role whose thing the surface is drawn below and whose frame its points are in, for a law or an observation
+    #: that binds several things; ``None``: the entry's own thing (a dynamics').
+    on: str | None = None
+
+    def problems(self) -> list[str]:
+        """What makes the declaration unusable, one line each."""
+        found: list[str] = []
+        rest, faces = np.asarray(self.rest), np.asarray(self.faces)
+        if rest.ndim != 2 or rest.shape[1] != 3 or not len(rest):
+            found.append(f"surface {self.name!r}: rest has shape {rest.shape}, not (V, 3)")
+        elif not np.all(np.isfinite(rest)):
+            found.append(f"surface {self.name!r}: rest holds a value that is not finite")
+        if faces.ndim != 2 or faces.shape[1] != 3 or not len(faces) or faces.dtype.kind not in "iu":
+            found.append(f"surface {self.name!r}: faces has shape {faces.shape} of {faces.dtype}, not (F, 3) integers")
+        elif rest.ndim == 2 and (faces.min() < 0 or faces.max() >= len(rest)):
+            found.append(f"surface {self.name!r}: a face names a vertex outside 0..{len(rest) - 1}")
+        names = [held.name for held in self.fields]
+        if len(set(names)) != len(names):
+            found.append(f"surface {self.name!r}: a field is named twice ({names})")
+        if self.display is not None and self.display not in MESH_DISPLAYS:
+            found.append(f"surface {self.name!r}: display {self.display!r} is not one of {MESH_DISPLAYS}")
+        for held in self.fields:
+            if held.range is not None and not held.range[0] < held.range[1]:
+                found.append(f"surface {self.name!r}: field {held.name!r} has range {held.range}, low not below high")
+        return found
 
 
 @dataclass(frozen=True)

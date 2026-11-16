@@ -4,7 +4,9 @@ so that a client needs no knowledge of MIME's state layout.
 Every bound prim is placed in the world: a body's prim sits below ``/World``, which carries no transform, and a chain's
 frame prims reset their transform stack. So a pose entry's value is its prim's transform as it stands: the translation
 ``(x, y, z)`` in metres and the orientation ``(w, x, y, z)``, applied to its ``translate`` and ``orient`` ops with no
-composition. A vector entry is a world vector (a field at a body) drawn at the position of the pose it names."""
+composition. A vector entry is a world vector (a field at a body) drawn at the position of the pose it names. A surface's
+``points`` entry is its mesh's points, ``(V, 3)`` metres in its thing's frame, and each of its ``field`` entries the values
+at its vertices, ``(V,)``, held in the mesh's primvar ``primvars:mime:<field>``."""
 
 from __future__ import annotations
 
@@ -15,12 +17,12 @@ from typing import Any
 import numpy as np
 
 from mime.build._plan import PlanSet
-from mime.build._stage import body_poses, segment_prims, vector_sources
+from mime.build._stage import body_poses, segment_prims, mesh_sources, vector_sources
 from mime.vocabulary import FRAME_POSES
 from mime.vocabulary import POSE as BODY_POSE
 
 BINDING_FORMAT = "mime.binding/1"
-POSE, VECTOR = "pose", "vector"
+POSE, VECTOR, POINTS, FIELD = "pose", "vector", "points", "field"
 
 
 @dataclass(frozen=True)
@@ -39,20 +41,28 @@ class Bound:
     name: str
     unit: str
     at: tuple[str, str] | None = None
+    #: A surface's vertices, for its ``points`` and ``field`` entries.
+    count: int | None = None
+    #: A ``field`` entry's field name, its primvar ``primvars:mime:<name>``.
+    surface_field: str | None = None
 
     def record(self) -> dict[str, Any]:
         held: dict[str, Any] = {"prim": self.prim, "node": self.node, "field": self.field, "index": self.index,
                                 "kind": self.kind, "thing": self.thing, "name": self.name, "unit": self.unit,
-                                "space": "world"}
+                                "space": "thing" if self.kind in (POINTS, FIELD) else "world"}
         if self.at is not None:
             held["at"] = {"node": self.at[0], "field": self.at[1]}
+        if self.count is not None:
+            held["vertices"] = self.count
+        if self.surface_field is not None:
+            held["surface_field"] = self.surface_field
         return held
 
 
 @dataclass(frozen=True)
 class StageBinding:
     """Every bound prim of a built experiment's stage, in a fixed order: bodies, then each segment's frames in its
-    own order, then vectors."""
+    own order, then vectors, then each surface's points and its fields."""
 
     entries: tuple[Bound, ...]
 
@@ -80,6 +90,11 @@ class StageBinding:
                 found.append(f"{entry.name}: the state has no field {entry.node}.{entry.field}")
                 continue
             shape = tuple(int(n) for n in np.shape(value))
+            if entry.kind in (POINTS, FIELD):
+                expected = (entry.count, 3) if entry.kind == POINTS else (entry.count,)
+                if shape != expected:
+                    found.append(f"{entry.name}: {entry.node}.{entry.field} has shape {shape}, not {expected}")
+                continue
             width = 7 if entry.kind == POSE else 3
             if entry.index is None:
                 if shape != (width,):
@@ -100,7 +115,15 @@ def stage_binding(plans: PlanSet) -> StageBinding:
                     for index, (frame, path) in enumerate(held.frames.items())]
     entries += [Bound(held.prim, held.node, held.field, None, VECTOR, held.thing, held.name, held.unit,
                       (held.at.node, held.at.field)) for held in vector_sources(plans)]
+    for held in mesh_sources(plans):
+        count = len(held.surface.rest)
+        name = f"{held.thing}.{held.surface.name}"
+        if held.points is not None:
+            entries.append(Bound(held.prim, *held.points, None, POINTS, held.thing, name, "m", count=count))
+        entries += [Bound(held.prim, node, output, None, FIELD, held.thing, f"{name}.{declared.name}", declared.unit,
+                          count=count, surface_field=declared.name)
+                    for declared, (node, output) in zip(held.surface.fields, held.fields, strict=True)]
     return StageBinding(tuple(entries))
 
 
-__all__ = ["BINDING_FORMAT", "POSE", "VECTOR", "Bound", "StageBinding", "stage_binding"]
+__all__ = ["BINDING_FORMAT", "FIELD", "POINTS", "POSE", "VECTOR", "Bound", "StageBinding", "stage_binding"]

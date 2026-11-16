@@ -24,6 +24,7 @@ from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.errors._frames import warn_at_script
 from mime.things._handles import did_you_mean
 from mime.viz._export import ArrowKey, BodyTrack, GltfResult, gltf, length_text
+from mime.viz._fields import COLOUR_MAP, css_gradient
 
 VIEWER_VERSION = "4.3.1"
 VIEWER_FILE = "model-viewer.min.js"
@@ -86,6 +87,11 @@ model-viewer { position: absolute; inset: 0; display: block; width: 100%; height
 #scale-line { height: 6px; width: 0; border: 2px solid var(--fg); border-top: none; }
 #scale-label { font-variant-numeric: tabular-nums; }
 #legend { right: 12px; top: 12px; max-width: min(34em, 60%); }
+#fields { left: 12px; top: 12px; width: min(22em, 45%); pointer-events: auto; }
+#fields select { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--edge);
+  border-radius: 6px; padding: 1px 6px; }
+.ramp { height: 10px; border-radius: 2px; margin: 4px 0 2px; border: 1px solid var(--edge); }
+.ramp-labels { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
 #legend ul { list-style: none; margin: 2px 0 0; padding: 0; }
 #legend li { margin: 2px 0; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
@@ -263,6 +269,28 @@ view.addEventListener("load", () => {
   requestAnimationFrame(tick);
 });
 view.addEventListener("error", (event) => { document.body.dataset.error = JSON.stringify(event.detail ?? null); });
+// The field picker: each field is its own animation (the same motion, its colours), so choosing one plays that animation
+// from the time the view was at, playing or paused as it was.
+const picker = document.getElementById("field");
+function rampFor(index) {
+  const chosen = config.fields[index];
+  if (!chosen) return;
+  const low = document.getElementById("field-low"), high = document.getElementById("field-high");
+  if (low) low.textContent = chosen.low_text;
+  if (high) high.textContent = chosen.high_text;
+  const said = document.getElementById("field-said");
+  if (said) said.textContent = chosen.said;
+}
+if (picker) picker.addEventListener("change", async () => {
+  const at = view.currentTime, paused = view.paused;
+  view.animationName = config.fields[picker.selectedIndex].animation;
+  await view.updateComplete;
+  view.currentTime = at;
+  if (paused) view.pause(); else view.play();
+  rampFor(picker.selectedIndex);
+  document.body.dataset.field = config.fields[picker.selectedIndex].name;
+  label();
+});
 if (play) play.addEventListener("click", () => { if (view.paused) view.play(); else view.pause(); label(); });
 if (speed) speed.addEventListener("change", () => { view.timeScale = Number(speed.value); });
 if (time) time.addEventListener("input", () => {
@@ -329,6 +357,49 @@ def _legend(result: GltfResult) -> str:
     return f'<div class="overlay" id="legend"><strong>Arrows</strong><ul>{items}</ul></div>'
 
 
+def _number(value: float) -> str:
+    return f"{value:.4g}"
+
+
+def field_keys(result: GltfResult) -> list[dict[str, object]]:
+    """Each field a surface is coloured by, once by name, in the GLB's animation order (the converter's: the first field
+    is ``run``, each further one ``run:<field>``): its animation, its units, the range its colours span (the first
+    surface's that carries it), and the line the legend says."""
+    keys: dict[str, dict[str, object]] = {}
+    for morph in result.morphs:
+        for each in morph["fields"]:
+            name = str(each["name"])
+            if name in keys:
+                continue
+            unit = str(each["unit"])
+            shown = "" if unit == "1" else unit  # a dimensionless field's range is shown with no unit
+            low, high = float(each["low"]), float(each["high"])
+            whence = "its declared range" if each["declared"] else "the range the recording holds"
+            keys[name] = {"name": name, "unit": unit, "low": low, "high": high,
+                          "low_text": f"{_number(low)} {shown}".strip(), "high_text": f"{_number(high)} {shown}".strip(),
+                          "said": f"{name} on {str(morph['prim']).removeprefix('/World/')}, {COLOUR_MAP} over {whence}",
+                          "animation": "run" if not keys else f"run:{name}"}
+    return list(keys.values())
+
+
+def _fields(keys: list[dict[str, object]]) -> str:
+    """The field legend: the colour ramp with the chosen field's range, and a picker where there are more fields."""
+    if not keys:
+        return ""
+    first = keys[0]
+    choice = (f'<label>field <select id="field">' + "".join(
+        f'<option value="{html.escape(str(key["animation"]))}">{html.escape(str(key["name"]))}'
+        f'{" (" + html.escape(str(key["unit"])) + ")" if key["unit"] else ""}</option>' for key in keys)
+        + "</select></label>") if len(keys) > 1 else (
+        f'<strong>{html.escape(str(first["name"]))}</strong>'
+        f'{" (" + html.escape(str(first["unit"])) + ")" if first["unit"] else ""}')
+    return (f'<div class="overlay" id="fields" aria-label="field legend">{choice}'
+            f'<div class="ramp" style="background: {css_gradient()}"></div>'
+            f'<div class="ramp-labels"><span id="field-low">{html.escape(str(first["low_text"]))}</span>'
+            f'<span id="field-high">{html.escape(str(first["high_text"]))}</span></div>'
+            f'<div class="muted" id="field-said">{html.escape(str(first["said"]))}</div></div>')
+
+
 def _toggle(name: str, on: bool, said: str, how: str) -> str:
     return f'<li data-toggle="{name}" data-state="{"on" if on else "off"}">{html.escape(said)} <span class="muted">({html.escape(how)})</span></li>'
 
@@ -363,6 +434,8 @@ def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None, s
         "focus": {"name": focus, "target": [float(f"{v:.9g}") for v in focused.positions[0]],
                   "radius": FOCUS_FACTOR * focused.extent if focused.extent else None}
         if focused is not None and focus is not None else None}
+    keys = field_keys(result)
+    settings["fields"] = keys
     config = json.dumps(settings)
     title = html.escape(result.name)
     play = ' autoplay animation-name="run"' if animated else ""
@@ -372,12 +445,14 @@ def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None, s
         f"<style>{_STYLE}</style>", _viewer_tag(cdn), "</head>", "<body>",
         '<div class="stage" id="stage">',
         f'<model-viewer id="view" src="data:model/gltf-binary;base64,{glb}" alt="{title}, drawn from its USD stage" '
-        f'camera-controls{play} interaction-prompt="none" shadow-intensity="0" exposure="1"></model-viewer>']
+        f'camera-controls{play} animation-crossfade-duration="0" interaction-prompt="none" shadow-intensity="0" '
+        'exposure="1"></model-viewer>']
     if scale_bar:
         parts.append('<div class="overlay" id="scale-bar" aria-label="scale bar"><div id="scale-line"></div>'
                      '<span id="scale-label"></span></div>')
     if legend:
         parts.append(_legend(result))
+        parts.append(_fields(keys))
     parts += ['</div>',
               '<div class="grip" id="grip" role="separator" aria-orientation="horizontal" tabindex="0" '
               'aria-label="Resize the notes below the view" '
@@ -405,8 +480,11 @@ def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None, s
         _toggle("scale_bar", scale_bar, "Scale bar: " + ("on. A round length in SI units, true at the point the camera "
                 "orbits, redrawn as you zoom." if scale_bar else "off."),
                 "scale_bar=False or --no-scale-bar hides it" if scale_bar else "scale_bar=True shows it"),
-        _toggle("legend", legend, "Arrow legend: " + (("on. What each arrow is, its colour, the scale it is drawn at and "
-                "its cap." if result.arrows else "on, but this scene draws no arrows.") if legend else "off."),
+        _toggle("legend", legend, "Legends: " + ((("on. What each arrow is, its colour, the scale it is drawn at and "
+                "its cap." if result.arrows else "on; this scene draws no arrows.") + (
+                f" Each surface field's colours ({COLOUR_MAP}) over its range, with a picker where there are several: "
+                "colour is the view's, the recording holds the values; the light shades the colours, so a colour "
+                "matches the ramp where the surface faces the light." if keys else "")) if legend else "off."),
                 "legend=False or --no-legend hides it" if legend else "legend=True shows it"),
         _toggle("apparatus_shapes", result.apparatus_shapes, "Apparatus shapes: " + (
                 f"on. The motor and magnet of an apparatus are drawn for this view alone, never in the stage ({drawn})."

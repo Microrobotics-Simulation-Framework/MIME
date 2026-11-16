@@ -29,6 +29,7 @@ from mime.registry import (
     NoPrimitive,
     RegionPrimitive,
     Registered,
+    SurfaceMesh,
     implements,
 )
 from mime.assets import Manifest
@@ -39,6 +40,7 @@ from mime.scene import (
     MountedPrim,
     RegionPrim,
     StageSpec,
+    MeshPrim,
     ThingPrim,
     VectorPrim,
     VisualPrim,
@@ -164,6 +166,7 @@ def stage_spec(plans: PlanSet, *, segments: int = DRAWING_SEGMENTS, writer: int 
                ThingKind.BODY and plan.initial}
     extents = {line.path.partition(".")[0]: line.value for line in plans.values if line.path.endswith(".extent")}
     things: list[ThingPrim] = []
+    surfaces = mesh_sources(plans)
     for name, kind in plans.things.items():
         start = initial.get(name, {})
         position = start.get("position")
@@ -175,11 +178,14 @@ def stage_spec(plans: PlanSet, *, segments: int = DRAWING_SEGMENTS, writer: int 
                              regions=True, budget=budget) if planned is not None else None
         bound = name in plans.scene.bound
         parts = _parts(plans, name, segments, budget) if kind is ThingKind.BODY and not bound else {}
+        drawn = tuple(MeshPrim(held.surface.name, held.surface.rest, held.surface.faces, held.owner,
+                                  tuple((f.name, f.unit, f.range) for f in held.surface.fields), held.surface.display)
+                      for held in surfaces if held.thing == name) if writer >= 2 else ()
         things.append(ThingPrim(
             plans.scene.prims[name], name, kind.value, bound,
             cast(tuple[float, float, float], tuple(position)) if position is not None else None,
             cast(tuple[float, float, float, float], tuple(orientation)) if orientation is not None else None,
-            geometry, extent if isinstance(extent, float) else None, attributes, parts))
+            geometry, extent if isinstance(extent, float) else None, attributes, parts, drawn))
     references = tuple((layer.at, layer.file) for layer in plans.scene.layers)
     if writer < 2:
         return StageSpec(plans.frame.up, plans.scene.meters_per_unit, references, tuple(things), _mounted_v1(plans))
@@ -321,6 +327,52 @@ def vector_sources(plans: PlanSet) -> list[VectorSource]:
                                       read.field, provider.thing, f"{provider.owner}.{read.slot}", declared.units,
                                       body, (float(start[0]), float(start[1]), float(start[2])),
                                       length / (declared.magnitude or 1.0)))
+    return found
+
+
+@dataclass(frozen=True)
+class MeshSource:
+    """A surface an entry declares, as the stage draws it and a recording moves it: its prim below its thing's, the
+    entry's label (``owner``), the thing, the node that holds its points and each field (by the declaration's ports),
+    and the declaration."""
+
+    prim: str
+    owner: str
+    thing: str
+    surface: SurfaceMesh
+    points: tuple[str, str] | None
+    fields: tuple[tuple[str, str], ...]
+
+
+def mesh_sources(plans: PlanSet) -> list[MeshSource]:
+    """Every surface the experiment's entries declare (:meth:`mime.registry.Entry.surface_meshes`), from their settings in SI,
+    in the plans' order. Raises ``BuildRefused`` naming the entry for a declaration that is not usable, or two surfaces
+    of one thing with one name."""
+    found: list[MeshSource] = []
+    taken: set[str] = set()
+    for plan in plans.entries:
+        declared = _called(plan.registered, "surface_meshes()", lambda plan=plan: plan.entry.surface_meshes(plan.settings))
+        for surface in declared:
+            if not isinstance(cast(object, surface), SurfaceMesh):
+                raise _defect(plan.registered, f"surface_meshes() gave {type(surface).__name__}, not a mime.registry.SurfaceMesh")
+            problems = surface.problems()
+            thing = plan.bindings.get(surface.on) if surface.on is not None else plan.thing
+            if thing is None or thing not in plans.scene.prims:
+                raise _defect(plan.registered, f"surface {surface.name!r}: " + (
+                    f"its role {surface.on!r} binds no thing with a prim" if surface.on is not None else
+                    "the entry has no thing of its own: name the role it is drawn on (SurfaceMesh(on=<role>))"))
+            if not _IDENTIFIER.fullmatch(surface.name) or any(not _IDENTIFIER.fullmatch(f.name) for f in surface.fields):
+                problems.append(f"surface {surface.name!r}: its name and its fields' names are identifiers")
+            prim = f"{plans.scene.prims[thing]}/{surface.name}"
+            if prim in taken:
+                problems.append(f"surface {surface.name!r}: {thing} has another surface of that name")
+            if problems:
+                raise _defect(plan.registered, "; ".join(problems))
+            taken.add(prim)
+            found.append(MeshSource(prim, f"{plan.registered.name} {plan.registered.version}", thing, surface,
+                                       (plan.node_name(surface.points.node), surface.points.field)
+                                       if surface.points is not None else None,
+                                       tuple((plan.node_name(f.port.node), f.port.field) for f in surface.fields)))
     return found
 
 

@@ -40,6 +40,7 @@ from mime.testing.toys._experiments import (
     toy_experiment,
 )
 from mime.testing.toys._family import TOY_FAMILY, resistance_rig
+from mime.testing.toys._surface import ToyIndentedSheet, ToyIndentedSheetNode
 from mime.testing.toys._nodes import (
     ToyAnchoredBodyNode,
     ToyBodyNode,
@@ -54,6 +55,8 @@ from mime.testing.toys._nodes import (
 )
 
 __all__ = [
+    "ToyIndentedSheet",
+    "ToyIndentedSheetNode",
     "COUPLED_BODY",
     "DT",
     "HOLD_Z",
