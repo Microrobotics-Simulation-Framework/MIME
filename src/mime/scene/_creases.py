@@ -32,8 +32,8 @@ def cap_side(kind: str) -> switch.Declaration:
     """The switch of a kind's caps' facing, ``<kind>.cap_side``."""
     return switch.Declaration(
         owner=f"{kind}.cap_side",
-        indicator="the pinhole's height above a cap's plane along the axis, in metres (positive where the pinhole is "
-                  "on the cap's side away from the axis's positive end)",
+        indicator="the pinhole's height above a cap's plane along the axis, in metres (positive where the pinhole lies "
+                  "on the plane's side towards the axis's positive end)",
         orders={"crease_measure": -1},
         route="none: a pinhole in a cap's plane sees the cap edge-on, and the cone's side flips there, so the cap's edge "
               "function changes by twice its facing term")

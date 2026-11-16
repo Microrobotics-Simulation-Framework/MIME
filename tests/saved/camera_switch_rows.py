@@ -306,9 +306,33 @@ def guard_points() -> dict:
         return {"share": coverage.union_covered(coverage.Line(jnp.asarray(1e15), jnp.asarray(0.0), jnp.asarray(0.0)),
                                                 coverage.Line(distance, jnp.asarray(0.6), jnp.asarray(0.8)))}
 
+    def creased_rays(shift):
+        # A capped body's least's place moving with its derivative (``_moving``, which its creased pieces read their
+        # regions at), on a ray along its axis beside it, where the side's profile is flat (no strict minimum: the
+        # place is held, the implicit step's divisor guarded), and on one from the same pinhole through its centre;
+        # its derivative in the pinhole's place across the axis.
+        import dataclasses
+
+        from mime.scene import Cylinder
+        from mime.scene._creases import capped
+        from mime.units import um
+
+        kind = Cylinder(radius=um(300.0), length=um(2000.0), axis=(0.0, 0.0, 1.0))
+        parameters = {"radius": jnp.asarray(300e-6), "length": jnp.asarray(2000e-6), "axis": jnp.asarray((0.0, 0.0, 1.0))}
+        sampled = dataclasses.replace(sampled_route.Sampled(kind, "side", 300e-6, 1.044e-3, 32), regions=("span",),
+                                      creases=4, compose=capped)
+        o = (400e-6 + shift, jnp.asarray(0.0), jnp.asarray(-5e-3))
+        across = math.hypot(400e-6, 5e-3)
+        d = (jnp.asarray([0.0, -400e-6 / across]), jnp.asarray([0.0, 0.0]), jnp.asarray([1.0, 5e-3 / across]))
+        at = jnp.asarray([5e-3, across])
+        return {"place": sampled_route._moving(sampled, parameters, o, d, at, jnp.asarray([6.5e-5, 6.5e-5]))}
+
     slope = jnp.asarray(_Profile.SLOPE)
     at_distance = jnp.asarray(0.2)
-    return {"the camera's union of two branches, one of no direction": (
+    shift = jnp.asarray(0.0)
+    return {"the camera's creased least's place on a ray along a side, its profile flat": (
+                lambda: creased_rays(shift), lambda: jax.jacfwd(creased_rays)(shift)),
+            "the camera's union of two branches, one of no direction": (
                 lambda: directionless(at_distance), lambda: jax.jacfwd(directionless)(at_distance)),
             "the camera's sampled march along a ray whose distance only rises": (
                 lambda: sampled_ray(slope), lambda: jax.jacfwd(sampled_ray)(slope)),
@@ -397,19 +421,20 @@ def sign_rows(declared) -> list[SwitchRow]:
         found = kind.sign_function(parameters, "solid", tuple(jnp.asarray([c]) for c in point))
         return {"sign_function": found.value}
 
-    from mime.scene import Cylinder
+    from mime.scene._creases import cap
 
-    cylinder = Cylinder(radius=um(300.0), length=um(2000.0), axis=(0.0, 0.0, 1.0))
     held = {"radius": jnp.asarray(300e-6), "length": jnp.asarray(2000e-6), "axis": jnp.asarray((0.0, 0.0, 1.0))}
 
     def cap_side(o):
-        """The upper cap's piece on a ray from a pinhole the offset (um) above its plane, rising steeply across it."""
-        origin = (jnp.asarray([150e-6]), jnp.asarray([-400e-6]), jnp.asarray([1000e-6 + o * 1e-6]))
+        """The upper cap's piece (``mime.scene._creases.cap``, as the cylinder's measure makes it) on a ray from a pinhole
+        the offset (m) above its plane, rising across it."""
+        origin = (jnp.asarray([150e-6]), jnp.asarray([-400e-6]), jnp.asarray([1000e-6 + o]))
         direction = (jnp.asarray([0.0]), jnp.asarray([0.8]), jnp.asarray([0.6]))
-        return {"crease_measure": cylinder.crease_measure(held, origin, direction).pieces[1]}
+        return {"crease_measure": cap(origin, direction, held["axis"], held["length"] / 2.0,
+                                      lambda vx, vy, vz: held["radius"], "cylinder.cap_side", held["radius"])}
 
     return [*(SwitchRow(declared[f"helix.end.{end}"], lambda o, end=end: value(o, end), 1e-3) for end in ("low", "high")),
-            SwitchRow(declared["cylinder.cap_side"], cap_side, 1e-3)]
+            SwitchRow(declared["cylinder.cap_side"], cap_side, 1e-4)]
 
 
 # -- route 2's exact union of two branches ----------------------------------------------------------------------------
@@ -456,7 +481,7 @@ def composed_rows(declared) -> list[SwitchRow]:
     """A creased body's owners, each on the helper that evaluates it: ``end`` a function along a segment whose change
     is the offset (its middle held, so its share is one either side: it measures nothing, as declared); ``low``,
     ``high`` and ``empty`` two intervals' intersection whose start, end, or length the offset places; ``body`` a
-    cylinder's first-order distance at a point whose span's lies the offset beyond its side's."""
+    cylinder's first-order distance at a point whose side's lies the offset (m) beyond its span's."""
     import dataclasses
 
     import mime.sensing._sampled as sampled_route
@@ -475,13 +500,13 @@ def composed_rows(declared) -> list[SwitchRow]:
     parameters = {"radius": jnp.asarray(300e-6), "length": jnp.asarray(2000e-6), "axis": jnp.asarray((0.0, 0.0, 1.0))}
 
     def body(o):
-        point = (jnp.asarray([360e-6]), jnp.asarray([0.0]), jnp.asarray([1060e-6 + o * 1e-6]))
+        point = (jnp.asarray([360e-6]), jnp.asarray([0.0]), jnp.asarray([1060e-6 - o]))
         return {"expected": sampled_route.body(held, parameters, *point)}
 
     return [
         SwitchRow(declared["camera.composed.end"], kept, 1e-3),
-        SwitchRow(declared["camera.composed.low"], lambda o: within([(-0.2, 0.4), (-0.2 + o, 0.4)]), 1e-3),
-        SwitchRow(declared["camera.composed.high"], lambda o: within([(-0.2, 0.3), (-0.2, 0.3 - o)]), 1e-3),
+        SwitchRow(declared["camera.composed.low"], lambda o: within([(-0.2, 0.4), (-0.2 - o, 0.4)]), 1e-3),
+        SwitchRow(declared["camera.composed.high"], lambda o: within([(-0.2, 0.3), (-0.2, 0.3 + o)]), 1e-3),
         SwitchRow(declared["camera.composed.empty"], lambda o: within([(-0.2, 0.3), (0.3 - o, 0.4)]), 1e-3),
         SwitchRow(declared["camera.sampled.body"], body, 1e-3),
     ]

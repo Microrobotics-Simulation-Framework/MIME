@@ -22,12 +22,17 @@ within a sub-cell), the place the march reads the side and the span at, and the 
 **The scan** is the gate's domain (``test_crease.py``'s draws): the rod turned 0 to 30 degrees towards the line of sight
 (its caps opening from edge-on), rolled 0 to 90 degrees in the image, moved by a fraction of a pixel; caps narrower than two
 sub-pixels raise ``thin_cap`` and the pixels about them are judged by the flag, as route 1's gate judges them
-(``test_corners.py``). **The pixel line** is ``SAFETY`` times the scan's largest error, the factor for the poses between
-the scan's points (the scan at half its density is reported beside it: the factor holds while that one's largest is
-within it), plus float32's rounding of a sub-ray's point (camera PR 5a's term) in float32. **The motion line** is the same
-for the silhouette's motion: the secant over one pixel of the body's motion along x and z of the darkness's equivalent
-radius (``sqrt(area / pi)``, camera spike 1's metric) and its centroid, the relative norm of the scheme's against the
-exact one's, ``SAFETY`` times the scan's largest."""
+(``test_corners.py``). **The pixel line** is ``SAFETY`` times the scan's largest error, plus float32's rounding of a
+sub-ray's point (camera PR 5a's term) in float32. **The motion line** is the same for the silhouette's motion: the secant
+over one pixel of the body's motion along x and z of the darkness's equivalent radius (``sqrt(area / pi)``, camera spike
+1's metric) and its centroid, the relative norm of the scheme's against the exact one's, ``SAFETY`` times the scan's
+largest.
+
+**What the scan bounds and what the factor is.** The scan's largest is measured: the scheme's error at its 360 poses, by
+this exact numpy re-implementation (equal to the renderer's to 1e-11 where both were run). ``SAFETY`` (1.25) is
+**declared, not derived**: a margin for the poses between the scan's points, which the gate's drawn views test. The scan
+at half its density is reported beside it, but its largest falls at the same points, so it does not test the factor.
+The factor is fixed before the drawn views and never moved after them."""
 
 from __future__ import annotations
 
@@ -49,7 +54,8 @@ CENTRE = np.array((0.113e-3, 0.0, 0.071e-3))
 CORNER_SAMPLES, MARGIN_PX, SAMPLES, LEAST_REACH, LEAST_STEPS = 4, 2.0, 32, 6, 2
 #: The central difference's step, in pixels, for each piece's derivative along the ray table.
 DELTA = 1e-4
-#: The factor on the scan's largest error for the poses between its points.
+#: The margin on the scan's largest error for the poses between its points: declared, not derived (the drawn views
+#: test it); never moved after them.
 SAFETY = 1.25
 TURNS = (0.0, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 15.0, 20.0, 25.0, 30.0)
 ROLLS = (0.0, 10.0, 20.0, 30.0, 45.0, 60.0, 75.0, 90.0)

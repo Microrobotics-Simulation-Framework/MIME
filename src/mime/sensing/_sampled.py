@@ -544,7 +544,8 @@ def _moving(sampled: Sampled, p: Mapping[str, Any], o: Vec, d: Vec, at: Any, spa
     curvature = lax.stop_gradient((along(at + spacing) - 2.0 * along(at) + along(at - spacing)) / (spacing * spacing))
     convex = curvature > 0.0
     step = (live - lax.stop_gradient(live)) / switch.domain_guard(convex, curvature, 1.0)
-    return at - switch.domain_guard(convex, step, jnp.zeros_like(step))
+    # Both branches are zero in value (the step's live part less itself): the choice moves only the derivative.
+    return at - jnp.where(convex, step, jnp.zeros_like(step))
 
 
 def _creased_pieces(sampled: Sampled, held: March) -> Any:

@@ -1,6 +1,6 @@
 {
  "written": "2026-11-16, camera PR 5b-i, before any draw of its gates (the composition's share, the cylinder's crease measure, the cylinder on the sampled route against the exact image, the creased derivative)",
- "disclosed": "Before the lines were derived, development renders of the cylinder by route 2 at turns 0, 10 and 20 degrees (roll 0, no offset) were made against the exact image while the code was being fixed (a least at the samples' ends read as the side's; the least's place's derivative at the side's medial kink); the derivation (scripts/camera_route2/crease_line.py) reads neither them nor the renderer, and its simulation reproduced the renderer's pixel error at turn 10 to 1e-11 (0.00568987).",
+ "disclosed": "Before the lines were derived, development renders of the cylinder by route 2 at turns 0, 10 and 20 degrees (roll 0, no offset) were made against the exact image while the code was being fixed (a least at the samples' ends read as the side's; the least's place's derivative at the side's medial kink); the derivation (scripts/camera_route2/crease_line.py) reads neither them nor the renderer, and its simulation reproduced the renderer's pixel error at turn 10 to 1e-11 (0.00568987). Those development renders (turns 0, 10 and 20, roll 0, no offset) are not gate evidence: the pinned views (turns 0, 2 and 4, roll 0, no offset; turn 0's view is one of them) hold the controls, and the gate's evidence is the drawn views on fresh seeds.",
  "lines": {
   "pixel_line": {
    "float64": 0.05015091762931918,
@@ -13,7 +13,8 @@
    "largest_pixel_error": 0.04012073410345535,
    "largest_motion_error": 0.012229104658720083,
    "note": "the half-density scan's largest are the same points (turn 0, roll 0 for the pixel; turn 1.5, roll 0 for the motion), so it does not test the factor between the scan's points: the factor 1.25 is a declaration, the space between the points a stated risk the drawn views measure"
-  }
+  },
+  "margin": "the factor 1.25 on the scan's largest is declared, not derived: what the lines bound is the scan's 360 poses, measured by an exact numpy re-implementation of the scheme (equal to the renderer's to 1e-11 where both ran); the margin is a declaration for the poses between the scan's points, which the drawn views test; it is never moved after them"
  },
  "predictions": {
   "composed_share": "the composed share equals the clipped polygons' area to 1e-12 on 100 drawn line sets; two one-line terms equal union_covered to 1e-12; CAMERA_PLANT=composed-sign fails on every run",
@@ -35,5 +36,14 @@
   "g18_drawn": "not yet run",
   "g17_derivative": "running",
   "bits": "not yet run"
+ },
+ "second_predictions": {
+  "written": "2026-11-16, camera PR 5b-i's second agent, before the motion control, the derivative control, the drawn views on fresh seeds, the control rates, the switch scan and the bits ran",
+  "seen_before": "G17's derivative test was run in its first form (the sweep 1/4 to 1/256 px, the line the central difference's own error alone): it failed at turns 2, 4 and 15 (9.97, 2.03, 3.06 of the line), and a per-pixel look at turn 2 showed the central difference not yet in its small-step behaviour at 1/256 px about the thin caps (non-monotone, settling at 1/1024 px); with the sweep extended to 1/16384 px turn 0 read 1.66 and turn 2 0.858, turn 0's excess off the crease (the jvp 1.2e-5 of the motion from the converged difference), the held march's envelope error, which camera PR 5a's gate_deriv bounds at 3e-4 of the motion (predictions_camera_pr5a_round5_gates.json)",
+  "motion_control": "CAMERA_PLANT=crease-lag (the caps placed 0.05 of the body's one-pixel step behind it in each moved image, the view's own image unchanged) fails the motion gate on every pinned view in both dtypes while the pixel gate passes there (6 of 6, the motion about 3 times its line); on drawn views it fails the motion gate on every draw; the ladder on the pinned views (CAMERA_PLANT_SIZE 0.05, 0.025, 0.0125): the smallest caught on every pinned view 0.025",
+  "g17_derivative_control": "CAMERA_PLANT=held-least (the regions read at each branch's least with no derivative of its place) fails G17's derivative at turn 15 at least; at turns 0 to 4 the term it removes is small (the span's slope along rays nearly across the axis), and its outcome there is stated per view",
+  "drawn": "the probe draws 200 fresh views per dtype (turn 0 to 30 degrees, roll 0 to 90, offsets 0 to 1 px; seeds from fresh entropy, recorded): every view within the pixel line and the motion line, thin_cap exactly where a cap is that thin, the largest pixel ratio at most 0.8 of the line; the tails (the worst views by each line) are pinned afterwards and single-edge-crease, no-crease-measure and crease-lag each fail every pinned tail",
+  "control_rates": "wide-cap and composed-sign each caught on 20 of 20 fresh-seeded runs (detection_rate.py; lower bound 0.86), their clean arms quiet",
+  "scan": "the switch scan passes on the head with the camera/creased configuration (a test-only creased kind in the in-loop camera) and the raw lines its output names; every new owner passed by a node's step"
  }
 }

@@ -79,8 +79,11 @@ stages:
   raises `thin_cap`, as route 1's caps do (`CreaseMeasure.faces`). An attenuating creased body's chord is its body's
   sign (the greatest of its regions' first-order distances) at the samples. `mime.testing.crease_measure_problems`
   holds a kind's measure to its regions' signs (G17's conformance). Measured: the cylinder by the sampled route
-  against the exact image and the closed form (`tests/sensing/test_crease.py`, its lines derived before its draws by
-  `scripts/camera_route2/crease_line.py`).
+  against the exact image and the closed form (`tests/sensing/test_crease.py`). Its lines are
+  `scripts/camera_route2/crease_line.py`'s, fixed before the gate's draws: what they bound is the scan's largest error
+  at its 360 poses (the scheme re-implemented exactly in numpy, equal to the renderer's to 1e-11 where both ran); the
+  factor of 1.25 on it is a margin **declared, not derived**, for the poses between the scan's points, which the drawn
+  views test, and it is never moved after them.
 - **The kinds' sign functions** (`mime.scene._signs`, `Geometry.sign_function`): the sphere, capsule, cylinder (side and
   span) and slab their exact signed distances; the ellipsoid its radius in units of its semi-axes, less one, with its gradient's length;
   the screw's thread its radius less its modulated cross-section's, with its gradient's length in closed form; the helix the distance from its centreline's

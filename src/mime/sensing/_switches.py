@@ -353,8 +353,10 @@ COMPOSED_SWITCHES = (
         indicator="a linear function's change along a segment (positive where it rises, so that the share on which it "
                   "is at most zero is kept from the segment's start)",
         orders={"expected": 0},
-        route="none: the kept share starts at one end or the other; where the change passes zero the function is flat "
-              "along the segment, its share zero or one, and both ends give the same interval"),
+        route="none: the kept share starts at one end or the other",
+        unmeasured="where the change passes zero the function is flat along the segment and its share is zero or one: "
+                   "the whole segment from either end, or an empty interval at one end or the other, whose length, and "
+                   "so every area it enters, is zero either way"),
     switch.Declaration(
         owner="camera.composed.low",
         indicator="the start of a segment's interval kept so far less the start another body keeps, in segments "

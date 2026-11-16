@@ -36,7 +36,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from camera_cases import planted
+from camera_cases import PLANT_SIZE, planted
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -129,6 +129,20 @@ def test_a_union_of_two_lines_is_exact_where_they_coincide_too(float64, distance
     assert abs(found - exact_share(((0,), (1,)), lines)) <= 1e-12
 
 
+@pytest.mark.parametrize(("distance", "exact"), [(0.5, 0.0), (-0.5, 1.0)])
+def test_known_gap_union_covered_of_a_line_repeated_along_a_cells_side(float64, distance, exact):
+    """**A known gap in camera PR 5a's ``union_covered``, recorded here, not fixed** (a fix would move 5a's compiled
+    programs; it is on the maintainer's list). The case: one line along a cell's side (its normal along u, its distance
+    from the centre half the cell's side), given as both of the union's lines. A half-plane's union with itself is that
+    half-plane: the cell's share is exactly 0 where the body lies beyond the side and 1 where the cell is inside it.
+    ``union_covered`` reads 0.125 and 1.125, because the side the line lies along reads half its length inside; the case
+    has measure zero among drawn lines. ``composed_covered``, which creased bodies use, is exact there. This test fails
+    when the gap is closed, and then asserts the exact share instead."""
+    line = coverage.Line(jnp.asarray(distance), jnp.asarray(1.0), jnp.asarray(0.0))
+    assert abs(float(coverage.composed_covered(((0,), (1,)), [line, line])) - exact) <= 1e-12
+    assert abs(float(coverage.union_covered(line, line)) - (exact + 0.125)) <= 1e-12
+
+
 # -- G17, the measure's conformance -------------------------------------------------------------------------------------
 
 def cylinder_kind():
@@ -170,9 +184,28 @@ def axis_of(turn: float, roll: float) -> np.ndarray:
     return np.array([math.cos(a) * math.cos(r), math.sin(a), math.cos(a) * math.sin(r)])
 
 
+#: The crease's lag behind the body's motion under ``CAMERA_PLANT=crease-lag``, as a share of the motion
+#: (``CAMERA_PLANT_SIZE`` sets it): of a one-pixel step, this much of a pixel.
+LAG = PLANT_SIZE or 0.05
+#: The body's motion from the view's own centre in the image being made (``imaged``), in metres: the lag's reference.
+_moved = [np.zeros(3)]
+
+
 def plant_scheme(monkeypatch) -> None:
-    """The gate's controls: the composed line's single edge a pixel, or the crease without its measure."""
+    """The gate's controls: the composed line's single edge a pixel, the crease without its measure, or the crease
+    lagging the body's motion (its caps placed ``LAG`` of the body's step behind it in each moved image; the view's own
+    image is unchanged, so only the motion can see it)."""
     import mime.sensing._render as render_module
+
+    if planted("crease-lag"):
+        kind_cls = cylinder_kind()
+        found_measure = kind_cls.crease_measure
+
+        def lagging(self, parameters, o, d):
+            shift = LAG * _moved[0]
+            return found_measure(self, parameters, tuple(o[i] + shift[i] for i in range(3)), d)
+
+        monkeypatch.setattr(kind_cls, "crease_measure", lagging)
 
     if planted("single-edge-crease"):
         found_box = render_module._box_coverage
@@ -202,6 +235,10 @@ def plant_scheme(monkeypatch) -> None:
             object.__setattr__(self, "placed", placed)
 
         monkeypatch.setattr(Subject, "_place_sampled", unmeasured)
+    if planted("held-least"):
+        # The regions read at each branch's held least with no derivative of its place: the span's distance at a point
+        # that does not move with the body along the ray.
+        monkeypatch.setattr(sampled_route, "_moving", lambda sampled, p, o, d, at, spacing: at)
 
 
 def rod(axis, route: str | None = "sampled") -> Subject:
@@ -209,7 +246,9 @@ def rod(axis, route: str | None = "sampled") -> Subject:
                    appearance=Appearance.opaque(), moving=True, route=route)
 
 
-def imaged(body: Subject, centre: np.ndarray):
+def imaged(body: Subject, centre: np.ndarray, moved: np.ndarray | None = None):
+    """The body's image at ``centre``; ``moved``, the step from its view's own centre (the lag plant's reference)."""
+    _moved[0] = np.zeros(3) if moved is None else moved
     found = render([body], CAMERA, POSE, {"rod": (jnp.asarray(centre), jnp.asarray(IDENTITY))})
     return 1.0 - np.asarray(found.transmission, dtype=np.float64), found
 
@@ -245,7 +284,7 @@ def judged_view(turn: float, roll: float, offset: tuple[float, float], dtype: st
     pixel = float(np.max(np.abs(covered - exact)[judged]))
     motion = 0.0
     for step in (np.array([PIXEL, 0.0, 0.0]), np.array([0.0, 0.0, PIXEL])):
-        moved, _ = imaged(rod(axis), centre + step)
+        moved, _ = imaged(rod(axis), centre + step, step)
         moved_exact = hull_oracle.shares(hull_oracle.cylinder_outline(centre + step, axis, RADIUS, LENGTH), FOCAL,
                                          DISTANCE, WIDTH, HEIGHT)
         scheme = aggregates(moved) - aggregates(covered)
@@ -294,10 +333,25 @@ def test_g18_route_one_and_route_two_each_hold_to_the_exact_image(dtype):
 
 # -- G17, the derivative ------------------------------------------------------------------------------------------------
 
-def derivative_line(differences: list[np.ndarray], floor: np.ndarray) -> np.ndarray:
-    """The central difference's own error at its step, stated by the sweep: twice the change between the differences
-    at the step and at half of it (the last two of the sweep), and their rounding."""
-    return 2.0 * np.abs(differences[-1] - differences[-2]) + floor
+#: The sweep's steps, in pixels of the body's motion: a quarter apart, from 1/64 to 1/16384 of a pixel. Near a cap seen
+#: almost edge-on the image's derivative turns within a few hundredths of a pixel of motion (the cap's outline curves
+#: within a sub-pixel), so the central difference reaches its own small-step behaviour only below about 1/1000 of a
+#: pixel; float64's rounding is still far below it at the last step.
+STEPS = tuple(4.0 ** -k for k in range(3, 8))
+#: The held march's own derivative error, which the jvp carries and the central difference does not: camera PR 5a's
+#: committed band for route 2's derivative (``predictions_camera_pr5a_round5_gates.json``, ``gate_deriv``: the central
+#: difference within 3e-4 of the motion's norm of the jvp at steps at or below 1/512 of a pixel), the envelope rule's
+#: error in a branch's held point, second order in the march's spacing.
+ENVELOPE_BAND = 3e-4
+
+
+def derivative_line(differences: list[np.ndarray], floor: np.ndarray) -> float:
+    """What the jvp's motion may lie from the central difference's at the sweep's last step, in the norm of the motion
+    (the equivalent radius and the centroid, in pixels): the difference's own error, twice the change between its last
+    two steps (a quarter apart, so where its error is second order in the step, thirty times its error at the last),
+    and its rounding there; and the held march's ``ENVELOPE_BAND`` of the motion."""
+    return float(np.linalg.norm(2.0 * (differences[-1] - differences[-2])) + np.linalg.norm(floor)
+                 + ENVELOPE_BAND * np.linalg.norm(differences[-1]))
 
 
 def crease_mask(centre: np.ndarray, axis: np.ndarray) -> np.ndarray:
@@ -312,35 +366,43 @@ def crease_mask(centre: np.ndarray, axis: np.ndarray) -> np.ndarray:
 
 @pytest.mark.parametrize("turn", PINNED + (15.0,))
 def test_g17_the_creased_derivative_is_the_images(float64, turn, monkeypatch):
+    """The jvp of the darkness's equivalent radius and centroid, on the pixels about the caps' rims and on the rest
+    apart, in the body's x and z, against the central difference of the same renderer at the sweep's last step, within
+    ``derivative_line``. **Control** (``CAMERA_PLANT=held-least``): the regions read at each branch's least with no
+    derivative of its place."""
     plant_scheme(monkeypatch)
     axis = axis_of(turn, 20.0)
     body = rod(axis)
-    crease = crease_mask(CENTRE, axis)
+    crease = jnp.asarray(crease_mask(CENTRE, axis), jnp.float64)
+    masks = jnp.stack([crease, 1.0 - crease])
     v, u = (jnp.asarray(x, jnp.float64) for x in np.indices((HEIGHT, WIDTH)))
 
-    def aggregates_on(at, mask):
-        dark = (1.0 - render([body], CAMERA, POSE, {"rod": (at, jnp.asarray(IDENTITY))}).transmission) * mask
-        total = jnp.sum(dark)
-        return jnp.stack([total, jnp.sum(dark * u) / total, jnp.sum(dark * v) / total])
+    def aggregates_on(at):
+        dark = (1.0 - render([body], CAMERA, POSE, {"rod": (at, jnp.asarray(IDENTITY))}).transmission) * masks
+        total = jnp.sum(dark, axis=(1, 2))
+        return jnp.stack([jnp.sqrt(total / math.pi), jnp.sum(dark * u, axis=(1, 2)) / total,
+                          jnp.sum(dark * v, axis=(1, 2)) / total], axis=1)
 
-    found = []
-    for mask in (crease, ~crease):
-        held = jnp.asarray(mask, jnp.float64)
-        values = jax.jit(lambda at: aggregates_on(at, held))
-        for axis_index in (0, 2):
-            e = np.zeros(3)
-            e[axis_index] = 1.0
-            tangent = np.asarray(jax.jvp(lambda at: aggregates_on(at, held), (jnp.asarray(CENTRE),),
-                                         (jnp.asarray(e),))[1])
-            differences = []
-            for k in range(1, 5):
-                h = PIXEL / 4 ** k
-                differences.append((np.asarray(values(jnp.asarray(CENTRE + h * e)))
-                                    - np.asarray(values(jnp.asarray(CENTRE - h * e)))) / (2 * h))
-            scale = np.abs(np.asarray(values(jnp.asarray(CENTRE))))
-            floor = 64 * float(np.finfo(np.float64).eps) * scale / (PIXEL / 4 ** 4)
-            line = derivative_line(differences, floor)
-            found.append((np.abs(tangent - differences[-1]), line))
-    worst = max(float(np.max(apart / np.maximum(line, 1e-300))) for apart, line in found)
-    print(f"\nturn {turn}: the jvp's largest distance from the central difference, as a share of its own error {worst:.3g}")
+    values = jax.jit(aggregates_on)
+    tangents = jax.jit(lambda at, e: jax.jvp(aggregates_on, (at,), (e,))[1])
+    scale = np.abs(np.asarray(values(jnp.asarray(CENTRE))))
+    floor = 64 * float(np.finfo(np.float64).eps) * scale / (PIXEL * STEPS[-1])
+    worst, strict = 0.0, 0.0
+    for axis_index in (0, 2):
+        e = np.zeros(3)
+        e[axis_index] = 1.0
+        tangent = np.asarray(tangents(jnp.asarray(CENTRE), jnp.asarray(e))) * PIXEL
+        differences = [(np.asarray(values(jnp.asarray(CENTRE + PIXEL * step * e)))
+                        - np.asarray(values(jnp.asarray(CENTRE - PIXEL * step * e)))) / (2 * step)
+                       for step in STEPS]
+        for mask in range(2):
+            held = [difference[mask] for difference in differences]
+            apart = float(np.linalg.norm(tangent[mask] - held[-1]))
+            worst = max(worst, apart / derivative_line(held, floor[mask] * PIXEL))
+            strict = max(strict, apart / (derivative_line(held, floor[mask] * PIXEL)
+                                          - ENVELOPE_BAND * float(np.linalg.norm(held[-1]))))
+            print(f"\nturn {turn}, axis {axis_index}, {('crease', 'rest')[mask]}: jvp {tangent[mask]} (px a px)\n"
+                  f"  differences {np.asarray(held)}\n  apart {apart:.3g}, line {derivative_line(held, floor[mask] * PIXEL):.3g}")
+    print(f"\nturn {turn}: the jvp's largest distance from the central difference, as a share of the line {worst:.3g} "
+          f"(of the difference's own error alone {strict:.3g})")
     assert worst <= 1.0
