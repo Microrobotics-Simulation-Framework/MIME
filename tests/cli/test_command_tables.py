@@ -576,7 +576,7 @@ def test_the_control_a_colour_code_planted_in_piped_output_is_found_in_each_comm
     monkeypatch.undo()
 
     real = export_json()
-    monkeypatch.setattr("mime.docs._export.export_json", lambda: real.replace('"arm_tracking"', '"\\u001b[1marm_tracking"'))
+    monkeypatch.setattr("mime.docs._export.export_json", lambda refused=None: real.replace('"arm_tracking"', '"\\u001b[1marm_tracking"'))
     assert mime_main(["registry"]) == 0
     printed = capsys.readouterr().out
     assert ESCAPE.search(printed) and not registry_oracle_matches(printed)

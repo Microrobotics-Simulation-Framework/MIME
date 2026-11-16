@@ -7,7 +7,8 @@ descriptor answers at once.
 The first press is acknowledged by that thread in one line. What the command does about it depends on where it is:
 while it loads and builds, the handler raises ``KeyboardInterrupt`` in the main thread as soon as Python gets there,
 and the command reports it and exits 130; once :meth:`Interrupt.running` is called, the press asks for the run to stop
-at its next chunk (:meth:`Interrupt.stop`, passed as ``stop=``), which the run does, writing what it reached. The
+at its next chunk (:meth:`Interrupt.stop`, passed as ``stop=``), which the run does, writing what it reached (or, where
+the run is into a folder it was forced into, writing nothing: the press cancels it until it begins to write). The
 second press is acted on by the thread alone, wherever the main thread is: it says so and ends the process with 130,
 writing nothing. A run folder is written so that this leaves nothing that reads as a finished run (``outputs.json`` is
 its last file)."""
@@ -26,6 +27,10 @@ from typing import Self
 INTERRUPTED = 130
 _STOPPING_AT_CHUNK = ("Ctrl+C: stopping at the end of this chunk and writing the run as far as it got; press Ctrl+C "
                       "again to quit now, writing nothing")
+_CANCELLING = ("Ctrl+C: cancelling at the end of this chunk, and nothing will be written; press Ctrl+C again to quit "
+               "now")
+_WRITING = ("Ctrl+C: the run is being written and can no longer be cancelled; press Ctrl+C again to quit now, which "
+            "can leave the folder half written")
 _STOPPING = "Ctrl+C: stopping; press Ctrl+C again to quit now"
 _QUITTING = "Ctrl+C again: quitting now, nothing written"
 #: The reason a run records when this stopped it.
@@ -90,6 +95,17 @@ class Interrupt:
         with self._lock:
             self._at_chunk = True
             self._message = _STOPPING_AT_CHUNK
+
+    def cancels(self) -> None:
+        """From here a first press says the run is cancelled and writes nothing: the caller checks :attr:`pressed` before
+        it writes, and ends the command then."""
+        with self._lock:
+            self._message = _CANCELLING
+
+    def writing(self) -> None:
+        """From here a first press says the run is being written and cannot be cancelled."""
+        with self._lock:
+            self._message = _WRITING
 
     def stop(self, progress: object = None) -> str | None:
         """The ``stop=`` of a run (given the chunk's progress, which it does not need): its reason once Ctrl+C has been

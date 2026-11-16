@@ -215,6 +215,27 @@ def setting_names(cls: type) -> list[str]:
     return [f.name for f in dataclasses.fields(cls) if f.name not in bindings]
 
 
+def reserved_setting_problems(cls: type) -> list[str]:
+    """Every setting of ``cls`` named like an attribute one of its base classes declares that is not a setting of that
+    class: a dataclass field of that name would replace the attribute (a setting ``gradient`` overwrites the entry's
+    ``gradient`` record, and its declared switches go missing). The reserved names are read from the bases themselves,
+    each with the class that declares it; a base's own settings (``rate``, a dynamics') are settings, never reserved."""
+    if not dataclasses.is_dataclass(cls):
+        return []
+    reserved: dict[str, type] = {}
+    for base in cls.__mro__[1:]:
+        if base is object:
+            continue
+        settings = {f.name for f in dataclasses.fields(cast(Any, base))} if "__dataclass_fields__" in vars(base) \
+            else set[str]()
+        for name in vars(base):
+            if not name.startswith("_") and name not in settings:
+                reserved.setdefault(name, base)
+    return [f"setting {name!r} is named like {reserved[name].__qualname__}.{name}, an attribute of the entry's "
+            f"class that the setting would replace: rename the setting"
+            for name in setting_names(cls) if name in reserved]
+
+
 def declared_roles(cls: type) -> dict[str, SettingRole]:
     """Each setting's role as ``cls`` and its bases declare it (``setting_roles``), a subclass's winning."""
     found: dict[str, SettingRole] = {}
@@ -736,6 +757,7 @@ def _naming_missing_settings(cls: type) -> None:
 def _register[E: type[Entry]](kind: EntryKind, cls: E) -> E:
     found = _problems(kind, cls)
     found += rate_problems(cls)
+    found += reserved_setting_problems(cls)
     settings: dict[str, DimensionedSetting] = {}
     if dataclasses.is_dataclass(cls):
         settings, problems = dimensioned_settings(cls)

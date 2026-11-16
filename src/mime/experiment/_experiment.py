@@ -978,6 +978,117 @@ def refuse_out_over(out: Path, sources: Sequence[str | PathLike[str]]) -> None:
                     "the files being read")])
 
 
+#: What the top of a MIME run folder holds, besides ``outputs.npz`` and the rest above: the manifest, the report, the
+#: recording layer (``mime.viz``'s ``RECORDING_FILE``) and a live session's command log (``mime.live``'s ``COMMAND_LOG``;
+#: ``tests/experiment/test_out_folder.py`` keeps these in step with them).
+RUN_FOLDER_NAMES = frozenset({RUN_OUTPUTS, RUN_RECORD, RUN_EXPERIMENT, RUN_TOPOLOGY, RUN_MANIFEST, RUN_REPORT,
+                              "recording.usdc", "commands.jsonl"})
+#: The environment check a runner writes into the run's folder before the run (``mime env check --record``, as the Modal
+#: script does): a folder that holds this file alone is one a run is about to be written into, and is MIME's own.
+ENV_CHECK_FILE = "env-check.json"
+
+
+#: What a run's record (``run.json``) holds whichever way the folder was written (a run, or a live session's stop).
+RUN_RECORD_KEYS = frozenset({"steps", "duration", "environment"})
+#: What each JSON file of a run folder's own names must be: an object holding the keys named.
+_JSON_KEYS: Mapping[str, frozenset[str]] = {RUN_RECORD: RUN_RECORD_KEYS, RUN_MANIFEST: frozenset({"format", "steps"}),
+                                            RUN_REPORT: frozenset({"format"}), RUN_TOPOLOGY: frozenset(),
+                                            ENV_CHECK_FILE: frozenset()}
+
+
+def _is_what_it_is_named(path: Path) -> bool:
+    """Whether ``path``, a name of a MIME run folder, holds what MIME writes under it: JSON of the keys the writer gives
+    it, a zip archive for the outputs, the saved form's document for ``experiment/``. A file of a user's that took one of
+    the names, and a stranger's ``run.json``, is not."""
+    name = path.name
+    if name == RUN_EXPERIMENT:
+        from mime.saved import DOCUMENT_FILE
+
+        return path.is_dir() and (path / DOCUMENT_FILE).is_file()
+    if not path.is_file():
+        return False
+    if name == RUN_OUTPUTS:
+        import zipfile
+
+        return zipfile.is_zipfile(path)
+    if name in _JSON_KEYS:
+        try:
+            held = cast(object, json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            return False
+        return isinstance(held, dict) and _JSON_KEYS[name] <= set(cast(dict[str, Any], held))
+    return True  # the recording layer and a live session's command log: by name, and a file
+
+
+def has_link_inside(out: Path) -> bool:
+    """Whether ``out`` holds a symbolic link at any depth (never followed): a run writes through one to what it points
+    at."""
+    import os
+
+    return any(Path(root, name).is_symlink() for root, directories, names in os.walk(out) for name in (*directories, *names))
+
+
+def own_run_folder(out: Path) -> bool:
+    """Whether ``out`` is MIME's own run folder, by what it holds and not by its names alone: ``run.json`` that reads as
+    a run's record, and every other entry of a name a run writes (or the runner's environment check), holding what that
+    name holds, with no link anywhere inside. A folder of the runner's environment check alone is one too (a run is
+    about to be written into it)."""
+    names = {child.name for child in out.iterdir()}
+    if has_link_inside(out) or not names <= RUN_FOLDER_NAMES | {ENV_CHECK_FILE}:
+        return False
+    if names == {ENV_CHECK_FILE}:
+        return _is_what_it_is_named(out / ENV_CHECK_FILE)
+    return RUN_RECORD in names and all(_is_what_it_is_named(out / name) for name in names)
+
+
+def foreign_entries(out: Path) -> tuple[str, ...]:
+    """What keeps ``out`` from being a folder a run may be written into without ``force``: its entries, sorted (a folder
+    ends in ``/``), when it holds anything and is not MIME's own run folder (:func:`own_run_folder`), and ``()`` when it
+    is not there, is empty, or is MIME's own. A file at ``out``, or a link that leads nowhere, is named."""
+    if out.is_symlink() and not out.exists():
+        return (f"{out.name} (a link to nowhere)",)
+    if not out.exists():
+        return ()
+    if not out.is_dir():
+        return (out.name,)
+    held = sorted(child.name + ("/" if child.is_dir() else "") for child in out.iterdir())
+    return () if not held or own_run_folder(out) else tuple(held)
+
+
+def not_a_folder(out: Path) -> bool:
+    """Whether ``out`` is there and cannot be written into as a folder: a file, or a link that leads nowhere."""
+    return (out.is_symlink() and not out.exists()) or (out.exists() and not out.is_dir())
+
+
+def refuse_out_not_own(out: Path, force: bool, *, meanwhile: bool = False) -> None:
+    """Refuse, before a run starts, a folder that is neither new, empty nor MIME's own run folder (:func:`own_run_folder`):
+    the run replaces the files of its own names in it (``outputs.json``, ``run.json``, ``experiment/``'s saved form), and
+    a file of yours of one of those names is lost, with nothing said. ``force`` runs into it all the same, but not into
+    what is no folder (a file, a link to nowhere): there is nothing to run into. ``meanwhile`` says the folder was
+    judged once already and has changed since, while the run computed (:meth:`BuiltExperiment.run_to` judges it again
+    where writing begins)."""
+    held = foreign_entries(Path(out))
+    if not held or (force and not not_a_folder(Path(out))):
+        return
+    shown = ", ".join(held[:5]) + (", ..." if len(held) > 5 else "")
+    what = ("a link to nowhere" if Path(out).is_symlink() else "a file") if not_a_folder(Path(out)) else None
+    changed = f"{out} changed while the run computed, and " if meanwhile else ""
+    raise ArgumentRefused([Refusal(
+        "run.out-not-empty", RefusalClass.USER,
+        f"{changed}the run would be written into {out}, which holds {shown} and is not an empty folder or a MIME run "
+        "folder" if what is None else f"{changed}the run would be written into {out}, which is {what}, not a folder",
+        "write it to a new folder or an empty one: --out <a new folder> (or out=); or run into this one with --force "
+        "(or force=True): it warns at the start of what the folder holds, Ctrl+C cancels the run until writing begins "
+        "(nothing is touched), an amber notice says when writing begins, and only the files a run writes are replaced"
+        if not not_a_folder(Path(out)) else
+        "write it to a new folder or an empty one: --out <a new folder> (or out=); a file, or a link that leads "
+        "nowhere, is no folder a run can be written into, with --force or without",
+        why="a run writes outputs.npz, outputs.json, run.json, report.json, topology.json and the saved form in "
+            "experiment/ into its folder, replacing a file of those names, and a folder MIME did not write may hold "
+            "yours; a folder is MIME's own where run.json is a run's record, every other entry is a file a run writes "
+            "(and reads as one), and no link is inside")])
+
+
 @dataclass(frozen=True)
 class RunWritten:
     """A run :meth:`BuiltExperiment.run_to` wrote: its steps, the files, the record (what ``run.json`` holds) and the
@@ -1800,7 +1911,8 @@ class BuiltExperiment:
                source: str | PathLike[str] | None = None, load_seconds: float | None = None,
                hook: ChunkHook | None = None, chunk: Quantity | None = None,
                stage_every: Quantity | None = None, stop: StopRequest | None = None,
-               progress: bool | None = None, override: Mapping[Any, object] | None = None) -> RunWritten:
+               progress: bool | None = None, override: Mapping[Any, object] | None = None, force: bool = False,
+               before_writing: Callable[[], None] | None = None) -> RunWritten:
         """Run for ``duration`` and write into ``out`` what ``mime run`` does: ``outputs.npz`` (every field after the
         last step, with ``history`` at every step, the series ``record`` names, one every ``every``, and the flags at
         every step when anything is recorded), ``outputs.json`` beside it (its manifest: every output with its unit,
@@ -1834,6 +1946,16 @@ class BuiltExperiment:
         its unit, its SI value and the leaves it writes), ``report.json`` is the point's, every output is stamped
         "overridden", and ``experiment/`` is this build's own saved form, unchanged; ``mime verify --run`` replays them.
 
+        ``out`` is a new folder, an empty one, or MIME's own run folder (``run.json`` and files of the names above): any
+        other folder is refused before the run starts (``run.out-not-empty``), since the run replaces the files of its
+        own names; "MIME's own" is judged by what the folder holds (``run.json`` that reads as a run's record, every other
+        entry a file a run writes and reading as one, no link inside), not by names alone, and a file or a link to
+        nowhere is no folder at all. ``force=True`` runs into a folder all the same (not into a file or a link to
+        nowhere). The folder is judged again where writing begins, after the run, and refused if it changed while the
+        run computed (a hook that wrote into it): the moment between that second look and the first file written is the
+        one window left. ``before_writing`` is called once, after the run and that second look and before the first
+        file is written, and may raise to cancel: nothing has been touched then.
+
         As :meth:`run`, a stale build is refused in a notebook or IPython and warned about in a script."""
         self._fresh()
         point = self._overridden(override)
@@ -1841,12 +1963,12 @@ class BuiltExperiment:
         if display is None:
             return self._run_to(out, duration, history=history, record=record, every=every, source=source,
                                 load_seconds=load_seconds, hook=hook, chunk=chunk, stage_every=stage_every,
-                                stop=stop, watch=None, point=point)
+                                stop=stop, watch=None, point=point, before_writing=before_writing, force=force)
         try:
             watch = self._watch(display, duration, stop)
             return self._run_to(out, duration, history=history, record=record, every=every, source=source,
                                 load_seconds=load_seconds, hook=hook, chunk=chunk, stage_every=stage_every,
-                                stop=watch.stop, watch=watch, point=point)
+                                stop=watch.stop, watch=watch, point=point, before_writing=before_writing, force=force)
         finally:
             display.close()
 
@@ -1854,12 +1976,14 @@ class BuiltExperiment:
                 record: Sequence[OutputRef | ObservationHandle | str], every: Quantity | None,
                 source: str | PathLike[str] | None, load_seconds: float | None, hook: ChunkHook | None,
                 chunk: Quantity | None, stage_every: Quantity | None, stop: StopRequest | None,
-                watch: Watch | None, point: Overridden | None = None) -> RunWritten:
+                watch: Watch | None, point: Overridden | None = None,
+                before_writing: Callable[[], None] | None = None, force: bool = False) -> RunWritten:
         import time
 
         started = time.perf_counter()
         read = [source] if source is not None else [self._saved.folder] if self._saved is not None else []
         refuse_out_over(Path(out), read)
+        refuse_out_not_own(Path(out), force)
         failed: RunFailed | None = None
         samples, hook, chunk = self._stage_samples(stage_every, hook, chunk)
         try:
@@ -1872,6 +1996,9 @@ class BuiltExperiment:
             # outputs are what there is to look at.
             failed, result = error, error.result
         ran = time.perf_counter()
+        refuse_out_not_own(Path(out), force, meanwhile=True)  # judged again where writing begins: the run took its time
+        if before_writing is not None:
+            before_writing()
         if watch is not None:
             watch.saving(result.steps)
         target = Path(out)

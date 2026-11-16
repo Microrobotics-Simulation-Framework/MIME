@@ -111,7 +111,7 @@ class Child:
 
 
 def run_command(folder: Path, out: Path, duration: float) -> list[str]:
-    return ["-m", "mime.cli", "run", str(folder), "--duration", repr(duration), "--out", str(out)]
+    return ["-m", "mime.cli", "run", str(folder), "--duration", f"{duration!r}s", "--out", str(out)]
 
 
 #: A run of the toy rig long enough that its first chunk is about a second or more on any runner, and its whole run

@@ -553,7 +553,9 @@ class StudyResult:
         lines = [f"study of {self.experiment}: {len(self)} members over {', '.join(self.axes)}, in "
                  f"{len(set(self.groups))} group{'s' if len(set(self.groups)) != 1 else ''}"]
         raised = [path for path, values in self.flags.items() if any(value is True for value in values)]
-        lines.append(f"flags raised in some member: {', '.join(raised)}" if raised else "no flag raised in any member")
+        lines.append("0 members, so no flag could be raised" if len(self) == 0 else
+                     f"flags raised in some member: {', '.join(raised)}" if raised else
+                     "no flag raised in any member")
         if self.missing:
             total = len(self) + len(self.missing)
             lines.append(f"PARTIAL: {len(self.missing)} of the study's {total} members are missing (not run yet, or run "

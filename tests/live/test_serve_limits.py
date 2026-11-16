@@ -160,8 +160,9 @@ def test_max_wall_stops_a_session_at_its_wall_time_a_client_connected_or_not(lau
 
 
 @pytest.mark.parametrize(("option", "value", "part"), [
-    ("--idle-timeout", "0", "--idle-timeout is 0.0, not a time above zero"), ("--max-wall", "-5s", "--max-wall is -5.0"),
-    ("--max-wall", "soon", "--max-wall soon is not a duration"), ("--idle-timeout", "nan", "is nan, not a time above zero"),
+    ("--idle-timeout", "0s", "--idle-timeout is 0.0, not a time above zero"), ("--max-wall", "-5s", "--max-wall is -5.0"),
+    ("--max-wall", "soon", "--max-wall soon is not a duration"), ("--idle-timeout", "nan", "--idle-timeout nan is a bare number"),
+    ("--max-wall", "30", "--max-wall 30 is a bare number"),
 ])
 def test_a_time_that_is_not_above_zero_is_refused_by_its_code_before_anything_is_built(folder, tmp_path, option, value, part):
     done = subprocess.run([*MIME, "--plain", "serve", str(folder), f"{option}={value}", "--out",

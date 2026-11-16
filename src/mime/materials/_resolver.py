@@ -22,6 +22,7 @@ from mime.materials._values import (
     ValueKind,
     ValuePath,
     kind_of_path,
+    not_above_zero,
     resolve_declared,
 )
 from mime.things import DERIVED, Derived, PartMass, ThingKind, derive, magnetisation
@@ -172,6 +173,11 @@ class Resolver:
                 inputs[path] = self.value(path)
                 held = inputs[path].value
                 if held is not None and isinstance(held.value, float):
+                    kind = kind_of_path(ValuePath.parse(path), self.things)
+                    below = not_above_zero(path, kind, held.value, held.source) if kind is not None else None
+                    if below is not None:
+                        inputs[path] = Resolution(None, (below,), reads=inputs[path].reads)
+                        continue
                     density[name] = held.value
         moments: dict[str, Vector] = {}
         for name, part in parts.items():
