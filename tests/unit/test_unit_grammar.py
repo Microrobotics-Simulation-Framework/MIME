@@ -253,8 +253,8 @@ def test_every_spelling_of_a_dimension_reads_as_it(case):
 
 
 #: The table's rows are the property's own examples, run on every call before any draw: the draws reach a rate with a slash
-#: in about one example in eight and a group raised to a power in two in nine, which Hypothesis does not promise (a miss
-#: of a plant of a quotient that forgets its angle, release run 43886742202, drew none). A planted bug the table
+#: or a group raised to a power in only some of their examples, which Hypothesis does not promise (a miss of the plant of a
+#: quotient that forgets its angle, release run 43886742202, drew none). A planted bug the table
 #: catches (``test_the_table_of_cases_fails_on_every_run_under_each_planted_bug``) is then caught by this property in
 #: every run, not in nearly every run, and the draws still look beyond the table.
 for _label, _held in [*EQUAL, *RATES]:
