@@ -322,11 +322,15 @@ def arm_call(name: str, dtype: str, reachable: bool, *args: Any, plant: bool = T
 
 def arm_draw(seed: int, reachable: bool) -> tuple[np.ndarray, np.ndarray]:
     """A target (the frame's pose at joints in the central 80 % of their ranges, moved 1.5 m where it is unreachable)
-    and the last joints, 0.15 rad (normal) from those joints, within the limits."""
+    and the last joints, 0.15 rad (normal) from those joints, within the limits, at least one of them twice the box away."""
     model, frame, lower, upper = arm()
     rng = np.random.default_rng(seed)
     joints = rng.uniform(lower + 0.1 * (upper - lower), upper - 0.1 * (upper - lower))
-    last = np.clip(joints + rng.normal(scale=0.15, size=joints.size), lower, upper)
+    noise = rng.normal(scale=0.15, size=joints.size)
+    # The box (BOX) must bind a joint for the bounds' derivative to be tested: a draw whose six offsets all fall within it
+    # (about 1 in 3000) has its offsets scaled up to twice the box, a transformation of the draw and no rejection of it.
+    noise *= max(1.0, 2.0 * BOX / float(np.max(np.abs(noise))))
+    last = np.clip(joints + noise, lower, upper)
     with in_dtype("float64"):
         target = np.array(model({"joint_positions": jnp.asarray(joints)}, {})["frame_poses"][frame])
     if not reachable:
