@@ -41,7 +41,7 @@ any token held.
 
 ## Kept out of everywhere else
 
-A token is a `Token` from the moment it is read: `credentials.prompt` wraps what `getpass` returns in the same
+A token is a `Token` from the moment it is read: `credentials._store.prompt` wraps what `getpass` returns in the same
 expression, and the file is read straight into tokens, so no frame holds the text under a name of its own. Its `repr`,
 `str` and `format` say the service and nothing of the value, and it cannot be pickled, so a token that reaches a log
 line, an exception message, a document or **a traceback printed with its locals** (`pytest --showlocals`, `rich`,

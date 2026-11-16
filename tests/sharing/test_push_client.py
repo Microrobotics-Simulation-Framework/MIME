@@ -38,10 +38,9 @@ import pytest
 from push_cases import client, plan_of, run_until_drafted, with_token
 from zenodo_records import FakeRecords, FakeTransport
 
-from mime import push
+from mime.push import _client, _draft, _plan, _service
 from mime.build import BuildRefused, RefusalClass
-from mime.credentials import Token
-from mime.push import _client, _draft
+from mime.credentials._token import Token
 from mime.push._plan import rights_entries
 from mime.saved._terms import FolderTerms
 from mime.terms import CustomLicence
@@ -58,9 +57,9 @@ def token(monkeypatch: pytest.MonkeyPatch) -> str:
     return with_token(monkeypatch)
 
 
-def a_draft(fake: FakeRecords, tmp_path: Path, files: dict[str, bytes] | None = None) -> push.Drafted:
+def a_draft(fake: FakeRecords, tmp_path: Path, files: dict[str, bytes] | None = None) -> _draft.Drafted:
     plan = plan_of(fake, files or {"a.bin": b"a" * 300, "b.bin": b"b" * 500}, tmp_path / "files")
-    return push.send(plan, None, client(fake))
+    return _draft.send(plan, None, client(fake))
 
 
 # --- the Accept header ---------------------------------------------------------------------------------------------
@@ -93,7 +92,7 @@ def test_control_without_the_accept_header_the_legacy_shape_is_refused_not_read(
 
 
 def test_a_legacy_draft_in_the_records_apis_content_type_is_refused_by_its_shape(token: str):
-    answer = push.Answer(201, {"content-type": push.RDM_TYPE},
+    answer = _client.Answer(201, {"content-type": _client.RDM_TYPE},
                          json.dumps({"id": 1, "conceptrecid": "0", "metadata": {"license": {"id": "mit"}}}).encode())
     with pytest.raises(BuildRefused) as refused:
         _client._draft(client(FakeRecords(token)), answer)
@@ -103,7 +102,7 @@ def test_a_legacy_draft_in_the_records_apis_content_type_is_refused_by_its_shape
 # --- a 200 that carries errors ---------------------------------------------------------------------------------------
 
 
-def missing_title(plan: push.Plan) -> push.Plan:
+def missing_title(plan: _plan.Plan) -> _plan.Plan:
     from dataclasses import replace
 
     metadata = dict(plan.payload["metadata"])  # type: ignore[arg-type]
@@ -115,7 +114,7 @@ def test_a_draft_saved_with_errors_in_a_2xx_is_refused_naming_the_field(token: s
     fake = FakeRecords(token)
     plan = missing_title(plan_of(fake, {"a.bin": b"a" * 10}, tmp_path / "files"))
     with pytest.raises(BuildRefused) as refused:
-        push.send(plan, None, client(fake))
+        _draft.send(plan, None, client(fake))
     assert refused.value.codes() == ["push.rejected"]
     assert "metadata.title" in refused.value.refusals[0].message
     assert len(fake.drafts()) == 1, "the draft the service kept is the one push records, not a second"
@@ -126,7 +125,7 @@ def test_control_a_2xx_with_errors_taken_as_success_is_caught(token: str, tmp_pa
     monkeypatch.setattr(_client, "errors_of", lambda held: [])
     fake = FakeRecords(token)
     plan = missing_title(plan_of(fake, {"a.bin": b"a" * 10}, tmp_path / "files"))
-    drafted = push.send(plan, None, client(fake))
+    drafted = _draft.send(plan, None, client(fake))
     assert "title" not in fake.records[drafted.record].body["metadata"], \
         "with the check planted away, push reports a draft the service holds without its title"
 
@@ -193,13 +192,12 @@ def test_the_fake_accepts_the_rights_push_sends_and_keeps_all_three(token: str, 
     from dataclasses import replace
 
     plan = replace(plan, payload={**plan.payload, "metadata": {**plan.payload["metadata"], "rights": rights}})  # type: ignore[dict-item]
-    drafted = push.send(plan, None, client(fake))
+    drafted = _draft.send(plan, None, client(fake))
     assert len(fake.records[drafted.record].body["metadata"]["rights"]) == 3  # type: ignore[index]
 
 
 def test_control_a_custom_licence_sent_with_an_id_is_refused_by_the_fake_as_by_the_sandbox(
         token: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from mime.push import _plan
 
     real = _plan.rights_entries
     monkeypatch.setattr(_plan, "rights_entries", lambda ids, judged: [
@@ -211,7 +209,7 @@ def test_control_a_custom_licence_sent_with_an_id_is_refused_by_the_fake_as_by_t
     rights = _plan.rights_entries(["CC-BY-4.0", CUSTOM.id], terms_with_custom())
     plan = replace(plan, payload={**plan.payload, "metadata": {**plan.payload["metadata"], "rights": rights}})  # type: ignore[dict-item]
     with pytest.raises(BuildRefused) as refused:
-        push.send(plan, None, client(fake))
+        _draft.send(plan, None, client(fake))
     assert refused.value.codes() == ["push.rejected"] and "Invalid value LicenseRef-Example-1.0" in \
         refused.value.refusals[0].message
 
@@ -227,7 +225,7 @@ def test_a_429_is_waited_for_its_retry_after_and_a_2xx_retry_after_never(token: 
     held.sleep = waited.append
     seen: list[str] = []
     held.watch = lambda method, url, status, headers, body: seen.append(f"{status} {headers.get('retry-after')}")
-    push.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "files"), None, held)
+    _draft.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "files"), None, held)
     assert waited == [7.0], "a 429's Retry-After is waited for once, and no 2xx's"
     assert sum(1 for each in seen if each.startswith("2") and each.split()[1] != "None") >= 6, \
         "the fake sends Retry-After on its 2xx answers, as the sandbox does, so the test can tell"
@@ -244,9 +242,9 @@ def test_requests_are_spaced_by_the_pause(token: str, tmp_path: Path):
 
     held = client(fake, now=lambda: clock[0])
     held.pause, held.sleep = 0.5, sleep
-    push.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "files"), None, held)
+    _draft.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "files"), None, held)
     assert held.requests >= 6 and waited == [0.5] * (held.requests - 1)
-    assert _client.PAUSE_SECONDS == 0.5 and push.Client(fake.service(), held._token).pause == 0.5  # type: ignore[attr-defined]
+    assert _client.PAUSE_SECONDS == 0.5 and _client.Client(fake.service(), held._token).pause == 0.5  # type: ignore[attr-defined]
 
 
 def test_a_spent_window_is_waited_out_to_its_reset(token: str, tmp_path: Path):
@@ -256,23 +254,23 @@ def test_a_spent_window_is_waited_out_to_its_reset(token: str, tmp_path: Path):
     held.sleep = waited.append
     fake.plant("status", lambda method, path: path == "/records", status=429,
                headers={"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1030", "Retry-After": "1"})
-    push.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "files"), None, held)
+    _draft.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "files"), None, held)
     assert waited[:2] == [30.0, 1.0]
 
 
 def test_a_wait_longer_than_push_waits_is_refused(token: str, tmp_path: Path):
     fake = FakeRecords(token)
     fake.plant("status", lambda method, path: path == "/records", status=429, headers={"Retry-After": "3600"})
-    assert codes(lambda: push.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "files"), None, client(fake))) == \
+    assert codes(lambda: _draft.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "files"), None, client(fake))) == \
         ["push.service"]
 
 
 def test_a_5xx_is_sent_again_and_one_that_stays_is_refused(token: str, tmp_path: Path):
     fake = FakeRecords(token)
     fake.plant("status", lambda method, path: method == "GET", status=503, times=2)
-    push.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "a"), None, client(fake))
+    _draft.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "a"), None, client(fake))
     fake.plant("status", lambda method, path: method == "GET", status=502, times=99)
-    assert codes(lambda: push.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "b"), None, client(fake))) == \
+    assert codes(lambda: _draft.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "b"), None, client(fake))) == \
         ["push.service"]
 
 
@@ -280,7 +278,7 @@ def test_a_redirect_is_never_followed(token: str, tmp_path: Path):
     fake = FakeRecords(token)
     fake.plant("status", lambda method, path: path == "/records", status=307,
                headers={"Location": "https://elsewhere.invalid/api/records"})
-    assert codes(lambda: push.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "files"), None, client(fake))) == \
+    assert codes(lambda: _draft.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / "files"), None, client(fake))) == \
         ["push.service"]
     assert all(path.startswith("/records") for _, path, _, _ in fake.requests)
 
@@ -288,7 +286,7 @@ def test_a_redirect_is_never_followed(token: str, tmp_path: Path):
 def test_the_real_transport_follows_no_redirect():
     import urllib.request
 
-    held = push.HttpTransport()
+    held = _client.HttpTransport()
     for opener in (held.opener, held.direct):
         refusing = [each for each in opener.handlers if isinstance(each, urllib.request.HTTPRedirectHandler)]
         assert refusing and all(each.redirect_request(None, None, 307, "", None, "https://x.invalid") is None  # type: ignore[arg-type]
@@ -299,7 +297,7 @@ def test_401_and_403_name_the_token_and_its_scope(token: str, tmp_path: Path):
     for status, code in ((401, "push.token"), (403, "push.token-scope")):
         fake = FakeRecords(token)
         fake.plant("status", lambda method, path: path == "/records", status=status)
-        assert codes(lambda: push.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / code), None, client(fake))) == \
+        assert codes(lambda: _draft.send(plan_of(fake, {"a.bin": b"a"}, tmp_path / code), None, client(fake))) == \
             [code]
 
 
@@ -316,7 +314,7 @@ def test_no_variable_moves_a_tokens_host(monkeypatch: pytest.MonkeyPatch):
 
     for name in PLANTED_HOSTS:
         monkeypatch.setenv(name, "https://attacker.invalid/api")
-    shown = subprocess.run([sys.executable, "-c", "import mime.push as p; print(p.SERVICES['zenodo'].api, "
+    shown = subprocess.run([sys.executable, "-c", "import mime.push._service as p; print(p.SERVICES['zenodo'].api, "
                             "p.SERVICES['zenodo-sandbox'].api, p.ZENODO.site, p.ZENODO_SANDBOX.site)"],
                            capture_output=True, text=True, check=True, timeout=300)
     assert shown.stdout.split() == ["https://zenodo.org/api", "https://sandbox.zenodo.org/api", "https://zenodo.org",
@@ -326,11 +324,11 @@ def test_no_variable_moves_a_tokens_host(monkeypatch: pytest.MonkeyPatch):
     class Seen:
         def send(self, method, url, headers, body, token):  # noqa: ANN001, ANN201
             sent.append(url)
-            raise push.Dropped("stopped here")
+            raise _client.Dropped("stopped here")
 
-    from mime.credentials import Token
+    from mime.credentials._token import Token
 
-    held = push.Client(push.ZENODO_SANDBOX, Token("zenodo-sandbox", "x" * 40), Seen(), pause=0,
+    held = _client.Client(_service.ZENODO_SANDBOX, Token("zenodo-sandbox", "x" * 40), Seen(), pause=0,
                        sleep=lambda seconds: None)
     with pytest.raises(BuildRefused):
         held.read_draft("1")
@@ -338,10 +336,10 @@ def test_no_variable_moves_a_tokens_host(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_a_service_reached_in_clear_is_refused_before_any_request():
-    from mime.credentials import Token
+    from mime.credentials._token import Token
 
-    plain_http = push.Service("zenodo", "http://zenodo.example/api", "http://zenodo.example", "zenodo", True, "x")
-    assert codes(lambda: push.Client(plain_http, Token("zenodo", "x" * 40))) == ["push.service"]
+    plain_http = _service.Service("zenodo", "http://zenodo.example/api", "http://zenodo.example", "zenodo", True, "x")
+    assert codes(lambda: _client.Client(plain_http, Token("zenodo", "x" * 40))) == ["push.service"]
 
 
 def test_a_draft_deleted_on_the_site_while_push_runs_is_refused_not_unrecognised(token: str, tmp_path: Path):
@@ -362,14 +360,14 @@ def test_a_service_pairs_a_real_credential_with_its_own_host_alone():
     or to a stand-in on this machine or at a ``.invalid`` address; a real host takes its own credential alone."""
     token = Token("zenodo", "x" * 40)
     elsewhere = ("https://elsewhere.example/api", "https://elsewhere.example")
-    for crossed in (push.Service("x", *elsewhere, "zenodo", True, "x"),
-                    push.Service("x", push.ZENODO.api, push.ZENODO.site, "zenodo-sandbox", True, "x"),
-                    push.Service("x", push.ZENODO_SANDBOX.api, push.ZENODO_SANDBOX.site, "zenodo", True, "x"),
-                    push.Service("x", push.ZENODO.api, push.ZENODO.site, "zenodo", False, "x")):
-        assert codes(lambda: push.Client(crossed, token)) == ["push.service"], crossed
-    for allowed in (push.ZENODO, push.ZENODO_SANDBOX, FakeRecords("t").service("zenodo", production=True),
-                    push.Service("x", "http://127.0.0.1:9/api", "http://127.0.0.1:9", "zenodo", True, "x"),
-                    push.Service("x", *elsewhere, "other", False, "x")):
+    for crossed in (_service.Service("x", *elsewhere, "zenodo", True, "x"),
+                    _service.Service("x", _service.ZENODO.api, _service.ZENODO.site, "zenodo-sandbox", True, "x"),
+                    _service.Service("x", _service.ZENODO_SANDBOX.api, _service.ZENODO_SANDBOX.site, "zenodo", True, "x"),
+                    _service.Service("x", _service.ZENODO.api, _service.ZENODO.site, "zenodo", False, "x")):
+        assert codes(lambda: _client.Client(crossed, token)) == ["push.service"], crossed
+    for allowed in (_service.ZENODO, _service.ZENODO_SANDBOX, FakeRecords("t").service("zenodo", production=True),
+                    _service.Service("x", "http://127.0.0.1:9/api", "http://127.0.0.1:9", "zenodo", True, "x"),
+                    _service.Service("x", *elsewhere, "other", False, "x")):
         assert allowed.problem() is None, allowed
 
 
@@ -377,17 +375,17 @@ def test_the_same_token_held_for_both_services_is_refused_before_a_request(tmp_p
                                                                            monkeypatch: pytest.MonkeyPatch):
     from push_cases import a_token
 
-    from mime import credentials
+    from mime.credentials import _store
 
     same = a_token()
-    monkeypatch.setenv(credentials.SERVICES["zenodo"], same)
-    monkeypatch.setenv(credentials.SERVICES["zenodo-sandbox"], same)
+    monkeypatch.setenv(_store.SERVICES["zenodo"], same)
+    monkeypatch.setenv(_store.SERVICES["zenodo-sandbox"], same)
     fake = FakeRecords(same)
     plan = plan_of(fake, {"a.bin": b"a"}, tmp_path / "files")
     with pytest.raises(BuildRefused) as refused:
         _draft.token_of(plan.service)
     assert refused.value.codes() == ["push.token"] and "the same token" in refused.value.refusals[0].message
-    monkeypatch.setenv(credentials.SERVICES["zenodo"], a_token())
+    monkeypatch.setenv(_store.SERVICES["zenodo"], a_token())
     assert _draft.token_of(plan.service).length == 40
 
 
@@ -407,7 +405,7 @@ def refused_by(fake: FakeRecords, tmp_path: Path, status: int, body: dict[str, o
     plan = replace(plan, sharing=replace(plan.sharing, contributors=tuple(
         Person("Doe", "Jane", role="DataCurator") for _ in range(contributors))))
     with pytest.raises(BuildRefused) as refused:
-        push.send(plan, None, client(fake))
+        _draft.send(plan, None, client(fake))
     return [(r.code, r.category, r.action) for r in refused.value.refusals]
 
 
@@ -458,7 +456,7 @@ def test_a_504_to_the_drafts_making_is_never_sent_again_and_the_orphan_is_said(t
     after_acting(fake, "POST", "/records")
     plan = plan_of(fake, {"a.bin": b"a"}, tmp_path / "files")
     with pytest.raises(BuildRefused) as refused:
-        push.send(plan, None, client(fake))
+        _draft.send(plan, None, client(fake))
     assert refused.value.codes() == ["push.service"] and "push does not send it again" in \
         refused.value.refusals[0].message
     assert [path for method, path, _, _ in fake.requests if method == "POST"] == ["/records"]
@@ -530,7 +528,7 @@ def with_errors_to(fake: FakeRecords, method: str, ends: str) -> None:
         if m == method and path.endswith(ends) and status < 300 and data:
             held = json.loads(data)
             held["errors"] = [{"field": "entries", "messages": ["planted"]}]
-            return status, push.RDM_TYPE, json.dumps(held).encode()
+            return status, _client.RDM_TYPE, json.dumps(held).encode()
         return status, content_type, data
 
     fake._route = route  # type: ignore[method-assign]
@@ -551,7 +549,7 @@ def test_errors_in_a_2xx_to_a_deletion_or_a_records_reading_are_coded(token: str
     for status, call in ((204, lambda: held.delete_draft("1")), (204, lambda: held.delete_file("1", "a.bin")),
                          (200, lambda: held.read_record("1"))):
         def answered(method, url, headers, body, token, status=status):  # noqa: ANN001, ANN202
-            return push.Answer(status, {"content-type": push.RDM_TYPE}, b'{"errors": ["planted"]}')
+            return _client.Answer(status, {"content-type": _client.RDM_TYPE}, b'{"errors": ["planted"]}')
 
         held.transport.send = answered  # type: ignore[method-assign]
         refused = codes(call)
@@ -630,8 +628,8 @@ unix_signals = pytest.mark.skipif(not hasattr(signal, "pthread_kill"), reason="P
 @unix_signals
 def test_an_interrupt_through_the_real_transport_leaves_no_token_in_a_tracebacks_locals():
     held = Token("zenodo-sandbox", "a-real-transport-token-" + "q" * 20)
-    error = interrupted_while_waiting(held, lambda base: push.HttpTransport(timeout=20).send(
-        "GET", base + "/api/records/1/draft", {"Accept": push.RDM_TYPE}, None, held))
+    error = interrupted_while_waiting(held, lambda base: _client.HttpTransport(timeout=20).send(
+        "GET", base + "/api/records/1/draft", {"Accept": _client.RDM_TYPE}, None, held))
     assert isinstance(error, KeyboardInterrupt), repr(error)
     assert error.__context__ is None and error.__cause__ is None
     assert not held.occurs_in(captured_with_locals(error).encode("utf-8"))
@@ -640,9 +638,9 @@ def test_an_interrupt_through_the_real_transport_leaves_no_token_in_a_tracebacks
 @unix_signals
 def test_control_without_the_transports_boundary_the_librarys_frame_is_caught_holding_the_token():
     held = Token("zenodo-sandbox", "a-real-transport-token-" + "q" * 20)
-    transport = push.HttpTransport(timeout=20)
+    transport = _client.HttpTransport(timeout=20)
     error = interrupted_while_waiting(held, lambda base: _client._exchange(  # type: ignore[attr-defined]
-        transport.direct, 20, "GET", base + "/api/records/1/draft", {"Accept": push.RDM_TYPE}, None, held))
+        transport.direct, 20, "GET", base + "/api/records/1/draft", {"Accept": _client.RDM_TYPE}, None, held))
     assert isinstance(error, KeyboardInterrupt)
     assert held.occurs_in(captured_with_locals(error).encode("utf-8")), \
         "the planted defect (the library's frames left in the traceback) is not seen"
@@ -665,8 +663,8 @@ def test_an_error_answer_cut_short_is_a_lost_answer_with_no_token_in_its_traceba
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Cut)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
-        with pytest.raises(push.Dropped) as dropped:
-            push.HttpTransport(timeout=10).send("GET", f"http://127.0.0.1:{server.server_address[1]}/api/x",
+        with pytest.raises(_client.Dropped) as dropped:
+            _client.HttpTransport(timeout=10).send("GET", f"http://127.0.0.1:{server.server_address[1]}/api/x",
                                                 {}, None, held)
     finally:
         server.shutdown()
@@ -699,7 +697,7 @@ def proxy() -> Iterator[tuple[str, list[bytes]]]:
         server.server_close()
 
 
-def through_the_proxy(monkeypatch: pytest.MonkeyPatch, transport: Callable[[], push.HttpTransport]) -> list[bytes]:
+def through_the_proxy(monkeypatch: pytest.MonkeyPatch, transport: Callable[[], _client.HttpTransport]) -> list[bytes]:
     """What the environment's proxy saw of one request to a service on this machine (one that is not listening)."""
     held = Token("zenodo-sandbox", "a-real-transport-token-" + "q" * 20)
     for name in ("no_proxy", "NO_PROXY", "all_proxy", "ALL_PROXY"):
@@ -713,19 +711,19 @@ def through_the_proxy(monkeypatch: pytest.MonkeyPatch, transport: Callable[[], p
         closed.close()
         try:
             transport().send("GET", f"http://127.0.0.1:{port}/api/records/1/draft", {}, None, held)
-        except push.Dropped:
+        except _client.Dropped:
             pass
     return [each for each in seen if held.occurs_in(each)] or seen
 
 
 def test_a_service_on_this_machine_is_reached_without_the_environments_proxy(monkeypatch: pytest.MonkeyPatch):
-    assert through_the_proxy(monkeypatch, lambda: push.HttpTransport(timeout=5)) == []
+    assert through_the_proxy(monkeypatch, lambda: _client.HttpTransport(timeout=5)) == []
 
 
 def test_control_with_the_direct_opener_planted_away_the_proxy_gets_the_token_in_clear(
         monkeypatch: pytest.MonkeyPatch):
-    def proxied() -> push.HttpTransport:
-        held = push.HttpTransport(timeout=5)
+    def proxied() -> _client.HttpTransport:
+        held = _client.HttpTransport(timeout=5)
         held.direct = held.opener
         return held
 

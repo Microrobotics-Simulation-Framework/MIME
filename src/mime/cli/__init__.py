@@ -33,7 +33,7 @@ from mime.validity import Profile
 if TYPE_CHECKING:
     from mime._transfers import Transfers
     from mime.cli._display import SaidDisplay
-    from mime.credentials import Token
+    from mime.credentials._token import Token
     from mime.env import EnvReport
     from mime.cli._display import RunDisplay
     from mime.control import Progress
@@ -141,7 +141,7 @@ def _deterministic(on: bool) -> None:
 
 
 def _verify(folder: Path, run: bool = False) -> int:
-    from mime.blocks import is_block_folder
+    from mime.blocks._definition import is_block_folder
     from mime.saved._studies import BLOCK_SUFFIX, is_publishing_folder, is_study_folder
 
     with Interrupt():
@@ -289,7 +289,7 @@ def _show(folder: Path, graph: bool, tree: bool, as_json: bool, out: Path | None
     ``folder`` may be a document instead of a folder. ``--json`` is the tree as data. ``--out [FILE]`` writes the graph as
     one page to pan and zoom, instead of printing it, as ``mime visuals web --out`` writes the 3-D view (the default name
     is ``<experiment>.graph.html``, never the 3-D page's; never inside a saved or run folder, ``visuals.web-out``)."""
-    from mime.blocks import is_block_folder
+    from mime.blocks._definition import is_block_folder
     from mime.env import apply_lock_precision
 
     from mime.saved._studies import BLOCK_SUFFIX
@@ -943,7 +943,7 @@ def _place(folder: Path, accept_licences: Sequence[str] = ()) -> list[Refusal]:
 
 def _pack(folder: Path, out: Path | None) -> int:
     from mime import assets, saved
-    from mime.blocks import is_block_folder
+    from mime.blocks._definition import is_block_folder
     from mime.saved._studies import is_publishing_folder, is_study_folder
 
     if is_study_folder(folder) or is_publishing_folder(folder):
@@ -1035,7 +1035,7 @@ def _card(folder: Path, out: Path | None, notice: bool) -> int:
     from mime.saved._study_card import study_card_text, study_notice
     from mime.saved._studies import is_publishing_folder, is_study_folder
 
-    from mime.blocks import is_block_folder
+    from mime.blocks._definition import is_block_folder
 
     if is_block_folder(folder):
         from mime.blocks._card import block_card_text
@@ -1248,9 +1248,9 @@ SHARE_LINK_VARIABLE = "MIME_SHARE_LINK"
 
 def _pull_source(arguments: argparse.Namespace) -> str | Token:
     """What ``mime pull`` pulls: the source as given, or a share link read by ``--link`` (with no echo, or from
-    :data:`SHARE_LINK_VARIABLE`) into a :class:`~mime.credentials.Token` the moment it is read. A ``--link`` that is
+    :data:`SHARE_LINK_VARIABLE`) into a :class:`~mime.credentials._token.Token` the moment it is read. A ``--link`` that is
     neither is refused without its value: it may be the link itself."""
-    from mime.credentials import Token
+    from mime.credentials._token import Token
     from mime.push._records import SHARE_LINK
 
     parser: argparse.ArgumentParser = arguments.pull_parser
@@ -1302,14 +1302,14 @@ def _pull(source: str | Token, into: Path | None, no_assets: bool, yes: bool, ma
 def _push_arguments(arguments: argparse.Namespace) -> None:
     """What argparse cannot require of ``mime push`` once ``--defaults`` (no folder, no service) and ``--setup`` (no
     service) are among its modes: the folder and ``--to`` everywhere else, said as argparse says a missing argument."""
-    from mime import push
+    from mime.push import _draft
 
     parser: argparse.ArgumentParser = arguments.push_parser
     if arguments.defaults or arguments.setup:
         ignored = [flag for flag, given in (("--confirm", arguments.confirm is not None), ("--yes", arguments.yes),
-                                            (push.FULL_FLAG, arguments.full_plan),
-                                            (push.KEEP_FLAG, arguments.keep_site_edits),
-                                            (push.OVERWRITE_FLAG, arguments.overwrite_site_edits)) if given]
+                                            (_draft.FULL_FLAG, arguments.full_plan),
+                                            (_draft.KEEP_FLAG, arguments.keep_site_edits),
+                                            (_draft.OVERWRITE_FLAG, arguments.overwrite_site_edits)) if given]
         if ignored:
             what = ("--defaults shows your own defaults" if arguments.defaults else
                     "--setup asks for mime.toml's fields")
@@ -1326,21 +1326,21 @@ def _push_arguments(arguments: argparse.Namespace) -> None:
 
 def _defaults_show() -> int:
     """``mime defaults`` (and ``mime push --defaults``, its alias): where the person's defaults live, and each."""
-    from mime import push
+    from mime.push import _defaults
 
-    for line in push.defaults_lines(say=_say):
+    for line in _defaults.defaults_lines(say=_say):
         print(for_terminal(line))
     return 0
 
 
 def _defaults(command: str | None) -> int:
     if command == "edit":
-        from mime import push
+        from mime.push import _setup
 
         voice = _Voice("uploading")
         with _setup_questions(voice) as (typed, _):
             try:
-                push.edit_defaults(typed=typed, say=voice.say)
+                _setup.edit_defaults(typed=typed, say=voice.say)
             finally:
                 voice.close()
         return 0
@@ -1367,12 +1367,12 @@ def _check(folder: Path, profile: str | None) -> int:
 
 def _scaffold(arguments: argparse.Namespace) -> int:
     """``mime scaffold <kind> <path>``: the folder made, its tree and where each value came from said."""
-    from mime import scaffold
+    from mime.scaffold import _scaffold
 
     voice = _Voice("uploading")
     with _setup_questions(voice) as (typed, ask):
         try:
-            scaffold.scaffold(arguments.kind, arguments.path, yes=arguments.yes, sets=arguments.sets,
+            _scaffold.scaffold(arguments.kind, arguments.path, yes=arguments.yes, sets=arguments.sets,
                               dry_run=arguments.dry_run, source=arguments.from_folder, sockets=arguments.sockets,
                               typed=typed, ask=ask, say=voice.say)
         finally:
@@ -1382,6 +1382,7 @@ def _scaffold(arguments: argparse.Namespace) -> int:
 
 def _push(arguments: argparse.Namespace) -> int:
     from mime import push
+    from mime.push import _defaults, _draft, _publish, _service, _setup
     from mime.push._defaults import read_all
     from mime.push._manifest import BUNDLE, OLD_FILE, folder_kind
     from mime.push._sharing import DEFAULT_LICENCE
@@ -1394,11 +1395,11 @@ def _push(arguments: argparse.Namespace) -> int:
         voice = _Voice("uploading")
         with _setup_questions(voice) as (typed, ask):
             try:
-                push.setup(folder, typed=typed, ask=ask, say=voice.say, service=arguments.to)
+                _setup.setup(folder, typed=typed, ask=ask, say=voice.say, service=arguments.to)
             finally:
                 voice.close()
         return 0
-    service = push.SERVICES[arguments.to]
+    service = _service.SERVICES[arguments.to]
     voice = _Voice("uploading")
     ask = voice.ask if _a_terminal() else None
     if arguments.confirm is not None and not arguments.publish:
@@ -1407,7 +1408,7 @@ def _push(arguments: argparse.Namespace) -> int:
                                     f"`mime push {quoted(str(folder))} --to {service.name} --publish --confirm <DOI>`")])
     if arguments.init:
         migrating = (folder / OLD_FILE).is_file() and not (folder / push.MANIFEST_FILE).is_file()
-        path, written, licence = push.init(folder, say=_say)
+        path, written, licence = _draft.init(folder, say=_say)
         print(for_terminal(f"wrote {path}" if written else f"kept {path}, which exists: edit it, or delete it and "
                                                           f"run --init again"))
         defaults = read_all()
@@ -1417,7 +1418,7 @@ def _push(arguments: argparse.Namespace) -> int:
                            f"declare the same, exp.licence(\"{stated}\"), then save"))
         filled = list(defaults.values) if written and not migrating else []
         if filled:
-            print(for_terminal(f"filled from your defaults ({push.defaults_path()}): {', '.join(filled)}"))
+            print(for_terminal(f"filled from your defaults ({_defaults.defaults_path()}): {', '.join(filled)}"))
         then = (f"`mime push {quoted(str(folder))} --to {service.name}`" if folder_kind(folder.absolute()) == BUNDLE
                 else f"`mime check {quoted(str(folder))}`")
         print(for_terminal(f"next: check what your defaults filled in it, then {then}" if filled else
@@ -1426,16 +1427,16 @@ def _push(arguments: argparse.Namespace) -> int:
         return 0
     try:
         if arguments.status:
-            push.status(folder, service, say=voice.say)
+            _draft.status(folder, service, say=voice.say)
         elif arguments.discard:
-            push.discard(folder, service, yes=arguments.yes, confirm=ask, say=voice.say)
+            _draft.discard(folder, service, yes=arguments.yes, confirm=ask, say=voice.say)
         elif arguments.publish:
-            push.publish(folder, service, confirm=arguments.confirm, ask=ask,
+            _publish.publish(folder, service, confirm=arguments.confirm, ask=ask,
                          typed=voice.typed if ask is not None else None, say=voice.say,
                          overwrite_site_edits=arguments.overwrite_site_edits,
                          keep_site_edits=arguments.keep_site_edits, full=arguments.full_plan)
         else:
-            push.push(folder, service, yes=arguments.yes, confirm=ask, say=voice.say,
+            _draft.push(folder, service, yes=arguments.yes, confirm=ask, say=voice.say,
                       overwrite_site_edits=arguments.overwrite_site_edits, keep_site_edits=arguments.keep_site_edits,
                       full=arguments.full_plan, progress=voice.progress)
     finally:
@@ -1453,7 +1454,7 @@ _CREDENTIAL_USAGE = ("usage: mime credentials set|status|remove <zenodo|zenodo-s
 def _credential_words_problem(after: Sequence[str]) -> str | None:
     """Why the words after ``mime credentials`` are not a verb and a service, or ``None``. Said without quoting any
     word, so that a token typed where it does not belong is not written to the screen or a log by the message."""
-    from mime import credentials
+    from mime.credentials import _store
 
     if any(word in ("-h", "--help") for word in after):
         return None
@@ -1461,8 +1462,8 @@ def _credential_words_problem(after: Sequence[str]) -> str | None:
         return "the first word is set, status or remove"
     if len(after) > 2:
         return "a verb takes one service and nothing else"
-    if len(after) == 2 and after[1] not in credentials.SERVICES and not credentials.is_host_service(after[1]):
-        return f"the service is one of {', '.join(credentials.SERVICES)}, or host:<host name>"
+    if len(after) == 2 and after[1] not in _store.SERVICES and not _store.is_host_service(after[1]):
+        return f"the service is one of {', '.join(_store.SERVICES)}, or host:<host name>"
     return None
 
 
@@ -1472,26 +1473,26 @@ class _Services(list[str]):
 
     @override
     def __contains__(self, value: object) -> bool:
-        from mime import credentials
+        from mime.credentials import _store
 
-        return super().__contains__(value) or (isinstance(value, str) and credentials.is_host_service(value))
+        return super().__contains__(value) or (isinstance(value, str) and _store.is_host_service(value))
 
 
 def _credentials(command: str, service: str | None) -> int:
-    from mime import credentials
+    from mime.credentials import _store
 
     if command == "status":
-        for each in [service] if service else list(credentials.SERVICES):
-            print(for_terminal(credentials.describe(each)))
+        for each in [service] if service else list(_store.SERVICES):
+            print(for_terminal(_store.describe(each)))
     elif service is None:
         raise AssertionError("argparse requires a service for set and remove")
     elif command == "set":
-        print(f"stored the {service} token in {credentials.store(service, credentials.prompt(service))}")
+        print(f"stored the {service} token in {_store.store(service, _store.prompt(service))}")
     else:
-        print(f"removed the {service} token from the credentials file" if credentials.remove(service)
+        print(f"removed the {service} token from the credentials file" if _store.remove(service)
               else f"the credentials file holds no {service} token")
-        if credentials.source(service) is not None:
-            print(f"{service}: a token is still set by {credentials.source(service)}, which is the environment's to "
+        if _store.source(service) is not None:
+            print(f"{service}: a token is still set by {_store.source(service)}, which is the environment's to "
                   "unset")
     return 0
 
@@ -1718,7 +1719,8 @@ def build_parser() -> _guide.MimeParser:
     card.add_argument("--out", type=Path, help="write it to this file (default: print it)")
     card.add_argument("--notice", action="store_true", help="the NOTICE (each file's licence, credit, verdict and "
                                                             "declared permission) in place of the card")
-    from mime import credentials, push
+    from mime.credentials import _store
+    from mime.push import _draft, _service
 
     pull = commands.add_parser("pull", help="get a bundle by DOI, address or file, unpack it into a new folder, and "
                                             "fetch its assets")
@@ -1732,7 +1734,7 @@ def build_parser() -> _guide.MimeParser:
                            f"`--link env` reads it from {SHARE_LINK_VARIABLE}. A link given as the source stays in "
                            "your shell's history and, while pull runs, in its arguments, which any account on this "
                            "machine can read (ps, /proc/<pid>/cmdline) unless /proc is mounted with hidepid")
-    pull.add_argument("--from", dest="from_service", choices=list(push.SERVICES), metavar="SERVICE",
+    pull.add_argument("--from", dest="from_service", choices=list(_service.SERVICES), metavar="SERVICE",
                       help="read the published record of this number at the service's records API (zenodo-sandbox: "
                            "its DOIs do not resolve through doi.org)")
     pull.add_argument("--signed-in", action="store_true",
@@ -1757,7 +1759,7 @@ def build_parser() -> _guide.MimeParser:
               "       %(prog)s --defaults")
     pushing.set_defaults(push_parser=pushing)
     pushing.add_argument("folder", type=Path, nargs="?", help="a folder written by Experiment.save")
-    pushing.add_argument("--to", choices=list(push.SERVICES),
+    pushing.add_argument("--to", choices=list(_service.SERVICES),
                          help="the service: zenodo, or zenodo-sandbox to try it on Zenodo's test service (required, "
                               "but for --setup and --defaults)")
     pushing_mode = pushing.add_mutually_exclusive_group()
@@ -1784,16 +1786,16 @@ def build_parser() -> _guide.MimeParser:
                               "DOI, the DOI and the fingerprint the last push printed beside it")
     pushing.add_argument("--yes", action="store_true", help="delete the draft with --discard without asking (it never "
                                                             "publishes, declares a permission or settles a site edit)")
-    pushing.add_argument(push.FULL_FLAG, dest="full_plan", action="store_true",
+    pushing.add_argument(_draft.FULL_FLAG, dest="full_plan", action="store_true",
                          help="the full plan: every file inside the bundle with its tier and verdict, every field sent")
     site_edits = pushing.add_mutually_exclusive_group()
-    site_edits.add_argument(push.KEEP_FLAG, dest="keep_site_edits", action="store_true",
+    site_edits.add_argument(_draft.KEEP_FLAG, dest="keep_site_edits", action="store_true",
                          help="keep each edit made on the service's site that mime.toml's [record] can hold, written "
                               "into it, without asking")
-    site_edits.add_argument(push.OVERWRITE_FLAG, dest="overwrite_site_edits", action="store_true",
+    site_edits.add_argument(_draft.OVERWRITE_FLAG, dest="overwrite_site_edits", action="store_true",
                          help="write the draft's metadata from mime.toml and the folder over what was edited on the "
                               "service's site since push last wrote it (without it, such an edit stops the push)")
-    from mime.scaffold import KINDS as scaffold_kinds
+    from mime.scaffold._values import KINDS as scaffold_kinds
 
     scaffolding = commands.add_parser(
         "scaffold", help="start a new experiment, bundle, study, block or plugin from a template, its values from your "
@@ -1832,7 +1834,7 @@ def build_parser() -> _guide.MimeParser:
     for verb, what in (("set", "read a token (hidden) and store it"), ("remove", "delete the stored token"),
                        ("status", "whether there is a token, where from, and its last four characters, if 32 or more")):
         each = credential_commands.add_parser(verb, help=what)
-        each.add_argument("service", nargs="?" if verb == "status" else None, choices=_Services(credentials.SERVICES))
+        each.add_argument("service", nargs="?" if verb == "status" else None, choices=_Services(_store.SERVICES))
     held_cache = commands.add_parser("cache", help="the XLA compilation cache mime run and mime serve keep")
     cache_commands = held_cache.add_subparsers(dest="cache_command", required=True)
     cache_commands.add_parser("clear", help="delete the compilation cache in the user's cache directory")
@@ -2163,7 +2165,7 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     if arguments.command == "pending":
         return _pending(arguments.folder)
     if arguments.command == "show":
-        from mime.blocks import is_block_folder
+        from mime.blocks._definition import is_block_folder
 
         if arguments.folder.is_dir() and is_block_folder(arguments.folder) and (
                 arguments.graph or arguments.tree or arguments.out is not None):
@@ -2254,4 +2256,4 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     parser.error(f"unknown command {arguments.command!r}")
 
 
-__all__ = ["FAILED", "REFUSED", "TRACEBACK_FLAG", "main", "refused"]
+__all__: list[str] = []

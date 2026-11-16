@@ -36,7 +36,7 @@ from mime.assets import (
 from mime.assets._adapters import _registered  # pyright: ignore[reportPrivateUsage]
 from mime.assets._reference import BUILT_IN_SCHEMES, scheme_of
 from mime.build import BuildRefused
-from mime.credentials import Token
+from mime.credentials._token import Token
 from mime.testing._loopback import LoopbackStore
 
 #: The token the harness hands the adapter for the store's own host: it must reach that host and no other.

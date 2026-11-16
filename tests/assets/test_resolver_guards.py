@@ -26,10 +26,11 @@ from pathlib import Path
 
 import pytest
 
-from mime import assets, credentials
+from mime import assets
+from mime.credentials import _store
 from mime.assets import AdapterError, LoginRefused, NotFound, Opened, Redirect, Request, Transient, _adapters, _fetch
 from mime.build import BuildRefused
-from mime.credentials import Token
+from mime.credentials._token import Token
 from mime.testing import HARNESS_TOKEN, LoopbackStore
 
 PAYLOAD = b"bytes kept on this machine only, which a remote server must not choose to read. " * 40
@@ -182,7 +183,7 @@ def echoed(how: str, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> list[s
     adapter = RedirectingEchoing(how) if how == "redirect" else Echoing(how)
     _adapters.register_adapter(adapter)
     try:
-        credentials.store(credentials.host_service("127.0.0.1"), Token("host:127.0.0.1", HARNESS_TOKEN))
+        _store.store(_store.host_service("127.0.0.1"), Token("host:127.0.0.1", HARNESS_TOKEN))
         ref = ref_of(PAYLOAD, "echoing://127.0.0.1/kept", adapters=(("echoing", ""),))
         with caplog.at_level(logging.DEBUG):
             _, text = refused_text(lambda: assets.fetch(ref))

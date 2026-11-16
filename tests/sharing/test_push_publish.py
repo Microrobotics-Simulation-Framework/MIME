@@ -27,9 +27,9 @@ from push_cases import copy_of, saved_toy, with_token, write_manifest
 from terms_cases import layered, same_reference_run, sha256_of, write_mesh
 from zenodo_records import FakeRecords, FakeTransport
 
-from mime import push
+from mime.push import _client, _draft, _publish, _service, _state
 from mime.build import BuildRefused
-from mime.push import _client, _publish, _stage
+from mime.push import _stage
 from mime.terms import CustomLicence, Evidence, Permission, Scope, Terms
 
 NUMBER = "629525"
@@ -94,21 +94,21 @@ class Terminal:
         return "\n".join(self.said)
 
 
-def given(fake: FakeRecords, service: push.Service | None = None) -> dict[str, object]:
+def given(fake: FakeRecords, service: _service.Service | None = None) -> dict[str, object]:
     return {"transport": FakeTransport(fake), "pause": 0, "sleep": lambda seconds: None}
 
 
-def pushed(folder: Path, fake: FakeRecords, service: push.Service, person: Terminal | None = None,
-           **extra: object) -> push.Drafted:
+def pushed(folder: Path, fake: FakeRecords, service: _service.Service, person: Terminal | None = None,
+           **extra: object) -> _draft.Drafted:
     held = person or Terminal()
-    return push.push(folder, service, confirm=held.ask, say=held.say, **given(fake), **extra)  # type: ignore[arg-type]
+    return _draft.push(folder, service, confirm=held.ask, say=held.say, **given(fake), **extra)  # type: ignore[arg-type]
 
 
-def published(folder: Path, fake: FakeRecords, service: push.Service, person: Terminal | None,
-              confirm: str | None = None) -> push.Published | None:
+def published(folder: Path, fake: FakeRecords, service: _service.Service, person: Terminal | None,
+              confirm: str | None = None) -> _state.Published | None:
     """A publish: in a terminal (``person``), or from a script (``person`` None, with ``confirm``)."""
     held = person or Terminal()
-    return push.publish(folder, service, confirm=confirm, ask=held.ask if person else None,
+    return _publish.publish(folder, service, confirm=confirm, ask=held.ask if person else None,
                         typed=held.typed if person else None, say=held.say, **given(fake))  # type: ignore[arg-type]
 
 
@@ -162,7 +162,7 @@ def test_yes_and_confirm_never_declare_a_permission(granted: Path, tmp_path: Pat
     pushed(folder, fake, service)
     assert codes(lambda: published(folder, fake, service, None, confirm=f"10.5072/zenodo.{NUMBER}")) == \
         ["push.permission-unconfirmed"]
-    monkeypatch.setitem(push.SERVICES, "zenodo-sandbox", service)  # type: ignore[index]
+    monkeypatch.setitem(_service.SERVICES, "zenodo-sandbox", service)  # type: ignore[index]
     monkeypatch.setattr(_client, "HttpTransport", lambda *a, **k: FakeTransport(fake))
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     assert main(["push", str(folder), "--to", "zenodo-sandbox", "--publish", "--yes", "--confirm",
@@ -304,7 +304,7 @@ def _replace_content(folder: Path, source: Path) -> None:
         shutil.copytree(path, target) if path.is_dir() else shutil.copy2(path, target)
 
 
-def production(fake: FakeRecords, monkeypatch: pytest.MonkeyPatch) -> push.Service:
+def production(fake: FakeRecords, monkeypatch: pytest.MonkeyPatch) -> _service.Service:
     """The fake as a production service; its token is the one ``with_token(monkeypatch, "zenodo")`` made it with."""
     del monkeypatch
     return fake.service("zenodo", production=True)
@@ -509,7 +509,7 @@ def test_a_changed_folder_is_a_new_version_whose_unchanged_files_are_linked(toy:
 
 def test_control_a_new_version_without_the_import_is_caught_uploading_the_unchanged_file(
         toy: Path, changed: Path, tmp_path: Path, with_asset: str, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(push.Client, "import_files", lambda self, record: {})
+    monkeypatch.setattr(_client.Client, "import_files", lambda self, record: {})
     fake = FakeRecords(with_token(monkeypatch))
     service = fake.service()
     folder = copy_of(toy, tmp_path)
@@ -529,7 +529,7 @@ def test_discarding_a_new_versions_draft_keeps_the_published_version(toy: Path, 
     published(folder, fake, service, Terminal(typed=(NUMBER,)))
     _replace_content(folder, changed)
     drafted = pushed(folder, fake, service)
-    assert push.discard(folder, service, yes=True, transport=FakeTransport(fake), pause=0)
+    assert _draft.discard(folder, service, yes=True, transport=FakeTransport(fake), pause=0)
     assert drafted.record not in fake.records and fake.records[NUMBER].published
     again = pushed(folder, fake, service)
     assert again.version == 2 and again.record != drafted.record

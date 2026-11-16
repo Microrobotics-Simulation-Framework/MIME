@@ -59,7 +59,7 @@ from mime._terminal import plain
 from mime._transfers import Transfers
 from mime.assets import size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.credentials import Token
+from mime.credentials._token import Token
 from mime.push._client import Client, Dropped, Errors, Gone, Json, Owner, Transport, owned_refusals
 from mime.push._edits import (
     SHARING_KEYS,
@@ -175,7 +175,7 @@ def usable(service: Service) -> None:
 def token_of(service: Service) -> Token:
     """The token push sends ``service``, and only where MIME may go online (``MIME_OFFLINE`` closes push too). The two
     real services' stored tokens are never the same one: a token stored under the other's name is refused."""
-    from mime import credentials
+    from mime.credentials import _store
     from mime.assets import offline
 
     if offline():
@@ -183,7 +183,7 @@ def token_of(service: Service) -> Token:
             "push.service", RefusalClass.ENVIRONMENT,
             f"MIME_OFFLINE is set, so push sends nothing to {service.name}",
             "unset MIME_OFFLINE to let push go online, then `mime push <folder> --to <service>` again")])
-    found = credentials.token(service.credential)
+    found = _store.token(service.credential)
     if found is None:
         raise BuildRefused([_refuse(
             "push.token", RefusalClass.ENVIRONMENT,
@@ -193,7 +193,7 @@ def token_of(service: Service) -> Token:
     others = [each.credential for each in (ZENODO, ZENODO_SANDBOX) if each.credential != service.credential]
     if service.credential in (ZENODO.credential, ZENODO_SANDBOX.credential):
         for other in others:
-            held = credentials.token(other)
+            held = _store.token(other)
             if held is not None and held.reveal() == found.reveal():
                 raise BuildRefused([_refuse(
                     "push.token", RefusalClass.ENVIRONMENT,

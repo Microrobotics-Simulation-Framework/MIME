@@ -48,7 +48,8 @@ from typing_extensions import ReadOnly, TypedDict
 from mime._terminal import plain
 from mime.assets import folder_assets, known_bytes, size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.credentials import Token, held_tokens
+from mime.credentials._store import held_tokens
+from mime.credentials._token import Token
 from mime.saved._container import (
     MANIFEST_MEMBER,
     NOTICE_MEMBER,

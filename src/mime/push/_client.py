@@ -51,7 +51,7 @@ from urllib.parse import quote, urlsplit
 from mime._terminal import plain
 from mime._transfers import Transfers
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.credentials import Token
+from mime.credentials._token import Token
 from mime.push._owners import field_owner
 from mime.push._service import Service, loopback
 
@@ -248,7 +248,7 @@ _BLOCK = 256 * 1024
 class Access:
     """What lets a pull read a record that is not public: the token ``mime credentials`` stored for its service
     (``token``, in the ``Authorization`` header, as push sends it), or a share link's key (``key``, as the records API's
-    :data:`LINK_PARAMETER`). Each is a :class:`~mime.credentials.Token`, masked wherever it is printed."""
+    :data:`LINK_PARAMETER`). Each is a :class:`~mime.credentials._token.Token`, masked wherever it is printed."""
 
     token: Token | None = None
     key: Token | None = None

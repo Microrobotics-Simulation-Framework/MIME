@@ -47,12 +47,11 @@ from push_cases import copy_of, saved_toy, with_token, write_manifest
 from test_push_client import captured_with_locals, interrupted_while_waiting, proxy, unix_signals
 from zenodo_records import FakeRecords, served
 
-from mime import push
+from mime.push import _client, _draft, _publish, _records, _service
 from mime.build import BuildRefused
 from mime.cli import main
-from mime.credentials import Token
+from mime.credentials._token import Token
 from mime.assets import _fetch
-from mime.push import _client, _records
 from mime.saved import _pull, pull
 
 NUMBER = "629525"
@@ -73,12 +72,12 @@ def sandbox(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[FakeRec
     """The fake behind a server on this machine, standing in for the sandbox, its record 629525 published and then
     restricted on its page, record and files; tracebacks written into the test's own folder."""
     token = with_token(monkeypatch)
-    monkeypatch.setattr(push._client, "PAUSE_SECONDS", 0.0)
+    monkeypatch.setattr(_client, "PAUSE_SECONDS", 0.0)
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     monkeypatch.delenv("MIME_TRACEBACK", raising=False)
     monkeypatch.setenv("MIME_TRACEBACK_DIR", str(tmp_path / "tracebacks"))
     with served(token) as fake:
-        monkeypatch.setitem(push.SERVICES, "zenodo-sandbox", fake.service())  # type: ignore[index]
+        monkeypatch.setitem(_service.SERVICES, "zenodo-sandbox", fake.service())  # type: ignore[index]
         yield fake
 
 
@@ -87,9 +86,9 @@ def restricted(toy: Path, sandbox: FakeRecords, tmp_path: Path, monkeypatch: pyt
     """The record published, then restricted, shared with the reader's account and by a link; the token stored for
     the sandbox is now the reader's."""
     folder = copy_of(toy, tmp_path)
-    service = push.SERVICES["zenodo-sandbox"]
-    push.push(folder, service, pause=0)
-    push.publish(folder, service, confirm=DOI, pause=0)
+    service = _service.SERVICES["zenodo-sandbox"]
+    _draft.push(folder, service, pause=0)
+    _publish.publish(folder, service, confirm=DOI, pause=0)
     sandbox.records[NUMBER].body["access"] = {"record": "restricted", "files": "restricted"}
     sandbox.readers.add(READER)
     sandbox.links[NUMBER] = KEY
@@ -219,8 +218,8 @@ def test_a_key_on_the_services_host_that_is_not_a_records_link_is_refused_withou
 
 def test_an_address_elsewhere_with_a_token_parameter_is_no_share_link():
     assert _records.share_link(f"https://example.org/records/{NUMBER}?token={KEY}") is None
-    assert _records.share_link(f"{push.ZENODO.site}/records/{NUMBER}") is None
-    found = _records.share_link(f"{push.ZENODO.site}/records/{NUMBER}?preview=1&token={KEY}")
+    assert _records.share_link(f"{_service.ZENODO.site}/records/{NUMBER}") is None
+    found = _records.share_link(f"{_service.ZENODO.site}/records/{NUMBER}?preview=1&token={KEY}")
     assert found is not None and (found.service.name, found.record) == ("zenodo", NUMBER)
     assert found.key.reveal() == KEY and KEY not in repr(found)
 
@@ -322,8 +321,8 @@ def test_control_with_the_direct_opener_planted_away_the_proxy_receives_the_toke
     assert seen and any(Token("held", READER).occurs_in(each) for each in seen), "the planted proxy is not seen"
 
 
-def stand_in(base: str) -> push.Service:
-    return push.Service("zenodo-sandbox", base + "/api", base, "zenodo-sandbox", False, "a stand-in")
+def stand_in(base: str) -> _service.Service:
+    return _service.Service("zenodo-sandbox", base + "/api", base, "zenodo-sandbox", False, "a stand-in")
 
 
 @unix_signals
@@ -338,9 +337,9 @@ def test_an_interrupt_while_a_signed_in_pull_waits_leaves_no_token_in_a_tracebac
 @unix_signals
 def test_control_without_the_boundary_the_librarys_frame_is_caught_holding_the_token():
     access = _client.Access(token=Token("zenodo-sandbox", READER))
-    transport = push.HttpTransport(timeout=20)
+    transport = _client.HttpTransport(timeout=20)
     error = interrupted_while_waiting(Token("held", READER), lambda base: _client._let_in(  # pyright: ignore[reportPrivateUsage]
-        transport.direct, 20, f"{base}/api/records/{NUMBER}", push.RDM_TYPE, access, None))
+        transport.direct, 20, f"{base}/api/records/{NUMBER}", _client.RDM_TYPE, access, None))
     assert isinstance(error, KeyboardInterrupt)
     assert secret_of("token").occurs_in(captured_with_locals(error).encode("utf-8")), "the planted defect is not seen"
 
@@ -355,17 +354,17 @@ def test_an_address_the_library_refuses_leaves_no_key_in_the_refusal_or_its_trac
     error: BaseException | None = None
     try:
         _client.fetched(stand_in("http://127.0.0.1:9"), _REFUSED_PATH, _client.Access(key=Token("x", KEY)), timeout=5)
-    except push.Dropped as dropped:
+    except _client.Dropped as dropped:
         error = dropped
-    assert isinstance(error, push.Dropped) and error.__context__ is None and "InvalidURL" in str(error)
+    assert isinstance(error, _client.Dropped) and error.__context__ is None and "InvalidURL" in str(error)
     assert not secret_of("key").occurs_in(captured_with_locals(error).encode("utf-8"))
 
 
 def test_control_without_the_boundary_the_librarys_error_is_caught_naming_the_key():
-    transport = push.HttpTransport(timeout=5)
+    transport = _client.HttpTransport(timeout=5)
     with pytest.raises(Exception) as raised:
         _client._let_in(transport.direct, 5, f"http://127.0.0.1:9/api{_REFUSED_PATH}",  # pyright: ignore[reportPrivateUsage]
-                        push.RDM_TYPE, _client.Access(key=Token("x", KEY)), None)
+                        _client.RDM_TYPE, _client.Access(key=Token("x", KEY)), None)
     assert secret_of("key").occurs_in(captured_with_locals(raised.value).encode("utf-8")), "the planted defect is not seen"
 
 
@@ -374,11 +373,11 @@ def test_nothing_listens_where_a_pull_from_a_closed_port_goes_and_the_refusal_ho
     closed.bind(("127.0.0.1", 0))
     port = closed.getsockname()[1]
     closed.close()
-    service = push.Service("zenodo-sandbox", f"http://127.0.0.1:{port}/api", f"http://127.0.0.1:{port}",
+    service = _service.Service("zenodo-sandbox", f"http://127.0.0.1:{port}/api", f"http://127.0.0.1:{port}",
                            "zenodo-sandbox", False, "a stand-in")
     for access in (_client.Access(token=Token("x", READER)), _client.Access(key=Token("x", KEY))):
         with pytest.raises(BuildRefused) as refused:
-            push.public_record(service, NUMBER, access)
+            _records.public_record(service, NUMBER, access)
         assert refused.value.codes() == ["pull.record"]
         text = captured_with_locals(refused.value)
         assert not Token("x", READER).occurs_in(text.encode()) and not Token("x", KEY).occurs_in(text.encode())

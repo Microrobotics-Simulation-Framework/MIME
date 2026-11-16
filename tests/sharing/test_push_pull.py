@@ -19,7 +19,8 @@ from fake_zenodo import DOI, RECORD, zenodo
 from push_cases import copy_of, saved_toy, with_token, write_manifest
 from zenodo_records import FakeRecords, served
 
-from mime import assets, push
+from mime import assets
+from mime.push import _client, _draft, _publish, _records, _service
 from mime.assets import _fetch
 from mime.build import BuildRefused
 from mime.cli import main
@@ -35,12 +36,12 @@ def toy(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture
 def sandbox(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRecords]:
-    """The fake behind a server on this machine, standing in for the sandbox in ``mime.push.SERVICES``."""
+    """The fake behind a server on this machine, standing in for the sandbox in ``mime.push._service.SERVICES``."""
     token = with_token(monkeypatch)
-    monkeypatch.setattr(push._client, "PAUSE_SECONDS", 0.0)
+    monkeypatch.setattr(_client, "PAUSE_SECONDS", 0.0)
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     with served(token) as fake:
-        monkeypatch.setitem(push.SERVICES, "zenodo-sandbox", fake.service())  # type: ignore[index]
+        monkeypatch.setitem(_service.SERVICES, "zenodo-sandbox", fake.service())  # type: ignore[index]
         yield fake
 
 
@@ -64,9 +65,9 @@ def test_a_published_sandbox_record_is_pulled_by_its_number_and_verifies(toy: Pa
                                                                        capsys: pytest.CaptureFixture[str],
                                                                        monkeypatch: pytest.MonkeyPatch):
     folder = copy_of(toy, tmp_path)
-    service = push.SERVICES["zenodo-sandbox"]
-    push.push(folder, service, pause=0)
-    push.publish(folder, service, confirm="10.5072/zenodo.629525", pause=0)
+    service = _service.SERVICES["zenodo-sandbox"]
+    _draft.push(folder, service, pause=0)
+    _publish.publish(folder, service, confirm="10.5072/zenodo.629525", pause=0)
     asked = doi_org_asked(monkeypatch)
     into = tmp_path / "pulled"
     assert main(["pull", "--from", "zenodo-sandbox", "629525", "--into", str(into)]) == 0
@@ -82,9 +83,9 @@ def test_a_newer_version_the_service_does_not_name_sends_the_person_to_the_recor
         toy: Path, sandbox: FakeRecords, tmp_path: Path, capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch):
     folder = copy_of(toy, tmp_path)
-    service = push.SERVICES["zenodo-sandbox"]
-    push.push(folder, service, pause=0)
-    push.publish(folder, service, confirm="10.5072/zenodo.629525", pause=0)
+    service = _service.SERVICES["zenodo-sandbox"]
+    _draft.push(folder, service, pause=0)
+    _publish.publish(folder, service, confirm="10.5072/zenodo.629525", pause=0)
     monkeypatch.setattr(sandbox, "_latest", lambda parent: None)  # not the latest, and `versions/latest` names none
     assert main(["pull", "--from", "zenodo-sandbox", "629525", "--into", str(tmp_path / "pulled")]) == 0
     out = capsys.readouterr().out
@@ -94,7 +95,7 @@ def test_a_newer_version_the_service_does_not_name_sends_the_person_to_the_recor
 
 def test_a_draft_or_an_unknown_record_is_not_pulled(toy: Path, sandbox: FakeRecords, tmp_path: Path):
     folder = copy_of(toy, tmp_path)
-    push.push(folder, push.SERVICES["zenodo-sandbox"], pause=0)
+    _draft.push(folder, _service.SERVICES["zenodo-sandbox"], pause=0)
     for record, code in (("629525", "pull.restricted"), ("10.5072/zenodo.629525", "pull.restricted"),
                          ("999999", "pull.record")):
         with pytest.raises(BuildRefused) as refused:
@@ -107,13 +108,13 @@ def test_a_draft_or_an_unknown_record_is_not_pulled(toy: Path, sandbox: FakeReco
 
 
 def test_a_record_is_named_by_its_number_its_doi_or_its_page():
-    service = push.SERVICES["zenodo-sandbox"]
+    service = _service.SERVICES["zenodo-sandbox"]
     for given in ("632123", "10.5072/zenodo.632123", "https://doi.org/10.5072/zenodo.632123",
                   "https://sandbox.zenodo.org/records/632123", "https://sandbox.zenodo.org/uploads/632123/"):
-        assert push.record_number(service, given) == "632123", given
+        assert _records.record_number(service, given) == "632123", given
     for given in ("10.5281/zenodo.632123", "https://zenodo.org/records/632123", "zenodo.632123", "\u0666\u0663\u0662"):
         with pytest.raises(BuildRefused):
-            push.record_number(service, given)
+            _records.record_number(service, given)
 
 
 @pytest.mark.parametrize(("service", "given", "named", "command"), [
@@ -121,16 +122,16 @@ def test_a_record_is_named_by_its_number_its_doi_or_its_page():
     ("zenodo", "10.5072/zenodo.5", "a DOI on the sandbox, not on zenodo", "mime pull --from zenodo-sandbox 5")])
 def test_a_doi_of_the_other_service_is_refused_naming_where_it_is(service: str, given: str, named: str, command: str):
     with pytest.raises(BuildRefused) as refused:
-        push.record_number(push.SERVICES[service], given)
+        _records.record_number(_service.SERVICES[service], given)
     assert named in refused.value.refusals[0].message and command in refused.value.refusals[0].action
 
 
 def test_a_record_whose_files_are_restricted_is_refused_naming_the_route_that_works(
         toy: Path, sandbox: FakeRecords, tmp_path: Path):
     folder = copy_of(toy, tmp_path)
-    service = push.SERVICES["zenodo-sandbox"]
-    push.push(folder, service, pause=0)
-    push.publish(folder, service, confirm="10.5072/zenodo.629525", pause=0)
+    service = _service.SERVICES["zenodo-sandbox"]
+    _draft.push(folder, service, pause=0)
+    _publish.publish(folder, service, confirm="10.5072/zenodo.629525", pause=0)
     sandbox.records["629525"].body["access"] = {"record": "public", "files": "restricted"}  # set on the record's page
     with pytest.raises(BuildRefused) as refused:
         pull("629525", into=tmp_path / "pulled", from_service="zenodo-sandbox")

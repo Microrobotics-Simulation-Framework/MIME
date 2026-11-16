@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any, Protocol, cast, override, runtime_checkable
 from urllib.parse import unquote, urljoin, urlsplit
 
-from mime.credentials import Token
+from mime.credentials._token import Token
 
 if TYPE_CHECKING:
     from mime.assets._reference import AssetRef
@@ -239,11 +239,11 @@ def host_of(location: str) -> str:
 def stored_credential(host: str) -> Credential | None:
     """The credential the machine's store holds for ``host`` (``mime credentials set host:<host>``), bound to it, or
     ``None``. Never read from a record, a location or the locations file."""
-    from mime import credentials
+    from mime.credentials import _store
 
-    if not host or not credentials.is_host_service(credentials.host_service(host)):
+    if not host or not _store.is_host_service(_store.host_service(host)):
         return None
-    found = credentials.token(credentials.host_service(host))
+    found = _store.token(_store.host_service(host))
     return Credential(host, found) if found is not None else None
 
 
