@@ -1,0 +1,16 @@
+{
+  "written": "2026-11-16, committed before the fourth probe round ran: round 3 (run 43856163851) flagged the clean looped arm on 2 of 72,000 mixed draws (both screw, one group each, both unresolved by 0.4.0's rattled arms), and a local replay of both draws flags nothing",
+  "phase": "PR 337 fix round 2, which of the two stationarity rules flags a clean looped group on a runner",
+  "labels": "predictions by the builder (Sonnet)",
+  "seen_before": ["round 3's two flagged draws, with groups' unstationary, spread and alone (alone 7.8e6 and infinite: the looped end in another basin or another flag than 0.4.0's); local replays: looped residuals 1.3 and 0.3 units, flags agree, alone 1 to 3 units"],
+  "operating_point": {"dtype": ["float32"], "platform": "CPU, GitHub runners of 4 vCPU (six arms, one run each)", "sizes_and_parameters": "FL-9 at the two draws, as the property", "seeds_and_draws": "two draws, replayed once on each of six arms (the runners' CPUs are whatever the arms get)"},
+  "gate_4_flag_reason": {
+    "claim": "on a runner where the clean looped arm is flagged at one of the two draws, which rule (the converged flag against all 0.4.0 arms', or the residual against twice their largest) flags it, with the looped and unrolled end's residual, flag and the rattled arms' residuals",
+    "kind": "estimates",
+    "case": "probe/rates.py (replay)",
+    "prediction": {"value": "at least one of the six arms reproduces a flag at one of the two draws; the reason is the residual rule", "basis": "guess", "why": "the flagged groups ended in a different basin (alone 7.8e6) whose end the 0.4.0 arms never visited, where a residual larger than twice theirs is likely; the flag rule needs all 70 arms to agree against the looped end, which a basin that no arm visited cannot show"},
+    "control": {"plant": "none", "expected_rate": "n/a", "runs": 12, "clean_expected": "n/a", "resolution": "a replay names the rule or none flags"},
+    "if_wrong": "no arm flags: the flags are rare codegen events not reproduced by replay, and the rule stays unexplained; flags by the flag rule: the 0.4.0 arms agree on a flag the looped end does not"
+  },
+  "outcomes": null
+}
