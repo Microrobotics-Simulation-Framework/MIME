@@ -73,6 +73,13 @@ def table_without(code: str) -> set[str]:
 FIRST_CODE = floor_codes(FLOOR.read_text(encoding="utf-8"))[0]
 
 
+def logged_with_the_real_removals(planted: str) -> RatchetList:
+    """The log the controls plant a line into: the planted lines, then the removals really logged (a control is about
+    its one planted code, and a real removal is no problem of it)."""
+    real = [line for line in REMOVED.read_text(encoding="utf-8").splitlines(keepends=True) if not line.startswith("#")]
+    return list_from_text(REMOVED, planted + "".join(real))
+
+
 def test_control_a_code_deleted_with_its_construction_and_not_logged_fails_naming_it():
     floor = floor_codes(FLOOR.read_text(encoding="utf-8"))
     assert removal_problems(table_without(FIRST_CODE), floor, real_removed()) == [
@@ -83,18 +90,18 @@ def test_control_a_code_deleted_with_its_construction_and_not_logged_fails_namin
 @pytest.mark.parametrize("code", [FIRST_CODE, floor_codes(FLOOR.read_text(encoding="utf-8"))[-1]],
                          ids=["the first code", "the last code"])
 def test_control_a_logged_removal_passes(code):
-    log = list_from_text(REMOVED, f"{code}  # removed with the planted feature\n")
+    log = logged_with_the_real_removals(f"{code}  # removed with the planted feature\n")
     assert removal_problems(table_without(code), floor_codes(FLOOR.read_text(encoding="utf-8")), log) == []
 
 
 def test_control_a_logged_code_the_table_holds_again_fails_naming_the_line():
-    log = list_from_text(REMOVED, f"# header\n{FIRST_CODE}  # removed once\n")
+    log = logged_with_the_real_removals(f"# header\n{FIRST_CODE}  # removed once\n")
     assert removal_problems(set(REFUSAL_TABLE), floor_codes(FLOOR.read_text(encoding="utf-8")), log) == [
         f"{REMOVED}:2: {FIRST_CODE!r} is logged as removed and the table holds it; delete this line"]
 
 
 def test_control_a_log_line_with_no_reason_is_a_problem():
-    log = list_from_text(REMOVED, f"{FIRST_CODE}\n")
+    log = logged_with_the_real_removals(f"{FIRST_CODE}\n")
     problems = removal_problems(table_without(FIRST_CODE), floor_codes(FLOOR.read_text(encoding="utf-8")), log)
     assert problems and f"{FIRST_CODE!r} has no reason" in problems[0]
 
