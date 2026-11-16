@@ -98,7 +98,562 @@
   "prediction": "the jvp within the line at the singular pixel at all six (three poses, x and z)",
   "controls": "the plant (near-axis: every sub-ray within 0.01 px of the side's axis has its place moved an extra 1 of the body's motion along x and z, in the jvp only) crosses the line at the singular pixel at all three poses, in both directions (6 of 6); the positive control (every other band pixel, the jvp against the rendered difference by the same line) holds at all six",
   "image": "the images are unchanged, so the rendered and exact images' derivatives still differ at the singular pixels as the singular check found (about 15 and 5 px^2 a px at the first pose along x and z, about 1.4 at the second along z, about 0.7 at the third along z), and on the crease aggregates by more than 1e-2 px a px at the first pose: an image error in one sub-cell, not a derivative error, recorded for the maintainer with option (iii) (the safeguarded-Newton refinement of the held least) as the fallback that would fix the image; not built",
-  "first_run_fix": "2026-11-16, camera PR 5b-i's fifth agent, after the check's first run (one pose read, the session ended before the rest): the positive control read nan. The line is never zero (its floor, 64 units in the last place over the last step, is about 2.4e-7), so the nan was not 0/0 in the control's arithmetic: the jvp itself was nan at 2506 pixels of the first pose's image, every one empty (rendered and exact share 0), 21 of them in the band. jax_debug_nans located it in _sampled._leasts: a read point's recipe counted its descent's moves as (centre - start) / spacing, and a ray that misses the widened ball has no spacing (0/0); _place then made its derivative from start + moves x spacing (nan x 0). A derivative defect of design (i), found by the positive control; the images are untouched (the recipe is read only by the derivative). Fixed in the source (the spacing guarded, the moves 0 there, exactly what the descent did), after which the jvp is finite at every pixel of the three poses (0 of 6144, x and z). The control's arithmetic is otherwise unchanged: a non-finite distance now counts as a failure explicitly (it did before only through argmax picking the nan), and the count of non-finite jvp pixels is reported. The first pose's pixel arm (jvp 14.8696 against the rendered difference within 5.5e-6 of a 5.9e-6 line along x, 1.8e-5 of 3.0e-5 along z) read the same pixel, whose jvp was finite; it is re-run with the rest."
+  "first_run_fix": "2026-11-16, camera PR 5b-i's fifth agent, after the check's first run (one pose read, the session ended before the rest): the positive control read nan. The line is never zero (its floor, 64 units in the last place over the last step, is about 2.4e-7), so the nan was not 0/0 in the control's arithmetic: the jvp itself was nan at 2506 pixels of the first pose's image, every one empty (rendered and exact share 0), 21 of them in the band. jax_debug_nans located it in _sampled._leasts: a read point's recipe counted its descent's moves as (centre - start) / spacing, and a ray that misses the widened ball has no spacing (0/0); _place then made its derivative from start + moves x spacing (nan x 0). A derivative defect of design (i), found by the positive control; the images are untouched (the recipe is read only by the derivative). Fixed in the source (the spacing guarded, the moves 0 there, exactly what the descent did), after which the jvp is finite at every pixel of the three poses (0 of 6144, x and z). The control's arithmetic is otherwise unchanged: a non-finite distance now counts as a failure explicitly (it did before only through argmax picking the nan), and the count of non-finite jvp pixels is reported. The first pose's pixel arm (jvp 14.8696 against the rendered difference within 5.5e-6 of a 5.9e-6 line along x, 1.8e-5 of 3.0e-5 along z) read the same pixel, whose jvp was finite; it is re-run with the rest.",
+  "outcomes": {
+   "run": "2026-11-16, local (float64, the renderer), scripts/camera_route2/crease_held_point_check.py at 1e7f6195 (the recipe's 0/0 fixed; the check's line unchanged), both arms in full",
+   "pixel": "the jvp within the line at the singular pixel at 6 of 6 (predicted 6): along x and z, 5.5e-6 of 5.9e-6 and 1.8e-5 of 3.0e-5 at the first pose, 2.6e-6 of 5.6e-6 and 2.4e-6 of 4.0e-6 at the second, 3.4e-7 of 6.3e-7 and 6.2e-7 of 2.2e-6 at the third: the jvp is the rendered image's derivative there",
+   "plant": "near-axis crossed the line at 6 of 6 (predicted 6): the jvp moved 13.6, 3.05 and 0.86 px^2 a px at the three poses (lines about 1e-6); in the singular check's form it had moved nothing at the second and third (one sub-ray's span line); this plant moves every sub-ray within 0.01 px",
+   "positive_control": "held at 6 of 6 (predicted 6): every other band pixel's jvp within the same line of its rendered difference, the largest 0.24, 0.27, 0.063, 0.052, 0.118 and 0.055 of it; no non-finite jvp pixel (the first run's nan was the jvp's, fixed in 1e7f6195)",
+   "image": "the rendered image's derivative less the exact one's: at the singular pixel 14.87 (x) and 5.09 (z) at the first pose, 0.139 and 1.476 at the second, 0.717 (z) at the third (where along x the singular class's largest, 0.991, is the far cap's end pixel, u 20, a thin-cap pixel whose sub-row also passes the axis); every other band pixel outside the thin class at most 0.055 and 0.108 (first pose, the largest at the near cap's corner, v58 u35), 0.063 and 0.027 (second), 0.119 and 0.026 (third, v20 u82); the thin class (about a cap under two sub-pixels, judged by the flag) up to 0.226 (second, x) and 0.998 (third, x: the far cap's column u 20, about 0.99 at each of its pixels, the rendered thin cap's edge not moving with the body). On the crease aggregates the rendered image's derivative departs from the exact one's by 2.98 and 0.97 px a px at the first pose (its singular pixel), 0.33 and 0.32 at the second, 5.49 and 0.15 at the third (its far thin cap's column, then its singular pixel): the masks hold both classes, and the aggregates' excess is theirs",
+   "rows_clean": [
+    {
+     "turn": 6.0,
+     "roll": 75.0,
+     "offset": [
+      0.3,
+      0.8
+     ],
+     "pixel_u_v": [
+      43,
+      59
+     ],
+     "direction": "x",
+     "jvp": 14.869596884788566,
+     "rendered_last": 14.869591372087598,
+     "apart": 5.512700967713613e-06,
+     "line": 5.893874913454056e-06,
+     "within": true,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.24129956313805986,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 2.9839390961426018,
+     "image": {
+      "rest": {
+       "error": 0.055278432837222446,
+       "at_v_u": [
+        58,
+        35
+       ],
+       "near_px": 7.958664628958402
+      },
+      "singular": {
+       "error": 14.869596884788566,
+       "at_v_u": [
+        59,
+        43
+       ],
+       "near_px": 0.0012625037054931113
+      }
+     }
+    },
+    {
+     "turn": 6.0,
+     "roll": 75.0,
+     "offset": [
+      0.3,
+      0.8
+     ],
+     "pixel_u_v": [
+      43,
+      59
+     ],
+     "direction": "z",
+     "jvp": -5.090283651110284,
+     "rendered_last": -5.090301231481135,
+     "apart": 1.758037085064501e-05,
+     "line": 3.0174385756254196e-05,
+     "within": true,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.27094188702451455,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.9705102372587174,
+     "image": {
+      "rest": {
+       "error": 0.10753132720834602,
+       "at_v_u": [
+        58,
+        35
+       ],
+       "near_px": 7.958664628958402
+      },
+      "singular": {
+       "error": 5.090283651110284,
+       "at_v_u": [
+        59,
+        43
+       ],
+       "near_px": 0.0012625037054931113
+      }
+     }
+    },
+    {
+     "turn": 3.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      83,
+      29
+     ],
+     "direction": "x",
+     "jvp": 1.1477355638455546,
+     "rendered_last": 1.1477381847798824,
+     "apart": 2.620934327790536e-06,
+     "line": 5.600973963737488e-06,
+     "within": true,
+     "exact_1e-4": 1.0085743269883096,
+     "positive_control_largest_share": 0.06335615187652352,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.33336574815424547,
+     "image": {
+      "rest": {
+       "error": 0.06299625335850123,
+       "at_v_u": [
+        37,
+        82
+       ],
+       "near_px": 7.264078986681315
+      },
+      "singular": {
+       "error": 0.13916123685724502,
+       "at_v_u": [
+        29,
+        83
+       ],
+       "near_px": 0.0009775997439370333
+      },
+      "thin": {
+       "error": 0.22571168613911174,
+       "at_v_u": [
+        38,
+        20
+       ],
+       "near_px": 8.243672525166515
+      }
+     }
+    },
+    {
+     "turn": 3.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      83,
+      29
+     ],
+     "direction": "z",
+     "jvp": -1.4726703441571622,
+     "rendered_last": -1.4726679231971502,
+     "apart": 2.4209600120173036e-06,
+     "line": 4.041008651256561e-06,
+     "within": true,
+     "exact_1e-4": 0.0034640106605365872,
+     "positive_control_largest_share": 0.051695861750178866,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.31767871548042426,
+     "image": {
+      "rest": {
+       "error": 0.026616096955518476,
+       "at_v_u": [
+        39,
+        82
+       ],
+       "near_px": 9.267492113626835
+      },
+      "singular": {
+       "error": 1.4761343548176988,
+       "at_v_u": [
+        29,
+        83
+       ],
+       "near_px": 0.0009775997439370333
+      },
+      "thin": {
+       "error": 0.051586581291181544,
+       "at_v_u": [
+        39,
+        20
+       ],
+       "near_px": 9.241756410506225
+      }
+     }
+    },
+    {
+     "turn": 2.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      81,
+      29
+     ],
+     "direction": "x",
+     "jvp": -0.08731553306230411,
+     "rendered_last": -0.08731587138026953,
+     "apart": 3.3831796542038717e-07,
+     "line": 6.249174475669861e-07,
+     "within": true,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.11842145519345582,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 5.492770180740431,
+     "image": {
+      "rest": {
+       "error": 0.11856220034825915,
+       "at_v_u": [
+        20,
+        82
+       ],
+       "near_px": 9.007601821414214
+      },
+      "singular": {
+       "error": 0.9909735126711894,
+       "at_v_u": [
+        29,
+        20
+       ],
+       "near_px": 0.007508154244385756
+      },
+      "thin": {
+       "error": 0.9975153079722077,
+       "at_v_u": [
+        38,
+        20
+       ],
+       "near_px": 8.247383289325677
+      }
+     }
+    },
+    {
+     "turn": 2.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      81,
+      29
+     ],
+     "direction": "z",
+     "jvp": 0.7167912492410216,
+     "rendered_last": 0.7167918728664517,
+     "apart": 6.236254301850153e-07,
+     "line": 2.2202730178833008e-06,
+     "within": true,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.054560437409774114,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.14596352968485102,
+     "image": {
+      "rest": {
+       "error": 0.02552945740547974,
+       "at_v_u": [
+        39,
+        82
+       ],
+       "near_px": 9.263224033447164
+      },
+      "singular": {
+       "error": 0.7167912492410216,
+       "at_v_u": [
+        29,
+        81
+       ],
+       "near_px": 0.002488521757999555
+      },
+      "thin": {
+       "error": 0.06843918624166268,
+       "at_v_u": [
+        39,
+        20
+       ],
+       "near_px": 9.246073008731194
+      }
+     }
+    }
+   ],
+   "rows_planted": [
+    {
+     "turn": 6.0,
+     "roll": 75.0,
+     "offset": [
+      0.3,
+      0.8
+     ],
+     "pixel_u_v": [
+      43,
+      59
+     ],
+     "direction": "x",
+     "jvp": 28.517313082949318,
+     "rendered_last": 14.869591372087598,
+     "apart": 13.64772171086172,
+     "line": 5.893874913454056e-06,
+     "within": false,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.24129956313805986,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 2.9839390961426018,
+     "image": {
+      "rest": {
+       "error": 0.055278432837222446,
+       "at_v_u": [
+        58,
+        35
+       ],
+       "near_px": 7.958664628958402
+      },
+      "singular": {
+       "error": 28.517313082949318,
+       "at_v_u": [
+        59,
+        43
+       ],
+       "near_px": 0.0012625037054931113
+      }
+     }
+    },
+    {
+     "turn": 6.0,
+     "roll": 75.0,
+     "offset": [
+      0.3,
+      0.8
+     ],
+     "pixel_u_v": [
+      43,
+      59
+     ],
+     "direction": "z",
+     "jvp": 8.557432547050473,
+     "rendered_last": -5.090301231481135,
+     "apart": 13.647733778531608,
+     "line": 3.0174385756254196e-05,
+     "within": false,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.27094188702451455,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.9705102372587174,
+     "image": {
+      "rest": {
+       "error": 0.10753132720834602,
+       "at_v_u": [
+        58,
+        35
+       ],
+       "near_px": 7.958664628958402
+      },
+      "singular": {
+       "error": 8.557432547050473,
+       "at_v_u": [
+        59,
+        43
+       ],
+       "near_px": 0.0012625037054931113
+      }
+     }
+    },
+    {
+     "turn": 3.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      83,
+      29
+     ],
+     "direction": "x",
+     "jvp": 4.202312956931759,
+     "rendered_last": 1.1477381847798824,
+     "apart": 3.0545747721518763,
+     "line": 5.600973963737488e-06,
+     "within": false,
+     "exact_1e-4": 1.0085743269883096,
+     "positive_control_largest_share": 0.06335615187652352,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.33336574815424547,
+     "image": {
+      "rest": {
+       "error": 0.06299625335850123,
+       "at_v_u": [
+        37,
+        82
+       ],
+       "near_px": 7.264078986681315
+      },
+      "singular": {
+       "error": 3.193738629943449,
+       "at_v_u": [
+        29,
+        83
+       ],
+       "near_px": 0.0009775997439370333
+      },
+      "thin": {
+       "error": 0.22571168613911174,
+       "at_v_u": [
+        38,
+        20
+       ],
+       "near_px": 8.243672525166515
+      }
+     }
+    },
+    {
+     "turn": 3.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      83,
+      29
+     ],
+     "direction": "z",
+     "jvp": 1.5819070489290423,
+     "rendered_last": -1.4726679231971502,
+     "apart": 3.0545749721261926,
+     "line": 4.041008651256561e-06,
+     "within": false,
+     "exact_1e-4": 0.0034640106605365872,
+     "positive_control_largest_share": 0.051695861750178866,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.31767871548042426,
+     "image": {
+      "rest": {
+       "error": 0.026616096955518476,
+       "at_v_u": [
+        39,
+        82
+       ],
+       "near_px": 9.267492113626835
+      },
+      "singular": {
+       "error": 1.5784430382685057,
+       "at_v_u": [
+        29,
+        83
+       ],
+       "near_px": 0.0009775997439370333
+      },
+      "thin": {
+       "error": 0.051586581291181544,
+       "at_v_u": [
+        39,
+        20
+       ],
+       "near_px": 9.241756410506225
+      }
+     }
+    },
+    {
+     "turn": 2.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      81,
+      29
+     ],
+     "direction": "x",
+     "jvp": 0.7722179880857978,
+     "rendered_last": -0.08731587138026953,
+     "apart": 0.8595338594660673,
+     "line": 6.249174475669861e-07,
+     "within": false,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.11842145519345582,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 5.492770180740431,
+     "image": {
+      "rest": {
+       "error": 0.11856220034825915,
+       "at_v_u": [
+        20,
+        82
+       ],
+       "near_px": 9.007601821414214
+      },
+      "singular": {
+       "error": 0.9909735126711894,
+       "at_v_u": [
+        29,
+        20
+       ],
+       "near_px": 0.007508154244385756
+      },
+      "thin": {
+       "error": 0.9975153079722077,
+       "at_v_u": [
+        38,
+        20
+       ],
+       "near_px": 8.247383289325677
+      }
+     }
+    },
+    {
+     "turn": 2.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      81,
+      29
+     ],
+     "direction": "z",
+     "jvp": 1.5763247703891228,
+     "rendered_last": 0.7167918728664517,
+     "apart": 0.859532897522671,
+     "line": 2.2202730178833008e-06,
+     "within": false,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.054560437409774114,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.14596352968485102,
+     "image": {
+      "rest": {
+       "error": 0.02552945740547974,
+       "at_v_u": [
+        39,
+        82
+       ],
+       "near_px": 9.263224033447164
+      },
+      "singular": {
+       "error": 1.5763247703891228,
+       "at_v_u": [
+        29,
+        81
+       ],
+       "near_px": 0.002488521757999555
+      },
+      "thin": {
+       "error": 0.06843918624166268,
+       "at_v_u": [
+        39,
+        20
+       ],
+       "near_px": 9.246073008731194
+      }
+     }
+    }
+   ]
+  }
  },
  "image_check": {
   "written": "2026-11-16, camera PR 5b-i's fifth agent, under F0's rule on the maintainer's behalf (an image error beyond G17's band is an image error in one sub-cell, not a derivative error; G17's per-view term carries it explicitly, never hides it; option (iii) goes back to the maintainer with numbers, not built), before scripts/camera_route2/crease_image_line.py ran and before any fresh view was drawn",
