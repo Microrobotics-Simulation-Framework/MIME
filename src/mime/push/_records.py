@@ -233,10 +233,10 @@ def _get(service: Service, path: str, accept: str = RDM_TYPE,
 
 def _stored(service: Service) -> bool:
     """Whether a token is stored for ``service`` (in the credentials file or its variable), read without its value."""
-    from mime import credentials
+    from mime.credentials import _store
 
     try:
-        return credentials.source(service.credential) is not None
+        return _store.source(service.credential) is not None
     except BuildRefused:
         return False
 

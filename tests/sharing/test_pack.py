@@ -25,7 +25,7 @@ import script_a as script_a_module
 from bundles import contents, manifest_of
 from script_a import script_a
 
-from mime import credentials
+from mime.credentials import _store, _token
 from mime.build import BuildRefused
 from mime.cli import main
 from mime.experiment import Experiment
@@ -66,7 +66,7 @@ def a_token() -> str:
 
 
 def put(service: str, value: str) -> Path:
-    return credentials.store(service, credentials.Token(service, value))
+    return _store.store(service, _token.Token(service, value))
 
 
 @contextmanager
@@ -449,7 +449,7 @@ def test_the_scenarios_pass_unplanted(tmp_path: Path, saved_toy: Path, pathed: P
 # The scans are functions of a file's bytes, so these plant each form straight against ``_scan``; the pack-level tests
 # above show the same refusal reaching a person.
 
-def scanned(data: bytes, *, tokens: list[credentials.Token] | None = None) -> list[str]:
+def scanned(data: bytes, *, tokens: list[_token.Token] | None = None) -> list[str]:
     return [each.code for each in _bundle._scan("file", data, tokens or [])]
 
 
@@ -491,7 +491,7 @@ def token_forms(value: str) -> dict[str, bytes]:
 
 def a_stored_token_in_every_form_is_found(root: Path) -> None:
     secret = "tok+/=? " + secrets.token_urlsafe(30)  # characters an encoder changes (the Token itself checks one word)
-    held = credentials.Token("zenodo", secret)
+    held = _token.Token("zenodo", secret)
     missed = [name for name, data in token_forms(secret).items()
               if scanned(data if "gzip" in name else os.urandom(40) + data + os.urandom(40), tokens=[held])
               != ["bundle.credential"]]
@@ -505,14 +505,14 @@ def test_a_stored_token_is_found_in_every_form_the_search_lists(tmp_path: Path):
 def test_a_token_whose_json_form_differs_from_its_text_is_found():
     for secret in ('tok"quoted\\and-back', "tok-\u00e9-accent-chars-0123456789"):
         data = b'{"k": ' + json.dumps(secret).encode() + b"}"
-        assert scanned(data, tokens=[credentials.Token("zenodo", secret)]) == ["bundle.credential"], secret
+        assert scanned(data, tokens=[_token.Token("zenodo", secret)]) == ["bundle.credential"], secret
         data = b'{"k": ' + json.dumps(secret, ensure_ascii=False).encode() + b"}"
-        assert scanned(data, tokens=[credentials.Token("zenodo", secret)]) == ["bundle.credential"], secret
+        assert scanned(data, tokens=[_token.Token("zenodo", secret)]) == ["bundle.credential"], secret
 
 
 def test_a_token_inside_a_compressed_npz_member_and_a_nested_archive_is_found():
     secret = "tok" + secrets.token_urlsafe(30)
-    held = [credentials.Token("zenodo", secret)]
+    held = [_token.Token("zenodo", secret)]
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("a.npy", b"padding " * 50 + secret.encode() + b" more")
@@ -543,7 +543,7 @@ def test_the_forms_the_search_does_not_list_are_not_found():
     """The limit written down: a token reversed, upper-cased or split across a newline passes the scan, which is why a
     pack carries only the files a saved folder names."""
     secret = "tok" + secrets.token_urlsafe(30)
-    held = [credentials.Token("zenodo", secret)]
+    held = [_token.Token("zenodo", secret)]
     for data in (secret[::-1].encode(), secret.upper().encode(), (secret[:20] + "\n" + secret[20:]).encode(),
                  codecs_rot13(secret)):
         assert scanned(data, tokens=held) == [], data
@@ -564,7 +564,6 @@ def further_paths_skipped() -> Iterator[None]:
 
 @contextmanager
 def only_the_written_form_searched() -> Iterator[None]:
-    from mime.credentials import _token
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(_token, "_forms", lambda value: (value.encode(),))
@@ -595,7 +594,7 @@ def a_file_url_path_is_refused(root: Path) -> None:
 
 def a_gzipped_token_is_found(root: Path) -> None:
     secret = "tok" + secrets.token_urlsafe(30)
-    assert scanned(gzip.compress(b"x" + secret.encode()), tokens=[credentials.Token("zenodo", secret)]) == [
+    assert scanned(gzip.compress(b"x" + secret.encode()), tokens=[_token.Token("zenodo", secret)]) == [
         "bundle.credential"]
 
 

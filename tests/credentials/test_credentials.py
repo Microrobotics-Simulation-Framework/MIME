@@ -22,11 +22,10 @@ from pathlib import Path
 
 import pytest
 
-from mime import credentials
+from mime.credentials import _store, _token
 from mime.build import BuildRefused, Refusal
 from mime.cli import FAILED, main
 from mime.cli import _credentials as credentials_command
-from mime.credentials import _store, _token
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="file modes are POSIX")
 
@@ -36,7 +35,7 @@ def a_token() -> str:
 
 
 def put(service: str, value: str) -> Path:
-    return credentials.store(service, credentials.Token(service, value))
+    return _store.store(service, _token.Token(service, value))
 
 
 GIT_VARIABLES = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_CEILING_DIRECTORIES",
@@ -51,11 +50,11 @@ def home(root: Path) -> Iterator[Path]:
         patch.setenv("XDG_CONFIG_HOME", str(root / "config"))
         patch.setenv("APPDATA", str(root / "appdata"))
         patch.setenv("USERPROFILE", str(root))
-        for variable in (*credentials.SERVICES.values(), *GIT_VARIABLES):
+        for variable in (*_store.SERVICES.values(), *GIT_VARIABLES):
             patch.delenv(variable, raising=False)
         patch.setenv("GIT_CONFIG_GLOBAL", str(root / "gitconfig"))
         patch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-        assert root in credentials.credentials_path().parents, "the config directory is not in the temporary folder"
+        assert root in _store.credentials_path().parents, "the config directory is not in the temporary folder"
         yield root
 
 
@@ -85,7 +84,7 @@ def check_the_file_is_private_and_so_is_its_directory(root: Path) -> None:
     for umask in (0o022, 0o000):
         old = os.umask(umask)
         try:
-            credentials.credentials_path().unlink(missing_ok=True)
+            _store.credentials_path().unlink(missing_ok=True)
             path = put("zenodo", a_token())
         finally:
             os.umask(old)
@@ -95,7 +94,7 @@ def check_the_file_is_private_and_so_is_its_directory(root: Path) -> None:
 
 
 def check_a_wider_directory_is_narrowed(root: Path) -> None:
-    directory = credentials.credentials_path().parent
+    directory = _store.credentials_path().parent
     directory.mkdir(parents=True)
     directory.chmod(0o755)
     put("zenodo", a_token())
@@ -115,21 +114,21 @@ def check_nothing_is_written_inside_a_git_working_tree(root: Path) -> None:
 def check_the_environment_overrides_the_file(root: Path) -> None:
     stored, from_environment = a_token(), a_token()
     put("zenodo", stored)
-    assert credentials.token("zenodo").reveal() == stored and credentials.source("zenodo") == "the credentials file"  # type: ignore[union-attr]
+    assert _store.token("zenodo").reveal() == stored and _store.source("zenodo") == "the credentials file"  # type: ignore[union-attr]
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("ZENODO_TOKEN", from_environment)
-        found = credentials.token("zenodo")
+        found = _store.token("zenodo")
         assert found is not None and found.reveal() == from_environment
-        assert credentials.source("zenodo") == "environment variable ZENODO_TOKEN"
-        assert credentials.token("zenodo-sandbox") is None, "the sandbox read the production variable"
+        assert _store.source("zenodo") == "environment variable ZENODO_TOKEN"
+        assert _store.token("zenodo-sandbox") is None, "the sandbox read the production variable"
         patch.setenv("ZENODO_SANDBOX_TOKEN", stored[::-1])
-        sandbox = credentials.token("zenodo-sandbox")
+        sandbox = _store.token("zenodo-sandbox")
         assert sandbox is not None and sandbox.reveal() == stored[::-1]
 
 
 def check_a_token_is_masked_in_every_form(root: Path) -> None:
     secret = a_token()
-    token = credentials.Token("zenodo", secret)
+    token = _token.Token("zenodo", secret)
     forms = [repr(token), str(token), f"{token}", f"{token!r}", "%s %r" % (token, token), format(token, ">40"),
              repr([token]), repr({"zenodo": token}), repr(token.service)]
     assert not [form for form in forms if shown(secret, form)], forms
@@ -137,7 +136,7 @@ def check_a_token_is_masked_in_every_form(root: Path) -> None:
         pickle.dumps(token)
     assert not shown(secret, str(error.value))
     assert token.last_four() == secret[-4:] and token.reveal() == secret
-    assert credentials.Token("zenodo", secret[:20]).last_four() == "", "a short token showed a part of itself"
+    assert _token.Token("zenodo", secret[:20]).last_four() == "", "a short token showed a part of itself"
 
 
 def check_no_output_or_message_holds_a_token(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -161,25 +160,25 @@ def check_no_output_or_message_holds_a_token(root: Path, capsys: pytest.CaptureF
             put("zenodo", bad)
         except BuildRefused as refused:
             messages += [str(refused), *traceback.format_exception(refused)]
-    path = credentials.credentials_path()
+    path = _store.credentials_path()
     path.write_text('{"zenodo": "' + secret, encoding="utf-8")
-    for action in (lambda: credentials.token("zenodo"), lambda: put("zenodo", a_token()), lambda: credentials.remove("zenodo")):
+    for action in (lambda: _store.token("zenodo"), lambda: put("zenodo", a_token()), lambda: _store.remove("zenodo")):
         try:
             action()
         except BuildRefused as refused:
             messages += [str(refused), *traceback.format_exception(refused)]
     path.write_text('["' + secret + '"]', encoding="utf-8")
     try:
-        credentials.token("zenodo")
+        _store.token("zenodo")
     except BuildRefused as refused:
         messages += [str(refused), *traceback.format_exception(refused)]
     path.write_text('{"zenodo": "' + secret + '"}', encoding="utf-8")
     path.chmod(0o644)
     try:
-        credentials.token("zenodo")
+        _store.token("zenodo")
     except BuildRefused as refused:
         messages += [str(refused), *traceback.format_exception(refused)]
-    messages.append(credentials.describe("zenodo"))
+    messages.append(_store.describe("zenodo"))
     assert len(messages) >= 8
     assert not [message for message in messages if shown(secret, message)], messages
 
@@ -194,14 +193,14 @@ def check_status_shows_its_source_and_four_characters(root: Path, capsys: pytest
 
 
 def check_status_shows_nothing_of_a_short_token(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    for length in (credentials.MINIMUM_LENGTH, 16, credentials.SHOWN_FROM_LENGTH - 1):
+    for length in (_store.MINIMUM_LENGTH, 16, _token.SHOWN_FROM_LENGTH - 1):
         short = "k" * (length - 4) + secrets.token_hex(2)
         put("zenodo", short)
         assert main(["credentials", "status", "zenodo"]) == 0
         line = capsys.readouterr().out
         assert short[-4:] not in line.replace("zenodo", "") and "too short to show" in line, line
-        assert credentials.describe("zenodo") == line.rstrip("\n")
-    long = "k" * (credentials.SHOWN_FROM_LENGTH - 4) + "wxyz"
+        assert _store.describe("zenodo") == line.rstrip("\n")
+    long = "k" * (_token.SHOWN_FROM_LENGTH - 4) + "wxyz"
     put("zenodo", long)
     assert main(["credentials", "status", "zenodo"]) == 0
     assert "ending wxyz" in capsys.readouterr().out, "a token of 32 characters shows its last four"
@@ -237,16 +236,16 @@ def check_no_traceback_captured_with_its_locals_shows_a_token(root: Path, capsys
             assert main(["credentials", "set", "zenodo"]) == FAILED, "the command shows the error and exits"
             assert not shown(secret, capsys.readouterr().err), "the command's error showed the token"
     # the actions hold the token only wrapped: a closure over the text would put it in the frame of the action
-    wrapped, doubled = credentials.Token("zenodo", secret), credentials.Token("zenodo", secret + " " + secret)
-    collect(lambda: credentials.store("zenodo", doubled), BuildRefused)
-    collect(lambda: credentials.token("elsewhere"), BuildRefused)
-    path = credentials.store("zenodo", wrapped)
+    wrapped, doubled = _token.Token("zenodo", secret), _token.Token("zenodo", secret + " " + secret)
+    collect(lambda: _store.store("zenodo", doubled), BuildRefused)
+    collect(lambda: _store.token("elsewhere"), BuildRefused)
+    path = _store.store("zenodo", wrapped)
     path.chmod(0o644)
-    collect(lambda: credentials.token("zenodo"), BuildRefused)
+    collect(lambda: _store.token("zenodo"), BuildRefused)
     path.write_text('{"zenodo": "' + secret, encoding="utf-8")
-    collect(lambda: credentials.token("zenodo"), BuildRefused)
+    collect(lambda: _store.token("zenodo"), BuildRefused)
     path.write_text('{"zenodo": "' + secret + '", "other": 5}', encoding="utf-8")
-    collect(lambda: credentials.remove("zenodo"), BuildRefused)
+    collect(lambda: _store.remove("zenodo"), BuildRefused)
     assert len(shown_in) == 6
     assert not [text for text in shown_in if shown(secret, text)], "a captured traceback showed the token"
     assert all("Token" in text or "masked" in text or "elsewhere" in text or "BuildRefused" in text for text in shown_in)
@@ -265,6 +264,14 @@ def test_a_wider_directory_is_narrowed(folder: Path):
 
 def test_nothing_is_written_inside_a_git_working_tree(folder: Path):
     check_nothing_is_written_inside_a_git_working_tree(folder)
+
+
+def test_a_value_that_is_not_one_word_of_a_plausible_length_is_not_stored(folder: Path):
+    """The refusal code ``credentials.token``: a value shorter than the minimum, or with a space in it, is refused and
+    nothing is written (the code was named in this file only by a call, ``credentials.token(...)``, never as a code)."""
+    for value in ("x" * (_store.MINIMUM_LENGTH - 1), "a token with spaces " * 3):
+        assert refused_codes(lambda: put("zenodo", value)) == ["credentials.token"], value
+    assert not _store.credentials_path().exists(), "a refused value was written"
 
 
 def test_the_environment_overrides_the_file(folder: Path):
@@ -306,7 +313,7 @@ def check_no_token_is_echoed_by_the_argument_parser(root: Path, capsys: pytest.C
         assert not shown(secret, out + err) and secret[-8:] not in out + err, (argv, err)
         assert "never an argument" in err, "the refusal does not say where a token goes"
         asked += 1
-    assert asked == 9 and not credentials.credentials_path().exists(), "a refused command stored something"
+    assert asked == 9 and not _store.credentials_path().exists(), "a refused command stored something"
 
 
 def test_no_token_is_echoed_by_the_argument_parser(folder: Path, capsys: pytest.CaptureFixture[str]):
@@ -339,7 +346,7 @@ def check_a_dotfiles_repository_named_by_its_work_tree_is_refused(root: Path) ->
         patch.setenv("GIT_DIR", str(bare))
         patch.setenv("GIT_WORK_TREE", str(root))
         assert refused_codes(lambda: put("zenodo", a_token())) == ["credentials.in-git-tree"]
-    assert not credentials.credentials_path().exists(), "the refused store wrote the file"
+    assert not _store.credentials_path().exists(), "the refused store wrote the file"
 
 
 def check_a_dotfiles_repository_git_itself_finds_is_refused(root: Path) -> None:
@@ -347,7 +354,7 @@ def check_a_dotfiles_repository_git_itself_finds_is_refused(root: Path) -> None:
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("GIT_DIR", str(bare))
         assert refused_codes(lambda: put("zenodo", a_token())) == ["credentials.in-git-tree"]
-    assert not credentials.credentials_path().exists(), "the refused store wrote the file"
+    assert not _store.credentials_path().exists(), "the refused store wrote the file"
 
 
 def check_a_work_tree_elsewhere_is_not_a_reason_to_refuse(root: Path) -> None:
@@ -378,11 +385,11 @@ def test_remove_deletes_the_token_and_the_file_when_it_is_the_last(folder: Path,
     first, second = a_token(), a_token()
     put("zenodo", first)
     put("zenodo-sandbox", second)
-    assert credentials.remove("zenodo") is True
-    assert credentials.token("zenodo") is None and credentials.token("zenodo-sandbox").reveal() == second  # type: ignore[union-attr]
-    assert first not in credentials.credentials_path().read_text(encoding="utf-8")
-    assert credentials.remove("zenodo") is False
-    assert credentials.remove("zenodo-sandbox") is True and not credentials.credentials_path().exists()
+    assert _store.remove("zenodo") is True
+    assert _store.token("zenodo") is None and _store.token("zenodo-sandbox").reveal() == second  # type: ignore[union-attr]
+    assert first not in _store.credentials_path().read_text(encoding="utf-8")
+    assert _store.remove("zenodo") is False
+    assert _store.remove("zenodo-sandbox") is True and not _store.credentials_path().exists()
     assert main(["credentials", "remove", "zenodo"]) == 0
     assert "holds no zenodo token" in capsys.readouterr().out
 
@@ -401,7 +408,7 @@ def test_set_reads_the_token_with_getpass_and_takes_none_on_the_command_line(fol
     asked: list[str] = []
     monkeypatch.setattr("getpass.getpass", lambda prompt="": asked.append(prompt) or secret + "\n")
     assert main(["credentials", "set", "zenodo"]) == 0 and len(asked) == 1
-    assert credentials.token("zenodo").reveal() == secret  # type: ignore[union-attr]
+    assert _store.token("zenodo").reveal() == secret  # type: ignore[union-attr]
     with pytest.raises(SystemExit):
         main(["credentials", "set", "elsewhere"])
     monkeypatch.setattr("getpass.getpass", lambda prompt="": (_ for _ in ()).throw(EOFError()))
@@ -412,11 +419,11 @@ def test_a_file_other_users_can_read_is_not_used_and_status_says_so(folder: Path
     secret = a_token()
     path = put("zenodo", secret)
     path.chmod(0o644)
-    assert refused_codes(lambda: credentials.token("zenodo")) == ["credentials.file-mode"]
+    assert refused_codes(lambda: _store.token("zenodo")) == ["credentials.file-mode"]
     assert main(["credentials", "status", "zenodo"]) == 0
     out = capsys.readouterr().out
     assert "warning" in out and "chmod 600" in out
-    assert secret in [each.reveal() for each in credentials.held_tokens()], "the pack's search must still know a token whose file is too open"
+    assert secret in [each.reveal() for each in _store.held_tokens()], "the pack's search must still know a token whose file is too open"
 
 
 def test_the_values_a_pack_searches_for(folder: Path, monkeypatch: pytest.MonkeyPatch):
@@ -424,33 +431,33 @@ def test_the_values_a_pack_searches_for(folder: Path, monkeypatch: pytest.Monkey
     put("zenodo", stored)
     monkeypatch.setenv("ZENODO_SANDBOX_TOKEN", from_environment)
     monkeypatch.setenv("ZENODO_TOKEN", "short")
-    assert sorted([each.reveal() for each in credentials.held_tokens()]) == sorted({stored, from_environment}), "a value under eight characters is left out"
+    assert sorted([each.reveal() for each in _store.held_tokens()]) == sorted({stored, from_environment}), "a value under eight characters is left out"
 
 
 def test_an_unreadable_file_does_not_stop_the_pack_search(folder: Path):
-    credentials.credentials_path().parent.mkdir(parents=True)
-    credentials.credentials_path().write_text("not json", encoding="utf-8")
-    assert [each.reveal() for each in credentials.held_tokens()] == []
+    _store.credentials_path().parent.mkdir(parents=True)
+    _store.credentials_path().write_text("not json", encoding="utf-8")
+    assert [each.reveal() for each in _store.held_tokens()] == []
 
 
 def test_a_credentials_file_that_is_not_a_service_to_token_object_is_refused(folder: Path):
-    path = credentials.credentials_path()
+    path = _store.credentials_path()
     path.parent.mkdir(parents=True)
     for text in ("not json", "[1, 2]", '{"zenodo": 3}'):
         path.write_text(text, encoding="utf-8")
-        assert refused_codes(lambda: credentials.token("zenodo")) == ["credentials.store"]
+        assert refused_codes(lambda: _store.token("zenodo")) == ["credentials.store"]
         assert refused_codes(lambda: put("zenodo", a_token())) == ["credentials.store"]
 
 
 def test_an_unknown_service_is_refused(folder: Path):
-    assert refused_codes(lambda: credentials.token("elsewhere")) == ["credentials.service"]
+    assert refused_codes(lambda: _store.token("elsewhere")) == ["credentials.service"]
     assert refused_codes(lambda: put("elsewhere", a_token())) == ["credentials.service"]
 
 
 def test_the_real_config_directory_is_never_touched(tmp_path: Path):
     """The guard of the helper above: outside it, the config directory is the maintainer's; inside, it is not."""
     with home(tmp_path):
-        assert credentials.credentials_path().is_relative_to(tmp_path)
+        assert _store.credentials_path().is_relative_to(tmp_path)
 
 
 # --- the controls ----------------------------------------------------------------------------------------------------
@@ -473,7 +480,7 @@ def directory_mode_not_set() -> Iterator[None]:
 @contextmanager
 def mask_removed() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(credentials.Token, "__repr__", lambda self: f"Token({self.reveal()})")
+        patch.setattr(_token.Token, "__repr__", lambda self: f"Token({self.reveal()})")
         yield
 
 
@@ -495,23 +502,23 @@ def file_preferred_to_the_environment() -> Iterator[None]:
 @contextmanager
 def status_that_prints_the_token() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(credentials.Token, "last_four", lambda self: self.reveal())
+        patch.setattr(_token.Token, "last_four", lambda self: self.reveal())
         yield
 
 
 @contextmanager
 def a_refusal_that_quotes_the_value() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as patch:
-        honest = credentials.store
+        honest = _store.store
 
-        def quoting(service: str, value: credentials.Token) -> Path:
+        def quoting(service: str, value: _token.Token) -> Path:
             try:
                 return honest(service, value)
             except BuildRefused as refused:
                 raise BuildRefused([Refusal(each.code, each.category, f"{each.message} (read {value.reveal()!r})",
                                             each.action) for each in refused.refusals]) from None
 
-        patch.setattr(credentials, "store", quoting)
+        patch.setattr(_store, "store", quoting)
         yield
 
 
@@ -519,13 +526,13 @@ def a_refusal_that_quotes_the_value() -> Iterator[None]:
 def a_raw_local_in_the_store() -> Iterator[None]:
     """The error the wrapper guards against: the text of a token under a name of a frame the exception passes through."""
     with pytest.MonkeyPatch.context() as patch:
-        honest = credentials.store
+        honest = _store.store
 
-        def holding(service: str, value: credentials.Token) -> Path:
+        def holding(service: str, value: _token.Token) -> Path:
             raw = value.reveal()  # noqa: F841 - the plant: a plain local in the traceback
             return honest(service, value)
 
-        patch.setattr(credentials, "store", holding)
+        patch.setattr(_store, "store", holding)
         yield
 
 
@@ -673,21 +680,21 @@ def test_a_hosts_own_token_is_kept_beside_the_services_and_read_by_the_adapters_
     from mime import assets
 
     value = a_token()
-    service = credentials.host_service("Files.Lab.Example.org")
-    assert service == "host:files.lab.example.org" and credentials.is_host_service(service)
+    service = _store.host_service("Files.Lab.Example.org")
+    assert service == "host:files.lab.example.org" and _store.is_host_service(service)
     put(service, value)
     held = assets.stored_credential("files.lab.example.org")
     assert held is not None and held.host == "files.lab.example.org" and held.token.reveal() == value
     assert assets.stored_credential("other.example.org") is None
     assert value not in repr(held) and value not in str(held)
-    assert any(each.reveal() == value for each in credentials.held_tokens())
-    assert credentials.source(service) == "the credentials file"
+    assert any(each.reveal() == value for each in _store.held_tokens())
+    assert _store.source(service) == "the credentials file"
 
 
 @pytest.mark.parametrize("service", ["host:", "host:-bad.example", "host:a b", "host:UPPER_score", "zenodo-prod"])
 def test_a_service_that_is_neither_named_nor_a_host_is_refused(folder: Path, service: str):
     with pytest.raises(BuildRefused) as refused:
-        credentials.token(service)
+        _store.token(service)
     assert refused.value.codes() == ["credentials.service"]
 
 

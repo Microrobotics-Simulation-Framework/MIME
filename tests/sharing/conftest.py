@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from assets_rig import Rig  # noqa: E402
 from homes import Outside, isolate, outside  # noqa: E402
 
-from mime import credentials  # noqa: E402
+from mime.credentials import _store  # noqa: E402
 from mime.push._state import state_root  # noqa: E402
 
 
@@ -35,7 +35,7 @@ def private_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outside_home: 
     the module's state directory must hold nothing: push's records were written in the test's own."""
     home = isolate(monkeypatch, tmp_path / "home")
     monkeypatch.setenv("MIME_ASSETS_DIR", str(tmp_path / "default-cache"))
-    assert home in credentials.credentials_path().parents
+    assert home in _store.credentials_path().parents
     assert home in state_root().parents
     yield home
     written = outside_home.written()

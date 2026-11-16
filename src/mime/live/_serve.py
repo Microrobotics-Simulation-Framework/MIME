@@ -35,7 +35,7 @@ from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, Refusal
 from mime.live._protocol import COMMANDS, PROTOCOL, Frame, FrameSchema, frame_from_json, is_frame, refused, reply
 from mime.live._session import STOPPED, LiveSession, frame_schema
 from mime.live._state import ServeState, flag_watches, watch_rows
-from mime.live._zmtp import Client, Server, is_loopback, parse_endpoint
+from mime.live._zmtp import Client, ListenError, Server, is_loopback, parse_endpoint
 from mime.units import Quantity
 
 DEFAULT_COMMANDS = "tcp://127.0.0.1:5555"
@@ -70,23 +70,50 @@ def _timeout(name: str, seconds: float | None) -> None:
             why="a limit of nothing or less would stop the session before it served anyone")])
 
 
-def _bind_problems(endpoints: Sequence[str], remote: bool) -> list[Refusal]:
+#: The code refusing each of the session's sockets off loopback, by its option; the socket's kind; what it gives whoever
+#: reaches it.
+_NOT_LOOPBACK = {"--commands": "live.commands-not-loopback", "--frames": "live.frames-not-loopback"}
+_KIND = {"--commands": "REP", "--frames": "PUB"}
+_EXPOSES = {"--commands": "the command socket takes commands from whoever reaches it (start, stop, step, set the live "
+                          "inputs, record)",
+            "--frames": "the frame socket sends every frame to whoever reaches it"}
+_TUNNEL = "ssh -L 5555:localhost:5555 -L 5556:localhost:5556 <host>"
+
+
+def _bind_problems(commands: str, frames: str, allow_remote_commands: bool) -> list[Refusal]:
     found: list[Refusal] = []
-    for endpoint in endpoints:
+    for option, endpoint in (("--commands", commands), ("--frames", frames)):
         try:
             host, _ = parse_endpoint(endpoint)
         except ValueError as error:
             found.append(Refusal("live.remote-bind", RefusalClass.USER, str(error),
                                  "give tcp://<host>:<port>, such as --commands tcp://127.0.0.1:5555"))
             continue
-        if not remote and not is_loopback(host):
+        if not allow_remote_commands and not is_loopback(host):
             found.append(Refusal(
-                "live.remote-bind", RefusalClass.USER,
-                f"{endpoint} is not a loopback address, and a live session has no authentication of its own",
-                "keep it on localhost and reach it through an SSH tunnel (ssh -L 5555:localhost:5555 -L "
-                "5556:localhost:5556 <host>), or pass --remote to bind it all the same",
-                why="the session takes commands from whoever reaches its port; a tunnel authenticates and encrypts"))
+                _NOT_LOOPBACK[option], RefusalClass.USER,
+                f"{option} {endpoint} is not a loopback address (127.0.0.0/8, ::1, or localhost; a host name is not "
+                f"resolved here): {_EXPOSES[option]}, and a live session has no authentication",
+                f"keep it on loopback and reach the session through an SSH tunnel ({_TUNNEL}), or pass "
+                "--allow-remote-commands to bind it all the same, with no authentication",
+                why="a tunnel authenticates and encrypts; the session's own sockets do neither"))
     return found
+
+
+def _exposed(server: Server, commands: str, frames: str) -> str | None:
+    """The warning naming each socket bound to an address that is not loopback, or ``None`` if there is none."""
+    exposed = [f"{option.removeprefix('--')} on {server.endpoints[_KIND[option]]}: {_EXPOSES[option]}"
+               for option, endpoint in (("--commands", commands), ("--frames", frames))
+               if not is_loopback(parse_endpoint(endpoint)[0])]
+    if not exposed:
+        return None
+    return ("mime serve: warning: --allow-remote-commands: " + "; ".join(exposed) + ". Nothing authenticates a "
+            f"client. Prefer loopback and an SSH tunnel ({_TUNNEL})")
+
+
+def _to_stderr(line: str) -> None:
+    sys.stderr.write(line + "\n")
+    sys.stderr.flush()
 
 
 class LauncherWatch:
@@ -125,8 +152,9 @@ def default_out(name: str) -> Path:
 
 def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAULT_FRAMES,
           chunk: Quantity | None = None, pace: float | None = 1.0, out: Path | None = None,
-          select: Sequence[str] | None = None, json_frames: bool = False, start: bool = False, remote: bool = False,
-          ready_file: Path | None = None, say: Callable[[str], None] = print,
+          select: Sequence[str] | None = None, json_frames: bool = False, start: bool = False,
+          allow_remote_commands: bool = False, ready_file: Path | None = None, say: Callable[[str], None] = print,
+          warn: Callable[[str], None] = _to_stderr,
           outlive_launcher: bool = False, watch: Sequence[str] | None = None, view: ServeView | None = None,
           idle_timeout: float | None = None, max_wall: float | None = None) -> Path | None:
     """Load and build the saved experiment in ``folder``, open its live session and serve it until a ``stop`` command,
@@ -134,6 +162,11 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
     ``json_frames``, JSON. ``start`` starts stepping at once; otherwise a client's ``start`` does. ``ready_file``
     receives the bound endpoints as JSON once the sockets listen. It stops, as on SIGTERM, when the process that
     launched it is gone, unless ``outlive_launcher`` (:class:`LauncherWatch`). The run folder it wrote, or ``None``.
+
+    Both endpoints are on loopback (:func:`~mime.live._zmtp.is_loopback`) unless ``allow_remote_commands``: any other is
+    refused before anything binds (``live.commands-not-loopback``, ``live.frames-not-loopback``), as nothing
+    authenticates a client. With it, each socket bound elsewhere is named in a warning (``warn``) once it listens. A port
+    in use is refused, naming it (``live.address-in-use``).
 
     ``watch`` names the rows of a view's table of values (:func:`~mime.live._state.watch_rows`; a name the frames do not
     carry is refused, ``live.watch``, before a run folder is opened) and changes nothing the frames carry. ``view``, if
@@ -145,7 +178,7 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
     limit by what is left of the chunk."""
     _timeout("--idle-timeout", idle_timeout)
     _timeout("--max-wall", max_wall)
-    problems = _bind_problems((commands, frames), remote)
+    problems = _bind_problems(commands, frames, allow_remote_commands)
     if problems:
         raise ArgumentRefused(problems)
     launcher = None if outlive_launcher else LauncherWatch()
@@ -154,14 +187,27 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
 
     try:
         server = Server(commands, frames)
-    except OSError as error:
-        code = "live.address-in-use" if error.errno == errno.EADDRINUSE else "live.transport"
+    except ListenError as error:
+        option = "--commands" if error.kind == "REP" else "--frames"
+        if error.errno == errno.EADDRINUSE:
+            raise BuildRefused([Refusal(
+                "live.address-in-use", RefusalClass.ENVIRONMENT,
+                f"cannot listen on {option} {error.endpoint}: its port is in use, by another mime serve or another "
+                "program", "stop the other session, or serve on free ports: mime serve <folder> --commands "
+                "tcp://127.0.0.1:0 --frames tcp://127.0.0.1:0 (port 0 takes a free one, which the ready line and "
+                "--ready-file give)",
+                why="each session takes its own ports, and a client of the defaults would reach the other one")]) \
+                from error
         raise BuildRefused([Refusal(
-            code, RefusalClass.ENVIRONMENT, f"cannot listen on {commands} and {frames}: {error.strerror or error}",
-            "serve on other ports: mime serve <folder> --commands tcp://127.0.0.1:<port> --frames "
-            "tcp://127.0.0.1:<port> (port 0 takes any free one)")]) from error
+            "live.transport", RefusalClass.ENVIRONMENT,
+            f"cannot listen on {option} {error.endpoint}: {error.strerror or error}",
+            "give an address of this machine and a port this user may bind, such as --commands tcp://127.0.0.1:0")]) \
+            from error
     state: ServeState | None = None
     try:
+        warning = _exposed(server, commands, frames)
+        if warning is not None:
+            warn(warning)
         if view is not None:
             view.phase(f"loading {folder}: reading it, building it once and checking it against its lock")
         apply_lock_precision(folder)

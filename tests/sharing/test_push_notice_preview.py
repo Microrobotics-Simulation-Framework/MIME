@@ -40,9 +40,10 @@ from push_cases import copy_of, saved_toy, with_token, write_manifest
 from zenodo_records import FakeRecords, served
 
 from mime import push
+from mime.push import _client, _draft, _plan, _publish, _service
 from mime.build import BuildRefused
 from mime.cli import main
-from mime.push import Answer, _draft, _plan
+from mime.push._client import Answer
 from mime.saved import pull
 
 NUMBER = "629525"
@@ -113,20 +114,20 @@ def day(monkeypatch: pytest.MonkeyPatch) -> Day:
 def sandbox(monkeypatch: pytest.MonkeyPatch, day: Day):  # noqa: ANN201
     del day  # the day is pinned before any push of the test
     token = with_token(monkeypatch)
-    monkeypatch.setattr(push._client, "PAUSE_SECONDS", 0.0)
+    monkeypatch.setattr(_client, "PAUSE_SECONDS", 0.0)
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     with served(token) as fake:
-        monkeypatch.setitem(push.SERVICES, "zenodo-sandbox", fake.service())  # type: ignore[index]
+        monkeypatch.setitem(_service.SERVICES, "zenodo-sandbox", fake.service())  # type: ignore[index]
         yield fake
 
 
 def published(toy: Path, fake: FakeRecords, tmp_path: Path, *, chosen: str | None = None) -> Path:
     folder = copy_of(toy, tmp_path)
-    service = push.SERVICES["zenodo-sandbox"]
-    push.push(folder, service, pause=0)
+    service = _service.SERVICES["zenodo-sandbox"]
+    _draft.push(folder, service, pause=0)
     if chosen is not None:  # chosen on the draft's page
         fake.records[NUMBER].body["files"] = {"enabled": True, "default_preview": chosen}
-    push.publish(folder, service, confirm=DOI, pause=0)
+    _publish.publish(folder, service, confirm=DOI, pause=0)
     return folder
 
 
@@ -217,8 +218,8 @@ def refused_unconfirmed(toy: Path, fake: FakeRecords, tmp_path: Path, *, later: 
     write (PUT) it sent before its refusal, as ``PUT <path> {payload keys}``, so that an assertion on them names the
     write."""
     folder = copy_of(toy, tmp_path)
-    service = push.SERVICES["zenodo-sandbox"]
-    push.push(folder, service, pause=0)
+    service = _service.SERVICES["zenodo-sandbox"]
+    _draft.push(folder, service, pause=0)
     if later is not None:
         assert day is not None
         day.today = later
@@ -237,7 +238,7 @@ def refused_unconfirmed(toy: Path, fake: FakeRecords, tmp_path: Path, *, later: 
     fake.handle = noting
     try:
         with pytest.raises(BuildRefused) as refused:
-            push.publish(folder, service, pause=0)
+            _publish.publish(folder, service, pause=0)
     finally:
         del fake.handle  # back to the class's method
     assert refused.value.codes() == ["push.unconfirmed"]
@@ -277,13 +278,13 @@ def test_control_with_the_preview_written_on_every_publish_the_unconfirmed_one_i
 def pushed_with_the_old_notice(toy: Path, fake: FakeRecords, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     """A draft as #100's push left it, its NOTICE under the name ``NOTICE``, then pushed by this one: what it said."""
     folder = copy_of(toy, tmp_path)
-    service = push.SERVICES["zenodo-sandbox"]
+    service = _service.SERVICES["zenodo-sandbox"]
     with monkeypatch.context() as old:
         old.setattr(_plan, "NOTICE_KEY", "NOTICE")
         old.setattr(_draft, "NOTICE_KEY", "NOTICE")
-        push.push(folder, service, pause=0)
+        _draft.push(folder, service, pause=0)
     said: list[str] = []
-    push.push(folder, service, pause=0, say=lambda line: said.append(str(line)))
+    _draft.push(folder, service, pause=0, say=lambda line: said.append(str(line)))
     assert set(fake.records[NUMBER].files) == {"full_toy.mimebundle", "NOTICE.txt"}
     return "\n".join(said)
 
