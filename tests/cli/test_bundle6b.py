@@ -378,3 +378,44 @@ def test_an_installed_plugin_nothing_pins_is_a_note_unless_strict_is_asked_for(t
     with pytest.raises(BuildRefused) as refused:  # the control: a package that is no plugin is still refused
         check(strict=True, strict_plugins=False, plugins={"labx-plugin"}, **common)
     assert refused.value.codes() == ["env.unpinned"] and "some-other-package" in str(refused.value)
+
+
+@pytest.fixture
+def planted_plugin(tmp_path, monkeypatch):
+    """The installed distributions are the pins exactly, plus ``labz-plugin``, which nothing pins and which registers an
+    entry under ``mime.entries``: a distribution found on ``sys.path`` as an installed one is, by its entry point."""
+    from mime.env import _check
+
+    dist_info = tmp_path / "site" / "labz_plugin-0.1.dist-info"
+    dist_info.mkdir(parents=True)
+    (dist_info / "METADATA").write_text("Metadata-Version: 2.1\nName: labz-plugin\nVersion: 0.1\n", encoding="utf-8")
+    (dist_info / "entry_points.txt").write_text("[mime.entries]\nlabz = labz_module\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path / "site"))
+    expected, _ = _check.expected_distributions("cpu", _check.this_system(), base=None, lab=[], mime_version=None)
+    installed = {name: (want.version,) for name, want in expected.items()} | {"labz-plugin": ("0.1",)}
+    monkeypatch.setattr(_check, "installed_distributions", lambda paths=None: installed)
+    monkeypatch.setattr(_check, "environment_modules", lambda paths=None: {})
+    monkeypatch.setattr(_check, "plugin_distributions", _check.plugin_distributions)  # the real entry-point discovery
+    return "labz-plugin"
+
+
+def test_plugin_distributions_finds_a_distribution_that_registers_an_entry_point(planted_plugin):
+    from mime.env._check import plugin_distributions
+
+    assert planted_plugin in plugin_distributions()
+    assert "numpy" not in plugin_distributions()  # the control: a distribution that registers nothing is no plugin
+
+
+@pytest.mark.parametrize("words", [["--strict"], ["--base"], ["--mime-version", "0.0.0"], ["FOLDER"]],
+                         ids=["strict", "base", "mime-version", "folder"])
+def test_the_cli_refuses_an_unpinned_plugin_wherever_the_check_is_strict_and_notes_it_when_loose(
+        words, planted_plugin, saved, capsys):
+    """Strict is asked for or implied (a folder, ``--base``, ``--mime-version``): the plugin is refused as any
+    distribution nothing pins is (other refusals may come with it). A loose check names it in a note."""
+    common = ["env", "check", "--variant", "cpu"]
+    assert mime_main([*common, *[str(saved) if word == "FOLDER" else word for word in words]]) == 2
+    refused = capsys.readouterr().err
+    assert "env.unpinned" in refused and planted_plugin in refused
+    assert mime_main(common) == 0
+    assert f"note: {planted_plugin} 0.1 is installed and nothing pins it (a plugin, which registers" in \
+        capsys.readouterr().out

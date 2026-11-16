@@ -271,9 +271,9 @@ def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapp
     pin is a refusal only where that version is outside the ranges the installed distributions declare for it
     (``outside``), and a distribution nothing pins is no refusal: each is a line in ``notes`` instead, "tested with
     X, installed Y", since a plain install resolves its dependencies within their ranges, newer than the pins CI
-    tested. ``plugins`` names the installed distributions that are a lab's plugins: one nothing pins is a note too
-    (``--strict`` leaves it out, and it is then a refusal), since a lab's second plugin is no difference in the
-    environment an experiment ran in, where a pinned distribution at another version is."""
+    tested. ``plugins`` names the installed distributions that are a lab's plugins: one nothing pins is a note too,
+    even under ``strict``; ``check`` leaves a plugin out of ``plugins`` whenever the check is strict, and it is then a
+    refusal like any distribution nothing pins."""
     refusals: list[Refusal] = []
     said = notes if notes is not None else []
     held_optional = dict(optional or {})
@@ -314,8 +314,10 @@ def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapp
                                         f"{allowed.source}", REBUILD, subject=subject))
             continue
         if name not in expected and name not in tolerated and (not strict or name in plugins):
-            said.append(f"{name} {', '.join(held)} is installed and nothing pins it (a distribution beside MIME's own, "
-                        f"which the pins neither test nor vouch for)")
+            kind = "a plugin, which registers entries or assets for MIME" if name in plugins else \
+                "a distribution beside MIME's own"
+            said.append(f"{name} {', '.join(held)} is installed and nothing pins it ({kind}, which the pins neither "
+                        f"test nor vouch for)")
             continue
         if name not in expected and name not in tolerated:
             subject = Subject("installed distributions are pinned by nothing", ("distribution", "installed"),
@@ -620,7 +622,9 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
     installed at another version than its pin, inside the ranges the installed distributions declare, and one nothing
     pins, are notes in the report (``EnvReport.notes``) and not refusals, which is what a plain install of MIME meets
     (it resolves within the ranges, newer than the pins CI tested). A plugin installed beside the pins that nothing pins is a
-    note too unless ``strict_plugins`` (``mime env check --strict``): ``plugins`` stands in for the installed plugins."""
+    note even under ``strict`` unless ``strict_plugins``, which the command line sets whenever the check is strict
+    (``--strict``, or implied by a folder, ``--base`` or ``--mime-version``): ``plugins`` stands in for the installed
+    plugins."""
     requested = gpu_type(gpu) if gpu is not None else None
     runner = runner_record()
     x64 = lock_x64(folder) if folder is not None else None
