@@ -23,7 +23,7 @@ import dataclasses
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from in_loop_cases import DETECTOR, LOOK_ACROSS, ballistic, planted
+from in_loop_cases import DETECTOR, LOOK_ACROSS, STATED_MEMORY, TOO_LITTLE_MEMORY, ballistic, planted, stated_memory
 from mesh_cases import VESSEL, box, placed, rotation, tube, tube_mesh_scene, with_vessel
 from scenery_cases import write_gprims
 from test_in_loop_forward import BALL, KINK, SPACING, objective
@@ -115,7 +115,11 @@ def bead(final) -> object:
     return objective(BALL, True, final["camera:"]["expected"])
 
 
-def test_a_derivative_through_the_poses_with_a_mesh_in_view_passes_in_both_modes(dtype):
+@pytest.mark.memory_heavy
+def test_a_derivative_through_the_poses_with_a_mesh_in_view_passes_in_both_modes(dtype, monkeypatch):
+    """Reverse mode runs for real, on a stated memory the camera's check admits it on (the host's is not read: see
+    ``in_loop_cases.STATED_MEMORY``); the refusal on too little is the next test's."""
+    stated_memory(monkeypatch, STATED_MEMORY)
     study = Study(settling()).sweep(grid({"ball.parts.steel.density": [kg_per_m3(1100.0)]}), duration=ms(5))
     forward = float(list(study.gradient(bead, mode="forward", acknowledged=ACKNOWLEDGED).members[0].gradient.values())[0])
     h = 0.25
@@ -130,6 +134,30 @@ def test_a_derivative_through_the_poses_with_a_mesh_in_view_passes_in_both_modes
     assert abs(forward) > 0.0 and abs(forward - central) <= tolerance * abs(forward), (forward, central, tolerance)
     reverse = float(list(study.gradient(bead, mode="reverse", acknowledged=ACKNOWLEDGED).members[0].gradient.values())[0])
     assert reverse == pytest.approx(forward, rel=1e-3 if dtype == "float32" else 1e-9)
+
+
+def test_reverse_mode_with_a_mesh_in_view_is_refused_on_too_little_memory_and_admitted_on_the_stated_memory(dtype, monkeypatch):
+    """The study the test above differentiates, on a stated memory: admitted on ``STATED_MEMORY`` and refused by name,
+    before anything is compiled, on ``TOO_LITTLE_MEMORY`` (the control: the stated memory is what decides, and
+    ``Study.gradient`` reads the planted one). Forward mode keeps no tape and is refused on neither."""
+    from mime.study import _gradient
+
+    def compiled(*_: object, **__: object) -> None:
+        raise AssertionError("the derivative was compiled")
+
+    node = settling().build().graph.get_node("camera:")
+    stated_memory(monkeypatch, STATED_MEMORY)
+    assert node.derivative_problem("reverse", 1, 1, 5) is None
+    stated_memory(monkeypatch, TOO_LITTLE_MEMORY)
+    problem = node.derivative_problem("reverse", 1, 1, 5)
+    assert problem is not None and problem.code == "camera.reverse-memory"
+    assert node.derivative_problem("forward", 1, 1, 5) is None
+    monkeypatch.setattr(_gradient, "prepare", compiled)
+    study = Study(settling()).sweep(grid({"ball.parts.steel.density": [kg_per_m3(1100.0)]}), duration=ms(5))
+    with pytest.raises(BuildRefused) as refused:
+        study.gradient(bead, mode="reverse", acknowledged=ACKNOWLEDGED)
+    text = str(refused.value)
+    assert "camera.reverse-memory" in text and "mime.sensing.render" in text and "a stated memory" in text
 
 
 def refused(exp: Experiment) -> BuildRefused:

@@ -25,6 +25,7 @@ from types import FunctionType
 from typing import Any, cast
 
 from mime._extras import VERIFY_EXTRA_MISSING
+from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.registry import (
     CAPABILITIES,
     Entry,
@@ -49,9 +50,12 @@ class Unencodable(TypeError):
     """A value of a type the export has no rule for."""
 
 
-def load_namespaces() -> dict[str, str]:
+def load_namespaces(refused: list[Refusal] | None = None) -> dict[str, str]:
     """Import MIME and each installed ``mime.entries`` namespace, one by one: the namespaces not loaded because the
-    ``verify`` extra is missing, each with that message. Any other failure to import one is raised."""
+    ``verify`` extra is missing, each with that message. A distribution that fails to import for any other reason (a
+    namespace that is the first word of one of MIME's own, a bug in its module) is a ``load.namespace-import`` refusal
+    naming it: raised at the first, or, given a ``refused`` list, appended to it with its namespace left out and the
+    rest still loaded, so that one bad distribution does not take the registry of the whole environment with it."""
     importlib.import_module("mime")
     not_loaded: dict[str, str] = {}
     for point in sorted(importlib.metadata.entry_points(group=ENTRY_POINT_GROUP), key=lambda p: p.name):
@@ -59,9 +63,26 @@ def load_namespaces() -> dict[str, str]:
             point.load()
         except ImportError as error:
             if str(error) != VERIFY_EXTRA_MISSING:
-                raise
+                _failed(point, error, refused, not_loaded)
+                continue
             not_loaded[point.name] = str(error)
+        except Exception as error:  # noqa: BLE001 - a plugin that cannot register is a refusal naming its distribution
+            _failed(point, error, refused, not_loaded)
     return not_loaded
+
+
+def _failed(point: importlib.metadata.EntryPoint, error: Exception, refused: list[Refusal] | None,
+            not_loaded: dict[str, str]) -> None:
+    dist = point.dist.name if point.dist is not None else "<no distribution>"
+    refusal = Refusal("load.namespace-import", RefusalClass.ENVIRONMENT,
+                      f"distribution {dist} provides namespace {point.name!r} ({point.value}), which fails to import: "
+                      f"{error}",
+                      f"uninstall it with `pip uninstall {dist}` or have its author fix it, then run `mime registry` again; "
+                      "every other namespace is still listed")
+    if refused is None:
+        raise BuildRefused([refusal]) from error
+    refused.append(refusal)
+    not_loaded[point.name] = f"{dist}: {error}"
 
 
 def encode(value: object) -> JSON:
@@ -183,9 +204,10 @@ def export(not_loaded: Mapping[str, str]) -> dict[str, JSON]:
             "namespaces": dict(versions().items())}
 
 
-def export_json() -> str:
-    """The export, as ``mime registry --json`` prints it: MIME and every installed namespace loaded first."""
-    return json.dumps(export(load_namespaces()), indent=2, sort_keys=True)
+def export_json(refused: list[Refusal] | None = None) -> str:
+    """The export, as ``mime registry --json`` prints it: MIME and every installed namespace loaded first, a namespace
+    that fails to import left out and, with ``refused`` given, its refusal appended to it (:func:`load_namespaces`)."""
+    return json.dumps(export(load_namespaces(refused)), indent=2, sort_keys=True)
 
 
 def registry_export() -> dict[str, Any]:

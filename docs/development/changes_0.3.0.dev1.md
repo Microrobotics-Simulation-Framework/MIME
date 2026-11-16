@@ -287,7 +287,7 @@ repository's history before that history was rewritten on 2026-11-04, and does n
   that folder, with `--full` for the load report, the build report's summary and every reading. **A pipe, a file,
   `--plain`, `NO_COLOR` and `TERM=dumb` get what they always got, byte for byte** (a test holds it, with a control);
   `rich` is imported by one module only, and only to draw. Without a terminal's help: `--duration`, `--every` and
-  `--stage-every` take `10s`, `500ms`, `250us`, `2min`, `1h` (a bare number is still seconds) and a refusal names the
+  `--stage-every` take `10s`, `500ms`, `250us`, `2min`, `1h` (a bare number was still seconds here, and is refused since usability bundle 1) and a refusal names the
   forms; `mime --help` is grouped (Run, Share, Environment, Reference) with an example under every command; a bare `mime`
   says what one can do here, and more in a saved experiment's folder or a run's; a mistyped command or flag is answered
   with the nearest one, on every supported Python; JAX's warning of a damaged cache entry gets a note naming
