@@ -1,17 +1,8 @@
 import pytest
 
 from mime.testing.toys import ToyBody, ToyField
-from mime.things import (
-    Apparatus,
-    ApparatusHandle,
-    Body,
-    BodyHandle,
-    FieldPath,
-    Medium,
-    State,
-    ThingKind,
-    did_you_mean,
-)
+from mime.things import Apparatus, ApparatusHandle, Body, BodyHandle, FieldPath, Medium, State, ThingKind
+from mime.things._handles import did_you_mean
 from mime.units import m
 
 

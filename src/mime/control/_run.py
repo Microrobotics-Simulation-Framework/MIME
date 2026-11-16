@@ -299,7 +299,7 @@ class Callback:
             else:
                 self.state, writes = self.law.step(self.state, {**reads, **self.live} if self.live else reads)
         except Exception as error:
-            from mime.errors import first_lines, script_place
+            from mime.errors._translate import first_lines, script_place
 
             place = script_place(error)
             refused = ControllerError([Refusal(

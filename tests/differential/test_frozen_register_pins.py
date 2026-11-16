@@ -56,7 +56,8 @@ import numpy as np
 import pytest
 
 from mime.dynamics.body import KEPT as KEPT_DYNAMICS
-from mime.dynamics.body import RigidInertial, RigidInertialMoments
+from mime.dynamics.body import RigidInertial
+from mime.dynamics.body._previous import RigidInertialMoments
 from mime.fields import KEPT as KEPT_FIELDS
 from mime.fields import UniformRotating
 from mime.interactions import KEPT as KEPT_LAWS

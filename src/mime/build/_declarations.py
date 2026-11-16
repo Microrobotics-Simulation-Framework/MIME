@@ -5,9 +5,10 @@ from dataclasses import dataclass, field
 from typing import Any, override
 
 from mime.registry import Controller, Interaction, Observation
-from mime.things import Thing, TypedPath
+from mime.things import TypedPath
+from mime.things._things import Thing
 from mime.units import standard_gravity
-from mime.validity import DEFAULT_PROFILE
+from mime.validity._profiles import DEFAULT_PROFILE
 
 #: An experiment's gravity when it states none: standard gravity, a convention default (design #191 item 4). The build
 #: knows it by identity, so a script that writes ``standard_gravity()`` states it, and the document writes it.

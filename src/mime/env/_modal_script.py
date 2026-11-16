@@ -71,10 +71,14 @@ class ModalScript:
     dev: bool
     study: Path | None = None
     shards: int = 1
+    #: The files of an earlier script that ``--force`` replaced (none otherwise: without it they are refused).
+    replaced: tuple[Path, ...] = ()
 
     def text(self) -> str:
         where = _shown(self.script)
-        lines = [f"wrote {where} ({self.variant}, Python {self.python}, "
+        lines = [f"warning: --force: replaced {', '.join(path.name for path in self.replaced)} in {_shown(self.out)}, "
+                 "which a script written earlier held"] if self.replaced else []
+        lines += [f"wrote {where} ({self.variant}, Python {self.python}, "
                  f"{self.gpu or 'CPU'}{', MIME from the checkout' if self.dev else ''})"]
         lines += [f"  and {_shown(path)}" for path in self.files if path != self.script]
         lines += ["run it with:", f"  modal run {where}::main --duration <seconds>", f"  modal run {where}::verify"]
@@ -241,12 +245,28 @@ def _constants(values: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def _held_already(target: Path, names: list[str], force: bool) -> tuple[Path, ...]:
+    """The files of ``names`` that ``target`` holds already, which a script written now would replace: refused unless
+    ``force``, as ``mime run`` refuses a folder it would write over (a file that is no folder is refused either way)."""
+    if os.path.lexists(target) and not target.is_dir():
+        raise _refuse("modal.out-exists", RefusalClass.USER, f"{target} is a file, not a folder",
+                      "name a new folder, or an empty one: --out <folder>")
+    held = tuple(target / name for name in names if os.path.lexists(target / name))  # a link to nowhere too: a write follows it
+    if held and not force:
+        shown = ", ".join(path.name for path in held)
+        raise _refuse("modal.out-exists", RefusalClass.USER,
+                      f"{target} holds {shown}, which a script written now would replace",
+                      "write it to a new folder, or an empty one: --out <folder>; or replace them with --force: "
+                      "only the files the script is made of are replaced, and the result names them")
+    return held
+
+
 def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, deterministic: bool = False,
                  python: str | None = None, out: str | os.PathLike[str] | None = None,
                  checkout: str | os.PathLike[str] | None = None, lab_requirements: str | os.PathLike[str] | None = None,
                  xla_cache: bool = True, timeout: int = 7200, max_containers: int = 1, cpu: float = 4.0,
                  memory: int = 8192, study: str | os.PathLike[str] | None = None, shards: int = 1,
-                 wheel_sha256: WheelLookup = pypi_wheel_sha256) -> ModalScript:
+                 force: bool = False, wheel_sha256: WheelLookup = pypi_wheel_sha256) -> ModalScript:
     """Write the Modal script for the saved experiment in ``folder`` into ``out`` (``<folder>-modal/`` beside it), with
     MIME's requirements file for the variant and, as needed, MIME's and the lab's. ``gpu`` is an exact type (a loose
     one is refused); ``deterministic`` turns XLA's deterministic GPU mode on. MIME's wheel is a release's on PyPI,
@@ -255,7 +275,8 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
     entrypoint that runs ``mime study run`` on it in one container (a pilot first), into a folder on the runs Volume a
     second run of the same ``--name`` resumes; ``shards`` (more than one, with ``max_containers`` the same) splits the
     study's groups over that many containers, explicit and recorded in the script, each writing a partial study folder.
-    Raises ``BuildRefused``."""
+    A file of an earlier script in ``out`` is never replaced silently (``modal.out-exists``): ``force`` replaces them, and
+    the result names them. Raises ``BuildRefused``."""
     where = Path(folder).resolve()
     lock = _read_lock(where)
     spec_file = _study_spec(study, shards, max_containers, lock)
@@ -274,10 +295,13 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
         lab_pins_of(lab_requirements)
     has_assets = bool(folder_assets(where))
     target = Path(out).resolve() if out is not None else where.parent / f"{where.name}-modal"
-    target.mkdir(parents=True, exist_ok=True)
     from mime import __version__
 
     source = Path(checkout).resolve() if checkout is not None else installed_checkout()
+    replaced = _held_already(target, [SCRIPT_FILE, requirements_name(variant), *([MIME_REQUIREMENTS] if source is None else []),
+                                      *([LAB_REQUIREMENTS] if lab_requirements is not None or lab_pins(lock) else []),
+                                      *([STUDY_SPEC] if spec_file is not None else [])], force)
+    target.mkdir(parents=True, exist_ok=True)
     files: list[Path] = []
     requirements = target / requirements_name(variant)
     requirements.write_bytes(requirements_bytes(variant))
@@ -337,7 +361,7 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
     script = target / SCRIPT_FILE
     script.write_text(template.replace("@@CONSTANTS@@", _constants(values)), encoding="utf-8", newline="\n")
     return ModalScript(target, script, (script, *files), variant, requested, series, source is not None,
-                       target / STUDY_SPEC if spec_file is not None else None, shards)
+                       target / STUDY_SPEC if spec_file is not None else None, shards, replaced)
 
 
 __all__ = ["IMAGE_BUILDER_VERSION", "MODAL_CLIENT", "SCRIPT_FILE", "UV_VERSION", "ModalScript", "installed_checkout",

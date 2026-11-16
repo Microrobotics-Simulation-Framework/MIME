@@ -90,7 +90,7 @@ def _selection(built: BuiltExperiment, select: Sequence[str] | None, state: Hist
     paths = {f"{node}.{name}": (node, name) for node, fields in state.items() for name in fields}
     for path in select:
         if path not in paths:
-            from mime.things import did_you_mean
+            from mime.things._handles import did_you_mean
 
             raise ArgumentRefused([Refusal(
 "live.select", RefusalClass.USER, f"select= names {path!r}, which is no field of the state",
@@ -594,7 +594,7 @@ class LiveSession:
         except MimeError as error:
             return refused(str(name) if name is not None else None, error.refusals)
         except Exception as error:  # noqa: BLE001 - a session never dies on one request
-            from mime.errors import translated
+            from mime.errors._translate import translated
 
             return refused(str(name) if name is not None else None, translated(error).refusals)
 

@@ -112,4 +112,4 @@ def as_drive(value: object) -> Drive:
     raise TypeError(f"a command takes a drive or a quantity (short for drives.Constant), not {value!r}")
 
 
-__all__ = ["Constant", "Ramp", "as_drive"]
+__all__ = ["Constant", "Ramp"]

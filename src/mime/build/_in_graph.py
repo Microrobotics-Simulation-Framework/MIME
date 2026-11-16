@@ -145,7 +145,7 @@ def trace_problems(step: Step, state: Mapping[str, Any], reads: Mapping[str, Any
     to, which the purity check compares with a second. A trace stopped by a Python branch, ``int()``, ``float()`` or
     NumPy call on a traced value raises :class:`TracedBranch` instead, for the refusal that names the script's
     line."""
-    from mime.errors import first_lines, raised_at, traced_value_error
+    from mime.errors._translate import first_lines, raised_at, traced_value_error
 
     try:
         jaxpr, shapes = make_jaxpr_with_shapes(step, dict(state), dict(reads))
@@ -185,7 +185,7 @@ def step_place(step: Any) -> str | None:
 def traced_branch_refusal(label: str, error: BaseException, step: Any, cls: type | None = None) -> Refusal:
     """The refusal of a law whose step asks a traced value for a concrete one, at the script's line that asks; a step
     of MIME's own that asks (``cls`` the controller, defined in MIME) is MIME's defect, never the script's."""
-    from mime.errors import first_lines, script_place
+    from mime.errors._translate import first_lines, script_place
     from mime.errors._frames import raised_by_mime
 
     if raised_by_mime(error) and cls is not None:

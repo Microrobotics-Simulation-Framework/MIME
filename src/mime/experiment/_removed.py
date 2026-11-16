@@ -35,7 +35,7 @@ from mime.experiment._redeclared import (
     named_by,
     known_as,
 )
-from mime.things import did_you_mean
+from mime.things._handles import did_you_mean
 
 #: The kinds ``kind=`` names, with the key ``known_as`` gives the declaration of each.
 KEYS = {"thing": "thing", "law": "attach", "observation": "observe", "value": "value", "source": "source",

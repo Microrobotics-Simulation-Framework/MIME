@@ -21,7 +21,8 @@ from mime.build import BuildRefused
 from mime.dynamics import RigidInertial
 from mime.interactions import Gravity
 from mime.scene import Box, Cylinder, Ellipsoid, Scene, Tube, X, Z
-from mime.things import Part, PartMass, PermanentMagnet, derive
+from mime.things import Part, PermanentMagnet
+from mime.things._parts import PartMass, derive
 from mime.units import VACUUM_PERMEABILITY, kg_per_m3, m_per_s, m_per_s2, mm, ms, rad_per_s
 
 RNG_SEED, SAMPLES = 20261023, 400_000

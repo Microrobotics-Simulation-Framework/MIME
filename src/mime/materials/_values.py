@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import cast
 
-from mime.things import ThingKind, did_you_mean
+from mime.things import ThingKind
+from mime.things._handles import did_you_mean
 from mime.units import (
     AREA,
     DENSITY,
@@ -31,7 +32,8 @@ from mime.units import (
     si,
     unit_symbol,
 )
-from mime.validity import Basis, basis_problem, basis_text
+from mime.validity import Basis
+from mime.validity._bases import basis_problem, basis_text
 
 #: How the build report and the saved form label a value that came from a declaration.
 DECLARED_IN_THE_EXPERIMENT = "declared in the experiment"

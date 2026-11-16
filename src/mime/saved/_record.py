@@ -32,7 +32,7 @@ from mime.env._host import (
     usable_cpus,
     xla_flags,
 )
-from mime.materials import RECORDS, LoadedRecord
+from mime.materials._records import RECORDS, LoadedRecord
 from mime.registry import SettingGroup, placed_gradient, rung_gradient
 from mime.saved._document import (
     declared_records,

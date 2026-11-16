@@ -32,7 +32,7 @@ from mime.study._axes import (
     value_text,
 )
 from mime.study._point import Point, build_point, checked_digests, same_run
-from mime.units import Quantity, UnitError, parse_unit, parse_value_unit, si, unit_symbol
+from mime.units import Quantity, UnitError, parse_unit, parse_value_unit, si, unit_symbol, unit_written
 
 if TYPE_CHECKING:
     from mime.experiment import BuiltExperiment
@@ -244,28 +244,6 @@ def _no_effect(axis: Axis, value: object, own: object | None) -> Refusal:
 __all__ = ["Overridden", "base_point", "overridden", "replayed"]
 
 
-def _unit_written(text: str) -> Any | None:
-    """The unit of ``mime.units`` that ``text`` writes, or ``None`` where it writes none: a unit's Python name
-    (``mPa_s``, ``mm_per_s``), the symbol it prints with (``mPa s``, ``mm/s``, with or without spaces about its slash), or, in a token with no space in
-    it, that symbol with its spaces left out (``mPas``). A unit written with spaces is its symbol as printed, spaces and all: it
-    is never read with them removed, which would read ``m s`` as ``ms`` and ``2 m T`` as ``2 mT``; what is not a unit's
-    symbol is read by the label grammar (``m s`` is a product)."""
-    import re
-
-    import mime.units as units
-
-    named = units.units_by_name()
-    held = named.get(text)
-    if held is not None:
-        return held
-    by_symbol = {unit.symbol: unit for unit in named.values()}
-    if len(text.split()) > 1:
-        # a slash is written with or without spaces about it (``mm / s``, ``rad /s``): it joins no letters, so the
-        # symbol it spells is the same one
-        return by_symbol.get(" ".join(re.sub(r"\s*/\s*", "/", text).split()))
-    return by_symbol.get(text) or {unit.symbol.replace(" ", ""): unit for unit in named.values()}.get(text)
-
-
 _NUMBER = r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?"
 #: The forms a value's unit is written in, one of each: a unit's name in ``mime.units``, its symbol, and SI base units. The
 #: refusal of a value shows them, and a test holds each to :func:`parse_value`.
@@ -278,7 +256,7 @@ def parse_value(text: str) -> Quantity | None:
     """A value as ``--override`` and a spec file write it: a number or numbers split by commas, with a unit, or a bare
     number for a dimensionless value; ``None`` for text that is not one. A unit is a name ``mime.units`` exports
     (``20Hz``, ``2mPa_s``, ``1.5mm_per_s``), the symbol a unit prints with (``1.2 mT``, ``2 mPa s``, ``1.5 mm/s``), or
-    a label of SI base units (``m^2 kg s^-1``), which :func:`~mime.units.parse_value_unit` reads with its spaces kept:
+    a label of SI base units (``m^2 kg s^-1``), which is read with its spaces kept:
     ``3 m s`` is 3 metre seconds, never 3 ms, and ``2 m T`` is tesla metres, never 2 mT. The value carries the whole of
     its unit, what a rate counts included: ``10 rad / s`` and ``10 rad s^-1`` are radians per second, which a site that
     takes Hz refuses, and are never read as ten turns."""
@@ -290,9 +268,9 @@ def parse_value(text: str) -> Quantity | None:
     numbers = [float(n) for n in found[1].split(",")]
     magnitude = numbers[0] if len(numbers) == 1 else tuple(numbers)
     symbol = (found[2] or "1").strip()
-    unit = _unit_written(symbol)
+    unit = unit_written(symbol)
     if unit is not None:
-        return cast(Quantity, unit(magnitude))
+        return unit(magnitude)
     try:
         dimension, angle = parse_value_unit(symbol)
     except UnitError:

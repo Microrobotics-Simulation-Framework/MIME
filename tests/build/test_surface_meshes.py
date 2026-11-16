@@ -28,7 +28,7 @@ from mime.build._binding import FIELD, POINTS, Bound, StageBinding
 from mime.build._surfaces import SURFACE_TRIANGLES, clustered, reduce_clusters
 from mime.experiment import Experiment
 from mime.live._session import frame_schema
-from mime.registry import SURFACE_ORIGIN_EXTENTS, MeshField, Port, SurfaceMesh
+from mime.registry import MESH_DISPLAYS, SURFACE_ORIGIN_EXTENTS, MeshField, Port, SurfaceMesh
 from mime.results._stage import StageRecord
 from mime.scene import Scene, Z
 from mime.things import Body, State
@@ -249,6 +249,26 @@ def test_the_declarations_problems_are_each_named():
             "coincide": "rest points all coincide", "faces": "names a vertex outside"}
     for name, surface in planted.items():
         assert any(said[name] in line for line in surface.problems()), name
+
+
+@pytest.mark.parametrize("display", ["revolved", "extruded", "mirrored"])
+def test_each_display_an_entry_may_declare_is_accepted_and_written_on_its_mesh_and_a_misspelling_is_refused(display):
+    from pxr import Sdf, Usd
+
+    rest, faces = toys.sheet(SIDE, 3)
+    assert SurfaceMesh("s", rest, faces, Port("points"), display=display).problems() == []
+    layer = Sdf.Layer.CreateAnonymous(".usda")
+    layer.ImportFromString(built_quietly(sheet_experiment(count=5, display=display)).stage_text)
+    stage = Usd.Stage.Open(layer)
+    assert stage.GetPrimAtPath("/World/sheet/sheet").GetAttribute("mime:display").Get() == display
+    assert any("display 'mirror'" in line for line in
+               SurfaceMesh("s", rest, faces, Port("points"), display="mirror").problems())
+
+
+def test_the_displays_are_the_three_a_symmetric_or_swept_section_is_shown_as():
+    """The control for the one above: ``mirrored``, a symmetric part drawn with its reflections, is declared (a test
+    that parametrised over an empty tuple would pass)."""
+    assert MESH_DISPLAYS == ("revolved", "extruded", "mirrored")
 
 
 # --- the ghosted comparison -------------------------------------------------------------------------------------------

@@ -62,7 +62,7 @@ from script_a_runs import quantities, run_built
 from script_a_steady import GATED
 
 from mime import units
-from mime.dynamics.body import RigidInertialExplicit
+from mime.dynamics.body._previous import RigidInertialExplicit
 from mime.fields import KEPT as KEPT_FIELDS
 
 HERE = Path(__file__).parent

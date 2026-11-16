@@ -26,7 +26,7 @@ from mime.drives import Ramp
 from mime.fields import KEPT as KEPT_FIELDS
 from mime.fields import UniformRotating
 from mime.observations import PhaseLag
-from mime.dynamics.body import RigidInertialExplicit, RigidInertialMoments
+from mime.dynamics.body._previous import RigidInertialExplicit, RigidInertialMoments
 from mime.interactions import KEPT, Drag, Gravity
 from mime.experiment import Experiment
 from mime.interactions import Lubrication

@@ -48,7 +48,7 @@ def arm_arrays(x64: bool) -> tuple[Any, dict[str, np.ndarray]]:
     from mime.units import Hz, s
 
     try:
-        from mime.dynamics.body import RigidInertialExplicit
+        from mime.dynamics.body._previous import RigidInertialExplicit
     except ImportError:
         pass
     else:

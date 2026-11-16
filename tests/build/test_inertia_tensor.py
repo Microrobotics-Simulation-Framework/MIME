@@ -18,7 +18,8 @@ from profile_cases import parts_screw
 from mime import Body, Experiment, State, Structure
 from mime.build import BuildRefused
 from mime.dynamics import RigidInertial
-from mime.dynamics.body import KEPT, PRODUCTS_TAKEN_AS_NONE, RigidInertialExplicit, RigidInertialMoments
+from mime.dynamics.body import KEPT
+from mime.dynamics.body._previous import PRODUCTS_TAKEN_AS_NONE, RigidInertialExplicit, RigidInertialMoments
 from mime.nodes.body import RigidInertialMidpointNode, RigidInertialNode, RigidInertialTensorNode
 from mime.interactions import Contact
 from mime.scene import Scene, Screw, Sphere, Tube, X, Z

@@ -51,12 +51,10 @@ from mime.vocabulary._mime import (
 )
 from mime.vocabulary._ports import (
     DELIVERED_INERTIA,
-    ENERGY,
     FLOW_IN,
     FLUID,
     OPENING,
     JOINT,
-    POWER,
     RIGID_BODY,
     SPINNER,
     Definiteness,
@@ -89,7 +87,6 @@ __all__ = [
     "FLOW_VELOCITY",
     "FLOW_WAVEFORM",
     "DELIVERED_INERTIA",
-    "ENERGY",
     "FLOW_IN",
     "FLUID",
     "OPENING",
@@ -106,7 +103,6 @@ __all__ = [
     "MASS_MATRIX",
     "MIME_NAMESPACE",
     "POSE",
-    "POWER",
     "RESISTANCE",
     "RESOLVED_PARTNER",
     "RIGID_BODY",

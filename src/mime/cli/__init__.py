@@ -7,13 +7,14 @@ import hashlib
 import io
 import json
 import os
+import select
 import sys
 import warnings
 import zipfile
 from collections.abc import Callable, Generator, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, TextIO, override
 
 from mime import __version__, _import_guard
 from mime._extras import VERIFY_EXTRA_MISSING
@@ -26,7 +27,8 @@ from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
 from mime.cli._display import AMBER, amber_line, set_plain, styled
 from mime.cli._durations import FORMS, is_bare_number, seconds, unit_examples
 from mime.cli._shell import quoted
-from mime.errors import TRACEBACK_VARIABLE, crossed, full_mode, short_text
+from mime.errors._boundary import crossed
+from mime.errors._display import TRACEBACK_VARIABLE, full_mode, short_text
 from mime.experiment import Experiment
 from mime.validity import Profile
 
@@ -140,10 +142,33 @@ def _deterministic(on: bool) -> None:
         _warn(CPU_DETERMINISTIC)
 
 
+def _is_run_folder(folder: Path) -> bool:
+    """Whether ``folder`` is what ``mime run`` wrote: a record (``run.json``) and the outputs' manifest beside it."""
+    from mime.experiment import RUN_RECORD
+    from mime.results import RUN_MANIFEST
+
+    return folder.is_dir() and (folder / RUN_RECORD).is_file() and (folder / RUN_MANIFEST).is_file()
+
+
+def _not_a_saved_experiment(folder: Path, command: str) -> BuildRefused:
+    """A run folder given where a saved experiment is read (``verify``, ``pending``): what it is, and what reads it."""
+    from mime.experiment import RUN_EXPERIMENT
+
+    reading = {"verify": f"`mime verify {quoted(str(folder))} --run` replays the run and checks its outputs",
+               "pending": f"`mime pending {quoted(str(folder / RUN_EXPERIMENT))}` plans the experiment the run was made from"}
+    return BuildRefused([Refusal(
+        "load.run-folder", RefusalClass.USER,
+        f"{folder} is a run folder, which mime run wrote, and `mime {command}` reads a saved experiment",
+        f"{reading[command]}; `mime show {quoted(str(folder))}` prints its outputs; or name the saved experiment it was "
+        "run from")])
+
+
 def _verify(folder: Path, run: bool = False) -> int:
     from mime.blocks._definition import is_block_folder
     from mime.saved._studies import BLOCK_SUFFIX, is_publishing_folder, is_study_folder
 
+    if not run and _is_run_folder(folder):
+        raise _not_a_saved_experiment(folder, "verify")
     with Interrupt():
         try:
             if not run and (is_block_folder(folder) or (folder.is_file() and folder.name.endswith(BLOCK_SUFFIX))):
@@ -249,6 +274,8 @@ def _pending(folder: Path) -> int:
     the route a sealed document takes before it is built and saved again."""
     from mime.env import apply_lock_precision
 
+    if _is_run_folder(folder):
+        raise _not_a_saved_experiment(folder, "pending")
     try:
         if folder.is_file():
             profile = Experiment.from_document(folder).plan().profile
@@ -296,6 +323,8 @@ def _show(folder: Path, graph: bool, tree: bool, as_json: bool, out: Path | None
 
     if (folder.is_dir() and is_block_folder(folder)) or (folder.is_file() and folder.name.endswith(BLOCK_SUFFIX)):
         return _show_block(folder, as_json)
+    if _is_run_folder(folder):
+        return _show_run(folder, as_json)
     if out is not None and out is not DEFAULT_PAGE:
         from mime.experiment._mermaid import written_outside
 
@@ -334,6 +363,18 @@ def _show(folder: Path, graph: bool, tree: bool, as_json: bool, out: Path | None
                 webbrowser.open(written.resolve().as_uri())
         else:
             sys.stdout.write(for_terminal(diagram))
+    return 0
+
+
+def _show_run(folder: Path, as_json: bool) -> int:
+    """``mime show`` of a run folder: the run's outputs summary, as the result reads it back (``RunResult.text``), or with
+    ``--json`` the manifest it was read from (``outputs.json``). Nothing is built or run."""
+    from mime.results import RUN_MANIFEST, RunResult
+
+    if as_json:
+        sys.stdout.write(for_terminal((folder / RUN_MANIFEST).read_text(encoding="utf-8")))
+    else:
+        print(for_terminal(RunResult.read(folder).text()))
     return 0
 
 
@@ -384,8 +425,8 @@ def _run(folder: Path, duration: float | None, out: Path, history: bool, record:
     written); once the run is under way it stops the run at its next chunk and the run folder is written as the steps
     reached, marked stopped (130); the second quits at once, writing nothing (``mime._interrupt``).
 
-    ``out`` is a new folder, an empty one, or MIME's own run folder; any other is refused before anything loads
-    (``run.out-not-empty``) unless ``force``, which warns first, makes Ctrl+C cancel the run until it begins to write
+    ``out`` is a new folder or an empty one; any other, MIME's own run folder too, is refused before anything loads
+    (``run.out-not-empty``): a run never replaces what is there without being asked to, unless ``force``, which warns first, makes Ctrl+C cancel the run until it begins to write
     (130, the folder as it was), and shows an amber notice when it does.
 
     On a terminal (``mime.cli._display``) the run shows its progress on standard error and ends with what needs
@@ -394,11 +435,11 @@ def _run(folder: Path, duration: float | None, out: Path, history: bool, record:
     from mime.experiment._experiment import foreign_entries, refuse_out_not_own, refuse_out_over
 
     refuse_out_over(out, [folder])
-    refuse_out_not_own(out, force)
-    forced = foreign_entries(out) if force else ()
+    refuse_out_not_own(out, force, own_too=True)
+    forced = foreign_entries(out, own_too=True) if force else ()
     if forced:
         amber_line(sys.stderr, f"warning: --force: {out} holds {', '.join(forced[:5])}{', ...' if len(forced) > 5 else ''}"
-                               f", which is not an empty folder or a MIME run folder; the run will write into it, "
+                               f", which is not an empty folder; the run will write into it, "
                                "replacing any file of the names a run writes (outputs.npz, outputs.json, run.json, "
                                "report.json, topology.json, experiment/). Ctrl+C cancels it until it begins to write, "
                                "and a notice says when it does")
@@ -712,7 +753,9 @@ def _env_check(arguments: argparse.Namespace) -> int:
 
     try:
         report = env.check(arguments.folder, variant=arguments.variant, gpu=arguments.gpu, base=arguments.base,
-                           lab=arguments.lab, xla_cache=arguments.xla_cache, mime_version=arguments.mime_version)
+                           lab=arguments.lab, xla_cache=arguments.xla_cache, mime_version=arguments.mime_version,
+                           strict=arguments.strict or arguments.base or arguments.mime_version is not None
+                           or arguments.folder is not None)
     except BuildRefused as refused:
         _write_record(arguments.record, {"refused": [str(r) for r in refused.refusals]})
         raise
@@ -742,7 +785,7 @@ def _modal(arguments: argparse.Namespace) -> int:
                                lab_requirements=arguments.lab_requirements, xla_cache=not arguments.no_xla_cache,
                                timeout=arguments.timeout, max_containers=arguments.max_containers,
                                cpu=arguments.cpu, memory=arguments.memory, study=arguments.study,
-                               shards=arguments.shards)
+                               shards=arguments.shards, force=arguments.force)
     print(written.text())
     return 0
 
@@ -762,6 +805,10 @@ def _study(arguments: argparse.Namespace) -> int:
     from mime.env import apply_lock_precision
     from mime.study._spec import read_spec, study_from_spec
 
+    if arguments.study_command == "run":
+        from mime.study._folder_run import refuse_unwritable_out
+
+        refuse_unwritable_out(arguments.out)  # before the base loads and the plan is made
     spec = Path(arguments.spec)
     base = arguments.base
     held = read_spec(spec)
@@ -1427,7 +1474,9 @@ def _push(arguments: argparse.Namespace) -> int:
                            f"next: name the creators in it, then {then}"))
         return 0
     try:
-        if arguments.status:
+        if arguments.dry_run:
+            _draft.dry_run(folder, service, say=voice.say, full=arguments.full_plan)
+        elif arguments.status:
             _draft.status(folder, service, say=voice.say)
         elif arguments.discard:
             _draft.discard(folder, service, yes=arguments.yes, confirm=ask, say=voice.say)
@@ -1752,7 +1801,7 @@ def build_parser() -> _guide.MimeParser:
     pushing = commands.add_parser(
         "push", help="show the plan, then make or update the experiment's draft record on Zenodo and upload its files "
                      "(nothing is published)",
-        usage="%(prog)s [-h] --to {zenodo,zenodo-sandbox} [--init | --setup | --status | --discard | --publish]\n"
+        usage="%(prog)s [-h] --to {zenodo,zenodo-sandbox} [--init | --setup | --status | --discard | --publish | --dry-run]\n"
               "                 [--confirm DOI[@FINGERPRINT]] [--yes] [--full-plan]\n"
               "                 [--keep-site-edits | --overwrite-site-edits]\n"
               "                 folder\n"
@@ -1781,6 +1830,9 @@ def build_parser() -> _guide.MimeParser:
     pushing_mode.add_argument("--publish", action="store_true",
                               help="publish the draft, the one step that cannot be undone: the plan, the confirmation "
                                    "in words, each declared permission asked, then the record number typed")
+    pushing_mode.add_argument("--dry-run", action="store_true",
+                              help="show what would be uploaded and where, as the plan push shows before it sends "
+                                   "anything, and send nothing: no token is read and no connection opened")
     pushing.add_argument("--confirm", metavar="DOI[@FINGERPRINT]",
                          help="with --publish, from a script: the draft's reserved DOI, in place of the record number "
                               "typed (it must be that draft's); once a push changed the draft after first printing its "
@@ -1852,8 +1904,8 @@ def build_parser() -> _guide.MimeParser:
     run.add_argument("--out", type=Path, required=True, help="the folder to write the outputs, the record and the "
                                                              "run's saved form to")
     run.add_argument("--force", action="store_true",
-                     help="run into --out although it is neither new, empty nor a MIME run folder: a warning says what "
-                          "it holds, Ctrl+C cancels the run until it begins to write, and an amber notice says when it "
+                     help="run into --out although it is not new or empty (an earlier run's folder included, whose run "
+                          "this one replaces): a warning says what it holds, Ctrl+C cancels the run until it begins to write, and an amber notice says when it "
                           "does; the files a run writes (outputs.npz, outputs.json, run.json, report.json, topology.json, "
                           "experiment/) replace those of their names")
     run.add_argument("--history", action="store_true", help="write every step's fields, not only the last")
@@ -1988,6 +2040,11 @@ def build_parser() -> _guide.MimeParser:
                                                                          "in its directory for this jaxlib and device")
     env_check.add_argument("--mime-version", metavar="VERSION",
                            help="the version of the MIME wheel pinned for the run; without it MIME is not held to one")
+    env_check.add_argument("--strict", action="store_true",
+                           help="hold every pin exactly, for a reproduction: a distribution at another version than "
+                                "its pin, though inside the ranges MIME's dependencies declare, and one nothing pins, "
+                                "are refused (without it they are notes). It is implied by --base, --mime-version and "
+                                "a folder (its lock), the reproduction's own arguments")
     env_check.add_argument("--record", type=Path, metavar="FILE", help="also write what the check found as JSON")
     modal = commands.add_parser("modal", help="write the script that runs a saved experiment on Modal")
     modal.add_argument("folder", type=Path, help="a folder written by Experiment.save")
@@ -2011,6 +2068,9 @@ def build_parser() -> _guide.MimeParser:
     modal.add_argument("--study", type=Path, metavar="SPEC",
                        help="add a `study` entrypoint that runs this study spec (study.mime.yaml) in one container, a "
                             "pilot first; the same --name resumes it")
+    modal.add_argument("-f", "--force", action="store_true",
+                       help="replace the files of a script written earlier in the folder; without it they are refused "
+                            "(only the files the script is made of are replaced)")
     modal.add_argument("--shards", type=int, default=1, metavar="K",
                        help="split the study over K containers, one shard each, each into a study folder of its own "
                             "(needs --max-containers K). Sharding is by structure group: K is at most the study's "
@@ -2149,8 +2209,12 @@ def _parsed(parser: argparse.ArgumentParser, words: list[str], full: bool) -> in
 
     try:
         with short_description_warnings(sys.stderr):
-            return _command(parser, arguments)
+            code = _command(parser, arguments)
+        sys.stdout.flush()  # a pipe closed by the reader is met here, not at the interpreter's exit
+        return code
     except Exception as error:  # noqa: BLE001 - every error a command meets is shown as a MIME error with its code
+        if _closed_pipe(error):
+            return _pipe_closed()
         return refused(error, arguments.command)
     finally:
         if full:
@@ -2160,9 +2224,80 @@ def _parsed(parser: argparse.ArgumentParser, words: list[str], full: bool) -> in
                 os.environ[TRACEBACK_VARIABLE] = held
 
 
+def _folder_must_exist(arguments: argparse.Namespace) -> None:
+    """Refuse, as every command that takes a folder does (``load.missing-folder``, with the folders beside it and the
+    nearest), a folder that is not there, before the command reads anything of it: ``check``, ``modal``, ``push`` and
+    ``scaffold bundle|study`` named it differently each, by the first file they looked for."""
+    command = arguments.command
+    folder: Path | None = None
+    if command in ("check", "modal") or (command == "push" and not arguments.defaults):
+        folder = arguments.folder
+    elif command == "scaffold" and arguments.kind in ("bundle", "study"):
+        folder = arguments.path
+    if folder is not None and not folder.exists():
+        from mime.env._check import LOCK_FILE, missing_folder
+        from mime.push._manifest import MANIFEST_FILE
+        from mime.results._study_folder import STUDY_FILE
+
+        raise missing_folder(folder, holding=(LOCK_FILE, MANIFEST_FILE, STUDY_FILE))
+
+
+#: The exit code of a command whose output was read no further (``mime registry --json | head``): what a process ended by
+#: SIGPIPE shows in a shell (128 and 13), so a pipeline reads it as it reads ``cat``.
+PIPE_CLOSED = 141
+
+
+def _closed_pipe(error: BaseException) -> bool:
+    """Whether ``error`` is a ``BrokenPipeError`` raised directly by a write to standard output or standard error, the
+    pipe the user's reader closed. An error that was caused by one (a ``ConnectionError`` raised from a socket's) is
+    no closed pipe of the user's, and neither is a socket's own ``BrokenPipeError`` while both streams are open: those
+    are shown as the failures they are. Whether a stream's reader has gone is asked of the stream (:func:`_reader_gone`),
+    since the error itself does not say which pipe it came from."""
+    return (isinstance(error, BrokenPipeError) and error.__cause__ is None and error.__context__ is None
+            and any(_reader_gone(stream) for stream in (sys.stdout, sys.stderr)))
+
+
+def _reader_gone(stream: TextIO) -> bool:
+    """Whether ``stream`` is a pipe or socket whose reader has closed it: the descriptor polls as in error, or flushing
+    what the stream still holds meets a broken pipe. A stream with no descriptor (a test's capture) has no reader."""
+    try:
+        descriptor = stream.fileno()
+    except (AttributeError, ValueError, OSError):
+        return False
+    try:
+        polling = select.poll()
+        polling.register(descriptor, select.POLLOUT)
+        if any(event & select.POLLERR for _, event in polling.poll(0)):
+            return True
+    except (AttributeError, OSError, ValueError):  # no poll on this platform
+        pass
+    try:
+        stream.flush()
+    except BrokenPipeError:
+        return True
+    except (OSError, ValueError):
+        return False
+    return False
+
+
+def _pipe_closed() -> int:
+    """End quietly when the reader of a pipe has gone: the streams are pointed at the null device, so the interpreter's
+    own flush at exit finds nothing to fail on, and nothing is printed (a closed pipe is the reader's choice, no bug)."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            descriptor = stream.fileno()
+        except (AttributeError, ValueError, OSError):
+            continue
+        null = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(null, descriptor)
+        os.close(null)
+    return PIPE_CLOSED
+
+
 def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> int:
     from mime import assets
 
+    _folder_must_exist(arguments)
     if arguments.command == "verify":
         _deterministic(arguments.deterministic)
         return _verify(arguments.folder, arguments.run)
@@ -2175,6 +2310,9 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
                 arguments.graph or arguments.tree or arguments.out is not None):
             parser.error("a block folder shows what the block is and needs; --tree, --graph and --out are a saved "
                          "experiment's (save one that uses the block, then show that)")
+        if _is_run_folder(arguments.folder) and (arguments.graph or arguments.tree or arguments.out is not None):
+            parser.error("a run folder shows its outputs; --tree, --graph and --out are a saved experiment's (name "
+                         "the experiment the run was made from, or its saved form, <run folder>/experiment)")
         if arguments.json and arguments.graph:
             parser.error("--json is the tree as data; the graph is Mermaid text, so --json and --graph do not go together")
         if arguments.out is not None and (arguments.json or arguments.tree):

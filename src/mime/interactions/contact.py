@@ -336,4 +336,4 @@ class Contact(Interaction):
         return None
 
 
-__all__ = ["CENTRE_SWITCHES", "HULL_SWITCHES", "Contact"]
+__all__ = ["Contact"]

@@ -173,7 +173,13 @@ def test_a_marker_writes_the_canonical_string_a_label_would_and_it_reads_back():
     for name, marker in MARKERS.items():
         written = unit_label(marker)
         assert written == (units.rate_symbol(marker)), name
-        assert units.parse_unit(written) == marker and units.parse_unit(written).angle == marker.angle, name
+        assert units.parse_unit(written) == marker, name
+        if marker == units.DIMENSIONLESS:
+            # a plane angle is the label ``rad``, which holds the dimension and no marker: what it counts is a value's
+            assert written == ("rad" if marker.angle else "1") and units.parse_value_unit(written) == (
+                marker, "radian" if marker.angle else None), name
+        else:
+            assert units.parse_unit(written).angle == marker.angle, name
 
 
 def test_a_label_of_markers_goes_into_an_interface_as_the_string_it_is():

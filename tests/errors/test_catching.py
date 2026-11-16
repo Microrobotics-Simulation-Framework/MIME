@@ -22,7 +22,9 @@ from control_cases import spun_magnet
 from mime import Body, Experiment, State
 from mime.build import ArgumentRefused, InternalError, MimeError, Refusal, RefusalClass, UnrecognisedError
 from mime.dynamics import RigidInertial
-from mime.errors import TRACEBACK_VARIABLE, public, short_text, translated
+from mime.errors._boundary import public
+from mime.errors._display import TRACEBACK_VARIABLE, short_text
+from mime.errors._translate import translated
 from mime.errors import _boundary
 from mime.errors._translate import UNCODED
 from mime.gradients import GradientStatus
@@ -172,7 +174,7 @@ def test_the_control_an_uncoded_error_without_its_class_is_not_caught(monkeypatc
 def test_an_error_of_mimes_raised_inside_a_library_mime_called_is_mimes():
     """``did_you_mean`` handing ``difflib`` a number: the frame that raised is the standard library's, the frame that
     called it MIME's, so the error is MIME's gap and not one from below."""
-    from mime.things import did_you_mean
+    from mime.things._handles import did_you_mean
 
     error = _raised(lambda: did_you_mean(3, ["speed"]))  # type: ignore[arg-type]
     assert translated(error).codes() == ["error.uncoded"]

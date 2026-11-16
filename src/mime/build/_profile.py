@@ -23,7 +23,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, cast
 
 from mime.build._refusals import RefusalClass
-from mime.materials import read_target
+from mime.materials._read import read_target
 from mime.registry import (
     DefaultKind,
     Entry,
@@ -36,27 +36,13 @@ from mime.registry import (
     registration_of,
     setting_names,
 )
-from mime.things import Apparatus, Body, Medium, Structure, TypedPath, did_you_mean
+from mime.things import Apparatus, Body, Medium, Structure, TypedPath
+from mime.things._handles import did_you_mean
 from mime.units import Condition, Quantity, unit_symbol
-from mime.validity import (
-    PENDING,
-    REASON,
-    Action,
-    Basis,
-    Chosen,
-    Decision,
-    Finding,
-    Judge,
-    PendingItem,
-    Profile,
-    Stamp,
-    Waiver,
-    basis_problem,
-    basis_text,
-    decide,
-    is_pending,
-    pending_text,
-)
+from mime.validity import Basis, Chosen, Profile, decide
+from mime.validity._bases import PENDING, basis_problem, basis_text, is_pending
+from mime.validity._pending import REASON, PendingItem, Stamp, pending_text
+from mime.validity._profiles import Action, Decision, Finding, Judge, Waiver
 
 type Json = None | bool | int | float | str | list[Json] | dict[str, Json]
 type Problem = tuple[str, str, str]

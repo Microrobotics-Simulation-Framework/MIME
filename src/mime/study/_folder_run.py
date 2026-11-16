@@ -88,18 +88,32 @@ def _write_folder(target: Path, write: Callable[[Path], object]) -> None:
     os.replace(staged, target)
 
 
-def _old_document(out: Path) -> dict[str, Any] | None:
-    """The manifest of the study ``out`` holds, its layout checked; ``None`` for an empty or new folder. A folder that
-    holds anything and no manifest is refused, naming what it holds: a study is never written over what it did not
-    write."""
-    manifest = out / STUDY_FILE
-    if not manifest.is_file():
+def refuse_unwritable_out(out: Path) -> None:
+    """Refuse an ``out`` a study can never be written into, from what it holds alone, so a command can say so before it
+    loads the base or plans (which takes seconds to minutes): a file, a link to nowhere, or a folder that holds anything
+    and no study (``study.folder-not-empty``). A study folder, an empty one and a new one pass."""
+    from mime.experiment._experiment import not_a_folder
+
+    if not_a_folder(out):
+        what = "a link to nowhere" if out.is_symlink() else "a file"
+        raise _refuse("study.folder-not-empty", RefusalClass.USER, f"{out} is {what}, not a folder",
+                      "name a new folder, or an empty one: `--out <folder>`, `study.run_to(<folder>)`")
+    if out.is_dir() and not (out / STUDY_FILE).is_file():
         held = sorted(child.name + ("/" if child.is_dir() else "") for child in out.iterdir())
         if held:
             raise _refuse("study.folder-not-empty", RefusalClass.USER,
                           f"{out} holds {', '.join(held[:5])}{', ...' if len(held) > 5 else ''} and no study "
                           f"({STUDY_FILE}): a study is written into an empty or new folder, and never over what it did "
                           f"not write", "name a new folder, or an empty one: `--out <folder>`, `study.run_to(<folder>)`")
+
+
+def _old_document(out: Path) -> dict[str, Any] | None:
+    """The manifest of the study ``out`` holds, its layout checked; ``None`` for an empty or new folder. A folder that
+    holds anything and no manifest is refused, naming what it holds: a study is never written over what it did not
+    write."""
+    manifest = out / STUDY_FILE
+    if not manifest.is_file():
+        refuse_unwritable_out(out)
         return None
     try:
         document = cast(object, json.loads(manifest.read_text(encoding="utf-8")))
@@ -168,6 +182,7 @@ def run_study_to(study: Study, experiment: Experiment, points: Points, out: Path
     """The study run into ``out``: see :meth:`Study.run_to`."""
     from mime.study._spec import spec_text
 
+    refuse_unwritable_out(out)  # before the plan, which takes seconds to minutes
     plan = study.plan()
     if not isinstance(plan.protocol, FromRest):
         raise _refuse("study.protocol-folder", RefusalClass.USER,

@@ -23,7 +23,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mime.build._refusals import ArgumentRefused, MimeError, Refusal, RefusalClass
-from mime.errors import public
+from mime.errors._boundary import public
 from mime.registry import Reduction
 from mime.results._layout import FlagLayout, OutputLayout, ended_after, position
 from mime.units import TIME, Quantity, Unit, Values, si, unit_symbol
@@ -282,7 +282,7 @@ class Reading:
     def unit(self) -> str:
         return unit_symbol(self.held.dimension)
 
-    def to(self, unit: Unit) -> Values:
+    def to(self, unit: Unit | str) -> Values:
         return self.quantity.to(unit)
 
     def text(self) -> str:
@@ -395,7 +395,7 @@ class Series:
     def __len__(self) -> int:
         return len(self.steps)
 
-    def to(self, unit: Unit) -> Values:
+    def to(self, unit: Unit | str) -> Values:
         return self.values.to(unit)
 
     @public
