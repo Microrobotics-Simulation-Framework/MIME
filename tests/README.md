@@ -284,10 +284,19 @@
     export cannot encode, each fail by name; a declared one passes; a namespace failing to import fails the export;
   - `test_symbol_table.py`: the symbol-table checks on the test-only nodes of `planted_nodes.py` (no MIME node
     carries `NodeMeta` yet): S1 to S6 and N3, each arm failing by name and each passing arm passing;
-  - `test_refusal_table.py`: the table is what the source constructs, and the scan's and the registry's golden
-    numbers (`golden_numbers.json`) reproduce; R1 (a lab's `Problem` code refused, never raised), R2 (a planted
-    tuple code, a code passed by a variable, a stray code-shaped string and a stale row, each found) and R3 (an
-    uncatalogued code, or one in the wrong class, raises where it is constructed);
+  - `test_refusal_table.py`: the table is what the source constructs, and the registry holds the entries the source
+    registers (the `register_<kind>` decorators and calls, counted by kind, against a fresh interpreter's entries of MIME's
+    namespace); no total is pinned. R1 (a lab's `Problem` code refused, never raised), R2 (a planted tuple code, a code in
+    a plain construction call, a code in a file of its own, a code passed by a variable, a stray code-shaped string and a
+    stale row, each found) and R3 (an uncatalogued code, or one in the wrong class, raises where it is constructed);
+  - `test_entries_floor.py`: an entry of `entries_floor.txt` (MIME's own, never a lab's or the toys') that a fresh
+    interpreter no longer holds fails unless `entries_removed.txt` logs it; controls on a copy of the package: the
+    decorator removed from `Exposure`, the import that registers it dropped, a planted floor entry, a logged removal;
+  - `test_refusal_floor.py`: a code of `refusal_floor.txt` (the table's codes when its total stopped being pinned) that the
+    table no longer holds fails unless `refusal_removed.txt` logs it with a reason; a logged code the table holds again, a
+    log line with no reason and a floor line out of order each fail;
+  - `test_sorted_lists.py`: `duration_allowlist.txt` and `raw_switches.txt` stay sorted and without a duplicate (the line
+    out of order is named with its place), so two changes that each add a line do not conflict;
   - `test_lists.py`: the list reader, and W4 on the refusal list: a listed code a test now names, a code no test
     names and not listed, an empty reason, a bare count and a duplicate each fail;
   - `test_docs_check.py`: `mime docs check` passes on the checkout, printing each list's length and its wall time,

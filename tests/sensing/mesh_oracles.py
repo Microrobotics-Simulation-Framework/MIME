@@ -36,8 +36,8 @@ def chord_error(size: float, seed: int) -> bool:
     directions = rays(triangles, origin, seed)
     run = np.float32
     oracle = brute(triangles.astype(run).astype(np.float64), owners, 1, origin.astype(run).astype(np.float64),
-                   directions.astype(run).astype(np.float64))
-    judged = (oracle.margin >= MARGIN["float32"]) & (oracle.count[:, 0] > 0)
+                   directions.astype(run).astype(np.float64), eps=float(np.finfo(run).eps), edge=MARGIN["float32"])
+    judged = (oracle.margin >= MARGIN["float32"]) & ~oracle.tied & (oracle.count[:, 0] > 0)
     built = tree(triangles, owners)
     found = _traced(tuple(jnp.asarray(built.arrays[key], dtype=run) for key in KEYS), meshes=1,
                     origin=jnp.asarray(origin, dtype=run), directions=jnp.asarray(directions, dtype=run),
