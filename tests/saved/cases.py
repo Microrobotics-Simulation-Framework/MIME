@@ -294,9 +294,11 @@ def anchored_toy() -> Experiment:
 
 def indented_sheet() -> Experiment:
     """A body whose node moves a surface carrying two fields (``toy.indented_sheet``), drawn as a section would be and
-    its depth reduced by the maximum, so that the stage writes every name a surface's mesh carries."""
+    its depth reduced by the maximum, so that the stage writes every name a surface's mesh carries. Its side, speed and width
+    are written (a value equal to its default is not in the document, so the walk would find no float to move)."""
     experiment = toy_experiment("indented_sheet")
-    experiment.add_body(Body("sheet", dynamics=ToyIndentedSheet(count=5, display="extruded", peak=True),
+    experiment.add_body(Body("sheet", dynamics=ToyIndentedSheet(side=mm(1.2), count=5, speed=m_per_s(1.5e-3), width=mm(0.2),
+                                                          display="extruded", peak=True),
                              initial=State(position=m((0.0, 0.0, 0.0)))))
     return experiment
 

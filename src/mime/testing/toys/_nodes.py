@@ -427,8 +427,8 @@ class ToyIndentedSheetNode(ToyNode):
         super().__init__(name, timestep, side=float(side), count=int(count), speed=float(speed), width=float(width))
 
     def _at(self, t: Array, p: Mapping[str, Any]) -> NodeFields:
-        rest, _ = sheet(float(node_params(self)["side"]), int(node_params(self)["count"]))
-        held = jnp.asarray(rest, dtype=t.dtype) * (p["side"] / node_params(self)["side"])
+        unit, _ = sheet(1.0, int(node_params(self)["count"]))
+        held = jnp.asarray(unit, dtype=t.dtype) * p["side"]
         shape = jnp.exp(-(held[:, 0] ** 2 + held[:, 1] ** 2) / (2.0 * p["width"] * p["width"]))
         depth = p["speed"] * t * shape
         return node_fields(ToyIndentedSheetState(t=t, points=held.at[:, 2].add(-depth), depth=depth,

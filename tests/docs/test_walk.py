@@ -238,7 +238,8 @@ def test_a_labs_entry_without_a_source_is_counted_and_fails_once_the_lab_opts_in
            "0.1.0, dynamics labx.gantry 0.1.0, field provider labx.marked_rotating 0.1.0, geometry labx.bead 0.1.0, " \
            "interaction labx.nudge 0.1.0, observation labx.height 0.1.0); nodes " \
            "without NodeMeta: 3 (GantryNode, HeightNode, NudgeNode)" in walked.summary
-    assert "exempt from the hand-written half by namespace (toy): 12 entries" in walked.summary
+    toys = len({record.name for record in records if record.namespace == "toy"})
+    assert f"exempt from the hand-written half by namespace (toy): {toys} entries" in walked.summary
     held = docs_walk(docs, records, node_classes(records), held=("mime", "labx"))
     assert [problem for problem in held.problems if "labx" in problem or "Nudge" in problem or "Gantry" in problem
             or "Height" in problem] == [
