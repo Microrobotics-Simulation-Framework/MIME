@@ -23,3 +23,11 @@
     tcp://127.0.0.1:99999` raised an uncoded `OverflowError` (exit 3) with the command socket left open.
   - **`mime.live/2`.** The four values above changed meaning, so the protocol is `mime.live/2`: the server announces it, MIME's
     client speaks it, and a request that says `"protocol": "mime.live/1"` is refused with `live.protocol`.
+  - **`--force` never writes through a link.** A name a run writes (`run.json`, `experiment/` and the rest) that is a symbolic
+    link, or a folder of them with a link inside, is refused with `--force` too (`run.out-not-empty`, naming the entry):
+    before, `--force` overwrote what `out/run.json` pointed at and saved the experiment into the folder `out/experiment`
+    pointed at. The check is in the helper `mime run`, `run_to` and `mime serve` share, so all three have it.
+  - **`hello` names its protocol; `step` and `pace` are bounded.** A `hello` without `protocol` is refused (`live.protocol`),
+    so a client of the earlier protocol that never sends the key is not answered with values it would misread. `step`
+    takes at most `hello`'s `max_step_chunks` (the chunks covering one simulated hour; `live.step`), and `pace` requires
+    `rtf` (a mistyped key left the session unpaced without a word; `live.pace`). A port in non-ASCII digits is no port.

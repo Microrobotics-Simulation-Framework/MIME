@@ -22,7 +22,9 @@ from live_cases import files_of, saved
 
 from mime.build import ArgumentRefused
 from mime.experiment import Experiment
+from mime.experiment._experiment import refuse_out_not_own
 from mime.live import COMMAND_LOG, default_out, replay
+from mime.units import ms
 
 
 @pytest.fixture(scope="module")
@@ -82,3 +84,27 @@ def test_the_default_run_folder_is_the_sessions_own_within_one_second(tmp_path, 
     assert [held.name for held in folders] == ["rig-live-20261116T120000Z", "rig-live-20261116T120000Z-2",
                                                "rig-live-20261116T120000Z-3"]
     assert all(held.is_dir() and not any(held.iterdir()) for held in folders)
+
+
+def test_a_session_and_a_run_refuse_a_link_among_their_names_even_forced_and_the_message_names_the_entry(loaded, tmp_path):
+    """(The security review's finding 1, at the shared helper both ``mime serve`` and ``mime run`` call.) A forced
+    folder whose ``run.json`` and ``experiment`` are links to a file and a folder elsewhere: the session is refused
+    naming both entries, ``Experiment.run`` into it too, and the victims are as they were."""
+    victim, victim_dir = tmp_path / "victim.txt", tmp_path / "victimdir"
+    victim.write_text("precious\n", encoding="utf-8")
+    victim_dir.mkdir()
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "run.json").symlink_to(victim)
+    (out / "experiment").symlink_to(victim_dir, target_is_directory=True)
+    with pytest.raises(ArgumentRefused) as refused:
+        loaded.live(pace=None, out=out, force=True)
+    (refusal,) = refused.value.refusals
+    assert refusal.code == "run.out-not-empty" and "experiment, run.json" in refusal.message
+    for own_too in (True, False):  # ``mime run``'s rule and the python route's
+        with pytest.raises(ArgumentRefused, match="run.out-not-empty"):
+            refuse_out_not_own(out, True, own_too=own_too)
+    with pytest.raises(ArgumentRefused, match="run.out-not-empty"):
+        loaded.run_to(out, ms(1), force=True)
+    assert victim.read_text(encoding="utf-8") == "precious\n" and list(victim_dir.iterdir()) == []
+    assert sorted(path.name for path in out.iterdir()) == ["experiment", "run.json"]

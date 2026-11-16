@@ -85,7 +85,15 @@ session.stop()                # the run folder: a0_live/
 Every live session that is given `out=` writes a minimal run folder when it stops (`mime serve` always does). The
 folder takes `run_to`'s rule: a new folder, an empty one or MIME's own run folder (`mime serve`, as `mime run`, refuses
 MIME's own too), and any other is refused (`run.out-not-empty`) unless `force=True` (`--force`), which writes into it,
-replacing only the files of the names below and keeping every other file, `experiment/`'s included:
+replacing only the files of the names below and keeping every other file, `experiment/`'s included. **A name of those
+below that is a symbolic link, or a folder of them with a link inside, is refused even with `force`** (`run.out-not-empty`,
+naming the entry): a write through it would land where it points, outside the folder. `mime run --force` and
+`run_to(force=True)` share this check.
+
+**Python and the CLI differ on MIME's own run folder.** `mime serve` and `mime run` never write over one without
+`--force`. `built.live(out=<a MIME run folder>)` follows `run_to`'s rule instead (so that a script that runs again into
+its own folder keeps working): it replaces that folder's outputs without `force`, and refuses only a folder that
+holds anything else, a command log included (`live.log-exists`).
 
 | File | What it holds |
 |---|---|
@@ -253,7 +261,9 @@ its first request; one that sends no `protocol` is answered as `mime.live/2`, so
 
 ### Requests and replies
 
-A request is a JSON object, `{"command": "<name>", ...}` (with `"protocol": "mime.live/2"`, optional). A reply is a
+A request is a JSON object, `{"command": "<name>", ...}` with `"protocol": "mime.live/2"`, which `hello` requires (a
+`hello` without it is refused, `live.protocol`, so a client of the earlier protocol cannot read its fields wrongly) and
+the other commands take as optional. A reply is a
 JSON object with `protocol`, `ok` and `command`; on success the session's status (`state`, `step`, `time`, `frames`,
 `pace`, `recording`, `non_finite`; `stepping`, the chunks a step in hand has still to take; `activity`, what the
 session is doing, `compiling`, `stepping` or `idle`; and `pending`, the commands taken while a chunk runs that act at
@@ -300,11 +310,11 @@ the view from `status` and the frames shows what these keys let it, and no more 
 | `status` | | the session's status |
 | `start` | | starts or resumes stepping, paced |
 | `pause` | | stops stepping after the chunk in hand (taken while a chunk runs: answered at once, `pending`) |
-| `step` | `chunks`, a whole number above zero | steps that many chunks now, from a session that is not running; answered when they are stepped, or when a `stop` or `pause` from another client ends the step (the server takes other requests between its chunks) |
-| `stop` | | stops in every state, sends the last frame, writes the run folder (between chunks its reply holds the run folder's name, `folder`, never its path; taken while a chunk runs it is answered at once as pending, with no `folder`: the final frame or the closed connection says it took effect) |
+| `step` | `chunks`, a whole number above zero and at most `hello`'s `max_step_chunks`, the chunks that cover one simulated hour (`live.step` beyond it) | steps that many chunks now, from a session that is not running; answered when they are stepped, or when a `stop` or `pause` from another client ends the step (the server takes other requests between its chunks) |
+| `stop` | | stops in every state, sends the last frame, writes the run folder (between chunks its reply holds the run folder's name, `folder`, never its path; taken while a chunk runs it is answered at once as pending, and that reply has no `folder` at all, the key appears only in the reply of a session that has stopped: the final frame or the closed connection says it took effect) |
 | `set` | `values`, live inputs by label | sets the controller's live inputs from its next tick |
 | `record` | `on`, true or false | turns the recording layer on or off; on is refused once the recording holds its budget (`live.record-budget`) |
-| `pace` | `rtf`, a factor or null | the real-time factor, or unpaced |
+| `pace` | `rtf`, required: a finite factor above zero, or null | the real-time factor, or unpaced; a request without `rtf`, or with anything else, is refused (`live.pace`) and leaves the pace as it was |
 
 `hello` returns MIME's version, the experiment's name and its hashes, the base step and the chunk in base steps, the
 controller (its entry, mode, period and latency) and its live inputs (each with its units, shape, meaning and
@@ -312,7 +322,7 @@ controller (its entry, mode, period and latency) and its live inputs (each with 
 cache draws of its visuals (`visuals`: the overlay to add over the stage, the visual sets it lacks with the command that
 fetches each, `fetch`, and every set's notice, its credit and terms, whether its meshes are drawn or not: see
 [recordings](recordings.md)), the stage binding (`binding`), the topology, the frame schema (`schema`), the commands,
-the recording's budget in samples (`record_budget`), and the status. **`hello` and `stop` name no path of the machine
+the recording's budget in samples (`record_budget`), the most chunks a `step` may ask for (`max_step_chunks`), and the status. **`hello` and `stop` name no path of the machine
 that serves the session.** `stage` is relative to the run folder, `experiment/scene/scene.usda` (its `experiment/` is the
 saved folder's copy; `null` for a session with no run folder); `visuals.overlay` is the overlay's id, its file name in the
 asset cache's `overlays/` folder; each `fetch` command names its folder relative to the run folder, to be run there; and

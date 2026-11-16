@@ -283,7 +283,7 @@ def test_a_stop_read_either_side_of_a_chunk_reads_alike_and_acts_where_its_reply
 
 
 def test_stop_ends_a_long_step_at_the_next_chunk_boundary(launch, folder, tmp_path):
-    """A ``step`` of 10^9 chunks (days of stepping) and, from a second client, a ``status`` answered while it runs and
+    """A ``step`` of the most chunks a request may ask for (``hello``'s ``max_step_chunks``: a simulated hour, minutes of stepping) and, from a second client, a ``status`` answered while it runs and
     a ``stop``: the session stops at a chunk's end (the end of the chunk the stop came during, when it came during
     one), its step cut short, and the step's reply says so. Machine-free: the log holds the step, each chunk's step,
     then the stop at the last chunk's step; no time is measured."""
@@ -292,7 +292,7 @@ def test_stop_ends_a_long_step_at_the_next_chunk_boundary(launch, folder, tmp_pa
     process = started(launch, folder, tmp_path / "out", tmp_path / "ready.json", "--unpaced")
     stepper, stopper = client(tmp_path / "ready.json"), client(tmp_path / "ready.json")
     answers: list[dict] = []
-    thread = threading.Thread(target=lambda: answers.append(stepper.request("step", chunks=10 ** 9)), daemon=True)
+    thread = threading.Thread(target=lambda: answers.append(stepper.request("step", chunks=stepper.hello["max_step_chunks"])), daemon=True)
     thread.start()
     stepper.frame()
     stepper.frame()  # the first chunk compiled: the step is under way
@@ -304,7 +304,7 @@ def test_stop_ends_a_long_step_at_the_next_chunk_boundary(launch, folder, tmp_pa
     commands, at, reached = logged_stop(tmp_path / "out")
     assert commands == ["step", "stop"] and reached[-1] == at
     assert at in acts_within(stopped, stepper.hello["chunk_steps"])
-    assert at < 10 ** 9 * stepper.hello["chunk_steps"]  # the step cut short
+    assert at < stepper.hello["max_step_chunks"] * stepper.hello["chunk_steps"]  # the step cut short
     stepper.close()
     stopper.close()
 
@@ -315,14 +315,14 @@ def test_sigterm_ends_a_long_step_at_the_next_chunk_boundary(launch, folder, tmp
 
     process = started(launch, folder, tmp_path / "out", tmp_path / "ready.json", "--unpaced")
     live = client(tmp_path / "ready.json")
-    thread = threading.Thread(target=lambda: live.request("step", chunks=10 ** 9), daemon=True)
+    thread = threading.Thread(target=lambda: live.request("step", chunks=live.hello["max_step_chunks"]), daemon=True)
     thread.start()
     live.frame()
     live.frame()
     process.send_signal(signal.SIGTERM)
     assert process.wait(timeout=HANG) == 0 and (tmp_path / "out" / "outputs.json").is_file()
     commands, at, reached = logged_stop(tmp_path / "out")
-    assert commands == ["step", "stop"] and reached[-1] == at < 10 ** 9 * live.hello["chunk_steps"]
+    assert commands == ["step", "stop"] and reached[-1] == at < live.hello["max_step_chunks"] * live.hello["chunk_steps"]
     thread.join(timeout=HANG)
     live.close()
 

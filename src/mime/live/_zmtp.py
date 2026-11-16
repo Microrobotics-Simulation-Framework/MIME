@@ -286,7 +286,7 @@ def parse_endpoint(endpoint: str) -> tuple[str, int]:
     host = host.strip("[]")
     if host == "*":
         host = "0.0.0.0"
-    number = 0 if port in ("*", "") else int(port) if port.isdecimal() else -1
+    number = 0 if port in ("*", "") else int(port) if (port.isascii() and port.isdigit()) else -1
     if not 0 <= number <= 65535:
         raise ValueError(f"{endpoint!r} names the port {port!r}, not a whole number from 0 to 65535")
     return host, number

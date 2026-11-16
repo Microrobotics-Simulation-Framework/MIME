@@ -51,6 +51,9 @@ FRAMES_PER_SECOND = 60.0
 #: (``{"command": ..., "step": ...}``) and, after each chunk, the step the session reached (``{"reached": step}``).
 COMMAND_LOG = "commands.jsonl"
 LOG_FORMAT = "mime.commands/1"
+#: The simulated time one ``step`` request may cover (:attr:`LiveSession.max_step_chunks`).
+MAX_STEP_SECONDS = 3600.0
+_MISSING: Any = object()
 #: A log line that is no command: the step the session reached after a chunk.
 REACHED = "reached"
 
@@ -573,6 +576,7 @@ class LiveSession:
                      stage=stage, visuals=self._visuals(), binding=built.binding().record(),
                      topology=self._topology, report=built.report_summary(),
                      schema=self.schema.record(), commands=list(COMMANDS), record_budget=self.record_budget,
+                     max_step_chunks=self.max_step_chunks,
                      **self.status_fields())
 
     def _visuals(self) -> dict[str, Any] | None:
@@ -659,6 +663,12 @@ class LiveSession:
 "live.protocol", RefusalClass.USER, f"a request of {message.get('protocol')!r}; this session speaks {PROTOCOL}",
                 f"send {PROTOCOL} requests, `{{\"protocol\": \"{PROTOCOL}\", \"command\": ...}}`, or use "
                 "the MIME that speaks the client's protocol")])
+        if name == "hello" and "protocol" not in message:
+            raise ArgumentRefused([Refusal(
+"live.protocol", RefusalClass.USER, f"a hello that does not say its protocol; this session speaks {PROTOCOL}",
+                f"send `{{\"protocol\": \"{PROTOCOL}\", \"command\": \"hello\"}}`",
+                why="hello's stage, visuals.overlay, visuals.fetch and stop's folder changed meaning in mime.live/2; a client "
+                    "that does not say which protocol it reads would misread them, so hello names it")])
         if name not in COMMANDS:
             raise ArgumentRefused([Refusal(
 "live.command", RefusalClass.USER, f"no command {name!r}; the commands are {', '.join(COMMANDS)}",
@@ -672,7 +682,7 @@ class LiveSession:
         elif name == "pause":
             self.pause()
         elif name == "step":
-            chunks = message.get("chunks", 1)
+            chunks = self._checked_chunks(message.get("chunks", 1))
             if self.driven:
                 self.begin_step(chunks)
             else:
@@ -694,8 +704,42 @@ class LiveSession:
         elif name == "record":
             self.record(message.get("on", True))
         elif name == "pace":
-            self.set_pace(cast(float | None, message.get("rtf")))
+            self.set_pace(self._checked_rtf(message))
         return reply(str(name), **self._status())
+
+    @property
+    def max_step_chunks(self) -> int:
+        """The most chunks one ``step`` request may ask for: those that cover :data:`MAX_STEP_SECONDS` of simulated time
+        (at least one). A step is answered when its chunks are stepped, so a request without a bound holds its client's
+        reply for as long as it likes; the bound is the session's own, from its chunk and base step."""
+        return max(1, int(MAX_STEP_SECONDS / (self.chunk_steps * self.dt)))
+
+    def _checked_chunks(self, chunks: Any) -> Any:
+        """``chunks`` of a ``step`` request, or the refusal when it is above :attr:`max_step_chunks`. What is not a whole
+        number above zero is refused by :meth:`begin_step`."""
+        if type(chunks) is int and chunks > self.max_step_chunks:
+            raise ArgumentRefused([Refusal(
+                "live.step", RefusalClass.USER,
+                f"step takes at most {self.max_step_chunks} chunks in one request ({MAX_STEP_SECONDS:g} s of simulated "
+                f"time at this session's chunk of {self.chunk_steps} steps), not {chunks}",
+                "send several steps, or `start` the session and `pause` it when you have seen enough",
+                why="a step is answered when its chunks are stepped, so its size is bounded by the session: hello's "
+                    "`max_step_chunks`")])
+        return chunks
+
+    @staticmethod
+    def _checked_rtf(message: Mapping[str, Any]) -> float | None:
+        """The ``rtf`` of a ``pace`` request: present (a request without it is a mistyped key, which would leave the session
+        unpaced without saying so), and null (unpaced) or a finite number above zero."""
+        rtf = message.get("rtf", _MISSING)
+        if rtf is _MISSING or (rtf is not None and not (type(rtf) in (int, float) and math.isfinite(rtf) and rtf > 0)):
+            raise ArgumentRefused([Refusal(
+                "live.pace", RefusalClass.USER,
+                "pace takes `rtf`, " + ("which is missing" if rtf is _MISSING else f"not {rtf!r}") + ": a factor of real "
+                "time above zero, or null for as fast as it runs",
+                "send `{\"command\": \"pace\", \"rtf\": 1.0}` (real time) or `{\"command\": \"pace\", \"rtf\": null}` "
+                "(unpaced)")])
+        return rtf
 
     # -- the run folder ----------------------------------------------------------------------------------------------
 

@@ -36,7 +36,7 @@ from live_servers import client as watched_client
 from mime.build import ArgumentRefused, BuildRefused
 from mime.live import serve
 from mime.live import _zmtp
-from mime.live._zmtp import ListenError, Server, is_loopback, listener_options
+from mime.live._zmtp import ListenError, Server, is_loopback, listener_options, parse_endpoint
 
 MIME = [sys.executable, "-m", "mime.cli"]
 #: A guard against waiting for ever on a server's ready file, never a measure of speed.
@@ -217,7 +217,37 @@ def test_a_second_serve_on_the_ports_of_one_running_is_refused_naming_the_port(l
     assert not (tmp_path / "second").exists()
 
 
-@pytest.mark.parametrize("port", ["99999", "65536", "-1", "5x"])
+def test_force_never_writes_through_a_link_among_the_names_a_run_writes(binds, unloaded, tmp_path):
+    """(The security review's finding 1.) ``--force`` followed ``out/run.json -> ../victim.txt`` and ``out/experiment ->
+    ../victimdir``: the session overwrote the victim and saved the experiment into it. Now a link among the names a run
+    writes, or one inside such a folder, is refused (``run.out-not-empty``, naming the entry) with ``--force`` too,
+    before anything binds, and what it points at is as it was. Control: the same folder without its links is written
+    into (the session gets as far as its load)."""
+    victim, victim_dir = tmp_path / "victim.txt", tmp_path / "victimdir"
+    victim.write_text("precious\n", encoding="utf-8")
+    victim_dir.mkdir()
+    ports = {"commands": "tcp://127.0.0.1:0", "frames": "tcp://127.0.0.1:0"}
+    saved_at = unloaded / "saved"
+    cases = {"file": ("run.json", victim), "folder": ("experiment", victim_dir), "log": ("commands.jsonl", victim)}
+    for name, (entry, target) in cases.items():
+        out = tmp_path / f"out_{name}"
+        out.mkdir()
+        (out / "mine.txt").write_text("mine\n", encoding="utf-8")
+        (out / entry).symlink_to(target)
+        assert served(saved_at, out=out, force=True, **ports) == ["run.out-not-empty"], name
+    inside = tmp_path / "out_inside"  # a real experiment/ with a link in it
+    (inside / "experiment").mkdir(parents=True)
+    (inside / "experiment" / "mime.lock").symlink_to(victim)
+    assert served(saved_at, out=inside, force=True, **ports) == ["run.out-not-empty"]
+    assert binds.asked == [] and victim.read_text(encoding="utf-8") == "precious\n" and list(victim_dir.iterdir()) == []
+    plain = tmp_path / "out_plain"
+    plain.mkdir()
+    (plain / "mine.txt").write_text("mine\n", encoding="utf-8")
+    assert served(saved_at, out=plain, force=True, **ports)[-1] == "loaded"
+
+
+@pytest.mark.parametrize("port", ["99999", "65536", "-1", "5x", "\u0663", "\uff15\uff15"],
+                         ids=["99999", "65536", "-1", "5x", "arabic-indic-3", "fullwidth-55"])
 def test_a_port_outside_0_to_65535_is_refused_as_a_malformed_endpoint_and_nothing_stays_open(binds, unloaded, port):
     """(The review's minor (a).) Before, ``int`` took the port, ``bind`` raised an ``OverflowError`` that no handler
     coded (exit 3), and the command socket bound first stayed open until collected."""
@@ -227,6 +257,15 @@ def test_a_port_outside_0_to_65535_is_refused_as_a_malformed_endpoint_and_nothin
         Server("tcp://127.0.0.1:0", f"tcp://127.0.0.1:{port}")
     assert refused.value.malformed and refused.value.kind == "PUB" and "0 to 65535" in str(refused.value)
     assert len(binds.sockets) == 1 and binds.sockets[0].fileno() == -1  # the command socket, closed
+
+
+def test_a_port_in_non_ascii_digits_is_no_port_though_int_would_read_it():
+    """``str.isdecimal`` is true of every script's digits and ``int`` reads them (``int("\u0663") == 3``): the endpoint
+    ``tcp://127.0.0.1:\u0663`` would have bound port 3. Control: the same digits in ASCII are a port."""
+    assert int("\u0663") == 3 and parse_endpoint("tcp://127.0.0.1:3") == ("127.0.0.1", 3)
+    for port in ("\u0663", "\uff15\uff15", "\u0661\u0662\u0663"):
+        with pytest.raises(ValueError, match="not a whole number from 0 to 65535"):
+            parse_endpoint(f"tcp://127.0.0.1:{port}")
 
 
 def test_the_server_refuses_an_address_off_loopback_of_its_own_unless_allowed(binds):

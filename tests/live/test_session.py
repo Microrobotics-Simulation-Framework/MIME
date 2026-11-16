@@ -20,6 +20,7 @@ from live_cases import built, files_of, in_graph, jit_steered, saved, steered
 from mime.build import ArgumentRefused
 from mime.experiment import Experiment
 from mime.live import COMMAND_LOG, PAUSED, READY, RUNNING, STOPPED, Frame, FrameOrder, replay
+from mime.live._session import MAX_STEP_SECONDS
 from mime.results import REPORT_FORMAT, RUN_REPORT, RunResult
 from mime.units import ms
 
@@ -222,20 +223,48 @@ def test_a_log_of_another_experiment_or_no_log_at_all_is_refused(tmp_path):
 
 def test_a_client_that_speaks_protocol_1_is_refused_by_its_code_and_the_session_says_it_speaks_2():
     """``stage``, ``visuals.overlay``, ``visuals.fetch`` and ``stop.folder`` changed meaning in ``/2``, so a ``/1``
-    client must meet a refusal, not a misread path. Control: the same request as ``/2`` (and with no ``protocol``) is
-    answered, so the refusal is the version's and not the request's."""
+    client must meet a refusal, not a misread path. Control: the same request as ``/2`` is answered, so the refusal is the version's and not the
+    request's; one with no ``protocol`` is refused too (``hello`` names its protocol)."""
     session = steered().build().live(pace=None)
     refused = session.command({"protocol": "mime.live/1", "command": "hello"})
     assert not refused["ok"] and refused["errors"][0]["code"] == "live.protocol"
     assert "mime.live/1" in refused["errors"][0]["message"] and "mime.live/2" in refused["errors"][0]["message"]
     assert "stage" not in refused and "visuals" not in refused
     assert session.command({"protocol": "mime.live/2", "command": "hello"})["protocol"] == "mime.live/2"
-    assert session.command({"command": "hello"})["ok"]
+    # a /1 client that never sends the key would misread stage, overlay and folder: hello requires it
+    bare = session.command({"command": "hello"})
+    assert not bare["ok"] and bare["errors"][0]["code"] == "live.protocol" and "mime.live/2" in bare["errors"][0]["action"]
+    assert "stage" not in bare and session.command({"command": "status"})["ok"]  # the other commands are not held to it
+
+
+def test_a_step_over_the_sessions_bound_and_a_pace_that_is_not_one_are_refused_at_the_boundary():
+    """(The security review's finding 3.) A ``step`` of ``10 ** 100`` chunks held its client's reply for ever, and a
+    ``pace`` whose key was mistyped (``pace``, not ``rtf``) or missing left the session unpaced without a word. The
+    bound is the chunks covering ``MAX_STEP_SECONDS`` of simulated time, from the session's own chunk and base step, and
+    ``hello`` says it. Control: the same requests inside the bound and with a good ``rtf`` are taken."""
+    session = steered().build().live(pace=1.0)
+    bound = session.max_step_chunks
+    assert bound == int(MAX_STEP_SECONDS / (session.chunk_steps * session.dt)) > 1
+    assert session.command({"protocol": "mime.live/2", "command": "hello"})["max_step_chunks"] == bound
+    for chunks in (bound + 1, 10 ** 100, 0, -1):
+        answer = session.command({"command": "step", "chunks": chunks})
+        assert not answer["ok"] and answer["errors"][0]["code"] == "live.step", chunks
+    assert str(bound) in session.command({"command": "step", "chunks": bound + 1})["errors"][0]["message"]
+    for request in ({"command": "pace"}, {"command": "pace", "pace": 2.0}, {"command": "pace", "rtf": 0}, {"command": "pace", "rtf": "x"},
+                    {"command": "pace", "rtf": {}}, {"command": "pace", "rtf": -1}, {"command": "pace", "rtf": float("inf")},
+                    {"command": "pace", "rtf": float("nan")}, {"command": "pace", "rtf": True}):
+        answer = session.command(request)
+        assert not answer["ok"] and answer["errors"][0]["code"] == "live.pace", request
+        assert session.pace == 1.0
+    assert session.steps == 0 and session.log == []
+    assert session.command({"command": "pace", "rtf": 2.5})["pace"] == 2.5 and session.pace == 2.5
+    assert session.command({"command": "pace", "rtf": None})["pace"] is None and session.pace is None
+    assert session.command({"command": "step", "chunks": 1})["ok"]
 
 
 def test_hello_describes_the_session():
     session = steered().build().live(pace=None)
-    hello = session.command({"command": "hello"})
+    hello = session.command({"protocol": "mime.live/2", "command": "hello"})
     assert hello["ok"] and hello["protocol"] == "mime.live/2" and hello["state"] == READY
     assert hello["chunk_steps"] % 3 == 0 and hello["controller"]["mode"] == "callback"
     assert hello["live_inputs"] == {"offset": {"units": "1", "shape": [], "meaning": "added to every angle it writes",
@@ -305,7 +334,7 @@ def test_an_error_inside_a_command_is_answered_in_the_coded_shape_and_the_sessio
         raise RuntimeError("a fault planted in hello")
 
     monkeypatch.setattr(session, "hello", broken)
-    answer = session.command({"command": "hello"})
+    answer = session.command({"protocol": "mime.live/2", "command": "hello"})
     assert not answer["ok"] and answer["errors"][0]["class"] in ("internal", "unrecognised")
     assert "a fault planted in hello" in answer["errors"][0]["message"]
     assert session.command({"command": "step"})["ok"]
@@ -455,7 +484,7 @@ def test_status_and_hello_are_answered_while_a_chunk_runs():
         while session.activity != activity:
             assert stepping.is_alive()
             time.sleep(0.001)
-        status, hello = session.command({"command": "status"}), session.command({"command": "hello"})
+        status, hello = session.command({"command": "status"}), session.command({"protocol": "mime.live/2", "command": "hello"})
         assert (status["activity"], status["step"], status["stepping"]) == (activity, at, 1)
         assert hello["activity"] == activity and hello["report"]["format"] == REPORT_FORMAT
         setting = threading.Thread(target=session.set, args=("offset", 0.5), daemon=True)
