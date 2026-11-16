@@ -18,7 +18,12 @@ held, so that its linearisation is the Gauss-Newton Hessian, which is wrong wher
 unreachable target); ``bounds``, the root's bounds held, so that a command at a bound has no derivative in it;
 ``unpolished``, no polishing (``_POLISHING_STEPS`` zero), so that a warm start near the minimiser returns the first
 iterate the tolerance admits, where the derivative of a weakly regularised problem is not the minimiser's. Each must be
-caught on every run: ``early`` and ``loose`` by the agreement tests, the other three by the derivative's."""
+caught on every run: ``early`` and ``loose`` by the agreement tests, the other three by the derivative's.
+
+**The refuting review's plants**, each caught by its own test on every run: ``rank_by_square``, ``converged``'s rank
+read as before (the scaled normal matrix's least eigenvalue over its largest against ``RCOND^2``, the derivative never
+judged); ``unflagged``, every derivative called resolved; ``unfloored``, the columns' lengths not floored at the rows'
+curvature; ``unaccepted``, every bend accepted; ``bend_sign``, the bend's sign flipped."""
 
 from __future__ import annotations
 
@@ -44,7 +49,7 @@ PLANT = os.environ.get("ITERATIVE_PLANT", "")
 #: The declared tolerance, read before any plant replaces the module's.
 LINE = dict(module.TOLERANCE)
 OWNER = "iterative_tests.active_set"
-TRUE_GRADIENT, TRUE_BOUNDS = module._gradient, module._bounds
+TRUE_GRADIENT, TRUE_BOUNDS, TRUE_VERDICT, TRUE_BEND = module._gradient, module._bounds, module._verdict, module._bend
 
 
 @contextlib.contextmanager
@@ -59,6 +64,22 @@ def in_dtype(name: str) -> Iterator[None]:
 
 def _gauss_newton(rows: Callable[[Any], Any], u: Any) -> Any:
     return lax.stop_gradient(jax.jacfwd(rows)(u)).T @ rows(u)
+
+
+def _rank_by_square(rows: Any, at: Any, u: Any, free: Any, lower: Any, upper: Any) -> tuple[Any, Any]:
+    """``converged``'s rank as it was read before the review: the free columns' scaled normal matrix's least
+    eigenvalue over its largest against ``RCOND^2``; the derivative never judged resolved, so that ``converged`` is the
+    stationarity and that rank alone."""
+    scaled = at.jacobian / at.columns
+    mask = free.astype(scaled.dtype)
+    values = jnp.linalg.eigvalsh((scaled.T @ scaled) * mask[:, None] * mask[None, :] + jnp.diag(1.0 - mask))
+    ratio = values[0] / jnp.maximum(values[-1], jnp.finfo(scaled.dtype).tiny)
+    return ratio > module.FLOOR[np.dtype(u.dtype)], jnp.asarray(np.inf, dtype=u.dtype)
+
+
+def _unflagged(*args: Any) -> tuple[Any, Any]:
+    full, resolution = TRUE_VERDICT(*args)
+    return full, resolution * 0.0
 
 
 @contextlib.contextmanager
@@ -77,6 +98,14 @@ def planted(names: tuple[str, ...]) -> Iterator[None]:
                 patch.setattr(module, "_bounds", lambda low, high: (lax.stop_gradient(low), lax.stop_gradient(high)))
             elif PLANT == "unpolished":
                 patch.setattr(module, "_POLISHING_STEPS", 0)
+            elif PLANT in ("rank_by_square", "unflagged"):
+                patch.setattr(module, "_verdict", {"rank_by_square": _rank_by_square, "unflagged": _unflagged}[PLANT])
+            elif PLANT == "unfloored":
+                patch.setattr(module, "_CURVATURE", dict.fromkeys(module._CURVATURE, 0.0))
+            elif PLANT == "unaccepted":
+                patch.setattr(module, "ACCELERATION", np.inf)
+            elif PLANT == "bend_sign":
+                patch.setattr(module, "_bend", lambda *args: -TRUE_BEND(*args))
         yield
 
 
@@ -498,7 +527,7 @@ def test_iterative_inverse_kinematics_meets_the_librarys_on_reachable_poses(seed
     joint at a limit it puts link_6 on the reachable pose to 1e-9 m, and where ``mime.core.multibody.inverse_kinematics``
     reaches the pose inside the limits from the same start, the two reach the same joints on the same branch (the AR4's
     six joints fix a pose up to its wrist's flip, away from its singular poses); where it holds a joint at a limit, it
-    is stationary there, judged from the objective's own gradient (the minimiser reached from the start, which need
+    is stationary there, judged from the objective's own gradient (the stationary point reached from the start, which need
     not be the library's: see the comment below)."""
     from mime.core.multibody import compose, inverse, inverse_kinematics, read_urdf
 
@@ -522,7 +551,7 @@ def test_iterative_inverse_kinematics_meets_the_librarys_on_reachable_poses(seed
         # pose Newton's step along the direction the pose barely fixes is long, and the solve can end at a limit far
         # from its start, off the pose, where the library's damped steps met the pose close by (draws 451, 57135088
         # and 12766: joint 4 at its limit 1.8 rad from the start, link_6 2 to 3 mm off; with no limits the same solve
-        # ends 215 rad round). The minimiser reached from the start is the one claimed, not the nearest.
+        # ends 215 rad round). The point reached from the start is the one claimed (stationary, not the nearest).
         with in_dtype("float64"):
             assert stationary_within_the_limits(inverse_kinematics_rows(jnp.asarray(target)), found, lower, upper) == []
         return
@@ -581,6 +610,238 @@ def test_float32_is_judged_against_float64(seed, reachable):
         d64 = np.asarray(arm_call("forward", "float64", reachable, zero, target, last))
         d32 = np.asarray(arm_call("forward", "float32", reachable, zero, target, last), np.float64)
         assert np.max(np.abs(d32 - d64)) <= 1e-2 * np.max(np.abs(d64))
+
+
+# -- what "converged" is read from, the derivative's resolution, the bend (the refuting review's findings) ----------
+
+def follower_call_in(dtype: str, name: str, *args: Any, plant: str = "") -> Any:
+    """The follower's program (:func:`follower_programs`) in ``dtype``, under ``plant`` where the test names it."""
+    with in_dtype(dtype), planted((plant,) if plant else ()):
+        return follower_programs(plant)[name](*(jnp.asarray(a, dtype=dtype) for a in args))
+
+
+def follower_draw(seed: int, near: tuple[float, float]) -> tuple[np.ndarray, np.ndarray]:
+    """The follower's problem: joints in the central 80 % of their ranges, and a target ``near`` (m) from where they put
+    the flange, in a drawn direction."""
+    model, frame, lower, upper = arm()
+    rng = np.random.default_rng(seed)
+    joints = rng.uniform(lower + 0.1 * (upper - lower), upper - 0.1 * (upper - lower))
+    direction = rng.normal(size=3)
+    with in_dtype("float64"):
+        flange = np.asarray(model({"joint_positions": jnp.asarray(joints)}, {})["frame_poses"][frame])[:3]
+    return flange + direction / np.linalg.norm(direction) * rng.uniform(*near), joints
+
+
+@cache
+def null_program(plant: str) -> Any:
+    def solve(a: Any, b: Any) -> Any:
+        return iterative_allocation(lambda u: a @ u - b, jnp.zeros((a.shape[1],), dtype=a.dtype), lower=-np.inf,
+                                    upper=np.inf, owner=OWNER)
+
+    return jax.jit(solve)
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+@settings(max_examples=40, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
+@given(seed=st.integers(0, 2 ** 32 - 1))
+def test_rows_with_an_exact_null_vector_never_claim_to_converge(dtype, seed):
+    """Nine rows of six commands, the sixth column a combination of the first two (rank five), unregularised and
+    unbounded: the rows are minimised along a line, no point is isolated and the derivative is not defined, so the
+    solve must not claim to converge. The rank is read from the rows' singular values, whose rounding is units in the
+    last place of the largest; read from the normal matrix's eigenvalues against ``RCOND^2`` (the plant
+    ``rank_by_square``), it was full rank on 96 of 200 draws in float64 and 110 in float32, with derivatives of NaN on
+    15 and 19 of the solves that claimed to converge."""
+    rng = np.random.default_rng(seed)
+    a = rng.normal(size=(9, 6))
+    a[:, 5] = a[:, 0] * rng.uniform(0.5, 2.0) + a[:, 1] * rng.uniform(-1.0, 1.0)
+    b = rng.normal(size=9) * 0.1
+    plant = PLANT if PLANT == "rank_by_square" else ""
+    with in_dtype(dtype), planted((plant,) if plant else ()):
+        found = null_program(plant)(jnp.asarray(a, dtype=dtype), jnp.asarray(b, dtype=dtype))
+    assert not bool(found.converged), (float(found.stationarity), int(found.iterations))
+
+
+@cache
+def pose_program(plant: str) -> Any:
+    _, _, lower, upper = arm()
+
+    def solve(target: Any, start: Any) -> Any:
+        return iterative_allocation(inverse_kinematics_rows(target), start, lower=jnp.asarray(lower, dtype=start.dtype),
+                                    upper=jnp.asarray(upper, dtype=start.dtype), owner=OWNER)
+
+    return jax.jit(solve)
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_the_wrists_singular_pose_is_not_claimed_converged(dtype):
+    """The AR4 with joint 5 at zero, where joints 4 and 6 turn about one axis: unregularised, started at the pose's own
+    joints, the solve stands there with the pose met and its rows of rank five, so it must not claim to converge.
+    Read from the normal matrix's eigenvalues (``rank_by_square``), four of the six such draws claimed to converge,
+    with ratios of 1.7e-17 to -5e-17 (noise about zero), and in float32 one with 29 derivatives of NaN and 13 of inf."""
+    model, frame, lower, upper = arm()
+    plant = PLANT if PLANT == "rank_by_square" else ""
+    for seed in range(4):
+        rng = np.random.default_rng(seed)
+        joints = rng.uniform(lower + 0.1 * (upper - lower), upper - 0.1 * (upper - lower))
+        joints[4] = 0.0
+        with in_dtype("float64"):
+            target = np.asarray(model({"joint_positions": jnp.asarray(joints)}, {})["frame_poses"][frame])
+        with in_dtype(dtype), planted((plant,) if plant else ()):
+            found = pose_program(plant)(jnp.asarray(target, dtype=dtype), jnp.asarray(joints, dtype=dtype))
+        assert abs(float(found.commands[4])) <= 1e3 * float(np.finfo(dtype).eps), float(found.commands[4])
+        assert not bool(found.converged), (seed, float(found.stationarity))
+
+
+@settings(max_examples=40, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
+@example(seed=25)  # the review's draw: rank ratio 2.4e-8 in float64, read -1.1e-7 in float32
+@given(seed=st.integers(0, 2 ** 32 - 1))
+def test_float32_converges_at_the_followers_problem_where_float64_does(seed):
+    """A0's follower's problem (a weak effort, the target 1 to 5 cm from the flange): where float64 converges, so does
+    float32. Its rows' least singular value is 1e-4 of the largest, which float32 resolves; its normal matrix's least
+    eigenvalue, 2.4e-8 of the largest, is below float32's rounding, and read from it (``rank_by_square``) 11 of 200
+    such solves said they had not converged with their stationarity under the tolerance."""
+    target, joints = follower_draw(seed, (1e-2, 5e-2))
+    zero = np.zeros(9)
+    plant = PLANT if PLANT == "rank_by_square" else ""
+    wide = follower_call_in("float64", "solve", zero, target, joints, plant=plant)
+    narrow = follower_call_in("float32", "solve", zero, target, joints, plant=plant)
+    assert not bool(wide.converged) or bool(narrow.converged), (float(narrow.stationarity), int(narrow.iterations))
+
+
+def follower_effort_solve(tangent: Any, target: Any, last: Any, effort: Any) -> Any:
+    """:func:`follower_solve` at an effort of ``effort`` rad."""
+    model, frame, lower, upper = arm()
+    moved_last = last + tangent[3:] * 1e-3
+    goal = target + tangent[:3] * POSITION_SCALE
+
+    def rows(q: Any) -> Any:
+        reached = model({"joint_positions": q}, {})["frame_poses"][frame]
+        return jnp.concatenate([(reached[:3] - goal) / POSITION_SCALE, (q - moved_last) / effort])
+
+    dtype = target.dtype
+    return iterative_allocation(rows, moved_last, lower=jnp.asarray(lower, dtype=dtype),
+                                upper=jnp.asarray(upper, dtype=dtype), owner=OWNER)
+
+
+@cache
+def effort_programs(plant: str) -> dict[str, Any]:
+    def commands(t: Any, a: Any, l: Any, e: Any) -> Any:
+        return follower_effort_solve(t, a, l, e).commands
+
+    return {"solve": jax.jit(follower_effort_solve), "forward": jax.jit(jax.jacfwd(commands))}
+
+
+def effort_call(dtype: str, name: str, *args: Any, plant: str = "") -> Any:
+    with in_dtype(dtype), planted((plant,) if plant else ()):
+        return effort_programs(plant)[name](*(jnp.asarray(a, dtype=dtype) for a in args))
+
+
+@pytest.mark.memory_heavy
+@settings(max_examples=30, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
+@example(seed=26, effort=EFFORT)  # the review's worst follower draw: float32's derivative 17 times its largest entry off
+@given(seed=st.integers(0, 2 ** 32 - 1), effort=st.floats(np.log(0.05), np.log(EFFORT)).map(np.exp))
+def test_float32s_derivative_at_the_followers_problem_is_within_its_bound_or_flagged(seed, effort):
+    """The follower's problem (the target 0.2 to 2 mm from the flange) in float32, at efforts from 0.05 rad to its own
+    20, so that the tangent system's condition (about 9e4 times the effort squared) spans what float32 resolves:
+    where the solve claims its derivative (converged and resolved), it is float64's within the bound the condition
+    gives, float64's tangent system's condition times ``M + 3 K`` units in float32's last place, and never past
+    ``RESOLVED`` (a tenth) of its largest entry; past that, the solve says so (``resolved`` false), which raises the flag
+    ``allocation_derivative_unresolved``. At the follower's own effort the derivative was 2.3 times its largest entry
+    off (median of 60 draws) with every solve converged and nothing said (the plant ``unflagged``, every derivative
+    called resolved). Measured over 56 draws, the error was 0.005 to 0.7 of the bound."""
+    target, joints = follower_draw(seed, (2e-4, 2e-3))
+    zero = np.zeros(9)
+    plant = PLANT if PLANT == "unflagged" else ""
+    wide = effort_call("float64", "solve", zero, target, joints, effort)
+    narrow = effort_call("float32", "solve", zero, target, joints, effort, plant=plant)
+    assert bool(wide.converged) and bool(wide.resolved), (float(wide.stationarity), float(wide.resolution))
+    if not (bool(narrow.converged) and bool(narrow.resolved)):
+        return  # not claimed: the step's flags say so
+    d64 = np.asarray(effort_call("float64", "forward", zero, target, joints, effort))
+    d32 = np.asarray(effort_call("float32", "forward", zero, target, joints, effort, plant=plant), np.float64)
+    # The bound at float64's condition (the true one), in float32's units: float64's resolution is the same condition
+    # times the same M + 3 K units of float64's last place.
+    bound = float(wide.resolution) * float(np.finfo(np.float32).eps / np.finfo(np.float64).eps)
+    miss = float(np.max(np.abs(d32 - d64)))
+    assert miss <= min(bound, module.RESOLVED) * float(np.max(np.abs(d64))), (miss, bound, float(np.max(np.abs(d64))))
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_rosenbrocks_valley_in_six_commands_rarely_meets_the_cap(dtype):
+    """Rosenbrock's rows in six commands from 300 starts in [-2, 2] (the review's): with the bend accepted only where
+    it is short beside its step (Transtrum and Sethna's test), at most ROSENBROCK_AT_CAP of them meet the cap; every
+    bend accepted (``unaccepted``), the step and its bend cycled at a step of 1/32 with the bend 5 to 20 times the
+    step, and 8 (float64) and 7 (float32) met it, against none with no bend."""
+    plant = PLANT if PLANT == "unaccepted" else ""
+    with in_dtype(dtype), planted((plant,) if plant else ()):
+        solve = jax.jit(lambda start: iterative_allocation(rosenbrock_rows, start, lower=-5.0, upper=5.0, owner=OWNER))
+        capped = [seed for seed in range(300) if not bool(solve(jnp.asarray(
+            np.random.default_rng(seed).uniform(-2.0, 2.0, size=6), dtype=dtype)).converged)]
+    assert len(capped) <= ROSENBROCK_AT_CAP[dtype], capped
+
+
+def rosenbrock_rows(u: Any) -> Any:
+    return jnp.concatenate([10.0 * (u[1:] - u[:-1] ** 2), 1.0 - u[:-1]])
+
+
+#: The Rosenbrock starts that meet the cap with the acceptance, measured (of 300; start 75 in both dtypes).
+ROSENBROCK_AT_CAP = {"float64": 1, "float32": 1}
+
+
+@settings(max_examples=60, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
+@example(seed=0)
+@given(seed=st.integers(0, 2 ** 32 - 1))
+def test_the_bend_is_the_least_squares_fit_of_the_rows_second_derivative(seed):
+    """The bend at a point of the curved valley's rows (four rows of three commands) along a drawn step is SciPy's
+    least-squares fit of ``J bend = -r''``, ``r''`` each row's Hessian taken by ``jax.hessian`` along the step (not the
+    solve's directional derivatives), within the normal equations' rounding, ``K`` units in the last place times the
+    scaled columns' condition squared. The bend's sign flipped (``bend_sign``) is twice the fit away; it passed every
+    other test of the solve."""
+    from scipy.linalg import lstsq
+
+    rng = np.random.default_rng(seed)
+    point, moving = rng.uniform(-2.0, 2.0, size=3), rng.normal(size=3)
+    plant = PLANT if PLANT == "bend_sign" else ""
+    with in_dtype("float64"), planted((plant,) if plant else ()):
+        u = jnp.asarray(point)
+        at = module._at(curved_rows, u, jnp.full(3, -np.inf), jnp.full(3, np.inf))
+        scaled = at.jacobian / at.columns
+        normal = scaled.T @ scaled + module.FLOOR[np.dtype("float64")] * jnp.eye(3)
+        bend = np.asarray(module._bend(curved_rows, u, jnp.asarray(moving), normal, jnp.ones(3), scaled, at.columns))
+        second = np.asarray([moving @ np.asarray(jax.hessian(lambda v, i=i: curved_rows(v)[i])(u)) @ moving
+                             for i in range(4)])
+    jacobian = np.asarray(at.jacobian)
+    expected = lstsq(jacobian, -second)[0]
+    columns = np.linalg.norm(jacobian, axis=0)
+    condition = np.linalg.cond(jacobian / columns)
+    line = 3 * condition ** 2 * float(np.finfo(np.float64).eps)
+    assert line < 0.1, condition
+    assert np.linalg.norm(columns * (bend - expected)) <= line * np.linalg.norm(columns * expected) + \
+        float(np.finfo(np.float64).tiny), (bend, expected)
+
+
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+@pytest.mark.parametrize("start", [1.0, np.pi / 2], ids=["away", "at"])
+def test_a_column_that_vanishes_at_the_minimiser_does_not_hold_the_solve_off_it(dtype, start):
+    """One row, ``sin u - a`` with ``a = 2``, out of reach: its minimiser is ``pi / 2``, where its column vanishes and
+    the row's curvature holds the command. The solve converges there, and its derivative in ``a`` is zero (the
+    minimiser does not move). In the column's own length the stationarity reads the row's miss, one, whatever the
+    distance (``unfloored``: unconverged after 44 iterations in float64, at the cap in float32). Unbounded: a bound
+    within the scaled gradient's reach would cut the projected gradient to the column times the distance to it, and
+    hide the reading (with a box of +-3 the start at ``pi / 2`` converged unfloored)."""
+    plant = PLANT if PLANT == "unfloored" else ""
+    eps = float(np.finfo(dtype).eps)
+
+    def solve(offset: Any) -> Any:
+        return iterative_allocation(lambda u: jnp.stack([jnp.sin(u[0]) - offset]), jnp.asarray([start], dtype=dtype),
+                                    lower=-np.inf, upper=np.inf, owner=OWNER)
+
+    with in_dtype(dtype), planted((plant,) if plant else ()):
+        found = solve(jnp.asarray(2.0, dtype=dtype))
+        derivative = float(jax.jacfwd(lambda a: solve(a).commands[0])(jnp.asarray(2.0, dtype=dtype)))
+    assert bool(found.converged), (float(found.stationarity), int(found.iterations))
+    assert abs(float(found.commands[0]) - np.pi / 2) <= np.sqrt(eps), float(found.commands[0])
+    assert abs(derivative) <= np.sqrt(eps), derivative
 
 
 __all__: list[str] = []

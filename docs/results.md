@@ -86,8 +86,8 @@ not apply the limit, so the flag is the record that the run went where the real 
 
 A controller declares the flags its step raises in its class's `raises` (each a `Flag(field=..., meaning=...,
 warns=...)`, its `field` the flag's name), and what its law calls declares its own: `ctx.allocator` on the iterative
-path declares `allocation_unconverged`. The step raises one with `mime.control.raise_flag(name, value)`, a bool or a
-measure; the flag's value at a tick is the largest magnitude raised under its name, zero where none was. A run reads
+path declares `allocation_unconverged` and `allocation_derivative_unresolved`. The step raises one with
+`mime.control.raise_flag(name, value)`, a bool or a measure; the flag's value at a tick is the largest magnitude raised under its name, zero where none was. A run reads
 it at one path, `<controller>.<name>` (`controller.allocation_unconverged`), whether the controller runs inside the
 compiled step or as a callback, and counts it as it counts an entry's flags, with a warning for one that warns; a
 study's members and `Study.gradient`'s carry it. Outside a run (the step called by hand) `raise_flag` does nothing.

@@ -16,7 +16,8 @@ model, its bounds the commands' ports' (:class:`Allocator`), on one of two paths
 model's declaration and the commands' count alone: the exact one (:func:`mime.control.exact_allocation`) where the model
 is affine in every command allocated, at most :data:`~mime.control.EXACT_COMMANDS` of them, and each quantity's miss is
 the difference of its rows; the iterative one (:func:`mime.control.iterative_allocation`) otherwise, which declares the
-controller's flag ``allocation_unconverged`` and raises it at a tick whose solve did not converge."""
+controller's flags ``allocation_unconverged``, raised at a tick whose solve did not converge, and
+``allocation_derivative_unresolved``, raised at a tick whose derivative the run's dtype does not resolve."""
 
 from __future__ import annotations
 
@@ -34,7 +35,7 @@ import numpy as np
 from mime.build._control import BeliefPlan, believed_key
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.control._allocation import EXACT_COMMANDS, exact_allocation
-from mime.control._flags import UNCONVERGED, raise_flag
+from mime.control._flags import UNCONVERGED, UNRESOLVED, raise_flag
 from mime.control._iterative import iterative_allocation
 from mime.core import as_run_array
 from mime.nodes.control import UNBOUNDED
@@ -134,7 +135,8 @@ class AllocationReport(NamedTuple):
     command, ``-1`` at its lower bound, ``0`` free, ``+1`` at its upper one), the minimised sum of scaled squares
     (``objective``), what the commands make by the believed model, each quantity of the objective (``made``), the
     ``path`` it took (``"exact"``, ``"iterative"``), whether it ``converged`` (always on the exact path, which
-    enumerates), and its ``stationarity`` over the problem's size (zero on the exact path)."""
+    enumerates), its ``stationarity`` over the problem's size (zero on the exact path), and whether its derivative is
+    ``resolved`` in the run's dtype (always on the exact path, whose derivative is its active set's least squares)."""
 
     active: Mapping[str, Any]
     objective: Any
@@ -142,6 +144,7 @@ class AllocationReport(NamedTuple):
     path: str = EXACT
     converged: Any = True
     stationarity: Any = 0.0
+    resolved: Any = True
 
 
 def _slew_steps(controller: int, port: int) -> float:
@@ -181,7 +184,8 @@ class Allocator:
     commands nearest that reference (the iterative path takes none: its rows fix its commands). ``owner`` is the
     switch's owner, which the controller declares (``allocation_switch(owner, orders)``). ``path`` is the one chosen
     when the law was made; the iterative one raises the controller's flag ``allocation_unconverged`` at a tick whose
-    solve did not converge, carrying its stationarity."""
+    solve did not converge, carrying its stationarity, and ``allocation_derivative_unresolved`` at a tick whose
+    derivative the run's dtype does not resolve, carrying its error bound."""
 
     model: ForwardModel
     commands: tuple[str, ...]
@@ -283,11 +287,12 @@ def _iterative(allocator: Allocator, wanted: Mapping[str, Any], at: Mapping[str,
     found = iterative_allocation(rows, start, lower=lower, upper=upper, owner=owner)
     raise_flag(UNCONVERGED.field, jnp.where(found.converged, jnp.zeros((), dtype=dtype),
                                             jnp.maximum(found.stationarity, jnp.finfo(dtype).eps)))
+    raise_flag(UNRESOLVED.field, jnp.where(found.resolved, jnp.zeros((), dtype=dtype), found.resolution))
     commands = _by_command(found.commands, self.commands, split)
     active = _by_command(found.active, self.commands, split)
     made = self.model({**zero, **commands}, at)
     return commands, AllocationReport(active, found.objective, {q: made[q] for q in sorted(self.scales)}, ITERATIVE,
-                                      found.converged, found.stationarity)
+                                      found.converged, found.stationarity, found.resolved)
 
 
 def _by_command(u: Any, commands: Sequence[str], split: Any) -> dict[str, Any]:
@@ -459,10 +464,12 @@ class ControlModels:
                            "give the allocation an effort, ctx.allocator(..., effort=<a scale per command>), which "
                            "chooses among the commands that meet the rows equally; or ask for as many rows as commands")
         self.paths.append(f"    {where}: iterative ({why}), {count} commands of {key}'s model, its derivative the "
-                          f"implicit function's at the converged commands; it raises the flag "
-                          f"{UNCONVERGED.field} where its solve does not converge")
-        if UNCONVERGED not in self.flags:
-            self.flags.append(UNCONVERGED)
+                          f"implicit function's at the converged commands; it raises the flags "
+                          f"{UNCONVERGED.field} where its solve does not converge and {UNRESOLVED.field} where the "
+                          f"run's dtype does not resolve its derivative")
+        for flag in (UNCONVERGED, UNRESOLVED):
+            if flag not in self.flags:
+                self.flags.append(flag)
         return Allocator(model, local, scales, low, high, box, efforts, toward, owner, ITERATIVE,
                          partial(_allocated, owner=owner))
 

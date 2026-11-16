@@ -208,10 +208,10 @@ found.commands, found.active, found.objective, found.converged, found.stationari
 
 `rows` maps the commands to rows, each a miss over its scale (and an effort's rows, where you want one), in JAX; it may
 close over traced values (what is wanted, a believed model's numbers), and each carries its derivative. The bounds may be
-infinite. It starts from `start`, projected into the bounds: on a model that is not affine the minimiser it returns is
-the local one reached from there (the last command, in `ctx.allocator`), which need not be the nearest. Unregularised,
+infinite. It starts from `start`, projected into the bounds: on a model that is not affine the point it returns is
+the stationary one reached from there (the last command, in `ctx.allocator`), which need not be the nearest. Unregularised,
 near a singular pose of an arm, Newton's step along the direction the rows barely fix is long: on the AR4's wrist the
-solve can end at a joint's limit far from its start, a constrained minimiser off the pose, where a damped solve met the
+solve can end at a joint's limit far from its start, a constrained stationary point off the pose, where a damped solve met the
 pose close by. A slew box around the start bounds how far the solve can go.
 
 **The method** is Bertsekas's projected Newton, in commands scaled to unit columns: an epsilon-active set; Newton's step
@@ -227,7 +227,12 @@ small, raised at each further cut and lowered at each step taken whole), so that
 steps shorten and turn towards the gradient instead of crawling by halvings to the cap. The step's path bends with the
 rows (Transtrum and Sethna's geodesic acceleration): a second-order term, the least-squares fit of the rows' second
 derivative along the step, keeps the step in a curved valley that the straight step leaves, where a cut step and the
-damped one after it had zigzagged a warm start to the cap; on an affine model the term is zero. Its decrease is measured
+damped one after it had zigzagged a warm start to the cap; on an affine model the term is zero. Where the bend is long
+beside its step (twice its length past `ACCELERATION` of the step's, Transtrum and Sethna's acceptance) the rows'
+second-order model does not hold that far, and the bend is left out of that step: with every bend accepted, the step
+and its bend cycled in Rosenbrock's valley and several times as many starts met the cap. The acceptance is a default
+that may be revised: it trades some of the bend's help on the follower's far targets for safety on general rows (the
+CHANGELOG's entry gives the measurements). Its decrease is measured
 as a difference of squares, and a decrease within what the objective resolves passes, judged on the scale the rows came from:
 a row is a difference of terms (a frame's position and its goal) whose rounding is the terms', not the row's, so each
 row's rounding is taken as the dtype's of the problem's size, which bounds its terms (exactly so on an affine model). On
@@ -256,19 +261,40 @@ objective is too large to resolve the steps that still converge). The stationari
 commands over the problem's size, the rows' miss plus what the commands make, so its floor is the dtype's rounding of
 that size whatever the rows cancel.
 
-**`converged` is read at the commands returned**, never from the loop's own account: the stationarity within its
-tolerance there, and the free commands' rows of full rank (the scaled normal matrix's least eigenvalue over its largest
-above the floor), so that the minimiser and its derivative are defined. **Where it did not converge**, the commands are the
-last iterate, inside the bounds, and `found.converged` says so; through `ctx.allocator` the controller raises its run
-flag `allocation_unconverged` at that tick, its value the stationarity, which the run counts and warns of and
+**`converged` is read at the commands returned**, never from the loop's own account, and claims a first-order
+stationary point within the bounds, isolated; it does not claim a local minimiser, and makes no second-order check (a
+strict maximum, where the gradient is zero, is a first-order stationary point, and in single precision the Hessian's
+least eigenvalue at the follower's problem is rounding). Its parts: the stationarity within its tolerance there, and
+the point isolated, the free commands' rows of full rank or the derivative's tangent system resolved (below). The rank
+is judged from the rows' singular values, never from the normal matrix `J^T J`, whose eigenvalues square the condition:
+a singular value at or below `RANK` times `max(M, K)` units in the last place of the largest is not resolved from
+zero (`M` rows, `K` commands; `jnp.linalg.pinv`'s line). Read from the normal matrix against a constant below what the
+dtype resolves, rows with an exact null vector claimed to converge on a third of draws, some with derivatives of NaN,
+and in single precision the follower's well-posed solves were called unconverged. Where a column vanishes at a
+minimiser that the rows' curvature holds (a sine's at its crest, out of the row's reach), its length is floored at that
+curvature, so that the stationarity reads the distance to it and not the rows' miss. **Where it did not converge**, the
+commands are the last iterate, inside the bounds, and `found.converged` says so; through `ctx.allocator` the controller
+raises its run flag `allocation_unconverged` at that tick, its value the stationarity, which the run counts and warns of and
 `Study.gradient`'s result carries. A value is never silent.
 
 **Its derivative** is the implicit function's at the converged commands: `jax.lax.custom_root` on the projected
 gradient's fixed point, its tangent system the exact Hessian's on the free commands (never the Gauss-Newton one, which
 is wrong wherever the rows are not met, an unreachable target's) and, on a held command, its bound's own derivative (a
 port's bound, or the slew box around the last command, so a derivative in the last command passes there). The tangent
-system is one dense LU of order the commands. Forward and reverse mode both pass through it. Where the solve did not
-converge it is the implicit function's at the iterate, which solves nothing, and the step's flag says so.
+system is one dense LU of order the commands, its rows and columns equilibrated. Forward and reverse mode both pass
+through it. Where the solve did not converge it is the implicit function's at the iterate, which solves nothing, and the
+step's flag says so.
+
+**Its resolution.** The tangent system is the exact Hessian's, whose condition is the square of the rows': where it is
+past what the dtype resolves, the derivative is not resolved, whatever the commands' accuracy. `found.resolution` is
+a bound on its error over its size, the tangent system's condition times the units in the last place that its
+assembly (the Hessian's sums over the rows) and its LU each add, and `found.resolved` holds where it is at most
+`RESOLVED`; through `ctx.allocator` the controller raises the flag `allocation_derivative_unresolved` at
+a tick where it is not, carrying the bound. In single precision at a weak effort (the A0 follower's arm, its tangent's
+condition near the reciprocal of single precision's rounding) the derivative was off by more than its size at every
+draw while the joints were within micro-radians of double precision's: there the flag is raised at every tick, and a gradient through the run needs double precision. A
+double-precision tangent at the single-precision commands was as far off (the derivative there is not the minimiser's),
+and a pseudo-inverse on the resolved directions further, so the solve says so rather than altering the derivative.
 
 **Its status, per configuration**, declared as the controller's switch (`allocation_switch(owner, orders)`), evaluated
 once at the solution:
@@ -276,8 +302,9 @@ once at the solution:
 | configuration | status | why |
 |---|---|---|
 | an affine model, regularised or its rows of full column rank | `piecewise_kink` | a convex quadratic: the minimiser is continuous, and its derivative jumps where a command reaches a bound or leaves it |
-| a model that is not affine (an arm) | `piecewise_jump` | the local minimiser followed from the start can change branch, or settle at a bound, as what is wanted moves |
+| a model that is not affine (an arm) | `piecewise_jump` | the stationary point followed from the start can change branch, or settle at a bound, as what is wanted moves |
 | a step whose solve did not converge | flagged | the derivative solves nothing there: `allocation_unconverged` marks the step |
+| a step whose derivative the dtype does not resolve | flagged | `allocation_derivative_unresolved` marks the step, carrying the derivative's error bound |
 
 **What it bounds, and what it estimates.** Against the exact path on the arrays MIME ships (three to eight coils, both
 dtypes), against SciPy's BVLS on nine to sixteen commands, and against the rigid-body library's inverse kinematics on

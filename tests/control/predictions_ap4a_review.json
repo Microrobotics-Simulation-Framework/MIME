@@ -1,0 +1,82 @@
+{
+  "written": "2026-11-16, committed before the fix round's probe ran (the commit that adds this file is the timestamp): the refuting review of #331 at 9c946cbd (MAJOR 1 the rank test, MAJOR 2 the float32 derivative, MAJOR 3 the bend's acceptance, and the minors)",
+  "phase": "apparatus lane AP4a, the review's fix round",
+  "labels": "the fix round's agent (Opus), from the review's probes (its logs at 9c946cbd, the same solve as before this round), and from laptop measurements on the fixed code (correctness only, never timing): the singular-value calibration (probe_sv), the float32 derivative's decomposition (probe_m2, 20 draws), the effort sweep (probe_effort, 56 draws), Rosenbrock (300 and 200 starts) and one run of each new test with and without its plant",
+  "seen_before": [
+    "the review (9c946cbd): exact null vector read full rank 96/200 (f64) and 110/200 (f32), converged 66 and 79, NaN derivatives on 15 and 19; the wrist's singular pose converged with ratios 1.7e-17 to -5e-17, f32 with 29 NaN and 13 inf derivative entries; the f32 follower at 1-5 cm 11/200 false unconverged (seed 25); f32 derivative at the follower 2.3x its largest entry off (median of 60), tangent condition 4e6-1e8; Rosenbrock-6 8/300 at the cap with the bend, 0 without, the review's acceptance 1/300; follower 10-30 cm 4/200 at the cap with the bend, 9 without, 48 sign-flipped, 7 with its acceptance; the warm-start hard draws 0 / 4 / 3 unconverged; a sign-flipped bend passed every test once; a strict maximum claimed converged; sin u - 2 unconverged after 44 iterations (f64) or at the cap (f32)",
+    "laptop, the fixed code: exact-null-vector singular-value ratio at most 1e-2 of the line (200 of 200, f64); the wrist's at most 3e-2 of it; affine solves bitwise equal to 9c946cbd's (240 of 240, eager and jit, both dtypes), their derivatives within 1.2e-6 (row equilibration); Rosenbrock-6 1 of 300 at the cap in both dtypes with the acceptance as built (the bend left out where long), 8 with every bend accepted, 171 of 300 with Transtrum and Sethna's own rule (the step rejected and the damping raised); the f32 derivative's decomposition at the follower (20 draws): a float64 tangent at the float32 commands 0.1 to 46 of its largest entry off (median 0.6), a float32 tangent at float64's commands 0.65 to 18, a pseudo-inverse on the resolved directions 1.1 to 14, the Gauss-Newton part by QR of J at float64's commands 2e-5 to 3e-2 (median 4e-4); the effort sweep (8 seeds x 7 efforts): the f32 derivative's error 0.005 to 0.7 of the bound (condition times M + 3K units)",
+    "laptop, one run each of the new tests, clean: null vector, maximum, column, Rosenbrock and bend tests pass; each planted run of rank_by_square (null vector), a second-order check's removal, unfloored (4 of 4 cases), unaccepted and bend_sign failed",
+    "laptop: a second-order check (the scaled exact Hessian's least eigenvalue below -RANK x max(M, K) units of the largest) was built and dropped: at the float32 follower (seed 0, 0.2-2 mm) the Hessian's least eigenvalues read -1.1e-4 and -5.7e-5 of the largest (noise about a true 2e-8), past the line; converged's claim is corrected to a first-order stationary point instead"
+  ],
+  "operating_point": {
+    "dtype": ["float64", "float32"],
+    "platform": "CPU; GitHub runners, 4 vCPU; the cost arm and the bits on one CPU with one BLAS and XLA thread",
+    "sizes_and_parameters": "the AR4 (6 joints) with link_6's position over 1 mm (and turn over 10 mrad on the arm draws) and an effort of 20 rad towards the last joints (the follower), or unregularised (the pose solve); Rosenbrock in 6 and 12 commands, box +-5; affine 9 x 6 rows with an exact null vector, unbounded; tolerance 1e-10 / 1e-5; RANK 10; RESOLVED 0.1; ACCELERATION 0.75",
+    "seeds_and_draws": "Hypothesis at the tests' own example counts with the explicit examples (seed 25; seed 26 at effort 20); detection runs on seeds 100 onwards for the new plants and 200 onwards for the earlier ones; the survey's seeds are the review's (0 to 299 or 0 to 199, and the four hard warm-start draws 575, 29557, 301704, 1210936 with their 37 solves each)"
+  },
+  "gate_1_rank": {
+    "claim": "converged's rank is read from the rows' singular values at RANK x max(M, K) units of the largest: rows with an exact null vector and the wrist's singular pose never claim to converge, and the float32 follower converges where float64 does",
+    "kind": "bounds",
+    "case": "tests/control/test_iterative_allocation.py: test_rows_with_an_exact_null_vector_never_claim_to_converge, test_the_wrists_singular_pose_is_not_claimed_converged, test_float32_converges_at_the_followers_problem_where_float64_does",
+    "prediction": {"value": "every clean run passes; rank_by_square caught 30/30 on each of the three", "band": [30, 30], "unit": "planted runs caught of 30", "basis": "measured-before (the review's rates: about half the null-vector draws read full rank, so 80 draws a run miss with probability 1e-24; the wrist's and the follower's are explicit, deterministic)", "why": "a singular value's rounding is units of the largest; the normal matrix's eigenvalue's is the same units of the largest eigenvalue, the square"},
+    "control": {"plant": "rank_by_square: converged as read before the review (normal matrix's eigenvalue ratio against RCOND^2, no second-order check)", "environment_variable": "ITERATIVE_PLANT", "expected_rate": "30/30 on each", "runs": 30, "clean_expected": "0/30"},
+    "cannot_discriminate_if": "a null-vector draw ends with a command at a bound (unbounded here, so none can)"
+  },
+  "gate_2_resolution": {
+    "claim": "where the float32 solve claims its derivative (converged and resolved) at the follower's problem, efforts 0.05 to 20 rad, it is float64's within the condition's bound and never past a tenth of its largest entry; at the follower's own effort it is flagged",
+    "kind": "bounds",
+    "case": "tests/control/test_iterative_allocation.py::test_float32s_derivative_at_the_followers_problem_is_within_its_bound_or_flagged",
+    "prediction": {"value": "every clean run passes; unflagged caught 30/30", "band": [30, 30], "unit": "planted runs caught of 30", "basis": "measured-before (the effort sweep: error 0.005 to 0.7 of the bound; at effort 20 the error is 0.5 to 8 of the largest entry)", "why": "the explicit example at effort 20 (seed 26, error 17x its largest entry in the review) is caught by the cap at RESOLVED whatever the draws"},
+    "control": {"plant": "unflagged: every derivative called resolved", "environment_variable": "ITERATIVE_PLANT", "expected_rate": "30/30", "runs": 30, "clean_expected": "0/30"},
+    "if_wrong": "a clean failure means the bound (M + 3K units) is not a bound on some draw: the constant is restated from the miss, not the tolerance loosened"
+  },
+  "gate_3_bend": {
+    "claim": "the bend's sign is guarded (the bend is the least-squares fit of J b = -r''), and the acceptance holds Rosenbrock-6 to 1 of 300 at the cap",
+    "kind": "equality",
+    "case": "test_the_bend_is_the_least_squares_fit_of_the_rows_second_derivative; test_rosenbrocks_valley_in_six_commands_rarely_meets_the_cap",
+    "prediction": {"value": "bend_sign 30/30; unaccepted 30/30; clean 0/30 each", "band": [30, 30], "unit": "planted runs caught of 30", "basis": "measured-before (one laptop run each; the Rosenbrock test is deterministic, 8 > 1)", "why": "a flipped bend is twice the fit away on every draw whose r'' has a component in J's range"},
+    "control": {"plant": "bend_sign; unaccepted", "environment_variable": "ITERATIVE_PLANT", "expected_rate": "30/30 each", "runs": 30, "clean_expected": "0/30"}
+  },
+  "gate_4_columns": {
+    "claim": "a column that vanishes at the minimiser (sin u - 2) converges there, its derivative zero",
+    "kind": "equality",
+    "case": "test_a_column_that_vanishes_at_the_minimiser_does_not_hold_the_solve_off_it",
+    "prediction": {"value": "unfloored 30/30; clean 0/30", "band": [30, 30], "unit": "planted runs caught of 30", "basis": "measured-before (a deterministic test, one laptop run, 4 of 4 cases failing planted)", "why": "deterministic"},
+    "control": {"plant": "unfloored", "environment_variable": "ITERATIVE_PLANT", "expected_rate": "30/30", "runs": 30, "clean_expected": "0/30"}
+  },
+  "gate_5_earlier_plants": {
+    "claim": "the PR's earlier plants are still caught on every run on the changed solve",
+    "kind": "bounds",
+    "case": "as predictions_ap4a_fix.json: early (inverse kinematics), unpolished (warm start), loose (BVLS), gauss_newton and bounds (the implicit derivative), unpolished (the follower in its standoff), silent (the flag)",
+    "prediction": {"value": "early 20/20, unpolished 20/20, loose 20/20, gauss_newton 20/20, bounds 20/20, unpolished_follower 5/5, silent 10/10; clean 0 on each", "band": [0, 0], "unit": "planted runs missed, clean runs flagged", "basis": "measured-before (runs 43777271404 and 43853073207)", "why": "the fixes change the claim's reading and the derivative's rounding, not what these plants break"},
+    "control": {"plant": "as named", "environment_variable": "ITERATIVE_PLANT", "expected_rate": "every run", "runs": 20, "clean_expected": "0"}
+  },
+  "gate_6_touched_files": {
+    "claim": "the touched test files pass on a runner",
+    "kind": "bounds",
+    "case": "tests/control/test_iterative_allocation.py; test_iterative_controller.py, test_controller_flags.py, test_allocator.py, test_in_graph.py, test_declaration.py",
+    "prediction": {"value": "all pass; the allocation file about 20 to 25 min (16 before, with the new tests), the controller files about 24 min", "band": [0, 0], "unit": "failed tests", "basis": "measured-before (run 43853073207) plus the new tests' laptop times", "why": "new tests add compiles of the pose, follower and effort programs"}
+  },
+  "survey": {
+    "claim": "the bend's trade-off, measured: unconverged and at-the-cap counts per family and dtype under four variants (accepted as built, every bend accepted, no bend, Transtrum and Sethna's step rejection)",
+    "kind": "estimates",
+    "prediction": "Rosenbrock-6: accepted 1/300 both dtypes, unaccepted 8, no bend 0, ts_reject about 170; Rosenbrock-12: accepted 2/200, unaccepted 3, no bend 4; follower 10-30 cm float64: accepted about 7/200 (the review's acceptance), unaccepted 4, no bend 9; 1-5 cm float64: accepted 0 to 2, unaccepted 0, no bend 2; float32 1-5 cm: none of the review's 11 false flags in any variant (the rank's fix), a few real ones possible; the warm-start hard draws: accepted 0 to 3 of 148, unaccepted 0, no bend 4; inverse kinematics and the arm draws: within one or two of each other across variants; ts_reject worse than the others on every curved family. Converged but unresolved: none in float64 except near singular poses; in float32 every follower draw (weak effort), and the arm draws mostly resolved",
+    "basis": "measured-before (the review's survey on the old code, and the laptop's Rosenbrock on the new) and guess for the rest"
+  },
+  "m2": {
+    "claim": "the float32 derivative's error at the follower's problem has no cheap fix: a float64 tangent at the float32 commands and a pseudo-inverse on the resolved directions leave it O(1)",
+    "kind": "estimates",
+    "prediction": "30 draws: the library's float32 derivative median about 2 of its largest entry; (a) float64 tangent at the float32 commands median about 0.6; (b, c) float32 tangent median about 3; (d) pseudo-inverse median about 3; (e) QR of J at float64's commands median about 4e-4",
+    "basis": "measured-before (laptop, 20 draws)"
+  },
+  "costs": {
+    "prediction": "per base step, compiled, one thread: the coil sphere's iterative allocation 1.1 to 1.6 times its exact one's; the follower 9 to 12 times ArmTracking 0.1.0's (8.86 before, EPYC 7763): each solve adds, at the commands returned, one Hessian, the tangent system's Jacobian and three small symmetric eigensolves",
+    "measured_at": "run 43853073207 before the fix round"
+  },
+  "bits": {
+    "cases": "as predictions_ap4a_stall.json's, base the release commit this head merged (be5f2170), against the head, one job, one CPU, one thread",
+    "prediction": "every array np.array_equal (11 of 11)",
+    "controls": {"one_ulp": "script A in both dtypes, a0_graph and the coil sphere in float32, every leaf one ulp up: arrays differ (4 of 4)"}
+  },
+  "outcomes": null
+}

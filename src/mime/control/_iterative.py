@@ -21,13 +21,15 @@ cut and lowered at each step taken whole), so that in a curved valley's floor th
 gradient instead of crawling by halvings. The step's path bends with the rows (Transtrum and Sethna's geodesic
 acceleration): it is ``u + alpha step + alpha^2 bend / 2``, ``bend`` the least-squares fit of the rows' second derivative
 along the step, so that the step follows a curved valley to second order instead of leaving it; zero on an affine
-model. The decrease is measured as a difference of squares, ``sum (r - r') (r + r') / 2``, and a decrease within what
+model. Where the bend is long beside the step (``2 |bend| > ACCELERATION |step|`` in the scaled commands, Transtrum
+and Sethna's acceptance), the rows' second-order model does not hold that far, and the bend is left out: the step is
+the straight one, under its line search. The decrease is measured as a difference of squares, ``sum (r - r') (r + r') / 2``, and a decrease within what
 the objective resolves passes. What it resolves is judged on the scale the rows came from: a row is a difference of
 terms (a frame's position and its goal, a field and its target) whose rounding is the terms', not the row's, which
 cancels to far less, so each row's rounding is taken as eps of the problem's size (below), which bounds its terms
 (exactly so on an affine model). It starts from the caller's start projected into the box. On an affine model the two
 steps are one, Newton's, so the iteration is exact once its active set is the solution's. Unregularised, near a
-singular pose of an arm, Newton's step along the direction the rows barely fix is long, and the minimiser reached can
+singular pose of an arm, Newton's step along the direction the rows barely fix is long, and the point reached can
 be far from the start (the AR4's wrist: a joint's limit 1.8 rad away, where the library's damped solve met the pose
 0.1 rad away); a slew box around the start bounds how far the solve can go.
 
@@ -40,6 +42,14 @@ eigenvalues near 1e-8 of its largest) the two part far, and there the objective 
 direction its decrease is below its rounding, and in a curved valley (the redundant joints of an arm whose frame meets
 its target) the full step can raise it past even the nonmonotone test's allowance while it converges quadratically.
 
+**The columns.** A column's length is floored at the rows' curvature in its command, ``|J_k|^2 >= rho |S_kk|`` (``S``
+the exact Hessian's second-order part, ``sum_i r_i grad^2 r_i``, and ``rho`` :data:`_CURVATURE`, four units in the last
+place over the tolerance): where a column vanishes at a minimiser that the rows' curvature holds (``r = sin u - 2`` at
+``pi / 2``), the gradient is the curvature times the command's distance, and in the column's own length the
+stationarity reads the rows' miss whatever that distance, so the solve never met its tolerance there. Floored, it reads
+the distance in the curvature's units, at most ``eps / rho`` (a quarter of the tolerance) at the command's rounding. The
+floor moves no column whose length is above it, so on an affine model (``S`` zero) the solve is the one it was.
+
 **Its guards, declared** (MIME's rule for single precision: a tolerance at or above the dtype's reachable floor, with a
 stagnation stop). It stops at :data:`ITERATIONS` unless the point it has reached is within the tolerance (whose local
 phase then ends by its own count), at the end of the local phase, or where it stagnates: no step passes Armijo's test,
@@ -51,11 +61,16 @@ two solves of 1202 with their stationarity 30 times the tolerance; counted only 
 one converged, in at most 11 iterations. The stationarity is the projected gradient's length in the scaled commands, ``|v - P(v - grad_v)|_inf``,
 over the problem's size, ``|r| + sum_k c_k |u_k|`` (the rows' miss and what the commands make, so its rounding floor is
 the dtype's units in the last place of it whatever the rows cancel); the solve has met its tolerance where it is within
-:data:`TOLERANCE`. ``converged`` is read again at the commands returned, never from the loop's own account: the
-stationarity within its tolerance there, and the free commands' scaled normal matrix of full rank (its least eigenvalue
-over its largest above ``RCOND^2``), so that the minimiser and its derivative are defined. Where it is not, the commands
-returned are the last iterate, inside the box, and the caller says so: ``ctx.allocator`` raises its controller's flag
-``allocation_unconverged``, carrying the stationarity.
+:data:`TOLERANCE`. ``converged`` is read again at the commands returned, never from the loop's own account, and claims a
+first-order stationary point within the box, isolated: the stationarity within its tolerance there, and the free
+columns of full rank or the derivative's tangent system resolved (below). The rank is judged from the rows' singular
+values, not their squares, the normal matrix's eigenvalues: a singular value at or below :data:`RANK` times ``max(M,
+K)`` units in the last place of the largest is not resolved from zero (``M`` rows, ``K`` commands). It does not claim a
+local minimiser, and makes no second-order check: a strict maximum of the objective, where the gradient is zero, is a
+first-order stationary point (a planar arm started there claims to converge), and the exact Hessian's least eigenvalue
+is not resolved where it would tell (at the follower's problem in float32 it read -4e-5 of the largest, noise about a
+true 2e-8). Where it is not converged, the commands returned are the last iterate, inside the box, and the caller says
+so: ``ctx.allocator`` raises its controller's flag ``allocation_unconverged``, carrying the stationarity.
 
 **The derivative.** ``jax.lax.custom_root`` on ``F(u) = c (u - P(u - grad(u) / c^2))``, ``c`` held (a positive scaling
 changes the root of no component): at the root, a free command's row is the gradient's and a held one's ``u - bound``.
@@ -64,12 +79,29 @@ the exact Hessian's, ``J^T J + sum_i r_i grad^2 r_i``, never the Gauss-Newton on
 not met, as an unreachable target's); a held command's derivative is its bound's (a port's, or the slew box's around
 the last command). Each closed-over value of the rows (a wanted value, a model's parameters, a point) and of the bounds
 carries its tangent through ``F``. The tangent system, ``K x K``, is solved by one dense LU (``mime.core.solves``),
-its columns equilibrated. It is the derivative of the converged commands: where the solve did not converge, it is the
-implicit function's at the iterate, which solves nothing, and the step's flag says so.
+its rows and then its columns equilibrated (a row's scale is its command's column length, which moves no root). It is
+the derivative of the converged commands: where the solve did not converge, it is the implicit function's at the
+iterate, which solves nothing, and the step's flag says so.
+
+**Its resolution.** The tangent system is the exact Hessian's, whose condition is the square of the rows' (a weak
+effort's: the follower's is 4e6 to 1e8). Its error over its size is bounded by its condition times ``M + 3 K`` units
+in the last place (the assembly's sums over the ``M`` rows and the LU's ``3 K``, Higham's bound for a solve, growth
+aside), whatever the forward solve's accuracy: ``resolution`` is that bound, read at the commands returned on the
+system as the derivative factors it (rows and columns equilibrated), and ``resolved`` holds where it is at most
+:data:`RESOLVED`. Measured at the follower's problem in float32, efforts 0.05 to 20 rad (56 draws), the derivative's
+error against float64's was 0.005 to 0.7 of the bound; at its own effort the derivative was 2.3 times its largest
+entry off (median of 60 draws) while the joints were 2e-6 rad from float64's. Where it is not resolved,
+``ctx.allocator`` raises the flag ``allocation_derivative_unresolved``, carrying the bound: a derivative through that
+step is not resolved in the run's dtype (in float32 at the follower's problem, at every step; float64 resolves it).
+The derivative is left as the LU gives it. Neither a float64 tangent system at the float32 commands (its error a median
+0.6 of the largest entry, at most 46, over 20 draws: the derivative at the commands float32 reaches is not the
+minimiser's, the condition times their 2e-6 rad) nor a pseudo-inverse on the resolved directions (median 3.3, which
+drops the response along the others) resolves it. What did, at float64's commands, is the rows' own factorisation (the
+Gauss-Newton part by QR of ``J``, median 4e-4), which leaves the second-order part out: a route, not built here.
 
 **Its status.** On an affine model the problem is convex: the minimiser is continuous (regularised, or of full column
 rank), and its derivative has kinks where a command reaches a bound or leaves it (``piecewise_kink``). On a nonlinear
-one the minimiser is the local one reached from the start, which can change branch as what is wanted moves
+one the point is the stationary one reached from the start, which can change branch as what is wanted moves
 (``piecewise_jump``). The switch is its caller's owner (:func:`mime.control.allocation_switch`), evaluated once at the
 solution."""
 
@@ -98,8 +130,23 @@ BACKTRACKS = 30
 ARMIJO = 1e-4
 #: The stationarity, over the problem's size, at which the solve has converged, by dtype: at or above the reachable floor.
 TOLERANCE = {np.dtype(np.float64): 1e-10, np.dtype(np.float32): 1e-5}
-#: The Levenberg floor on the scaled normal matrix (whose diagonal is one), by dtype: the square of the rank test's.
+#: The Levenberg floor on the scaled normal matrix (whose diagonal is one), by dtype: the square of the exact path's
+#: rank test's, which keeps the Gauss-Newton step defined where the rows do not fix the free commands.
 FLOOR = {dtype: value * value for dtype, value in RCOND.items()}
+#: The numerical rank's line, in units in the last place of an ``M x K`` matrix's largest singular value times
+#: ``max(M, K)``: a singular value at or below it is not resolved from zero (``jnp.linalg.pinv``'s default; a backward
+#: stable decomposition's singular values are those of the matrix moved by a few ``max(M, K)`` units of its largest,
+#: and the matrix's own rounding, a Jacobian's by autodiff, adds as much again). The free columns' rank is judged at
+#: it. Measured: rows with an exact null vector read at most 1e-2 of the line (200 of 200, float64), the AR4's wrist
+#: singularity at most 3e-2 of it, and the float32 follower's least singular value (its rows' at 1 to 5 cm, the
+#: review's draws) 8 to 40 times it.
+RANK = 10.0
+#: The largest error bound over its size at which the derivative is called resolved (``resolution``, see the module):
+#: a tenth, declared.
+RESOLVED = 0.1
+#: Transtrum and Sethna's acceptance of the bend (geodesic acceleration, 2012), their standard value: a bend longer than
+#: ``ACCELERATION / 2`` of its step, in the scaled commands, is left out of it. A default the maintainer may revise.
+ACCELERATION = 0.75
 #: The widest band, as a share of the problem's size in the scaled commands, within which a command at a bound is held.
 ACTIVE_BAND = 1e-3
 #: The steps in a row that leave the commands within their rounding and lower the objective by no more than its
@@ -127,15 +174,21 @@ _DAMPING, _DAMPING_FACTOR = 1e-3, 10.0
 #: 4e-8 and 2e-12 (scaled), the first raising the objective, the sixth within the commands' rounding: five steps.
 #: Over 2220 of the test's solves (60 draws), every one ended within the rounding with eight.
 _POLISHING_STEPS = 8
+#: The share ``rho`` of the rows' curvature at which a column's length is floored, by dtype: four units in the last place
+#: over the tolerance, so that at a minimiser where the column vanishes the stationarity's rounding is a quarter of the
+#: tolerance (see the module).
+_CURVATURE = {dtype: 4.0 * float(np.finfo(dtype).eps) / value for dtype, value in TOLERANCE.items()}
 
 type Rows = Callable[[Any], Any]
 
 
 class IterativeAllocation(NamedTuple):
     """The commands ``(K,)``; each command's place, ``active`` ``(K,)``, ``-1`` held at its lower bound, ``0`` free,
-    ``+1`` at its upper one; the minimised ``objective``, the sum of the squares of the rows; whether it ``converged``
-    (read at the commands returned); its ``stationarity`` there, over the problem's size; and the ``iterations`` it
-    took."""
+    ``+1`` at its upper one; the ``objective`` there, the sum of the squares of the rows; whether it ``converged`` (read
+    at the commands returned: see the module for what it claims); its ``stationarity`` there, over the problem's size;
+    the ``iterations`` it took; whether its derivative is ``resolved`` in the dtype, and its ``resolution``, the tangent
+    system's condition times ``M + 3 K`` units in the last place, a bound on its error over its size (see the
+    module)."""
 
     commands: Any
     active: Any
@@ -143,11 +196,13 @@ class IterativeAllocation(NamedTuple):
     converged: Any
     stationarity: Any
     iterations: Any
+    resolved: Any
+    resolution: Any
 
 
 class _At(NamedTuple):
-    """The rows, their Jacobian, its columns' lengths, the gradient, the stationarity's vector and the size, at a
-    point."""
+    """The rows, their Jacobian, its columns' lengths (floored at the rows' curvature), the gradient, the
+    stationarity's vector, the size and the exact Hessian, at a point."""
 
     rows: Any
     jacobian: Any
@@ -155,6 +210,15 @@ class _At(NamedTuple):
     gradient: Any
     projected: Any
     size: Any
+    hessian: Any
+
+
+def _objective(rows: Rows) -> Callable[[Any], Any]:
+    def objective(u: Any) -> Any:
+        made = rows(u)
+        return 0.5 * jnp.sum(made * made)
+
+    return objective
 
 
 def _at(rows: Rows, u: Any, lower: Any, upper: Any) -> _At:
@@ -164,12 +228,16 @@ def _at(rows: Rows, u: Any, lower: Any, upper: Any) -> _At:
         return made, made
 
     jacobian, made = _jax.jacfwd(twice, has_aux=True)(u)
+    hessian = _jax.hessian(_objective(rows))(u)
     squared = jnp.sum(jacobian * jacobian, axis=0)
+    # The column's length floored at the rows' curvature in its command (see the module): |S_kk|, the Hessian's
+    # diagonal less the column's square.
+    squared = jnp.maximum(squared, _CURVATURE[np.dtype(u.dtype)] * jnp.abs(jnp.diagonal(hessian) - squared))
     columns = jnp.sqrt(jnp.where(squared > jnp.finfo(u.dtype).tiny, squared, 1.0))
     gradient = jacobian.T @ made
     projected = columns * (u - jnp.clip(u - gradient / (columns * columns), lower, upper))
     size = jnp.sqrt(jnp.sum(made * made)) + jnp.sum(columns * jnp.abs(u)) + jnp.finfo(u.dtype).tiny
-    return _At(made, jacobian, columns, gradient, projected, size)
+    return _At(made, jacobian, columns, gradient, projected, size, hessian)
 
 
 def _held(at: _At, u: Any, lower: Any, upper: Any, band: Any) -> tuple[Any, Any]:
@@ -179,27 +247,52 @@ def _held(at: _At, u: Any, lower: Any, upper: Any, band: Any) -> tuple[Any, Any]
             (at.columns * (upper - u) <= band) & (scaled < 0.0))
 
 
-def _rank(at: _At, free: Any) -> Any:
-    """The free commands' scaled normal matrix's least eigenvalue over its largest (one where none is free)."""
-    scaled = at.jacobian / at.columns
-    mask = free.astype(scaled.dtype)
-    normal = (scaled.T @ scaled) * mask[:, None] * mask[None, :] + jnp.diag(1.0 - mask)
-    values = jnp.linalg.eigvalsh(normal)
-    return values[0] / jnp.maximum(values[-1], jnp.finfo(scaled.dtype).tiny)
+def _singular(matrix: Any) -> tuple[Any, Any]:
+    """The least and the largest singular values of ``matrix`` (``M x K``, ``M >= K``), as the eigenvalues of the
+    symmetric ``[[0, A], [A^T, 0]]``, which are ``+-`` each singular value and ``M - K`` zeros (Jordan and Wielandt): a
+    symmetric eigensolver's rounding is units in the last place of the largest, as a singular value decomposition's,
+    never their square, as the normal matrix's ``A^T A`` is. A rank test uses the matrix and solves nothing."""
+    size, count = matrix.shape
+    joined = jnp.concatenate([jnp.concatenate([jnp.zeros((size, size), dtype=matrix.dtype), matrix], axis=1),
+                              jnp.concatenate([matrix.T, jnp.zeros((count, count), dtype=matrix.dtype)], axis=1)])
+    values = jnp.sort(jnp.abs(jnp.linalg.eigvalsh(joined)))
+    return values[size - count], values[-1]
 
 
-def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple[Any, tuple[Any, Any, Any, Any]]:
-    """The forward solve, with no derivative: the commands, and ``(converged, stationarity, iterations, active)`` read
-    at them."""
+def _verdict(rows: Rows, at: _At, u: Any, free: Any, lower: Any, upper: Any) -> tuple[Any, Any]:
+    """At the commands returned: whether the point is isolated as its rows see it (the free columns of full rank at
+    the rank line, :data:`RANK`, scaled, a held command's column its own unit column), and the derivative's
+    ``resolution``, the tangent system's condition times ``M + 3 K`` units in the last place, the system as
+    :func:`_tangent` factors it."""
+    dtype = u.dtype
+    eps, tiny = float(jnp.finfo(dtype).eps), jnp.finfo(dtype).tiny
+    mask = free.astype(dtype)
+    least, largest = _singular(jnp.concatenate([at.jacobian / at.columns * mask[None, :], jnp.diag(1.0 - mask)]))
+    full = least > RANK * max(at.rows.shape[0], u.shape[0]) * eps * largest
+    least, largest = _singular(_equilibrated(_jax.jacfwd(_root(rows, lower, upper))(u))[0])
+    return full, (at.rows.shape[0] + 3 * u.shape[0]) * eps * largest / jnp.maximum(least, tiny)
+
+
+def _bend(rows: Rows, u: Any, moving: Any, matrix: Any, mask: Any, scaled: Any, columns: Any) -> Any:
+    """The step's bend (Transtrum and Sethna's geodesic acceleration): the least-squares fit, on the free commands
+    (``mask``), of ``J bend = -r''``, ``r''`` the rows' second derivative along ``moving``, in the scaled commands
+    (``scaled`` the Jacobian over ``columns``, ``matrix`` the step's normal matrix with its floor and damping), so that
+    along ``u + alpha moving + alpha^2 bend / 2`` the rows' linear model holds to second order."""
+    def along(v: Any) -> Any:
+        return _jax.jvp(rows, (v,), (moving,))[1]
+
+    curvature = _jax.jvp(along, (u,), (moving,))[1]
+    return -dense_solve(matrix, mask * (scaled.T @ curvature)) / columns
+
+
+def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple[Any, tuple[Any, ...]]:
+    """The forward solve, with no derivative: the commands, and ``(converged, stationarity, iterations, active,
+    resolved, resolution)`` read at them."""
     held = np.dtype(dtype)
     tolerance, floor, rcond = TOLERANCE[held], FLOOR[held], RCOND[held]
     eps = float(np.finfo(held).eps)
     count = start.shape[0]
     eye = jnp.eye(count, dtype=dtype)
-
-    def objective(u: Any) -> Any:
-        made = rows(u)
-        return 0.5 * jnp.sum(made * made)
 
     def iteration(carry: tuple[Any, ...]) -> tuple[Any, ...]:
         u, taken, stalls, _, before, quiet, polished, best, shortest, recent, damping = carry
@@ -223,7 +316,7 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         scaled = at.jacobian / at.columns
         # Newton's step on the free commands where the exact Hessian is positive definite there (near a minimiser,
         # where it converges quadratically whatever the rows' miss), the Gauss-Newton one where it is not.
-        exact = _jax.hessian(objective)(u) / (at.columns[:, None] * at.columns[None, :]) * pair + outside
+        exact = at.hessian / (at.columns[:, None] * at.columns[None, :]) * pair + outside
         values = jnp.linalg.eigvalsh(exact)
         definite = values[0] > rcond * jnp.maximum(values[-1], 1.0)
         normal = (scaled.T @ scaled) * pair + outside + floor * eye
@@ -240,12 +333,16 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
         # solves; with the bend none of the same 7474 did, and the most iterations went from 50 to 15. On an affine
         # model ``r''`` is zero, and so is the bend.
         moving = jnp.where(free, step, 0.0)
-
-        def along(v: Any) -> Any:
-            return _jax.jvp(rows, (v,), (moving,))[1]
-
-        curvature = _jax.jvp(along, (u,), (moving,))[1]
-        bend = -dense_solve(normal + damped, mask * (scaled.T @ curvature)) / at.columns
+        bend = _bend(rows, u, moving, normal + damped, mask, scaled, at.columns)
+        # Transtrum and Sethna's acceptance: where the bend is long beside the step, the rows' second-order model does
+        # not hold that far, and the bend is left out: the step is the straight one, under its line search. Every bend
+        # accepted, on Rosenbrock's valley in six commands the step and its bend cycled with the bend 5 to 20 times the
+        # step, at a step of 1/32: 8 of 300 solves met the cap, against none with no bend. Their own rule rejects the
+        # whole step and raises the damping; here, where the damping only follows the line search, that crawled: 171
+        # of the same 300 met the cap.
+        long = 2.0 * jnp.sqrt(jnp.sum((at.columns * bend) ** 2)) > ACCELERATION * jnp.sqrt(
+            jnp.sum((at.columns * moving) ** 2))
+        bend = jnp.where(long, 0.0, bend)
         # What the objective resolves, judged on the scale the rows came from: a row is a difference of terms (a
         # frame's position and its goal, a field and its target) whose rounding is eps of the terms, not of the row,
         # which cancels to far less (A0's follower: rows of 4e-4 from terms of 600). Each row's terms are bounded by
@@ -313,18 +410,16 @@ def _solved(rows: Rows, start: Any, lower: Any, upper: Any, dtype: Any) -> tuple
     stationarity = jnp.max(jnp.abs(at.projected)) / at.size
     low, high = _held(at, u, lower, upper, jnp.minimum(ACTIVE_BAND * at.size,
                                                        jnp.sqrt(jnp.sum(at.projected * at.projected))))
-    converged = (stationarity <= tolerance) & (_rank(at, ~(low | high)) > floor)
+    full, resolution = _verdict(rows, at, u, ~(low | high), lower, upper)
+    resolved = resolution <= RESOLVED
+    converged = (stationarity <= tolerance) & (full | resolved)
     active = jnp.where(low, -1, jnp.where(high, 1, 0)).astype(np.int8)
-    return u, (converged, stationarity, taken, active)
+    return u, (converged, stationarity, taken, active, resolved, resolution)
 
 
 def _gradient(rows: Rows, u: Any) -> Any:
     """The gradient of ``1/2 |rows(u)|^2``, exact: its linearisation is the exact Hessian's."""
-    def objective(v: Any) -> Any:
-        made = rows(v)
-        return 0.5 * jnp.sum(made * made)
-
-    return _jax.grad(objective)(u)
+    return _jax.grad(_objective(rows))(u)
 
 
 def _bounds(lower: Any, upper: Any) -> tuple[Any, Any]:
@@ -346,12 +441,23 @@ def _root(rows: Rows, lower: Any, upper: Any) -> Callable[[Any], Any]:
     return residual
 
 
+def _equilibrated(matrix: Any) -> tuple[Any, Any, Any]:
+    """``matrix`` with its rows and then its columns scaled to a largest entry of one, and the two scales:
+    ``matrix = diag(rows) scaled diag(columns)``."""
+    tiny = jnp.finfo(matrix.dtype).tiny
+    largest = jnp.max(jnp.abs(matrix), axis=1)
+    rows = jnp.where(largest > tiny, largest, 1.0)
+    held = matrix / rows[:, None]
+    largest = jnp.max(jnp.abs(held), axis=0)
+    columns = jnp.where(largest > tiny, largest, 1.0)
+    return held / columns[None, :], rows, columns
+
+
 def _tangent(linear: Callable[[Any], Any], rhs: Any) -> Any:
-    """The tangent system ``F'(u*) x = rhs``, ``K x K``, by one dense LU of its matrix with its columns equilibrated."""
-    matrix = _jax.jacfwd(linear)(rhs)
-    largest = jnp.max(jnp.abs(matrix), axis=0)
-    scale = jnp.where(largest > jnp.finfo(matrix.dtype).tiny, largest, 1.0)
-    return dense_solve(matrix / scale[None, :], rhs) / scale
+    """The tangent system ``F'(u*) x = rhs``, ``K x K``, by one dense LU of its matrix, its rows and then its
+    columns equilibrated (:func:`_equilibrated`)."""
+    scaled, rows, columns = _equilibrated(_jax.jacfwd(linear)(rhs))
+    return dense_solve(scaled, rhs / rows) / columns
 
 
 def iterative_allocation(rows: Rows, start: Any, *, lower: Any, upper: Any, owner: str) -> IterativeAllocation:
@@ -371,14 +477,15 @@ def iterative_allocation(rows: Rows, start: Any, *, lower: Any, upper: Any, owne
         return _solved(rows, initial, low, high, dtype)
 
     with switch.not_collected():
-        commands, (converged, stationarity, taken, active) = lax.custom_root(_root(rows, low, high), guess, solve,
-                                                                             _tangent, has_aux=True)
+        commands, (converged, stationarity, taken, active, resolved, resolution) = lax.custom_root(
+            _root(rows, low, high), guess, solve, _tangent, has_aux=True)
     inside = jnp.minimum(commands - low, high - commands)
     switch.predicate(active == 0, owner=owner, resolution=lambda: switch.rounding(jnp.maximum(jnp.abs(low), jnp.abs(high))),
                      indicator=lambda: inside)
     made = rows(commands)
-    return IterativeAllocation(commands, active, jnp.sum(made * made), converged, stationarity, taken)
+    return IterativeAllocation(commands, active, jnp.sum(made * made), converged, stationarity, taken, resolved,
+                               resolution)
 
 
-__all__ = ["ACTIVE_BAND", "ARMIJO", "BACKTRACKS", "FLOOR", "ITERATIONS", "STALLS", "TOLERANCE", "IterativeAllocation",
-           "iterative_allocation"]
+__all__ = ["ACCELERATION", "ACTIVE_BAND", "ARMIJO", "BACKTRACKS", "FLOOR", "ITERATIONS", "RANK", "RESOLVED", "STALLS",
+           "TOLERANCE", "IterativeAllocation", "iterative_allocation"]

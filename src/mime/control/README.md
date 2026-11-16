@@ -35,14 +35,17 @@ registered sites `allocation_exact` and `allocation_least_norm`. `mime.fields.al
 commands within bounds that minimise half the squared rows a function of them makes, for any number of commands and
 any model: projected Newton (Newton's step on the exact Hessian where it is definite on the free commands,
 Gauss-Newton's where not), the bounds a projection, Armijo's test on a difference of squares; its cap, tolerance and
-stagnation stop declared; `converged` read at the commands returned. Its derivative is the implicit function's
+stagnation stop declared; `converged` read at the commands returned (a first-order stationary point, isolated, the
+rank judged from singular values at `RANK`; not a local minimiser). Its derivative's `resolved` and `resolution` read
+the tangent system's condition. Its derivative is the implicit function's
 (`jax.lax.custom_root`, the exact Hessian's tangent system, one dense LU through `mime.core.solves.dense_solve`). Its
 switch is the caller's owner, evaluated once at the solution; its forward solve and its root are traced with any switch
 collector hidden (`mime.core.switch.not_collected`), whose rows would keep their tracers.
 
 **A controller's flags** (`mime.nodes.control._flags`). A controller declares the flags its step raises in its class's
 `raises` (each a `mime.registry.Flag`, its `field` the flag's name); what its law calls declares its own when the law is
-made (`ctx.allocator` on the iterative path declares `allocation_unconverged`). Its step raises one with
+made (`ctx.allocator` on the iterative path declares `allocation_unconverged` and
+`allocation_derivative_unresolved`). Its step raises one with
 `raise_flag(name, value)`, nonzero where raised, the flag's value at the tick the largest magnitude raised under its
 name; the gatherer (`raising`) is entered at the level the step is called at, and a raise below it (inside a
 `jax.lax` body, or a function transformed on its own) or under a name not declared is refused with its fix. Inside the

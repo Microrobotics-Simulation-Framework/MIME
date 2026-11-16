@@ -6,7 +6,7 @@ declaration) and the coil sphere of ``believed_cases`` with the exact path's siz
 (``iterative_cases.iterative_coils``), whose exact path is the oracle. A node's step is traced once a build, so each
 patch is in force before the build it acts on.
 
-**Its plants** (``ITERATIVE_PLANT``): ``silent``, the flag never raised, which the flag test must catch on every run;
+**Its plants** (``ITERATIVE_PLANT``): ``silent``, the flags never raised, which the flag tests must catch on every run;
 ``unpolished``, the solve not polished past its tolerance, which the follower's derivative test must catch. The
 claim's plants (an early stop, a loosened tolerance) are ``test_iterative_allocation``'s, whose draws hold active
 bounds that take more than two iterations to find; the sphere's force is met inside its limits in one Newton step."""
@@ -84,9 +84,9 @@ def test_the_follower_on_the_iterative_path_says_so_in_its_report_and_lays_out_i
         built = follower_rpm("follower_report").build()
     lines = "\n".join(built.report.controller)
     assert "iterative (its model is not affine in joint_positions), 6 commands of rpm.arm's model" in lines
-    assert "allocation_unconverged (warns)" in lines
+    assert "allocation_unconverged (warns)" in lines and "allocation_derivative_unresolved (warns)" in lines
     assert [flag.path for flag in built.layout.flags if flag.owner == "controller"] == \
-        ["controller.allocation_unconverged"]
+        ["controller.allocation_derivative_unresolved", "controller.allocation_unconverged"]
 
 
 def test_an_exact_path_controller_declares_no_flag_and_builds_no_holder():
@@ -128,6 +128,31 @@ def test_an_unconverged_solve_raises_its_flag_counted_and_warned_and_a_converged
     holder = "controller" if mode == "graph" else "controller.flags"
     values = np.asarray(capped.history[holder]["flag_allocation_unconverged"])
     assert np.all(values > module.TOLERANCE[np.dtype("float64")])
+
+
+@pytest.mark.parametrize("mode", ["graph", "callback"])
+def test_the_float32_followers_derivative_is_flagged_unresolved_at_every_step_and_float64s_at_none(mode, monkeypatch):
+    """A0's follower (a weak effort, its tangent system's condition 4e6 to 1e8): in float32 its derivative is not
+    resolved (it was 2.3 times its largest entry off float64's, median of 60 draws), and the run raises
+    allocation_derivative_unresolved at every step, counts it and warns of it, its value the error bound, past
+    ``RESOLVED``; in float64 it is resolved, and the run raises none."""
+    with in_dtype("float64"):
+        wide, said = built_and_run(follower_rpm(f"wide_{mode}", mode=mode), ms(10))
+    assert not [read for read in wide.flags if read.flag.name == "allocation_derivative_unresolved"] and not \
+        [text for text in said if "allocation_derivative_unresolved" in text]
+    if PLANT == "silent":
+        from mime.nodes.control import _flags
+
+        monkeypatch.setattr(_flags, "raise_flag", lambda name, value: None)
+        monkeypatch.setattr(models, "raise_flag", lambda name, value: None)
+    with in_dtype("float32"):
+        narrow, said = built_and_run(follower_rpm(f"narrow_{mode}", mode=mode), ms(10))
+    raised = [read for read in narrow.flags if read.flag.name == "allocation_derivative_unresolved"]
+    assert raised and raised[0].raised == raised[0].steps, raised
+    assert any("allocation_derivative_unresolved" in text for text in said), said
+    holder = "controller" if mode == "graph" else "controller.flags"
+    values = np.asarray(narrow.history[holder]["flag_allocation_derivative_unresolved"])
+    assert np.all(values > module.RESOLVED), values
 
 
 # -- the coil sphere, against the exact path ---------------------------------------------------------------------
