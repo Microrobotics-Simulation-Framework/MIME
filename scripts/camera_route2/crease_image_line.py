@@ -153,9 +153,59 @@ def sweep_point(item: tuple) -> dict:
             "rest_largest": max(float(np.max(np.where(rest, error, 0.0))) for error in found.values())}
 
 
+def aggregate_pose(pose: tuple) -> dict:
+    """The image's term on the gate's aggregates (the darkness's equivalent radius and centroid on the crease pixels
+    and the rest, linear in the image's derivative): the rendered image's derivative on its branch less the exact
+    image's, in px a px, with every band pixel, and with the singular and thin classes' pixels given the exact
+    derivative (what the other pixels carry)."""
+    import crease_march_line as M
+
+    turn, roll, offset = pose
+    view = M.View(turn, roll, offset)
+    band = np.zeros(C.HEIGHT * C.WIDTH, dtype=bool)
+    band[view.pick] = True
+    band = band.reshape(C.HEIGHT, C.WIDTH)
+    found = classes(band, axis_distance(view.centre, view.axis), flagged(view.centre, view.axis))
+    crease = M.crease_mask(view.centre, view.axis)
+    exact0 = hull_oracle.shares(hull_oracle.cylinder_outline(view.centre, view.axis, C.RADIUS, C.LENGTH), C.FOCAL,
+                                C.DISTANCE, C.WIDTH, C.HEIGHT)
+    v, u = np.indices(exact0.shape)
+
+    def moved(tangent: np.ndarray) -> np.ndarray:
+        rows = []
+        for mask in (crease, ~crease):
+            covered, change = exact0 * mask, tangent * mask
+            total = covered.sum()
+            radius, cu, cv = np.sqrt(total / np.pi), (covered * u).sum() / total, (covered * v).sum() / total
+            rows.append([change.sum() / (2 * np.pi * radius), ((u - cu) * change).sum() / total,
+                         ((v - cv) * change).sum() / total])
+        return np.asarray(rows)
+
+    row: dict = {"turn": turn, "roll": roll, "offset": list(offset)}
+    for name, index in (("x", 0), ("z", 2)):
+        e = np.zeros(3)
+        e[index] = M.EPSILON * C.PIXEL
+        live = (view.image(e, "live") - view.image(-e, "live")) / (2 * M.EPSILON)
+        exact = exact_derivative(view.centre, view.axis, index)
+        others = np.where(found["singular"] | found["thin"], exact, live)
+        row[name] = {"all": np.linalg.norm(moved(live) - moved(exact), axis=1).tolist(),
+                     "rest_only": np.linalg.norm(moved(others) - moved(exact), axis=1).tolist(),
+                     "exact": moved(exact).tolist()}
+    print(json.dumps(row), flush=True)
+    return row
+
+
 def main() -> None:
     from multiprocessing import Pool
 
+    if "--aggregates" in sys.argv:
+        poses = list(itertools.product(C.TURNS, C.ROLLS, C.OFFSETS))
+        with Pool(C.WORKERS) as pool:
+            rows = pool.map(aggregate_pose, poses, chunksize=1)
+        out = [a for a in sys.argv[1:] if not a.startswith("--")]
+        if out:
+            Path(out[0]).write_text(json.dumps({"masks": ["crease", "rest"], "rows": rows}, indent=1) + "\n")
+        return
     if "--sweep" in sys.argv:
         items = [(pose, pixel, moved, delta) for pose, pixel, moved in SINGULAR for delta in SWEEP]
         with Pool(C.WORKERS) as pool:
