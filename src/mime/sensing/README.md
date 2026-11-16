@@ -83,7 +83,12 @@ stages:
   `scripts/camera_route2/crease_line.py`'s, fixed before the gate's draws: what they bound is the scan's largest error
   at its 360 poses (the scheme re-implemented exactly in numpy, equal to the renderer's to 1e-11 where both ran); the
   factor of 1.25 on it is a margin **declared, not derived**, for the poses between the scan's points, which the drawn
-  views test, and it is never moved after them.
+  views test, and it is never moved after them. The gate's controls, by their measured power: `single-edge-crease`
+  (one straight edge a pixel) fails every pinned view and 26 and 24 of 40 fresh drawn views (float32, float64), every
+  view turned under 10 degrees and almost none turned 15.5 or more, where the caps open and one edge a pixel is nearly
+  right; `no-crease-measure` fails 40 of 40 in each; `crease-lag` (the caps a share of the body's step behind it) fails
+  the motion line on 40 of 40, and the smallest lag caught on every pinned view is 0.05 of a one-pixel step (0.025 was
+  predicted, a miss, recorded).
 - **The kinds' sign functions** (`mime.scene._signs`, `Geometry.sign_function`): the sphere, capsule, cylinder (side and
   span) and slab their exact signed distances; the ellipsoid its radius in units of its semi-axes, less one, with its gradient's length;
   the screw's thread its radius less its modulated cross-section's, with its gradient's length in closed form; the helix the distance from its centreline's
