@@ -405,6 +405,30 @@ JAX_PLATFORMS=cpu uv run python -m pytest tests/test_x.py::test_y --hypothesis-s
 or paste the `@reproduce_failure(...)` line above the test for the exact example. A seed repeats the draws of a run, not
 its timing; if it does not fail locally, run `seed=N` again on CI.
 
+## Lists and tables that many changes add to
+
+Two changes that each add a refusal code, a listed test, a raw-switch site or a switch owner must not touch the same
+line, or a branch taking the release in conflicts and goes through CI again. So these places hold no shared total and no
+shared line:
+
+- **A refusal code.** Add its row to `src/mime/build/refusal_table.txt` (the check names the row to write), in sorted
+  place, and nothing else: there is no count of the codes to edit. If no test names the code, the check says to add it to
+  `docs/ratchets/refusal_codes.txt`, also in sorted place. To remove a code on purpose, delete its row and its construction
+  and log it as `<code>  # <reason>` in `tests/docs/refusal_removed.txt`, in sorted place
+  (`tests/docs/refusal_floor.txt`, the codes of the table when its total stopped being pinned, is never edited: a code on
+  it that is neither in the table nor logged fails).
+- **A listed test or a raw-switch site.** `tests/duration_allowlist.txt` is sorted by node id and
+  `docs/ratchets/raw_switches.txt` by file, function, family and occurrence; put a line in its place, not at the end
+  (`tests/docs/test_sorted_lists.py` names the line to move). `scripts/duration_triage.py` inserts in order itself.
+- **A switch owner.** Declare it; its harness row is `all_rows` in `tests/saved/test_switch_harness.py`, and the harness
+  parametrizes over the declared owners, so an owner with no row fails by name and the harness lists no owner. The owner
+  counts the declarations tests print are derived, never written.
+- **An entry.** Register it with its `register_<kind>` decorator; the registry test compares the decorated classes by kind
+  with the entries a fresh interpreter holds, so no number of entries is edited.
+
+A new list that grows with changes is kept sorted the same way, with a check like `test_sorted_lists.py`'s, and a new
+test that pins a total of something that changes is a conflict waiting: derive it, or check the set it counts.
+
 ## Compliance Scripts
 
 ```bash
