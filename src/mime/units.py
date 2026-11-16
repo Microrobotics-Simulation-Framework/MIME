@@ -913,7 +913,7 @@ type Marker = Dimension | str
 def unit_label(*parts: Marker) -> str:
     """A unit label written from dimension markers, the ones settings are declared with (``unit_label(Length,
     DIMENSIONLESS)`` is ``"m; 1"``, a pose's), or from labels already written; a part that is a label is read here, so
-    that a typo fails where the label is written. A marker is written as :func:`rate_symbol` writes it, so an angular
+    that a typo fails where the label is written. A marker is written by its symbol, so an angular
     velocity is ``rad/s`` and a frequency ``Hz``."""
     if not parts:
         raise _label_error("", "a label has at least one part")
@@ -1242,6 +1242,6 @@ __all__ = [
     "A_m2", "Hz", "K", "N", "mN", "mm2", "N_m", "N_m_s", "Pa_s", "T", "T_per_m", "T_per_s", "cm", "deg", "degC", "dimensionless", "g", "kHz",
     "kg", "kg_m2", "kg_per_m3", "m", "m2", "m3", "m_per_s", "m_per_s2", "mPa_s", "mT", "mT_per_m", "mm", "mm3", "mm_per_s",
     "ms", "rad", "rad_per_s", "s", "standard_gravity", "uT", "um", "um2", "um_per_s", "us",
-    "AngleCount", "ENERGY", "MPa", "Magnitude", "POWER", "cP", "deg_per_s", "kPa", "mL", "mmHg", "parse_label", "rpm", "unit_label",
+    "AngleCount", "ENERGY", "MPa", "Magnitude", "Marker", "POWER", "cP", "deg_per_s", "kPa", "mL", "mmHg", "parse_label", "rpm", "unit_label",
     "units_by_name",
 ]
