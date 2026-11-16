@@ -226,6 +226,6 @@ OPENING = register_port_kind(PortKind(
     "with the flow), or a flux row, its flux given and paired with the pressure the flow returns; the laws are held in "
     "the flow's step"))
 
-__all__ = ["DELIVERED_INERTIA", "ENERGY", "FLOW_IN", "FLUID", "JOINT", "OPENING", "POWER", "RIGID_BODY", "SPINNER", "Definiteness",
+__all__ = ["DELIVERED_INERTIA", "FLOW_IN", "FLUID", "JOINT", "OPENING", "RIGID_BODY", "SPINNER", "Definiteness",
            "DeliveryKind",
            "EnergyClass", "PortKind", "port_kind", "port_kinds", "register_port_kind"]

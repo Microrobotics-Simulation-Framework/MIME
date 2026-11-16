@@ -256,7 +256,7 @@ def parse_value(text: str) -> Quantity | None:
     """A value as ``--override`` and a spec file write it: a number or numbers split by commas, with a unit, or a bare
     number for a dimensionless value; ``None`` for text that is not one. A unit is a name ``mime.units`` exports
     (``20Hz``, ``2mPa_s``, ``1.5mm_per_s``), the symbol a unit prints with (``1.2 mT``, ``2 mPa s``, ``1.5 mm/s``), or
-    a label of SI base units (``m^2 kg s^-1``), which :func:`~mime.units.parse_value_unit` reads with its spaces kept:
+    a label of SI base units (``m^2 kg s^-1``), which is read with its spaces kept:
     ``3 m s`` is 3 metre seconds, never 3 ms, and ``2 m T`` is tesla metres, never 2 mT. The value carries the whole of
     its unit, what a rate counts included: ``10 rad / s`` and ``10 rad s^-1`` are radians per second, which a site that
     takes Hz refuses, and are never read as ten turns."""

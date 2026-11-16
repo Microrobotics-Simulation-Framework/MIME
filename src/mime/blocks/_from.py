@@ -23,7 +23,7 @@ from mime.blocks._definition import RESERVED_SOCKETS, SOCKET_KINDS
 from mime.blocks._fragment import Renaming, entry_id_of
 from mime.blocks._schema import FRAGMENT_SCHEMA
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.things import WORLD
+from mime.things._prims import WORLD
 
 
 @dataclass(frozen=True)

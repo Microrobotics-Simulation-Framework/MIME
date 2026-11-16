@@ -36,7 +36,7 @@ from mime.build import BuildRefused, Declaration, Refusal, RefusalClass
 from mime.blocks._schema import FRAGMENT_SCHEMA, FragmentDoc
 from mime.saved._schema import DOCUMENT_SCHEMA, BlockNamesDoc, ExperimentDocument, ThingDoc, shape_problems
 from mime.saved._versions import newer_form_refusal
-from mime.things import WORLD
+from mime.things._prims import WORLD
 
 FRAGMENT_FAMILY = "fragment"
 #: The document's keys that are the host's, never a fragment's.

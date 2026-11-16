@@ -913,7 +913,7 @@ type Marker = Dimension | str
 def unit_label(*parts: Marker) -> str:
     """A unit label written from dimension markers, the ones settings are declared with (``unit_label(Length,
     DIMENSIONLESS)`` is ``"m; 1"``, a pose's), or from labels already written; a part that is a label is read here, so
-    that a typo fails where the label is written. A marker is written as :func:`rate_symbol` writes it, so an angular
+    that a typo fails where the label is written. A marker is written by its symbol, so an angular
     velocity is ``rad/s`` and a frequency ``Hz``."""
     if not parts:
         raise _label_error("", "a label has at least one part")
@@ -1231,17 +1231,17 @@ install_label_reader(parse_label, unit_label, UnitError)
 __all__ = [
     "ACCELERATION", "ANGULAR_VELOCITY", "AREA", "Angle", "AngularVelocity", "Area", "COMPLIANCE", "Compliance", "HYDRAULIC_RESISTANCE",
     "HydraulicResistance", "PRESSURE", "Pressure", "VOLUME_FLUX", "VolumeFlux", "Pa", "Pa_s_per_m3", "m3_per_Pa",
-    "m3_per_s", "mL_per_s", "SAY_THE_ANGLE", "rate_symbol", "says_its_angle", "CURRENT",
+    "m3_per_s", "mL_per_s", "CURRENT",
     "DENSITY", "DIMENSIONLESS", "DYNAMIC_VISCOSITY", "FIELD_GRADIENT", "FIELD_RATE", "FORCE", "FREQUENCY", "LENGTH",
     "MAGNETIC_FLUX_DENSITY", "MAGNETIC_MOMENT", "MASS", "MOMENT_OF_INERTIA", "ROTATIONAL_DAMPING", "TEMPERATURE",
     "TIME", "TORQUE", "VELOCITY", "VOLUME", "Acceleration", "Current", "Density", "DynamicViscosity", "FieldGradient",
     "FieldRate",
     "Force", "Frequency", "Length", "MagneticFluxDensity", "MagneticMoment", "Mass", "MomentOfInertia",
     "RotationalDamping", "Temperature", "Time", "Torque", "Velocity", "Volume", "Condition", "Dimension", "Quantity",
-    "Unit", "UnitError", "VACUUM_PERMEABILITY", "Values", "ZERO_CELSIUS", "parse_unit", "parse_value_unit", "si", "unit_symbol", "A",
+    "Unit", "UnitError", "VACUUM_PERMEABILITY", "Values", "ZERO_CELSIUS", "parse_unit", "si", "unit_symbol", "A",
     "A_m2", "Hz", "K", "N", "mN", "mm2", "N_m", "N_m_s", "Pa_s", "T", "T_per_m", "T_per_s", "cm", "deg", "degC", "dimensionless", "g", "kHz",
     "kg", "kg_m2", "kg_per_m3", "m", "m2", "m3", "m_per_s", "m_per_s2", "mPa_s", "mT", "mT_per_m", "mm", "mm3", "mm_per_s",
     "ms", "rad", "rad_per_s", "s", "standard_gravity", "uT", "um", "um2", "um_per_s", "us",
-    "ENERGY", "MPa", "Marker", "POWER", "cP", "deg_per_s", "kPa", "mL", "mmHg", "parse_label", "rpm", "unit_label",
-    "unit_name", "units_by_name",
+    "AngleCount", "ENERGY", "MPa", "Magnitude", "Marker", "POWER", "cP", "deg_per_s", "kPa", "mL", "mmHg", "parse_label", "rpm", "unit_label",
+    "units_by_name",
 ]

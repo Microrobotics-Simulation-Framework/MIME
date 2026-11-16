@@ -233,7 +233,7 @@ _FROM_PARTS = "derived from its parts"
 #: A declaration's source naming the inertia the parts would give in its place: its numbers, then its unit.
 _IN_PLACE_OF_PARTS = re.compile(r"(in place of the value its parts give, )\(([^()]*)\)( kg m\^2)$")
 #: The products of inertia 0.3.0's part resolver took as none, as a share of the largest moment
-#: (``mime.dynamics.body.PRODUCTS_TAKEN_AS_NONE``): above it, an earlier form's source said they were dropped.
+#: (``mime.dynamics.body._previous.PRODUCTS_TAKEN_AS_NONE``): above it, an earlier form's source said they were dropped.
 _PRODUCTS_TAKEN_AS_NONE = 1e-12
 _PRODUCTS_DROPPED = ", its products of inertia dropped"
 #: ``body umr's`` as version 3 writes a possessive in a value's source, and ``body 'umr''s`` as version 2 wrote it. Only

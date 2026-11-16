@@ -16,7 +16,7 @@ from mime.build._control import Mode, ReadClass
 from mime.build._ledger import EnergyBoundary, misattributed
 from mime.build._maddening import edge_transform, external_inputs, graph_edges, inputs, node_dict, node_fields_of
 from mime.build._plan import PlanSet, Section
-from mime.things import did_you_mean
+from mime.things._handles import did_you_mean
 from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass, entry_defect
 from mime.build._report import graph_config
 from mime.core import ledger

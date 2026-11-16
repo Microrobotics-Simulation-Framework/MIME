@@ -63,7 +63,7 @@ from mime.scene._derived import (
 from mime.scene._frame import UP_AXES
 from mime.scene._kinds import IDENTITY, Quaternion, Vector, onto
 from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom, UsdValidation, Vt
-from mime.things import WORLD
+from mime.things._prims import WORLD
 from mime.units import Magnitude
 
 #: The writer's resolution: facets round a full turn of each curved direction of a drawn kind.

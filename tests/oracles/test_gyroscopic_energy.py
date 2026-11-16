@@ -33,7 +33,7 @@ import pytest
 from scipy.special import ellipk
 
 from mime.dynamics import RigidInertial
-from mime.dynamics.body import RigidInertialExplicit
+from mime.dynamics.body._previous import RigidInertialExplicit
 from mime.dynamics.body._rigid_inertial import RATE_TIMES_STEP
 from mime.nodes.body import RigidInertialMidpointNode, RigidInertialNode, RigidInertialTensorNode, gyroscopic_jacobian
 

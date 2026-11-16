@@ -388,7 +388,7 @@ def _unit_of(spec: FieldSpec, indexer: tuple[int | slice, ...]) -> str | None:
 def _parse(spec: str, schema: FrameSchema) -> Row:
     """``spec`` as a row of ``schema``'s frames: ``<node>.<field>`` and, in brackets, an integer or a ``low:high`` slice
     for each leading dimension, ``umr.pose[0:3]``, ``rpm.arm.frame_poses[26,0:3]``."""
-    from mime.things import did_you_mean
+    from mime.things._handles import did_you_mean
 
     found = _SPEC.fullmatch(spec.strip())
     if found is None:

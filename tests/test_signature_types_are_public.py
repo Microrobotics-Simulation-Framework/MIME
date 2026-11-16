@@ -8,7 +8,10 @@ class's fields and the signatures of its public methods and properties. A class 
 annotation names must be in the ``__all__`` of some ``mime`` package (the other packages' own gaps wait for their
 surface reduction, which extends ``TOOLING``). A type alias (``type Tier = Literal[...]``, or a name bound to a ``Literal`` or union) is a type a user annotates with, so it
 counts as one: an alias a public signature names must be exported too. The controls plant a public function whose
-return type is private, and one whose return is a private alias of each kind, and must find them."""
+return type is private, and one whose return is a private alias of each kind, and must find them.
+
+The paradigm packages ``mime.units``, ``mime.things``, ``mime.fields``, ``mime.dynamics``, ``mime.interactions`` and
+``mime.drives`` are read the same way; a class a public submodule exports (``mime.dynamics.flow``) is exported."""
 
 from __future__ import annotations
 
@@ -31,11 +34,26 @@ from mime.push._draft import Drafted
 TOOLING = ("mime.push", "mime.credentials", "mime.cli", "mime.scaffold", "mime.blocks",
            "mime.terms", "mime.errors", "mime.validity", "mime.walls", "mime.surrogates", "mime.materials")
 
+#: The small paradigm packages (SURFACE-REDUCTION, PR 4). Their public subpackages (``mime.dynamics.flow``) count as
+#: places a class is exported from, as they are paths a script writes.
+PARADIGM = ("mime.units", "mime.things", "mime.fields", "mime.dynamics", "mime.interactions", "mime.drives")
+GUARDED = TOOLING + PARADIGM
+
+
+def public_submodules(package: str) -> Iterator[types.ModuleType]:
+    """The modules of a package none of whose path parts starts with an underscore."""
+    module = importlib.import_module(package)
+    for each in pkgutil.walk_packages(getattr(module, "__path__", ()), f"{package}."):
+        if not any(part.startswith("_") for part in each.name.split(".")):
+            yield importlib.import_module(each.name)
+
 
 def exported() -> set[int]:
-    """Identity of every object listed in the ``__all__`` of ``mime`` or of one of its public packages."""
+    """Identity of every object listed in the ``__all__`` of ``mime``, of one of its public packages, or of a public
+    module of a paradigm package."""
     modules = [mime] + [importlib.import_module(f"mime.{each.name}") for each in pkgutil.iter_modules(mime.__path__)
                         if not each.name.startswith("_")]
+    modules += [module for package in PARADIGM for module in public_submodules(package)]
     return {id(getattr(module, name)) for module in modules for name in getattr(module, "__all__", ())
             if hasattr(module, name)}
 
@@ -159,6 +177,15 @@ UNDECIDED = {
     "mime.materials._records.LoadedRecord": "saved.SavedRecord.records: plumbing of the saved package, which waits for its own reduction",
 }
 
+#: The paradigm packages' own, kept apart from the tooling list above. Each is judged by one line: would a user write
+#: it in an annotation? These are not exported today and no script, doc, example or plugin names one: they wait for the
+#: package that hands them out.
+UNDECIDED_PARADIGM = {
+    "mime.fields._solved.ExchangeFrame": "plumbing of the flow seam (BuildContext.exchanges, FVM.exchange_frame): decided with the registry and the flow's reduction",
+    "mime.fields._solved.SolvedField": "plumbing of the flow seam (FVM.field_for, Womersley.field): decided with the registry and the flow's reduction",
+    "mime.things._handles._Names": "what ApparatusHandle.commands and BodyHandle.initial hand back, underscore-named by design: the maintainer decides whether a user annotates the namespace of typed paths",
+}
+
 
 def private_types(public: set[int], names: dict[str, object]) -> list[str]:
     problems: list[str] = []
@@ -180,11 +207,12 @@ def public_names() -> dict[str, object]:
 def test_no_public_signature_names_a_type_of_the_tooling_packages_that_no_package_exports():
     names = public_names()
     assert sum(name.startswith(TOOLING) for name in names) > 5, "the walk found nothing to read"
-    named = [each for each in private_types(exported(), names) if any(f"names {package}." in each for package in TOOLING)]
+    named = [each for each in private_types(exported(), names) if any(f"names {package}." in each for package in GUARDED)]
+    waiting = UNDECIDED | UNDECIDED_PARADIGM
     unexpected = [each for each in named if not any(each.endswith(f"names {type_}, which no package exports")
-                                                    for type_ in UNDECIDED)]
+                                                    for type_ in waiting)]
     assert unexpected == []
-    stale = [type_ for type_ in UNDECIDED if not any(f"names {type_}," in each for each in named)]
+    stale = [type_ for type_ in waiting if not any(f"names {type_}," in each for each in named)]
     assert stale == [], f"no public signature names these any more: delete their lines {stale}"
 
 
@@ -219,3 +247,20 @@ def test_the_walk_finds_a_public_function_that_returns_a_private_alias(monkeypat
         found = private_types(exported(), {function: getattr(module, function)})
         assert found and f"mime._planted.{name}" in found[0], (function, found)
     assert not private_types(exported(), {"plain": module.plain}), "the control found a defect where there is none"
+
+
+def test_the_walk_reads_the_paradigm_packages_and_counts_a_public_submodule_as_an_export():
+    """The control for ``PARADIGM``: a function that returns ``PartMass`` (``mime.things``, exported by nothing) is found,
+    and one returning ``IMEXEulerScheme`` (exported by ``mime.dynamics.flow`` alone) is not."""
+    from mime.dynamics.flow import IMEXEulerScheme
+    from mime.things._parts import PartMass
+
+    def planted_private() -> PartMass:
+        raise NotImplementedError
+
+    def planted_exported_by_a_submodule() -> IMEXEulerScheme:
+        raise NotImplementedError
+
+    found = private_types(exported(), {"planted": planted_private})
+    assert found and any(f"names {package}." in found[0] for package in GUARDED), found
+    assert not private_types(exported(), {"planted": planted_exported_by_a_submodule})
