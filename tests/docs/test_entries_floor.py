@@ -45,7 +45,10 @@ def floor_entries(text: str) -> list[str]:
 
 
 def held_by(entries: Collection[tuple[str, str, str]]) -> set[str]:
-    """MIME's own entries as the floor writes them."""
+    """MIME's own entries as the floor writes them. The namespaces are loaded first: a name is MIME's unless its first
+    word is a registered namespace, so a toy or a lab entry is told apart only once those namespaces are registered
+    (a test run alone, or in a stress run's order, has not loaded them)."""
+    load_namespaces()
     return {f"{kind} {name} {version}" for kind, name, version in entries if namespace_of(name) == MIME_NAMESPACE}
 
 
