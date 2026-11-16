@@ -29,6 +29,7 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 
+from mime._manifest_file import BLOCK_TABLES, MANIFEST_FAMILY, MANIFEST_FILE, MANIFEST_FORMAT
 from mime._terminal import plain
 from mime.assets import AssetRef
 from mime.build import BuildRefused, Refusal, RefusalClass
@@ -47,8 +48,6 @@ from mime.terms import (
     permission_problems,
 )
 
-MANIFEST_FILE = "mime.toml"
-MANIFEST_FORMAT = "mime.toml/1"
 FRAGMENT_FILE = "block.mime.yaml"
 RECORDS = "records"
 DESCRIPTIONS = "descriptions"
@@ -56,8 +55,6 @@ ASSETS = "assets"
 CASES = "cases"
 #: The distribution MIME is, which every block requires.
 MIME_DISTRIBUTION = "mime-engine"
-#: A block's tables, besides ``format`` and ``[record]``.
-TABLES = ("block", "requires", "sockets", "assets", "licences", "permissions", "validity", "cases")
 #: The kinds of thing a socket takes: MIME's thing kinds.
 SOCKET_KINDS = ("structure", "medium", "body", "apparatus")
 #: A socket that would place a block on a frame of the user's: refused until a mount on another apparatus's frame is
@@ -394,10 +391,10 @@ def read_definition(folder: str | os.PathLike[str], *, record: bool = True) -> t
             f"use a block folder, or write {MANIFEST_FILE} beside {FRAGMENT_FILE} (`mime check <folder>` checks "
             f"it)")])
     _, raw = read_toml(path)
-    if (newer := newer_form_refusal(raw.get("format"), "toml", (MANIFEST_FORMAT,), path.name)) is not None:
+    if (newer := newer_form_refusal(raw.get("format"), MANIFEST_FAMILY, (MANIFEST_FORMAT,), path.name)) is not None:
         raise BuildRefused([newer])
     top = Reader(path, table="")
-    top.mapping(raw, "", ("format", *TABLES, "record"))
+    top.mapping(raw, "", ("format", *BLOCK_TABLES, "record"))
     if raw.get("format") != MANIFEST_FORMAT:
         top.problem("format", f"is {plain(repr(raw.get('format')))}, and this MIME reads {MANIFEST_FORMAT}",
                     f'format = "{MANIFEST_FORMAT}"')
@@ -469,6 +466,5 @@ def definition_of(folder: str | os.PathLike[str]) -> Definition:
 
 
 __all__ = ["ASSETS", "CASES", "CONTENT_RECIPE", "DESCRIPTIONS", "FRAGMENT_FILE", "FRAME_KIND", "FRAME_ROUTE",
-           "MANIFEST_FILE", "MANIFEST_FORMAT", "MIME_DISTRIBUTION", "RECORDS", "RESERVED_SOCKETS", "SOCKET_KINDS",
-           "TABLES", "Definition", "Tier", "Validity", "content_files", "content_hash", "definition_of",
+           "MIME_DISTRIBUTION", "RECORDS", "RESERVED_SOCKETS", "SOCKET_KINDS", "Definition", "Tier", "Validity", "content_files", "content_hash", "definition_of",
            "id_problem", "is_block_folder", "read_definition", "version_problem"]

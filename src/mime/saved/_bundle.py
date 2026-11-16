@@ -45,6 +45,7 @@ from typing import Literal, cast
 
 from typing_extensions import ReadOnly, TypedDict
 
+from mime._manifest_file import MANIFEST_FILE, OLD_FILE
 from mime._terminal import plain
 from mime.assets import folder_assets, known_bytes, size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
@@ -56,16 +57,20 @@ from mime.saved._container import (
     BundleFile,
     ContainerKind,
     ReferencedFile,
+    collision_refusals,
     collisions,
     container_hash,
     destination_problem,
     files_of,
+    inside_problem,
     member_kind_problems,
     member_problem,
     members_listed,
     notice_of,
+    over_limit,
     sha256_of,
     staging_of,
+    stray_refusals,
     target,
     unreadable,
     verify_member,
@@ -105,7 +110,7 @@ BUNDLE = ContainerKind("bundle", BUNDLE_SUFFIX, "bundle", (FORMAT, FORMAT_3, FOR
 #: The record's manifest beside the saved form (``mime push --init`` writes ``mime.toml``), and the file it replaced,
 #: which a person may keep until they delete it: neither carried nor refused, the files of a folder that are not the
 #: saved form's and are not strays (design #199, section 8 item 7; sharing design v4, section 3.1).
-SHARING_FILES = ("mime.toml", "sharing.yaml")
+SHARING_FILES = (MANIFEST_FILE, OLD_FILE)
 _CHUNK = 1 << 20
 
 #: An absolute path of a machine, which no bundle may carry: the rule of the documentation generator's pages
@@ -320,18 +325,10 @@ def scanned(member: str, path: Path, tokens: Sequence[Token], refusals: list[Ref
 def _stray_files(files: Sequence[tuple[str, Path]], named: set[str]) -> list[Refusal]:
     """A refusal for each file the saved form does not name, or whose name some platform cannot hold, and for each pair
     of names one platform reads as one."""
-    found = [_refuse("bundle.stray-file", RefusalClass.USER,
-                     f"{plain(member)} is not a file the saved experiment names: it {problem or 'is not listed in the lock'}",
-                     "a bundle carries what the saved folder holds and nothing else (an .env, a .git directory and an "
-                     "editor's file stay behind): remove the file, or keep the folder somewhere it is not, then `mime "
-                     "pack <folder>` again")
-             for member, _ in files if (problem := name_problem(member)) is not None or member not in named]
-    found += [_refuse("bundle.name-collision", RefusalClass.USER,
-                      f"{plain(one)} and {plain(other)} are one name on a case-insensitive filesystem",
-                      "rename one, so that the bundle unpacks to the same folder on macOS and Windows as on Linux; "
-                      "then `mime pack <folder>`")
-              for one, other in collisions([member for member, _ in files])]
-    return found
+    found = stray_refusals(
+        files, lambda member: name_problem(member) or (None if member in named else "is not listed in the lock"),
+        "the saved experiment names", "a bundle carries what the saved folder holds")
+    return found + collision_refusals([member for member, _ in files], unpacks="the bundle")
 
 
 def _reference_problem(file: str, problem: str) -> Refusal:
@@ -520,10 +517,8 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
     form = read_folder(root)
     name = _NAME_SAFE.sub("_", form.document["experiment"]) or "experiment"
     target = Path(out) if out is not None else root.with_name(root.name + BUNDLE_SUFFIX)
-    if root.resolve() in (target.resolve(), *target.resolve().parents):
-        raise BuildRefused([_refuse(
-            "bundle.output-inside", RefusalClass.USER, "the bundle would be written inside the folder it packs",
-            "write it beside the folder (--out)")])
+    if (inside := inside_problem(root, target, "the bundle")) is not None:
+        raise inside
     references = {ref.sha256: ref for ref in folder_assets(root)}
     stored = held_tokens()
     files = [(member, path) for member, path in _files_of(root) if member not in SHARING_FILES]
@@ -541,11 +536,9 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
     for member, path in files:
         if member in referenced:
             continue
-        size = path.stat().st_size
-        if size > INLINE_LIMIT_BYTES:
+        if (message := over_limit(member, path.stat().st_size, INLINE_LIMIT_BYTES, "a bundle")) is not None:
             refusals.append(_refuse(
-                "bundle.file-too-large", RefusalClass.USER,
-                f"{member} has {size_text(size)}, over the {size_text(INLINE_LIMIT_BYTES)} a bundle carries",
+                "bundle.file-too-large", RefusalClass.USER, message,
                 "give its terms an origin, asset(path, terms=Terms(..., origin=(\"https://...\",))), and save the "
                 "experiment again, built.save(folder): it then travels as a reference that `mime assets fetch "
                 "<folder>` fetches on request"))

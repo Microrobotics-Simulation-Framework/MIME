@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Any, cast
 
 from mime._terminal import plain
-from mime.blocks._definition import CASES, MANIFEST_FILE, Definition, read_definition
+from mime._manifest_file import MANIFEST_FILE
+from mime.blocks._definition import CASES, Definition, read_definition
 from mime.blocks._fragment import read_fragment
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._check import DEFECT, NEEDED, RULES, Checked, Item, asked_items, profile_named, refused_item

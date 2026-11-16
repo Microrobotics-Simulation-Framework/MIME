@@ -3,8 +3,8 @@
 ``MIME_TRACEBACK=full`` shows every frame and every chained error instead, as Python prints them; the CLI's
 ``--traceback`` sets it for one command. The full chain is written to a file when a short error is shown, under
 ``$MIME_TRACEBACK_DIR`` or ``tracebacks`` in MIME's cache directory, readable by its user alone, named
-``mime-<stamp>-<pid>-<code>.txt``; only the newest :data:`KEPT` files of that name are kept, each write deleting the
-older ones, and no other file there is touched."""
+``mime-<stamp>-<pid>-<code>.txt``; only the newest :data:`TRACEBACK_FILES_RETAINED` files of that name are kept, each write
+deleting the older ones, and no other file there is touched."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ FULL = "full"
 #: The variable that names the directory the full chains are written to, in place of MIME's cache directory.
 DIRECTORY_VARIABLE = "MIME_TRACEBACK_DIR"
 #: How many full chains are kept: writing one deletes all but the newest of these.
-KEPT = 20
+TRACEBACK_FILES_RETAINED = 20
 #: The start of a full chain's file name, and the whole name: only files of this name are ever deleted.
 PREFIX = "mime-"
 NAME = re.compile(r"mime-\d{8}T\d{6}\.\d{9}-\d+-[A-Za-z0-9_.-]+\.txt")
@@ -103,8 +103,8 @@ def report_text(error: MimeError) -> str:
 
 
 def write_traceback(error: MimeError) -> Path | None:
-    """Write the error's full chain to a file of its own, keeping the newest :data:`KEPT`, and return its path; or
-    ``None`` when the directory cannot be written, which a display does not stop for."""
+    """Write the error's full chain to a file of its own, keeping the newest :data:`TRACEBACK_FILES_RETAINED`, and return
+    its path; or ``None`` when the directory cannot be written, which a display does not stop for."""
     if error.traceback_file is not None:
         return Path(error.traceback_file)
     directory = traceback_directory()
@@ -122,7 +122,7 @@ def write_traceback(error: MimeError) -> Path | None:
             written.write(report_text(error))
         held = sorted(other for other in directory.glob(f"{PREFIX}*.txt")
                       if other != path and NAME.fullmatch(other.name))
-        for old in held[:max(0, len(held) - (KEPT - 1))]:
+        for old in held[:max(0, len(held) - (TRACEBACK_FILES_RETAINED - 1))]:
             old.unlink(missing_ok=True)
     except OSError:
         return None
@@ -242,5 +242,6 @@ def _install_in_ipython() -> None:
     shell.set_custom_exc((MimeError,), handler)
 
 
-__all__ = ["DIRECTORY_VARIABLE", "FULL", "KEPT", "NAME", "PREFIX", "TRACEBACK_VARIABLE", "footer_lines", "full_mode",
-           "install", "report_text", "short_text", "traceback_directory", "write_traceback"]
+__all__ = ["DIRECTORY_VARIABLE", "FULL", "NAME", "PREFIX", "TRACEBACK_FILES_RETAINED", "TRACEBACK_VARIABLE",
+           "footer_lines", "full_mode", "install", "report_text", "short_text", "traceback_directory",
+           "write_traceback"]

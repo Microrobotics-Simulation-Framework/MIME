@@ -188,7 +188,8 @@ def study_card_text(folder: str | os.PathLike[str], publication: PublicationReco
     """The card of a study folder, or of a publishing folder (its record's ``[record]``, then a section per study), as
     Markdown, as the description of the record ``publication`` (``None``: of no record yet). Deterministic within one
     environment; runs nothing."""
-    from mime.push._manifest import MANIFEST_FILE, read_manifest
+    from mime._manifest_file import MANIFEST_FILE
+    from mime.push._manifest import read_manifest
     from mime.saved._studies import is_publishing_folder, publishing_entries
 
     root = Path(os.path.abspath(folder))

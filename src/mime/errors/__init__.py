@@ -15,6 +15,7 @@ classes are caught as before: ``BuildRefused`` and its subclasses, each error th
 is still of its own class (``except OSError``, the script's own ``except Done``), the original kept as ``original``."""
 
 from mime.build._refusals import BuildRefused, MimeError, Refusal, RefusalClass, RunFailed
-from mime.errors._display import KEPT, write_traceback
+from mime.errors._display import TRACEBACK_FILES_RETAINED, write_traceback
 
-__all__ = ["KEPT", "BuildRefused", "MimeError", "Refusal", "RefusalClass", "RunFailed", "write_traceback"]
+__all__ = ["TRACEBACK_FILES_RETAINED", "BuildRefused", "MimeError", "Refusal", "RefusalClass", "RunFailed",
+           "write_traceback"]
