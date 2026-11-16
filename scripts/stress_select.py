@@ -141,19 +141,35 @@ def table_seconds(path: Path = WEIGHTS) -> tuple[dict[str, int], int]:
     return seconds, ordered[math.ceil(0.9 * len(ordered)) - 1]
 
 
-def defined_tests(file: str) -> set[str]:
-    """The names of the ``test*`` functions and methods ``file`` defines, read from its source (none if it cannot be read)."""
+def test_ids(source: str) -> set[str]:
+    """The ids, as pytest forms them without the file and without parameters, of the ``test*`` functions and methods of
+    ``source``: ``test_x`` and ``TestC::test_x``, a class's name leading its methods'. A name that is not collected is
+    included too: a name too many only pins a test."""
+    ids: set[str] = set()
+
+    def walk(body: list[ast.stmt], prefix: str) -> None:
+        for node in body:
+            if isinstance(node, ast.ClassDef):
+                walk(node.body, f"{prefix}{node.name}::")
+            elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name.startswith("test"):
+                ids.add(prefix + node.name)
+
+    walk(ast.parse(source).body, "")
+    return ids
+
+
+def defined_tests(file: str, root: Path = ROOT) -> set[str]:
+    """The ids (``test_ids``) of the tests ``file`` defines, read from its source (none if it cannot be read)."""
     try:
-        tree = ast.parse((ROOT / file).read_text(encoding="utf-8"))
+        return test_ids((root / file).read_text(encoding="utf-8"))
     except (OSError, SyntaxError, ValueError):
         return set()
-    return {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-            and node.name.startswith("test")}
 
 
 def pinned_tests(tests: dict[str, int], defined: set[str]) -> set[str]:
     """The listed tests of a split file that ``--deselect`` could not leave out alone: those whose name is a prefix of
-    another test's, listed or defined in the file (a parameter's id ends in ``]``, so it never is one)."""
+    another test's id, listed or defined in the file, by the whole id as ``--deselect`` matches it (``TestC::test_a`` is a
+    prefix of ``TestC::test_ab``, and not of ``TestD::test_a``; a parameter's id ends in ``]``, so it never is one)."""
     return {name for name in tests if any(other != name and other.startswith(name) for other in {*tests, *defined})}
 
 

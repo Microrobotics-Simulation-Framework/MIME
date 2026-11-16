@@ -631,3 +631,71 @@ def test_the_caches_of_a_split_file_are_the_shards_of_the_listed_tests_a_part_ru
     assert stress.cache_shards([f"{file}::{names[0]}", f"--deselect={file}::{names[1]}"], 6) == [shard(names[0])]
     only = stress.cache_shards([file, *(f"--deselect={file}::{n}" for n in names[1:])], 6)
     assert only == [shard(names[0])]
+
+
+# By real pytest ---------------------------------------------------------------------------------------------------------
+
+REAL = "tests/a/test_real.py"
+LETTERS = "abcdefghijkl"  # test_fa .. test_fl: no one leads another
+REAL_SOURCE = '''import pytest
+
+
+class TestC:
+    def test_a(self): ...
+    def test_ab(self): ...
+
+
+class TestD:
+    def test_a(self): ...
+
+
+@pytest.mark.parametrize("v", ["x", "x1"])
+def test_p(v): ...
+
+
+''' + "".join(f"def test_f{c}(): ...\n" for c in LETTERS)
+
+
+def collected_by_pytest(root: Path, parts) -> dict[str, int]:
+    """How many parts' arguments (read by ``pytest --collect-only`` in ``root``) collect each test."""
+    import subprocess
+
+    def collect(arguments) -> list[str]:
+        done = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", "--rootdir",
+                               str(root), "-c", "/dev/null", *arguments], cwd=root, capture_output=True, text=True, check=False)
+        assert done.returncode in (0, 5), done.stdout + done.stderr
+        return [line for line in done.stdout.splitlines() if "::" in line and " " not in line]
+
+    counts = dict.fromkeys(collect([REAL]), 0)
+    for part in parts:
+        for nodeid in collect(list(part)):
+            counts[nodeid] += 1
+    return counts
+
+
+@pytest.mark.parametrize("carrier_first", [True, False])
+def test_by_real_pytest_a_class_method_whose_name_leads_another_methods_is_not_taken_by_a_deselect(tmp_path, carrier_first):
+    """``--deselect`` matches by the whole id, ``file::TestC::test_a``, so it also takes ``file::TestC::test_ab``; the table
+    lists the first and not the second. The review's plant: a bare function name list missed it, and ``test_ab`` was run by no
+    part. A parametrized pair beside it (``test_p[x]``, ``test_p[x1]``: the id ends in ``]``, so neither leads the other)
+    is dealt apart."""
+    (tmp_path / REAL).parent.mkdir(parents=True)
+    (tmp_path / REAL).write_text(REAL_SOURCE, encoding="utf-8")
+    listed = {**{f"test_f{c}": 100 for c in LETTERS}, "TestC::test_a": 100 if carrier_first else 300, "TestD::test_a": 100,
+              "test_p[x]": 100, "test_p[x1]": 100}
+    assert stress.defined_tests(REAL, tmp_path) >= {"TestC::test_a", "TestC::test_ab", "TestD::test_a", "test_p"}
+    assert stress.pinned_tests(listed, stress.defined_tests(REAL, tmp_path)) == {"TestC::test_a"}
+    request = stress.select(f"stress: {REAL} only", [], lambda path: True, lambda: 1, ({REAL: sum(listed.values())}, 70),
+                            {REAL: listed}, {REAL: stress.defined_tests(REAL, tmp_path)})
+    assert len(request.parts) > 1
+    counts = collected_by_pytest(tmp_path, request.parts)
+    assert len(counts) == 12 + 2 + 1 + 2 and {t: c for t, c in counts.items() if c != 1} == {}
+    assert f"{REAL}::TestC::test_ab" in counts
+
+
+def test_control_a_name_list_without_the_classes_would_have_left_a_method_in_no_part():
+    """The old reading: bare function names. ``test_a`` is then no prefix of ``test_ab`` as ``TestC::test_a`` is, so the
+    guard passes the listed ``TestC::test_a`` for a deselect."""
+    listed = {"TestC::test_a": 100, "test_f0": 100}
+    assert stress.pinned_tests(listed, {"test_a", "test_ab", "test_f0"}) == set()
+    assert stress.pinned_tests(listed, {"TestC::test_a", "TestC::test_ab", "test_f0"}) == {"TestC::test_a"}
