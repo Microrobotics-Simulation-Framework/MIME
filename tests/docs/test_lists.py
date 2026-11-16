@@ -10,6 +10,7 @@ are the ledger's W2 and W3 (``test_walk.py``) and the start list's N1 arms (``te
 import pytest
 from checkout import ROOT, copy_checkout, docs_check, failures
 
+from mime.build import REFUSAL_TABLE
 from mime.docs import floor_problems, list_problems, read_list
 from mime.docs._check import LISTS, list_path, read_lists, refusal_check
 
@@ -31,19 +32,20 @@ def test_the_refusal_list_holds_every_code_no_test_names_and_prints_its_length()
     held = read_lists(ROOT)["refusal_codes"]
     report = refusal_check(ROOT)
     assert report.problems == []
-    assert f"refusal table: 687 codes; {len(held)} that no test names" in report.summary
+    (counted,) = [line for line in report.summary if line.startswith("refusal table: ")]
+    assert counted == f"refusal table: {len(REFUSAL_TABLE)} codes; {len(held)} that no test names"
     assert len(held) > 0 and all(line.reason == "no test names it" for line in held.lines)
 
 
-def test_the_evidence_floor_count_is_pinned_and_its_removals_are_none():
-    """The floor on the evidence counts' N is pinned here like the refusal table's count: a change that lowers it must
-    edit this number, and against ``--base`` the floor only grows (``test_evidence_counts.py``)."""
+def test_the_evidence_floor_and_its_removals_are_well_formed_and_share_no_item():
+    """The floor on the evidence counts' N is held by ``mime docs check --base`` (against the base revision the floor
+    only grows, a removal logged with its reason in ``evidence_floor_removed.txt``), so no count of it is pinned here
+    for two changes to edit; this holds the two lists' form and that a logged removal is no longer on the floor."""
     lists = read_lists(ROOT)
-    floor = lists["evidence_floor"]
-    assert floor.problems == () and lists["evidence_floor_removed"].problems == ()
-    claims = sum(line.item.startswith("claim ") for line in floor.lines)
-    assert (claims, len(floor) - claims) == (1, 38)
-    assert len(lists["evidence_floor_removed"]) == 0
+    floor, removed = lists["evidence_floor"], lists["evidence_floor_removed"]
+    assert floor.problems == () and removed.problems == ()
+    assert floor.items() and all(item.startswith(("claim ", "statement ")) for item in floor.items())
+    assert removed.items() & floor.items() == set()
 
 
 def test_w4_a_listed_code_a_test_now_names_fails_naming_the_line_to_delete(tmp_path):
@@ -144,8 +146,24 @@ def test_every_symbol_units_line_and_every_node_reference_line_names_a_route_to_
              if line.item.startswith("node ")]
     assert nodes and [line.item for line in nodes if "route:" not in line.reason] == []
     indices = read_list(list_path(ROOT, "symbol_indices"), LISTS["symbol_indices"])
-    added = {"GravityNode R", "GravityNode q", "MagneticTorqueNode R", "SwimSpeedNode h", "UniformRotatingNode h",
-             "IntegratingRotatingNode h", "PhaseLagNode h", "RampNode h", "ImplicitFlowNode h", "ResolvedFlowNode h",
-             "BodyForceNode h", "ExplicitFlowNode h", "ExplicitFlowNode k", "PrescribedFlowNode e",
-             "PrescribedFlowNode i", "PrescribedFlowNode r", "PrescribedFlowNode t", "ExposureNode h"}
+    added = {
+        "BodyForceNode h",
+        "ExplicitFlowNode h",
+        "ExplicitFlowNode k",
+        "ExposureNode h",
+        "GravityNode R",
+        "GravityNode q",
+        "ImplicitFlowNode h",
+        "IntegratingRotatingNode h",
+        "MagneticTorqueNode R",
+        "PhaseLagNode h",
+        "PrescribedFlowNode e",
+        "PrescribedFlowNode i",
+        "PrescribedFlowNode r",
+        "PrescribedFlowNode t",
+        "RampNode h",
+        "ResolvedFlowNode h",
+        "SwimSpeedNode h",
+        "UniformRotatingNode h",
+    }
     assert {line.item for line in indices.lines if "route:" in line.reason} == added

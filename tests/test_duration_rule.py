@@ -505,6 +505,19 @@ def test_the_allowlist_edit_removes_and_appends_and_leaves_the_rest_alone(triage
     assert set(gate.read_allowlist(path)) == {"a.py::keep", "a.py::new"}        # the gate reads what the triage wrote
 
 
+def test_the_allowlist_edit_puts_an_addition_in_node_id_order_among_the_lines_and_not_at_the_end(triage, gate, tmp_path):
+    observed = {"a.py::middle": _obs(triage, [31, 5, 5]), "z.py::after": _obs(triage, [31, 5, 5])}
+    text = "# header\n#\na.py::first # kept: x\nb.py::last # kept: y\n"
+    held = {"a.py::first": "kept: x", "b.py::last": "kept: y"}
+    edited = triage.apply_allowlist(text, triage.triage(observed, held, {}))
+    ids = [ln.partition(" # ")[0] for ln in edited.splitlines() if not ln.startswith("#")]
+    assert ids == ["a.py::first", "a.py::middle", "b.py::last", "z.py::after"]
+    assert edited.splitlines()[:2] == ["# header", "#"]
+    path = tmp_path / "allow.txt"
+    path.write_text(edited)
+    assert list(gate.read_allowlist(path)) == ids
+
+
 def test_the_ceilings_file_the_triage_writes_is_the_one_the_gate_reads(triage, gate, tmp_path):
     observed = {"t::a": _obs(triage, [100, 101, 102])}
     proposal = triage.triage(observed, {"t::a": "kept: x"}, {})

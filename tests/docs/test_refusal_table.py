@@ -1,19 +1,23 @@
 """The refusal table: one row per code MIME constructs, with the classes it is refused in, generated from the scan of
-the source and checked against it; the constructor's check that a MIME code is in it; and the golden numbers of the
-scan, measured on the tree this table landed on.
+the source and checked against it; the constructor's check that a MIME code is in it; and the entries the source
+registers against those a fresh interpreter holds.
 
 The controls: a planted lab ``Problem`` code under a registered namespace is refused, not raised, and so is one
 outside it (R1); a code planted in a ``(code, message, action)`` tuple, one passed by a variable, one built where it is
 used (an f-string), and a renamed code that a mapping of literal codes still holds, are each found by the scan and fail
 the table, as does a code on two rows of the table (R2); an uncatalogued MIME code, and a catalogued one in the wrong
 class, raise where they are constructed, and a namespace named like the first word of a MIME code is refused, so that
-it cannot take those codes out of the check (R3). The codes no test names are read in one pass over the tests' text,
+it cannot take those codes out of the check (R3). No total is pinned: a scan that lost a kind of construction, or a
+file, fails the plants of R2 (a code in a tuple, passed by a variable, built where it is used, in a plain construction
+call, and in a file of its own), and a table row is held to the source by the set difference both ways, so a number
+that every change adding a code had to edit is not needed. The codes no test names are read in one pass over the tests' text,
 which a property holds to the search it replaced, over drawn texts and codes; its control is a reading that drops the
 rule about a dot. A property over random texts reaches a single branch of the reading too rarely to be a control (a
 reading without one rule failed it in 4, 1, 0 and 12 of 12 fresh runs), so a table of cases, one or more for each
 branch, holds the reading to the search on every run, and each fault below fails it on every run."""
 
-import json
+import ast
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import override
@@ -26,16 +30,13 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from mime.build import REFUSAL_TABLE, BuildRefused, Refusal, RefusalClass, UncataloguedRefusal
-from mime.docs import census
 from mime.docs._check import _NAMED, named_strings, refusal_check, unnamed_codes
+from mime.docs._export import load_namespaces
 from mime.materials._records import _MEMBER_CODES
 from mime.registry import Plan, PlanContext, Problem, register_interaction, registered
 from mime.testing import installed_entries
 from mime.testing.toys import ToySpring, coupled_toy
 from mime.vocabulary import MIME_NAMESPACE, _vocabulary, namespace_of, register_namespace
-
-GOLDEN = json.loads((Path(__file__).parent / "golden_numbers.json").read_text(encoding="utf-8"))
-
 
 #: Code characters, the characters either side of a name, and others: a text drawn from these meets every case of the
 #: search's boundaries (a dot before a letter, a dot before a hyphen, a hyphen, a non-ASCII letter, a line's end).
@@ -135,17 +136,68 @@ def test_the_refusal_table_is_what_the_source_constructs():
     assert report.problems == [], "\n".join(report.problems)
 
 
-def test_the_scan_reproduces_its_golden_numbers():
-    assert census(ROOT / "src/mime").__dict__ == GOLDEN["refusal_scan"]
-    assert len(REFUSAL_TABLE) == GOLDEN["refusal_table"]
+def registered_by_decorator(package: Path) -> Counter[str]:
+    """The entries the source under ``package`` registers, by kind: each class a ``register_<kind>`` decorator is on
+    and each ``register_<kind>(...)`` call, outside a ``testing`` folder (the toys, whose namespace is not MIME's)."""
+    kinds = {"interaction", "observation", "dynamics", "field_provider", "controller", "drive", "geometry",
+             "wall_kind", "response"}
+    found: Counter[str] = Counter()
+    for source in sorted(package.rglob("*.py")):
+        if "testing" in source.relative_to(package).parts:
+            continue
+        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+            named = [d for d in node.decorator_list if isinstance(d, ast.Name)] if isinstance(node, ast.ClassDef) \
+                else [node.func] if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) else []
+            found.update(held.id.removeprefix("register_").replace("_", " ") for held in named
+                         if held.id.startswith("register_") and held.id.removeprefix("register_") in kinds)
+    return found
 
 
-def test_the_registry_reproduces_its_golden_numbers():
-    found: dict[str, int] = {}
-    for _, name, _ in installed_entries():
-        namespace = name.split(".", 1)[0] if name.split(".", 1)[0] in ("toy", "labx") else "mime"
-        found[namespace] = found.get(namespace, 0) + 1
-    assert found == GOLDEN["entries"]
+def mime_entries_by_kind(entries: list[tuple[str, str, str]]) -> Counter[str]:
+    """``(kind, name, version)`` of every installed entry, counted by kind for MIME's own (a lab's and the toys' are
+    in other namespaces, whose entries their packages' tests hold: ``tests/test_lab_fixture.py``)."""
+    return Counter(kind for kind, name, _ in entries if namespace_of(name) == MIME_NAMESPACE)
+
+
+def kinds_that_differ(registered: Counter[str], held: Counter[str]) -> dict[str, tuple[int, int]]:
+    """``{kind: (registered by the source, held by the registry)}`` for each kind the two do not count alike."""
+    return {kind: (registered[kind], held[kind]) for kind in sorted({*registered, *held})
+            if registered[kind] != held[kind]}
+
+
+def test_the_registry_holds_the_entries_the_source_registers_and_no_others():
+    load_namespaces()
+    assert kinds_that_differ(registered_by_decorator(ROOT / "src/mime"), mime_entries_by_kind(installed_entries())) == {}
+
+
+def test_the_registry_check_counts_the_entries_by_decorator_and_by_call_and_not_the_toys(tmp_path):
+    (tmp_path / "x.py").write_text("@register_interaction\nclass A: ...\n\n@register_wall_kind\nclass B: ...\n\n"
+                                   "@other\nclass C: ...\n\nregister_field_provider(D)\nregister_shape('s', S)\n",
+                                   encoding="utf-8")
+    (tmp_path / "testing").mkdir()
+    (tmp_path / "testing" / "y.py").write_text("@register_interaction\nclass T: ...\n", encoding="utf-8")
+    assert registered_by_decorator(tmp_path) == Counter({"interaction": 1, "wall kind": 1, "field provider": 1})
+
+
+def test_control_a_class_registered_in_source_and_not_held_by_the_registry_is_a_difference(tmp_path):
+    (tmp_path / "planted.py").write_text("@register_drive\nclass Planted: ...\n", encoding="utf-8")
+    load_namespaces()
+    held = mime_entries_by_kind(installed_entries())
+    registered = registered_by_decorator(ROOT / "src/mime") + registered_by_decorator(tmp_path)
+    assert kinds_that_differ(registered, held) == {"drive": (held["drive"] + 1, held["drive"])}
+
+
+def test_control_an_entry_the_registry_holds_that_no_decorator_registers_is_a_difference():
+    load_namespaces()
+    held = mime_entries_by_kind(installed_entries()) + Counter({"controller": 1})
+    differ = kinds_that_differ(registered_by_decorator(ROOT / "src/mime"), held)
+    assert differ == {"controller": (held["controller"] - 1, held["controller"])}
+
+
+def test_control_an_entry_in_a_namespace_that_is_not_mimes_is_not_counted():
+    load_namespaces()
+    assert mime_entries_by_kind([("interaction", "toy.spring", "0.1.0"), ("interaction", "labx.too_far", "0.1.0"),
+                                 ("interaction", "drag", "0.4.0")]) == Counter({"interaction": 1})
 
 
 # -- R1: a lab's Problem codes are refused, never raised -----------------------------------------------------------
@@ -200,6 +252,27 @@ def test_r2_a_code_planted_in_a_tuple_is_found_and_fails_the_table(tmp_path):
     assert [p for p in problems if p.startswith("frame.planted-code:")] == [
         f"frame.planted-code: constructed at scene/_frame.py:{_line(root, 'frame.planted-code')} and not in "
         f"{root / 'src/mime/build/refusal_table.txt'}; add the row 'frame.planted-code  user'"]
+
+
+def test_r2_a_code_in_a_plain_construction_call_is_found_with_its_class_and_fails_the_table(tmp_path):
+    root = copy_checkout(tmp_path)
+    edit(root / "src/mime/scene/_frame.py", "def meters_per_unit(",
+         'def planted_refusal() -> Refusal:\n    return Refusal("frame.planted-call", RefusalClass.ENVIRONMENT, "a planted '
+         'message", "a planted action")\n\n\ndef meters_per_unit(')
+    found = [p for p in refusal_check(root).problems if p.startswith("frame.planted-call:")]
+    assert found == [f"frame.planted-call: constructed at scene/_frame.py:{_line(root, 'frame.planted-call')} and not "
+                     f"in {root / 'src/mime/build/refusal_table.txt'}; add the row 'frame.planted-call  environment'"]
+
+
+def test_r2_a_code_in_a_file_of_its_own_is_found_and_fails_the_table(tmp_path):
+    """The scan reads every file of the package: a new one, holding only a construction, is read like the others."""
+    root = copy_checkout(tmp_path)
+    (root / "src/mime/scene/_planted_file.py").write_text(
+        'def planted() -> object:\n    return Refusal("scene.planted-file", RefusalClass.USER, "a planted message", '
+        '"a planted action")\n', encoding="utf-8")
+    found = [p for p in refusal_check(root).problems if p.startswith("scene.planted-file:")]
+    assert found == [f"scene.planted-file: constructed at scene/_planted_file.py:2 and not in "
+                     f"{root / 'src/mime/build/refusal_table.txt'}; add the row 'scene.planted-file  user'"]
 
 
 def test_r2_a_code_passed_by_a_variable_is_found_by_the_cross_check(tmp_path):
