@@ -81,12 +81,12 @@ _CHUNK = 1 << 20
 _TERMS_LICENCE_ACTION = ("write an SPDX licence expression in its canonical spelling (licence=\"CC-BY-4.0\"), or "
                          "declare a licence of your own with its title and link: CustomLicence(\"LicenseRef-<name>\", "
                          "title=..., url=\"https://...\")")
-_TERMS_FILE_ACTION = ("declare a third-party file's terms where the file is declared, asset(path, terms=Terms(...)), "
+_TERMS_FILE_ACTION = ("declare a third-party file's terms where the file is declared, asset(Path(...), terms=Terms(...)), "
                       "then save the experiment again: built.save(folder)")
 _TERMS_PERMISSION_ACTION = ("declare the permission with every part, its files by the sha256 of the bytes it covers: "
                             "exp.permission(Permission(grantor=..., grantee=..., files=(...), scope=Scope(...), "
                             "date=\"YYYY-MM-DD\", evidence=Evidence(...))), then save: built.save(folder)")
-_TERMS_COPY_ACTION = ("declare the same terms on each copy, asset(path, terms=Terms(...)), or keep one copy and "
+_TERMS_COPY_ACTION = ("declare the same terms on each copy, asset(Path(...), terms=Terms(...)), or keep one copy and "
                       "reference it at each prim; then save the experiment again: built.save(folder)")
 #: What decides the verdict of the author's own files where the experiment declares no licence.
 NO_LICENCE_BY = "the author's own, no licence declared: a reuser is granted no licence"

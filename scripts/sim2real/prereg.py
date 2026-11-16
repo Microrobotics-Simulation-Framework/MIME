@@ -53,7 +53,7 @@ def main() -> None:
     op.require_float64()
 
     from mime import assets
-    from mime.data import asset
+    from mime.assets import asset
 
     table = assets.reference("unit_tube_R0.997")
     weights = asset(op.DEFAULT_WEIGHTS)

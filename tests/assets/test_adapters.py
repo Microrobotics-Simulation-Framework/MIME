@@ -239,7 +239,7 @@ def test_a_503_is_asked_again_after_its_wait_and_a_404_is_not(cache):
 
 
 def test_a_package_location_reads_bytes_inside_a_package_that_declares_itself_a_source(cache):
-    held = assets.reference("labx_marker.usda")
+    held = assets.reference("labx.marker.usda")
     assert held.locations == ("package:labx/marker.usda",)
     assert hashlib.sha256(assets.fetch(held).read_bytes()).hexdigest() == held.sha256
     found, text = codes_and_text(lambda: assets.fetch(ref_of(b"x", "package:os/x", name="x")))

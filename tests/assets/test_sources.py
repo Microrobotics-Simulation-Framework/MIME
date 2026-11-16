@@ -1,7 +1,7 @@
 """Where records come from, which one wins, and where this machine gets the bytes (design #229).
 
 - **The sources, in order**: an installed package's records arrive through its ``mime.assets`` entry point (the lab
-  fixture's ``labx_marker.usda``, its bytes inside the package), beside MIME's own (the wall tables).
+  fixture's ``labx.marker.usda``, its bytes inside the package), beside MIME's own (the wall tables).
 - **The pin wins**: a name pinned to one hash resolves to that hash while a shared source holds another, and the line
   that says so is gathered for the build report. Two shared sources that hold one name as different files, with no pin,
   are refused (``asset.conflict``), and so are two that hold the same bytes under different terms, whichever source
@@ -64,7 +64,7 @@ def a_second_source(*refs: assets.AssetRef, name: str = "labz") -> Iterator[None
 def test_an_installed_packages_records_arrive_through_its_entry_point_beside_mimes_own():
     sources = {each.source for held in _sources.shared().records.values() for each in held}
     assert {"mime", "labx"} <= sources
-    assert assets.reference("labx_marker.usda").locations == ("package:labx/marker.usda",)
+    assert assets.reference("labx.marker.usda").locations == ("package:labx/marker.usda",)
     assert "unit_tube_R0.997" in assets.known()
 
 

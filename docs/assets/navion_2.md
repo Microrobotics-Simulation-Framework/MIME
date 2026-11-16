@@ -4,7 +4,7 @@
 `asset("navion_2")`, read by the field provider `CalibratedMultipole`.
 
 **The file.** `src/mime/data/emns_calibrations/navion_2.yaml`, byte for byte its upstream's, which every read checks
-(`mime.data.asset_bytes`), its sha256:
+(`mime.assets.Asset.read`), its sha256:
 
 `ea6eeb803b48d73551648e4df08116373a03fed4e871eb2b5c13706f57796b56`
 

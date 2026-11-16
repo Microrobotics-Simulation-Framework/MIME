@@ -6,6 +6,31 @@ repository or the wheel; a robot's meshes may not be redistributed at all; a lab
 server. An experiment names each such file by the sha256 of its bytes, never by where it lives, and the file is stored
 on the machine only when someone asks.
 
+## Declaring a file: one `asset()`
+
+`asset(source)` (also `mime.asset`) declares every file an experiment reads, and always gives one `Asset` with a record
+behind it (`Asset.ref()`). **The source's type decides its origin**, never a string's shape:
+
+| `source` | origin | saved as | read |
+|---|---|---|---|
+| a string, `asset("dejongh_mlp_v2")`, `asset("labx.emns.yaml")` | a record's name (`named`) | `{asset, sha256}`, and the lock's `resolved.assets` with where its bytes come from | MIME's packaged file in place, or a record's file from the cache through its gate, held to the pinned sha256 |
+| a path, `asset(Path("arm.urdf"), sha256=..., terms=...)` | a local file (`file`) | `{file, sha256}`, its bytes in the folder | the file as it is |
+| an `AssetRef`, `asset(AssetRef(...))` | a whole record (`record`) | `{file, sha256}`, its bytes in the folder, the record whole in the lock's `assets` | the cache, never downloaded by a build |
+
+- **A string is a record's name, never a location.** `asset("https://...")` is refused (`asset.source`): a remote file
+  needs a record with its sha256. A name no record holds is refused (`asset.unknown`), its action `asset(Path(...))`
+  for a file on disk, first where the string is a file here. Any other type is `call.wrong-type`, with the three forms.
+- **A local file's record** is made when it is read: its sha256 and size, and the licence, credit, role and origin its
+  terms state, else `NOASSERTION` and no location, so the record alone grants nothing until a licence is declared. The
+  saved folder still judges an author's own file by the experiment's licence, as before.
+- **MIME's packaged files are records** (`mime.data/assets/packaged.json`, located at `package:mime/<path>`), read in
+  place from the installed package; `mime assets list` says `packaged` for them.
+- **Each setting reads the origins it says**: a surrogate's weights and a calibration a name; an arm's description and a
+  scene's layer a file or a record (a name is refused, `asset.source`).
+- **Names are dotted like entries'**: a package's records are `<source>.<name>` (`softtissue.fibrin_plasma`), MIME's own
+  have no namespace. The earlier `<source>_<name>` is still found for this release, under either spelling, and a record
+  keeps the name its file states, so no lock changes.
+
 ## The record
 
 One record type serves every asset. An `AssetRef` states what the file is, `name`, `sha256` and `size` (bytes); under
@@ -71,8 +96,15 @@ In this order: **the experiment's own declaration, or its lock when it is loaded
 the description in use** (`<description stem>.visuals.json`, else `visuals.json`, next to a URDF: `mime.scene`);
 **installed packages**, each through a `mime.assets` entry point (its name the source's, its value a package whose
 data holds JSON files of records and manifests, as `mime.entries` registers entries from outside MIME); and **MIME's
-own package data**, `mime.data/assets/`, for MIME's own assets only (the wall tables). `known()` is every record the
-shared sources (the last two) agree on, by name; `reference(name)` is one, under the pins.
+own package data**, `mime.data/assets/`, for MIME's own assets only (the wall tables and the packaged files). Every
+record the shared sources (the last two) agree on is known by name; `reference(name)` is one, under the pins.
+
+**A resolver** is a `mime.assets` entry point whose value names an object (`module:object`), a `Resolver`: asked for a
+name in its namespace that no pin and no folder of records holds, its `record(name)` gives that name's record or
+`None`. A DOI, a hub, OpenMaterica or a scan's derived layer becomes a source this way; its record is held as any other
+(its sha256, its licence, its locations). A resolver that answers with anything but a record of that name, or fails,
+is refused (`asset.resolver`). Resolvers are asked, never listed. `mime.testing.RecordResolver` answers from records
+held in memory, for a test's own source.
 
 - **The pin wins.** A loaded experiment's lock holds each record it read, whole, and its build reads that record
   whatever a shared source holds under the name now (`pinned`); the build report lists each name a shared source now
@@ -84,7 +116,7 @@ shared sources (the last two) agree on, by name; `reference(name)` is one, under
   `asset.conflict`, naming both, whichever source is read first; `known()` leaves the name out. A pin settles it, and
   the build report says a source holds the file under other terms. A new location is never a conflict: the same bytes
   under the same terms in two sources are one record with both sources' locations.
-- **A file declared by its record**: an experiment states a one-off file's whole record with `mime.scene.asset(
+- **A file declared by its record**: an experiment states a one-off file's whole record with `mime.assets.asset(
   AssetRef(...))` (a scan used in one study): its sha256 pins it, its licence, credit, role and locations are its
   terms and origin, and the build reads it from the cache, never downloading it. Saved, the lock holds the record whole.
 

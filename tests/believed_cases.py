@@ -20,7 +20,7 @@ from allocation_cases import MASS, MOMENT, OFFSET, _start
 
 from mime import Apparatus, Body, Experiment, State
 from mime.control import allocation_switch
-from mime.data import asset
+from mime.assets import asset
 from mime.dynamics import RigidInertial
 from mime.fields import CalibratedMultipole
 from mime.gradients import GradientStatus

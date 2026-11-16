@@ -10,7 +10,7 @@ update to make; where it is read from a saved folder (``unlisted=True``) it is r
 reported (:func:`unlisted_ids`), since the packaging that saved it listed it.
 
 **A third-party file is declared with its terms** (:class:`Terms`) where the file is declared:
-``asset("ar4_visual.usda", terms=Terms(licence=..., credit=..., role="presentation", origin=(...)))``. A file with no
+``asset(Path("ar4_visual.usda"), terms=Terms(licence=..., credit=..., role="presentation", origin=(...)))``. A file with no
 terms is the author's own, under the experiment's licence (``exp.licence("CC-BY-4.0")``). **A permission** from the
 rights holder (:class:`Permission`) is declared with ``exp.permission(...)``: its form is checked and it is bound to the
 files' sha256, so a changed file inherits nothing; its truth is never vetted, and it is published under the uploader's
@@ -291,7 +291,7 @@ class Evidence:
 class Permission:
     """A declaration that the rights holder (``grantor``: a person or an organisation, with their role) permitted the
     ``grantee`` (the uploader, or their institution) to do what ``scope`` says with ``files``, each named by the sha256
-    of its bytes (or by the :func:`mime.scene.asset` that declares it, pinned when the experiment is saved), on
+    of its bytes (or by the :func:`mime.assets.asset` that declares it, pinned when the experiment is saved), on
     ``date`` (``YYYY-MM-DD``), shown by ``evidence``. MIME checks its form and binds it to the bytes; it never vets
     its truth, and publishing makes it public under the uploader's name."""
 

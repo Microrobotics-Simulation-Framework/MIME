@@ -62,7 +62,7 @@ from mime import Experiment
 from mime.build import BuildRefused
 from mime.core import quaternion
 from mime.core.multibody import compose, frame_pose, read_urdf
-from mime.data import asset
+from mime.assets import asset
 from mime.fields import CalibratedMultipole
 from mime.fields._magnetic_model import gradient_rows
 from mime.registry import ForwardModel

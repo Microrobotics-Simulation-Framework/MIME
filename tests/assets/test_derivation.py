@@ -33,7 +33,7 @@ import tube_asset
 from mime import assets
 from mime.assets import AssetRef, CheckResult, DerivationInput, DerivationRecord, Json, Produced
 from mime.build import BuildRefused
-from mime.data import asset
+from mime.assets import asset
 from mime.nodes.hydro.mrs._tube import UNIT_TUBE, table_provenance
 from mime.surrogates import SURROGATES, staleness
 from mime.surrogates._screw import DEJONGH_MLP_V2

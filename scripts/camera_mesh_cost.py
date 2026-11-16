@@ -27,7 +27,8 @@ from mime import Body, Experiment, State, Structure  # noqa: E402
 from mime.build._maddening import _held, full_state, graph_params  # noqa: E402
 from mime.dynamics import RigidInertial  # noqa: E402
 from mime.observations import Camera, Detector, World  # noqa: E402
-from mime.scene import Scene, Sphere, Tube, X, Z, asset  # noqa: E402
+from mime.assets import asset  # noqa: E402
+from mime.scene import Scene, Sphere, Tube, X, Z  # noqa: E402
 from mime.things import Part  # noqa: E402
 from mime.units import kg_per_m3, m, m_per_s, ms, rad_per_s, um  # noqa: E402
 from mime.viz import Mesh, write_mesh  # noqa: E402

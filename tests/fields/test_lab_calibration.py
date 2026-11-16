@@ -1,8 +1,8 @@
 """A lab's own MPEM calibration (the calibration type ``mpem/1``): a record its package ships through the
 ``mime.assets`` entry point, named by the record's name and sha256, read from the asset cache through its licence gate.
 
-The lab fixture ships two small synthetic three-coil calibrations: ``labx_emns.yaml`` under Apache-2.0 (open) and
-``labx_emns_nc.yaml`` under CC-BY-NC-4.0 (conditional). Stored in a cache of the test's own:
+The lab fixture ships two small synthetic three-coil calibrations: ``labx.emns.yaml`` under Apache-2.0 (open) and
+``labx_emns_nc.yaml`` under CC-BY-NC-4.0 (conditional), the second still spelled the earlier way, with an underscore. Stored in a cache of the test's own:
 
 - the open one builds; its numbers are the file's as the reader reads it; the lock records the record; the build
   report names its type, tier and the unit its file names;
@@ -26,13 +26,13 @@ from believed_cases import believed_sphere, model_of
 
 from mime import assets
 from mime.build import BuildRefused
-from mime.data import Asset
+from mime.assets import Asset
 from mime.fields import CalibratedMultipole
 from mime.nodes.actuation import read_calibration
 from mime.saved import LOCK_FILE
 
 lab = pytest.importorskip("mime_lab_fixture")
-OPEN, CONDITIONAL = "labx_emns.yaml", "labx_emns_nc.yaml"
+OPEN, CONDITIONAL = "labx.emns.yaml", "labx_emns_nc.yaml"
 #: The plant a control's detection rate is measured with (``AP3_PLANT``): ``gate``, the calibration read around the
 #: licence gate (the cached file taken with no acceptance asked for).
 PLANT = os.environ.get("AP3_PLANT", "")

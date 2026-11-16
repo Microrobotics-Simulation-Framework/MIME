@@ -383,7 +383,7 @@ def _too_large(member: str, size: int) -> Refusal | None:
     if message is None:
         return None
     if saved_folder_of(member) is not None:
-        action = ("give its terms an origin, asset(path, terms=Terms(..., origin=(\"https://...\",))), and save the "
+        action = ("give its terms an origin, asset(Path(...), terms=Terms(..., origin=(\"https://...\",))), and save the "
                   "experiment again, built.save(folder): it then travels as a reference that `mime assets fetch "
                   "<folder>` fetches on request")
     else:

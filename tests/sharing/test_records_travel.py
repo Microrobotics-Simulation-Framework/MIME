@@ -25,7 +25,7 @@ from mime.assets._acceptances import remember
 from mime.build import BuildRefused
 from mime.push import _plan
 from mime.saved import LOCK_FILE, pack, read_folder
-from mime.scene import asset
+from mime.assets import asset
 from mime.testing._graph import declare_in_order
 from mime.testing.toys._experiments import ADD_PROBE, ATTACH_SPRING, toy_experiment
 

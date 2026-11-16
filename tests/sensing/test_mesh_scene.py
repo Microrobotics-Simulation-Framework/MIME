@@ -79,7 +79,7 @@ def test_a_recorded_decimation_is_given_in_pixels_at_this_camera():
 
 
 def mesh_module_asset(points, faces, distance):
-    from mime.scene import asset
+    from mime.assets import asset
 
     return asset(vessel_layer(points, faces, decimation=distance))
 

@@ -22,6 +22,7 @@ by: its licence, and for a derived record the strictest of that and its inputs',
 (:func:`derivation_by_hash`), failing closed. See the README.
 """
 
+from mime.assets._asset import Asset, asset
 from mime.assets._cache import (
     ASSETS_DIR_VARIABLE,
     OFFLINE_VARIABLE,
@@ -136,7 +137,7 @@ from mime.assets._manifest import (
     read_manifest_data,
 )
 from mime.assets._reference import KINDS, AssetRecord, AssetRef, Kind, location_problem
-from mime.assets._sources import active_pins, conflicts, pinned, shared_manifests
+from mime.assets._sources import Resolver, active_pins, conflicts, pinned, shared_manifests
 
 __all__ = [
     "ACCEPTANCES_VARIABLE",
@@ -148,6 +149,7 @@ __all__ = [
     "AdapterError",
     "Approval",
     "Asker",
+    "Asset",
     "AssetRecord",
     "AssetRef",
     "AuditReport",
@@ -188,6 +190,7 @@ __all__ = [
     "RETRIEVE_LIMIT_BYTES",
     "Redirect",
     "Request",
+    "Resolver",
     "SOURCES",
     "SourceLocation",
     "SourceView",
@@ -204,6 +207,7 @@ __all__ = [
     "approve",
     "approved",
     "asking",
+    "asset",
     "assets_of",
     "audit",
     "bake_bytes",

@@ -436,7 +436,7 @@ def _copy_problems(judged: FolderTerms, listed: set[str]) -> list[Refusal]:
             f"{plain(file.path)} holds the same bytes as {plain(original.path)} (sha256 {file.sha256}), which travels "
             f"as a reference ({original.verdict.words()}, by {original.verdict.by}), so the bundle would carry those "
             f"bytes at a second path ({file.verdict.words()}, by {file.verdict.by})",
-            f"declare {plain(file.path)} with the terms of {plain(original.path)}, asset(path, terms=Terms(...)), or "
+            f"declare {plain(file.path)} with the terms of {plain(original.path)}, asset(Path(...), terms=Terms(...)), or "
             f"keep one copy and reference it at each prim; then save the experiment again, built.save(folder), and "
             f"`mime pack <folder>`"))
     return found
@@ -539,7 +539,7 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
         if (message := over_limit(member, path.stat().st_size, INLINE_LIMIT_BYTES, "a bundle")) is not None:
             refusals.append(_refuse(
                 "bundle.file-too-large", RefusalClass.USER, message,
-                "give its terms an origin, asset(path, terms=Terms(..., origin=(\"https://...\",))), and save the "
+                "give its terms an origin, asset(Path(...), terms=Terms(..., origin=(\"https://...\",))), and save the "
                 "experiment again, built.save(folder): it then travels as a reference that `mime assets fetch "
                 "<folder>` fetches on request"))
             continue

@@ -931,16 +931,21 @@ def _assets(command: str, arguments: Sequence[str], accept_licences: Sequence[st
     refs = _assets_named(arguments) if arguments else \
         _assets_of_source(namespace) if namespace is not None else list(assets.known().values())
     if command == assets.LIST:
+        from mime.assets._asset import packaged_path
+
+        def stored(ref: AssetRef) -> str:
+            """Where the file is: in MIME's own package (read in place), in the cache, or missing."""
+            return "packaged" if packaged_path(ref) is not None else "cached" if assets.is_cached(ref) else "missing"
+
         def draw() -> None:
             from mime.cli._display import show_assets
 
-            show_assets([(ref.name, assets.size_text(ref.size), "cached" if assets.is_cached(ref) else "missing",
-                          ref.licence, ref.tier) for ref in refs], sys.stdout)
+            show_assets([(ref.name, assets.size_text(ref.size), stored(ref), ref.licence, ref.tier) for ref in refs],
+                        sys.stdout)
 
         if not _drawn(draw):
             for ref in refs:
-                print(for_terminal(f"{ref.name}  {assets.size_text(ref.size)}  "
-                                   f"{'cached' if assets.is_cached(ref) else 'missing'}  {ref.licence}"))
+                print(for_terminal(f"{ref.name}  {assets.size_text(ref.size)}  {stored(ref)}  {ref.licence}"))
     elif command == assets.CHECK:
         outcomes = {ref.name: assets.check(ref) for ref in refs}
         for name, outcome in outcomes.items():

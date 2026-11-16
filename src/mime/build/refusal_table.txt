@@ -28,7 +28,9 @@ asset.offline                 environment
 asset.offline-setting         user
 asset.placed-file             environment
 asset.reference               user
+asset.resolver                environment
 asset.size-exceeded           environment
+asset.source                  user
 asset.unknown                 user
 asset.unknown-role            user
 asset.unreachable             environment

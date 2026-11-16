@@ -14,7 +14,7 @@ from typing import cast
 
 from mime._lock_json import read_lock
 from mime.assets._reference import AssetRef
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._refusals import BuildRefused, Refusal, RefusalClass
 
 #: The lock's file name in a folder (``mime.saved.LOCK_FILE``, which a test holds this to) and the key of its references.
 LOCK_FILE = "mime.lock"

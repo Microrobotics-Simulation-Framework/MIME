@@ -75,7 +75,7 @@ def main(out: Path) -> None:
     from mime.assets import AssetRef
     from mime.drives import Constant
     from mime.dynamics import Arm
-    from mime.scene import asset
+    from mime.assets import asset
     from mime.terms import CustomLicence
     from mime.testing._graph import declare_in_order
     from mime.testing.toys._experiments import ADD_PROBE, ATTACH_SPRING, toy_experiment

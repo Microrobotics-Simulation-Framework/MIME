@@ -17,7 +17,8 @@ from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Self, cast, override
 import numpy as np
 
 from mime.core import run_dtype, shape_named, switch
-from mime.data import Asset, asset_problem
+from mime.assets import Asset
+from mime.assets._asset import named_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import RFTDragNode, SurrogateDragNode
 from mime.dynamics.flow._resolved import FEATURE_CELLS, LAGGED_MARGIN, lagged_text
@@ -667,14 +668,14 @@ class PointForceDrag(Interaction):
         weights = cast(object, self.weights)  # a script is not type-checked
         if weights is None:
             found.append("the surrogate rung reads its weights: write weights=asset('dejongh_mlp_v2'), with asset from "
-                         "mime.data")
-        elif not isinstance(weights, Asset):
+                         "mime")
+        elif not isinstance(weights, Asset) or weights.origin != "named":
             found.append(f"weights={weights!r} is not a packaged asset: the surrogate's weights are named by "
-                         f"mime.data.asset('dejongh_mlp_v2'), not by a file's path")
+                         f"asset('dejongh_mlp_v2'), not by a file's path")
         elif weights.name not in self.surrogates:
             found.append(f"weights={weights.name!r} is no surrogate's; those declared are {sorted(self.surrogates)}")
         else:
-            problem = asset_problem(weights)
+            problem = named_problem(weights)
             if problem is not None:
                 found.append(f"weights: {problem}")
         epsilon = settings.get("lubrication.epsilon")
@@ -873,7 +874,7 @@ class PointForceDrag(Interaction):
             raise ValueError("phase 1 refuses a drag with no tube, no hull or no weights")
         family = hull.kind.family_parameters(hull.settings)
         node = b.add_response_node(SurrogateDragNode(
-            ctx.node_name(), ctx.timestep, weights=weights.name, weights_sha256=weights.sha256,
+            ctx.node_name(), ctx.timestep, weights=weights.name, weights_sha256=weights.sha256 or "",
             viscosity=ctx.scalar_value("viscosity"), helix_wavenumber=float(family["wavenumber"]),
             length=float(family["length"]), radius=float(family["radius"]),
             outer_radius=hull.kind.radial_reach(hull.settings), vessel_shape=region.shape, vessel_centre=tube.centre,
@@ -958,7 +959,7 @@ class UncoupledDrag(PointForceDrag):
     registered so that a folder saved with it, and an experiment whose comparisons were declared against it, reproduce.
 
     ``surrogate``: the Cholesky MLP's resistance for a de Jongh screw body in a straight tube, from ``weights`` (a
-    packaged asset, ``mime.data.asset("dejongh_mlp_v2")``), with ``lubrication=Lubrication(epsilon=...)`` blended in when given.
+    packaged asset, ``asset("dejongh_mlp_v2")``), with ``lubrication=Lubrication(epsilon=...)`` blended in when given.
     It reads the body's pose at the start of the step, and the tube from the region the medium fills (``Medium(...,
     fills=tube.lumen)``), whose shape its node evaluates; it delivers the resistance (an operator the body's dynamics
     solves with implicitly) and the background load, zero in a medium at rest. It reads the medium's ``viscosity``, and

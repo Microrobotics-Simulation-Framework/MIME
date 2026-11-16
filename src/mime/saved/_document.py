@@ -12,13 +12,12 @@ from typing import Any, cast
 import numpy as np
 import yaml
 
-from mime.assets import AssetRef
+from mime.assets import Asset, AssetRef
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.build import CONVENTIONAL_GRAVITY, Attachment, ControllerDeclaration, Declaration, LicenceDeclaration, \
     ObservationDeclaration, PermissionDeclaration, RangeDeclaration, RunSettings, SourceDeclaration, TermsDeclaration, \
     ThingDeclaration, ValueDeclaration, binding_name, mode_of
 from mime.build._derived import sha256_of
-from mime.data import Asset
 from mime.materials import Acceptance, Extrapolation, Nominal, Record, record_file
 from mime.materials._records import RECORDS, load_record
 from mime.registry import (
@@ -65,8 +64,6 @@ from mime.saved._schema import (
     ThingDoc,
 )
 from mime.scene import LAYERS, Scene, sha256_hex
-from mime.scene import Asset as FileAsset
-from mime.scene import asset as file_asset
 from mime.things import (
     Apparatus,
     Body,
@@ -167,14 +164,24 @@ def description_path(file_name: str, sha256: str) -> str:
     return f"{DESCRIPTIONS}/{file_name if file_name.startswith(prefix) else prefix + file_name}"
 
 
-def file_doc(held: FileAsset, where: str) -> FileDoc:
-    """A file an entry reads, as the document holds it: its path below the folder, where ``save`` writes it, and its
-    pin, the SHA-256 of its bytes when the script gave none."""
+def file_doc(held: Asset, where: str) -> FileDoc:
+    """A file an entry reads (a local file, or a whole record's), as the document holds it: its path below the folder,
+    where ``save`` writes it, and its pin, the SHA-256 of its bytes when the script gave none."""
     try:
         pin = held.sha256 or sha256_hex(held.read())
     except OSError as error:
         raise UnsavableError(f"{where} names the file {held.path}, which cannot be read to pin it: {error}") from error
-    return {"file": description_path(held.path.name, pin), "sha256": pin}
+    return {"file": description_path(file_name(held), pin), "sha256": pin}
+
+
+def file_name(held: Asset) -> str:
+    """The name a file asset is written under: its file's name (a record's, the name the cache keeps it under)."""
+    return held.name
+
+
+def is_file_asset(value: object) -> bool:
+    """Whether ``value`` is a file an entry reads by its bytes: a local file, or a whole record's, not a name."""
+    return isinstance(value, Asset) and value.origin != "named"
 
 
 def _plain(value: object, where: str) -> None | bool | int | float | str | QuantityDoc | AssetDoc | FileDoc:
@@ -197,10 +204,10 @@ def _plain(value: object, where: str) -> None | bool | int | float | str | Quant
             return reasoned
         quantity: QuantityDoc = {"value": number, "unit": unit_symbol(value.dimension)}
         return quantity
-    if isinstance(value, Asset):
-        held: AssetDoc = {"asset": value.name, "sha256": value.sha256}
+    if isinstance(value, Asset) and value.origin == "named":
+        held: AssetDoc = {"asset": value.name, "sha256": value.sha256 or ""}
         return held
-    if isinstance(value, FileAsset):
+    if isinstance(value, Asset):
         return file_doc(value, where)
     raise UnsavableError(f"{where} is a {type(value).__name__}; a document holds numbers, strings, booleans, null, "
                          f"lists, quantities, assets and groups of settings, and never code")
@@ -214,7 +221,7 @@ def _written(group: SettingGroup) -> dict[str, object]:
 
 def decode_setting(value: SettingValue | GroupedValue, folder: Path | None = None) -> object:
     """The value :func:`encode_setting` wrote: lists come back as tuples, quantities as :class:`Quantity`, assets as
-    :class:`~mime.data.Asset`, files as file assets read from below ``folder`` (the working directory when none is
+    named :class:`~mime.assets.Asset`, files as file assets read from below ``folder`` (the working directory when none is
     given) and held to their pins, and groups as their registered class. ``KeyError`` names a group no installed
     package registers."""
     if isinstance(value, list):
@@ -226,7 +233,8 @@ def decode_setting(value: SettingValue | GroupedValue, folder: Path | None = Non
         if "asset" in value:
             return Asset(value["asset"], value["sha256"])
         if "file" in value:
-            return file_asset((folder if folder is not None else Path.cwd()) / value["file"], sha256=value["sha256"])
+            path = (folder if folder is not None else Path.cwd()) / value["file"]
+            return Asset(path.name, value["sha256"], path)
         magnitude = value["value"]
         held = value
         return Quantity(tuple(float(v) for v in magnitude) if isinstance(magnitude, list) else float(magnitude),
@@ -720,10 +728,10 @@ def run_doc(settings: RunSettings, dt: SettingValue) -> RunDoc:
     return run
 
 
-def _file_assets(declarations: Sequence[Declaration]) -> list[FileAsset]:
+def _file_assets(declarations: Sequence[Declaration]) -> list[Asset]:
     """Every file asset the declarations hold (a description an entry reads), each once: their entries' settings,
     groups of settings and collections walked, nothing called."""
-    found: dict[int, FileAsset] = {}
+    found: dict[int, Asset] = {}
     seen: set[int] = set()
 
     def walk(value: object, depth: int) -> None:
@@ -731,7 +739,7 @@ def _file_assets(declarations: Sequence[Declaration]) -> list[FileAsset]:
                                                                   Quantity, type)):
             return
         seen.add(id(value))
-        if isinstance(value, FileAsset):
+        if isinstance(value, Asset) and value.origin != "named":
             found.setdefault(id(value), value)
         elif isinstance(value, Mapping):
             for item in cast(Mapping[object, object], value).values():
@@ -749,7 +757,7 @@ def _file_assets(declarations: Sequence[Declaration]) -> list[FileAsset]:
     return list(found.values())
 
 
-def _pin(held: FileAsset, where: str) -> str:
+def _pin(held: Asset, where: str) -> str:
     try:
         return held.sha256 or sha256_hex(held.read())
     except OSError as error:
@@ -783,13 +791,13 @@ def declared_of_terms(settings: RunSettings, declarations: Sequence[Declaration]
     attached: list[tuple[str, str, object, bool]] = []
     for each in layers:
         pin = _pin(each, "the scene")
-        path = f"{SCENE_FOLDER}/{LAYERS}/{each.path.name}"
+        path = f"{SCENE_FOLDER}/{LAYERS}/{file_name(each)}"
         files[path] = pin
         if each.terms is not None:
             attached.append((path, pin, each.terms, False))
     for each in described:
         pin = _pin(each, "an entry")
-        path = description_path(each.path.name, pin)
+        path = description_path(file_name(each), pin)
         files[path] = pin
         if each.terms is not None:
             attached.append((path, pin, each.terms, False))
@@ -798,8 +806,8 @@ def declared_of_terms(settings: RunSettings, declarations: Sequence[Declaration]
     for permission in permissions:
         given = cast(object, getattr(permission, "files", ()))
         named = cast(Sequence[object], given) if isinstance(given, (list, tuple)) else ()
-        pinned.append((permission, tuple(_pin(each, "a permission") if isinstance(each, FileAsset) else str(each)
-                                         for each in named)))
+        pinned.append((permission, tuple(_pin(each, "a permission") if isinstance(each, Asset) and is_file_asset(each)
+                                         else str(each) for each in named)))
     return Declared(licences, tuple(attached), tuple(pinned), files, licence_read=read)
 
 
@@ -877,7 +885,7 @@ def scene_doc(scene: object) -> SceneDoc:
             pin = reference.asset.sha256 or sha256_hex(reference.asset.read())
         except OSError as error:
             raise UnsavableError(f"the asset referenced at {reference.at} cannot be read to pin it: {error}") from error
-        references.append({"at": reference.at, "layer": f"{SCENE_FOLDER}/{LAYERS}/{reference.asset.path.name}",
+        references.append({"at": reference.at, "layer": f"{SCENE_FOLDER}/{LAYERS}/{file_name(reference.asset)}",
                            "sha256": pin})
     return {"up": up, "units": scene.units, "references": sorted(references, key=lambda r: r["at"])}
 

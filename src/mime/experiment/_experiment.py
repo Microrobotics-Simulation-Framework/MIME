@@ -570,7 +570,7 @@ class Experiment:
         """Declare the experiment's own licence: an SPDX licence expression (``exp.licence("CC-BY-4.0")``), or a
         licence of the author's own with its title and link (``CustomLicence("LicenseRef-...", title=...,
         url=...)``). It covers the experiment's own files: those MIME writes, and those the author brings without
-        declaring terms (a third party's file is declared with its terms: ``asset(path, terms=Terms(...))``). The saved
+        declaring terms (a third party's file is declared with its terms: ``asset(Path(...), terms=Terms(...))``). The saved
         form records it. Without one the experiment declares none, which saving and ``mime pack`` never refuse, and
         every report of the folder says; ``mime push`` will not publish it until one is declared. Its form is checked
         when the experiment is saved (``terms.licence``)."""

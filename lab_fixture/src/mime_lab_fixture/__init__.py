@@ -197,7 +197,7 @@ class Gantry(ChainSegment):
 
 #: The lab's two finish files, each a record of this package (``assets/records.json``): the one `labx.finished_gantry`
 #: reads is chosen by its ``finish`` setting, and the other is not read, so no lock or notice names it.
-FINISHES = {"marker": "labx_marker.usda", "nc": "labx_finish_nc.usda"}
+FINISHES = {"marker": "labx.marker.usda", "nc": "labx.finish_nc.usda"}
 
 
 @register_dynamics

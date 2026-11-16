@@ -31,7 +31,7 @@ import numpy as np
 from jax import Array
 
 from mime.core import jnp
-from mime.data import asset, asset_bytes
+from mime.assets import asset
 from mime.nodes.hydro._film import about
 from mime.nodes.hydro.near_contact._seam import Increment, NearContact, floored
 
@@ -65,10 +65,10 @@ class Table(NamedTuple):
 
 @functools.cache
 def table() -> Table:
-    """The packaged table, read once, its sha256 checked (``mime.data.asset_bytes``)."""
+    """The packaged table, read once, its sha256 checked (``mime.assets.Asset.read``)."""
     from scipy.interpolate import CubicSpline
 
-    held = json.loads(asset_bytes(asset(TABLE)))
+    held = json.loads(asset(TABLE).read())
     d = np.asarray(held["d"], dtype=np.float64)
     t = np.log(d)
     remainder = np.stack([np.asarray(held[name], dtype=np.float64) for name in ENTRIES]) - interpolated_singular(d)

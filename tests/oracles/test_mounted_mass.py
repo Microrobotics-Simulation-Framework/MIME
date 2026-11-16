@@ -37,7 +37,7 @@ from mime.core.multibody import ROOT, Inertial, Payload, RigidTransform, articul
     mass_matrix, read_urdf
 from mime.drives import Constant
 from mime.dynamics import Arm
-from mime.scene import asset
+from mime.assets import asset
 from mime.things import Apparatus
 from mime.units import N, N_m, m, rad, s
 

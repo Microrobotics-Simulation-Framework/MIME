@@ -20,7 +20,8 @@ from mime.core.multibody import gravity_forces, read_urdf
 from mime.experiment import Experiment
 from mime.fields import PointDipole
 from mime.interactions import Contact, Magnetic
-from mime.scene import X, Z, Scene, Cylinder, Tube, asset
+from mime.scene import X, Z, Scene, Cylinder, Tube
+from mime.assets import asset
 from mime.things import Apparatus, Body, Part, PermanentMagnet, State, Structure
 from mime.units import A_m2, N, N_m, N_m_s, kg, kg_m2, kg_per_m3, m, m_per_s, m_per_s2, mm, ms, rad, rad_per_s, \
     standard_gravity

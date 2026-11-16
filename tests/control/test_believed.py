@@ -33,7 +33,7 @@ from chain_cases import TRACKING_READS, TRACKING_WRITES, kinematic_rpm, tracking
 
 from mime.build import BuildRefused
 from mime.control import _models
-from mime.data import asset
+from mime.assets import asset
 from mime.dynamics import RigidInertial
 from mime.experiment import Experiment
 from mime.fields import CalibratedMultipole, PointDipole

@@ -26,8 +26,7 @@ import sys
 
 import numpy as np
 
-from mime import Apparatus, Body, Experiment, Medium, PermanentMagnet, State, Structure
-from mime.data import asset
+from mime import Apparatus, Body, Experiment, Medium, PermanentMagnet, State, Structure, asset
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotating
 from mime.interactions import KEPT, Gravity, Lubrication, Magnetic

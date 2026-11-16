@@ -22,6 +22,7 @@ from chain_cases import AR4_VISUALS
 
 from mime import assets
 from mime.assets import AssetRef
+from mime.assets._asset import packaged_path
 from mime.cli import main
 from mime.cli import _display
 from mime.cli._display import show_pending
@@ -76,9 +77,21 @@ def ar4_sets(monkeypatch: pytest.MonkeyPatch) -> None:
 # --- mime assets list ------------------------------------------------------------------------------------------------------
 
 
+def stored(ref: AssetRef) -> str:
+    """A packaged file is read in place, so the list says so rather than missing (DUPLICATES PR B)."""
+    return "packaged" if packaged_path(ref) is not None else "cached" if assets.is_cached(ref) else "missing"
+
+
 def old_assets_list() -> str:
-    return "".join(f"{ref.name}  {assets.size_text(ref.size)}  {'cached' if assets.is_cached(ref) else 'missing'}  "
-                   f"{ref.licence}\n" for ref in assets.known().values())
+    return "".join(f"{ref.name}  {assets.size_text(ref.size)}  {stored(ref)}  {ref.licence}\n"
+                   for ref in assets.known().values())
+
+
+def test_mimes_packaged_files_are_listed_as_packaged(capsys: pytest.CaptureFixture[str]):
+    out, _, code = piped(capsys, "assets", "list")
+    lines = {line.split("  ")[0]: line.split("  ")[2] for line in out.splitlines()}
+    assert code == 0 and lines["dejongh_mlp_v2"] == lines["navion_2"] == "packaged"
+    assert lines["unit_tube_R0.997"] in ("cached", "missing")
 
 
 def test_piped_assets_list_is_what_it_was(capsys: pytest.CaptureFixture[str]):

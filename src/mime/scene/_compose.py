@@ -186,7 +186,7 @@ def _open(content: bytes, suffix: str) -> Any:
 
 
 def _layer_problems(layer: Any, reference: Reference, meters_per_unit: float | None) -> list[Problem]:
-    where = f"the asset {reference.asset.path.name} referenced at {reference.at}"
+    where = f"the asset {reference.asset.name} referenced at {reference.at}"
     problems: list[Problem] = []
     if not layer.defaultPrim:
         problems.append(("scene.asset-default-prim", f"{where} sets no defaultPrim, so nothing names the prim to "
@@ -263,25 +263,25 @@ def compose(references: Sequence[Reference], meters_per_unit: float | None) -> C
             content = reference.asset.read()
         except OSError as error:
             problems.append(("scene.asset-missing", f"cannot read {where}: {error}",
-                             "pass the path of the asset's layer file: asset(\"<file>.usda\")"))
+                             "pass the path of the asset's layer file: asset(Path(\"<file>.usda\"))"))
             continue
         digest = sha256_hex(content)
         if reference.asset.sha256 is not None and reference.asset.sha256 != digest:
             problems.append(("scene.asset-changed", f"{where} is pinned at sha256 {reference.asset.sha256} and its "
                                                     f"bytes hash to {digest}: the file changed after it was pinned",
-                             "restore the pinned file, or pin the new one with its hash: asset(path, sha256=...)"))
+                             "restore the pinned file, or pin the new one with its hash: asset(Path(...), sha256=...)"))
             continue
-        file = f"{LAYERS}/{reference.asset.path.name}"
+        file = f"{LAYERS}/{reference.asset.name}"
         if files.get(file, digest) != digest:
-            problems.append(("scene.asset-name", f"two different assets are both named {reference.asset.path.name}, "
+            problems.append(("scene.asset-name", f"two different assets are both named {reference.asset.name}, "
                                                  f"and the saved form writes each as {file}",
-                             "give the assets distinct file names, asset(\"<path>\") for each"))
+                             "give the assets distinct file names, asset(Path(\"<path>\")) for each"))
             continue
         files[file] = digest
-        layer = _open(content, reference.asset.path.suffix or ".usda")
+        layer = _open(content, Path(reference.asset.name).suffix or ".usda")
         if layer is None:
             problems.append(("scene.asset-unreadable", f"{where} is not a USD "
-                                                       "layer", "pass a .usda or .usdc file: asset(\"<file>.usda\")"))
+                                                       "layer", "pass a .usda or .usdc file: asset(Path(\"<file>.usda\"))"))
             continue
         found = _layer_problems(layer, reference, meters_per_unit)
         problems += found

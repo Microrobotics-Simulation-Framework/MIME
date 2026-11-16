@@ -7,7 +7,7 @@ from chain_cases import DESCRIPTIONS, experiment
 
 from mime.dynamics import Arm
 from mime.experiment import Experiment
-from mime.scene import asset
+from mime.assets import asset
 from mime.things import Apparatus
 from mime.units import rad
 

@@ -37,7 +37,7 @@ from typing import Any, cast
 
 from mime._terminal import for_terminal, plain
 from mime.assets._reference import AssetRef
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._refusals import BuildRefused, Refusal, RefusalClass
 from mime.terms import CustomLicence, Verdict, strictest
 
 MANIFEST_FORMAT = "mime.asset_manifest/3"

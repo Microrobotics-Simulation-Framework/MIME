@@ -123,11 +123,19 @@ def test_a_manifest_of_another_format_or_shape_is_refused_never_misread(change):
 
 
 def test_mime_ships_records_of_its_own_assets_only(tmp_path: Path):
-    """MIME's own data holds the wall tables' records and no manifest: a visual set lives beside its description."""
+    """MIME's own data holds the wall tables' records, its packaged files' records (each located inside MIME's own
+    package, and open) and no manifest: a visual set lives beside its description."""
+    from mime.assets._asset import packaged_path
     from mime.assets._sources import shared
 
-    mine = [each for sourced in shared().records.values() for each in sourced if each.source == "mime"]
-    assert mine and all(each.ref.name.startswith(("unit_tube_", "wall_")) or "wall" in each.ref.name for each in mine)
+    mine = [each.ref for sourced in shared().records.values() for each in sourced if each.source == "mime"]
+    packaged = [ref for ref in mine if packaged_path(ref) is not None]
+    tables = [ref for ref in mine if packaged_path(ref) is None]
+    assert tables and all(ref.name.startswith(("unit_tube_", "wall_")) or "wall" in ref.name for ref in tables)
+    assert sorted(ref.name for ref in packaged) == ["cardiomag", "dejongh_mlp_v2", "navion_2", "octomag",
+                                                    "openmaterica_example_ndfeb_n45", "openmaterica_example_water",
+                                                    "sphere_plane_resistance"]
+    assert all(ref.locations == (f"package:mime/{packaged_path(ref)}",) and ref.tier == "open" for ref in packaged)
     assert not [held for source, held in shared().manifests if source == "mime"]
 
 

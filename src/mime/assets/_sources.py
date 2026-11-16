@@ -12,6 +12,15 @@ hold one name under different hashes, or the same bytes under different terms (i
 notice, role, kind or derivation: a disagreement on what may be done with the file), with no pin to settle it, are
 refused (``asset.conflict``), naming both, whichever source is read first. A new location is never a conflict: the hash
 names the file, so the same bytes under the same terms in two sources are one record with both sources' locations.
+
+**Names.** A record's name is dotted like an entry's: a package's records are ``<source>.<name>`` (the source being its
+``mime.assets`` entry point's name, its namespace), MIME's own have no namespace. The earlier spelling with an
+underscore, ``<source>_<name>``, is still found under either spelling for this release (:func:`spellings`), so a
+package that ships it keeps working while it moves.
+
+**Resolvers.** A ``mime.assets`` entry point whose value names an object (``module:object``) is a resolver, not a
+folder of records: asked for a name in its namespace that no pin and no folder holds, it answers with the record or
+``None`` (:class:`Resolver`). A DOI, a hub, OpenMaterica or a scan's derived layer becomes a source this way.
 """
 
 from __future__ import annotations
@@ -26,12 +35,12 @@ from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from functools import cache
 from types import MappingProxyType
-from typing import cast
+from typing import Protocol, cast, runtime_checkable
 
 from mime.assets._adapters import MIME_SOURCE, SOURCE_GROUP
 from mime.assets._manifest import Manifest, is_manifest_data, read_manifest_data
 from mime.assets._reference import AssetRef
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._refusals import BuildRefused, MimeError, Refusal, RefusalClass
 
 #: MIME's own records, in ``mime.data``.
 ASSETS_FOLDER = "assets"
@@ -79,11 +88,86 @@ def _source_files(module: str) -> list[tuple[str, object]]:
 
 
 def _sources() -> list[tuple[str, str]]:
-    """Each shared source with its module: MIME's own first, then every ``mime.assets`` entry point by name."""
+    """Each shared source of records with its module: MIME's own first, then every ``mime.assets`` entry point that
+    names a package (a resolver names an object, :func:`resolvers`), by name."""
     found = [(MIME_SOURCE, "mime.data")]
-    found += sorted((point.name, point.value.partition(":")[0])
-                    for point in importlib.metadata.entry_points(group=SOURCE_GROUP) if point.name != MIME_SOURCE)
+    found += sorted((point.name, point.value) for point in importlib.metadata.entry_points(group=SOURCE_GROUP)
+                    if point.name != MIME_SOURCE and ":" not in point.value)
     return found
+
+
+@runtime_checkable
+class Resolver(Protocol):
+    """A source that answers by name (a ``mime.assets`` entry point whose value is ``module:object``): asked for a name
+    in its namespace (``<source>.<name>``) that no pin and no folder of records holds, :meth:`record` gives that
+    name's record, or ``None`` where it has none. Its record is held as any other: by its sha256, judged by its
+    licence, fetched through the locations it names."""
+
+    def record(self, name: str) -> AssetRef | None: ...
+
+
+@cache
+def resolvers() -> Mapping[str, object]:
+    """Each resolver an installed package declares, by its source's name: the object its entry point names, loaded
+    once per process. A resolver that cannot be loaded is left out, with a warning, as a folder that cannot be read is."""
+    found: dict[str, object] = {}
+    for point in sorted(importlib.metadata.entry_points(group=SOURCE_GROUP), key=lambda held: held.name):
+        if ":" not in point.value or point.name == MIME_SOURCE:
+            continue
+        try:
+            found[point.name] = point.load()
+        except Exception as error:  # noqa: BLE001 - a package's import may fail in any way; its records are left out
+            warnings.warn(f"the asset resolver {point.name!r} ({point.value}) cannot be loaded, and its records are left "
+                          f"out: {error}; reinstall or uninstall the package that declares it", RuntimeWarning,
+                          stacklevel=2)
+    return MappingProxyType(found)
+
+
+def _resolver_refusal(source: str, name: str, said: str) -> BuildRefused:
+    return BuildRefused([Refusal(
+        "asset.resolver", RefusalClass.ENVIRONMENT, f"the asset resolver {source!r}, asked for {name!r}, {said}",
+        f"correct the resolver, or uninstall the package that declares it: `pip uninstall <package>`")])
+
+
+def resolved_by_a_resolver(name: str) -> AssetRef | None:
+    """The record a resolver gives for ``name``, where the resolver of its namespace has one; ``None`` where no
+    resolver holds the namespace or it has no record of the name. A resolver that answers with anything but a record of
+    that name, or that fails, is refused (``asset.resolver``)."""
+    source = name.partition(".")[0]
+    held = resolvers().get(source)
+    if held is None or "." not in name:
+        return None
+    if not isinstance(held, Resolver):
+        raise _resolver_refusal(source, name, f"is {type(held).__name__}, which has no record(name) method")
+    try:
+        answer = cast(object, held.record(name))
+    except MimeError:
+        raise
+    except Exception as error:  # noqa: BLE001 - a package's resolver may fail in any way; it is refused by name
+        raise _resolver_refusal(source, name, f"failed: {type(error).__name__}: {error}") from error
+    if answer is None:
+        return None
+    if not isinstance(answer, AssetRef) or answer.name != name:
+        said = f"the record {answer.name!r}" if isinstance(answer, AssetRef) else type(answer).__name__
+        raise _resolver_refusal(source, name, f"answered {said}, not a record of that name")
+    return answer
+
+
+@cache
+def _namespaces() -> tuple[str, ...]:
+    """Every installed source's name but MIME's (a folder of records or a resolver), longest first."""
+    names = {point.name for point in importlib.metadata.entry_points(group=SOURCE_GROUP) if point.name != MIME_SOURCE}
+    return tuple(sorted(names, key=lambda name: (-len(name), name)))
+
+
+def spellings(name: str) -> tuple[str, ...]:
+    """``name``, then its earlier spelling where it is in a source's namespace: ``<source>.<name>`` and
+    ``<source>_<name>`` find each other for this release, while packages move their records onto dots."""
+    for source in _namespaces():
+        for written, other in ((f"{source}.", f"{source}_"), (f"{source}_", f"{source}.")):
+            if name.startswith(written) and len(name) > len(written):
+                return name, other + name.removeprefix(written)
+    return (name,)
 
 
 @cache
@@ -208,9 +292,18 @@ def _note(line: str) -> None:
 
 
 def resolve_name(name: str, shared_now: Mapping[str, AssetRef]) -> AssetRef | None:
-    """The record a name stands for: its pin where it has one (with a shared source's locations of the same bytes
-    after its own, and a note where a shared source holds other bytes); else the shared sources' record; ``None`` for a
-    name nothing holds. Two shared sources that disagree, with no pin, are refused."""
+    """The record a name stands for, under either of its spellings (:func:`spellings`), each tried in turn: its pin
+    where it has one (with a shared source's locations of the same bytes after its own, and a note where a shared
+    source holds other bytes); else the shared sources' record; else the record the resolver of its namespace gives;
+    ``None`` for a name nothing holds. Two shared sources that disagree, with no pin, are refused."""
+    for spelling in spellings(name):
+        found = _resolve_spelling(spelling, shared_now)
+        if found is not None:
+            return found
+    return resolved_by_a_resolver(name)
+
+
+def _resolve_spelling(name: str, shared_now: Mapping[str, AssetRef]) -> AssetRef | None:
     pin = active_pins().get(name)
     held = shared().records.get(name, ())
     if pin is not None:
@@ -239,5 +332,6 @@ def shared_manifests() -> tuple[tuple[str, Manifest], ...]:
     return shared().manifests
 
 
-__all__ = ["ASSETS_FOLDER", "TERMS_KEYS", "Shared", "Sourced", "active_pins", "agree", "conflict_refusal", "conflicts",
-           "merged", "pinned", "resolve_name", "shared", "shared_manifests", "shared_records", "terms_of"]
+__all__ = ["ASSETS_FOLDER", "TERMS_KEYS", "Resolver", "Shared", "Sourced", "active_pins", "agree", "conflict_refusal",
+           "conflicts", "merged", "pinned", "resolve_name", "resolved_by_a_resolver", "resolvers", "shared",
+           "shared_manifests", "shared_records", "spellings", "terms_of"]

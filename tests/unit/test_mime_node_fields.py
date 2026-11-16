@@ -23,7 +23,7 @@ from mime.nodes.hydro._point_drag import PointDragInputs, PointDragNode, PointDr
 from mime.nodes.flow.fvm._resolved_node import BODY_FIELDS, BODY_INPUTS, ResolvedFlowInputs, ResolvedFlowNode, \
     ResolvedFlowState, ResolvedSpec
 from mime.core.multibody import read_urdf
-from mime.data import asset
+from mime.assets import asset
 from mime.nodes import actuation, body, control, hydro, magnetic
 from mime.nodes.hydro import mrs, near_field
 

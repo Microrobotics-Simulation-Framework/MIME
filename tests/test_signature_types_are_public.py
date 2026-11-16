@@ -1,7 +1,7 @@
 """A user must be able to annotate what a public function hands them or takes (maintainer's rule, SURFACE-REDUCTION item
 100: keep public every type a user would annotate), so no public signature names a class of ``mime.push``, ``mime.credentials``, ``mime.cli``, ``mime.scaffold``,
-``mime.blocks``, ``mime.terms``, ``mime.errors``, ``mime.validity``, ``mime.walls``, ``mime.surrogates`` or
-``mime.materials`` that no package exports.
+``mime.blocks``, ``mime.terms``, ``mime.errors``, ``mime.validity``, ``mime.walls``, ``mime.surrogates``,
+``mime.materials`` or ``mime.assets`` that no package exports.
 
 The walk reads each name of the ``__all__`` of every public ``mime`` package: a function's parameters and return, a
 class's fields and the signatures of its public methods and properties. A class of the tooling packages that an
@@ -32,7 +32,7 @@ import mime
 from mime.push._draft import Drafted
 
 TOOLING = ("mime.push", "mime.credentials", "mime.cli", "mime.scaffold", "mime.blocks",
-           "mime.terms", "mime.errors", "mime.validity", "mime.walls", "mime.surrogates", "mime.materials")
+           "mime.terms", "mime.errors", "mime.validity", "mime.walls", "mime.surrogates", "mime.materials", "mime.assets")
 
 #: The small paradigm packages (SURFACE-REDUCTION, PR 4). Their public subpackages (``mime.dynamics.flow``) count as
 #: places a class is exported from, as they are paths a script writes.

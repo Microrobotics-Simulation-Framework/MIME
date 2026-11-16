@@ -31,7 +31,7 @@ from script_a import (
 )
 
 from mime import Body, Experiment, Medium, State, Structure
-from mime.data import asset
+from mime.assets import asset
 from mime.dynamics import RigidInertial
 from mime.interactions import KEPT, Gravity, Lubrication, Magnetic
 from mime.observations import SwimSpeed

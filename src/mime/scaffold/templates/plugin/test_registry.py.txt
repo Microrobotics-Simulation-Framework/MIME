@@ -29,7 +29,7 @@ def test_the_record_is_listed_and_names_its_bytes():
     """The record is found through the `mime.assets` entry point, and its sha256 is the hash of the file it names."""
     import hashlib
 
-    record = reference("${namespace}_example_record")
+    record = reference("${namespace}.example_record")
     data = (RECORDS / "data" / "example.json").read_bytes()
     assert record.sha256 == hashlib.sha256(data).hexdigest()
     assert record.size == len(data)
@@ -40,4 +40,4 @@ def test_the_entry_declares_the_record_it_reads(experiment: Experiment, tmp_path
     """The build lists the record in a saved experiment's lock, with no observation naming it."""
     experiment.build().save(tmp_path / "saved")
     lock = json.loads((tmp_path / "saved" / "mime.lock").read_text())
-    assert [asset["name"] for asset in lock["assets"]] == ["${namespace}_example_record"]
+    assert [asset["name"] for asset in lock["assets"]] == ["${namespace}.example_record"]

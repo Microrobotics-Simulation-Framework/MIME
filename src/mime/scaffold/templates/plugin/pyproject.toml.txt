@@ -21,7 +21,7 @@ test = ["pytest>=8.0"]
 typing = ["pyright==1.1.414"]
 
 # How MIME finds your entries: it imports this module, which registers them. The namespace is the word before the dot in
-# every entry's name (entries use `.`, records `_`, an instance `:`, as in `${namespace}.example_load:probe`).
+# every entry's and record's name (entries and records use `.`, an instance `:`, as in `${namespace}.example_load:probe`).
 [project.entry-points."mime.entries"]
 ${namespace} = "${package}.entries"
 

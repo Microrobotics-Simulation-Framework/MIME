@@ -90,7 +90,7 @@ class ExampleLoad(Interaction):
     validity = ("an example: a constant load on a body, which models no device",)
     # The records this entry reads, by name (src/${package}/records/): a saved experiment's lock lists them, and `mime assets`
     # fetches what is not in the package. Delete the line when your entry reads none.
-    assets = ("${namespace}_example_record",)
+    assets = ("${namespace}.example_record",)
     force: Annotated[Quantity, Force] = N((0.0, 0.0, -0.05))
     gain: float = 1.0
 

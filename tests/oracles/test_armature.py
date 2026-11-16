@@ -61,7 +61,7 @@ from mime.nodes.actuation import DynamicArmNode
 from mime.drives import Constant
 from mime.dynamics import Arm
 from mime.experiment import Experiment
-from mime.scene import asset
+from mime.assets import asset
 from mime.things import Apparatus
 from mime.units import N_m, kg, kg_m2, ms, rad, rad_per_s, s
 

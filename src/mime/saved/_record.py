@@ -14,13 +14,13 @@ from typing import Any, cast
 
 import jax
 
-from mime.assets import AssetRef, Manifest, active_pins, derived_verdicts, reference, with_adapters
+from mime.assets import Asset, AssetRef, Manifest, active_pins, derived_verdicts, reference, with_adapters
+from mime.assets._asset import lock_source
 from mime.build import LATENCY_RULE, BuildRefused, ControllerPlan, Declaration, Mode, PlanSet, Refusal, RefusalClass, \
     RunSettings
 from mime.build._derived import HASH_RECIPE, DerivedGraph, sha256_of
 from mime.build._plan import EntryPlan
 from mime.build._stage import stage_manifests
-from mime.data import Asset, asset_source
 from mime.env._host import (
     blas_threads,
     cpu_record,
@@ -44,6 +44,7 @@ from mime.saved._document import (
     document_of,
     encode_basis,
     encode_setting,
+    file_name,
 )
 from mime.saved._resolve import entry_records
 from mime.saved._terms import referenced_assets
@@ -89,7 +90,6 @@ from mime.saved._schema import (
 )
 from mime.core.multibody import DescriptionClassification, ElementGroup
 from mime.scene import STAGE_FILE, STAGE_WRITER, ComposedLayer, sha256_hex
-from mime.scene import Asset as FileAsset
 from mime.vocabulary import MIME_NAMESPACE, namespace_of
 
 
@@ -212,8 +212,8 @@ def resolved_record(plans: PlanSet) -> ResolvedRecord:
         "values": values,
         "geometry": geometry,
         "fills": dict(plans.fills),
-        "assets": {held.name: {"source": asset_source(held), "sha256": held.sha256}
-                   for held in sorted(_assets(plans), key=lambda a: (a.name, a.sha256))},
+        "assets": {held.name: {"source": lock_source(held), "sha256": held.sha256 or ""}
+                   for held in sorted(_assets(plans), key=lambda a: (a.name, a.sha256 or ""))},
         "scene": resolved_scene(plans),
         "materials": resolved_materials(plans),
         "descriptions": {plan.owner: description_record(plan.segment.description) for plan in plans.entries
@@ -334,18 +334,19 @@ def _files(plans: PlanSet) -> list[tuple[str, bytes]]:
     folder and its bytes, read once, which ``save`` writes there."""
     found: dict[str, bytes] = {}
     for value in (getattr(plan.entry, f.name) for plan in plans.entries for f in dataclasses.fields(plan.entry)):
-        if isinstance(value, FileAsset):
+        if isinstance(value, Asset) and value.origin != "named":
             content = value.read()
-            found[description_path(value.path.name, value.sha256 or sha256_hex(content))] = content
+            found[description_path(file_name(value), value.sha256 or sha256_hex(content))] = content
     return sorted(found.items())
 
 
 def _assets(plans: PlanSet) -> set[Asset]:
-    """Every asset an entry of the experiment names among its settings, groups of settings included."""
+    """Every asset an entry of the experiment names by a record's name among its settings, groups of settings
+    included."""
     found: set[Asset] = set()
     for value in (getattr(plan.entry, f.name) for plan in plans.entries for f in dataclasses.fields(plan.entry)):
         held = [getattr(value, f.name) for f in dataclasses.fields(value)] if isinstance(value, SettingGroup) else [value]
-        found |= {item for item in held if isinstance(item, Asset)}
+        found |= {item for item in held if isinstance(item, Asset) and item.origin == "named"}
     return found
 
 

@@ -26,7 +26,6 @@ from typing import cast
 
 import yaml
 
-from mime.data import PACKAGED
 from mime.docs._lists import RatchetList, read_list
 from mime.docs._numbers import PAGE_DIRECTORIES
 from mime.docs._symbols import meta_of, rows_of
@@ -34,6 +33,15 @@ from mime.registry import EntryKind, Registered
 from mime.testing import family_named
 from mime.vocabulary import MIME_NAMESPACE, TargetKind
 from mime.vocabulary._versions import version_order
+
+def packaged_names() -> list[str]:
+    """The names of MIME's packaged files: its records whose bytes are inside MIME's package, in name order."""
+    from mime.assets._asset import packaged_path
+    from mime.assets._sources import shared
+
+    return sorted(name for name, held in shared().records.items()
+                  if any(each.source == "mime" and packaged_path(each.ref) is not None for each in held))
+
 
 LEDGER = "unpaged.txt"
 #: The namespace whose entries are made up for MIME's own tests, and so need no hand-written source.
@@ -142,7 +150,7 @@ class PageIds:
             return f"names the target kind {stem}, which is none of " + ", ".join(_MECHANISMS)
         if parts[0] == "nodes" and stem not in self.nodes:
             return f"names the node {stem}, which no entry builds"
-        if parts[0] == "assets" and stem not in PACKAGED:
+        if parts[0] == "assets" and stem not in packaged_names():
             return f"names the asset {stem}, which MIME does not package"
         if parts[0] == "families":
             try:
@@ -178,7 +186,7 @@ def docs_walk(docs_root: Path, records: Sequence[Registered], nodes: Iterable[ty
         for mechanism in sorted(_MECHANISMS):
             source = f"mechanisms/{mechanism}.md"
             report.required.append(Required(f"mechanism {mechanism}", source, (docs_root / source).is_file()))
-        for asset in sorted(PACKAGED):
+        for asset in packaged_names():
             source = f"assets/{asset}.md"
             report.required.append(Required(f"asset {asset}", source, (docs_root / source).is_file()))
     lab_built = {node for record in owned if record.namespace != MIME_NAMESPACE

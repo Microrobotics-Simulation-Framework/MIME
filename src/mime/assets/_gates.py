@@ -52,7 +52,7 @@ from mime._terminal import for_terminal, plain
 from mime.assets._acceptances import ACCEPTANCES_VARIABLE, Licence, accepted, remember
 from mime.assets._cache import cache_dir
 from mime.assets._reference import AssetRef
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._refusals import BuildRefused, Refusal, RefusalClass
 from mime.terms import (
     CONDITIONAL,
     NO_ASSERTION,

@@ -902,12 +902,12 @@ def show_block(held: Shown, stream: IO[str]) -> None:
 
 
 def show_assets(rows: Sequence[tuple[str, str, str, str, str]], stream: IO[str]) -> None:
-    """``mime assets list`` on a terminal: a row for each asset with its name, size, whether it is cached, its licence and
-    its tier. ``rows`` are the plain output's lines, taken apart."""
+    """``mime assets list`` on a terminal: a row for each asset with its name, size, whether it is cached (or packaged with
+    MIME, read in place), its licence and its tier. ``rows`` are the plain output's lines, taken apart."""
     console = _console_of(stream)
     table = _table("", ("name", "size", "cached", "licence", "tier"))
     for name, size, cached, licence, tier in rows:
-        table.add_row(_text(name), _text(size), _text(cached, "green" if cached == "cached" else "yellow"),
+        table.add_row(_text(name), _text(size), _text(cached, "green" if cached in ("cached", "packaged") else "yellow"),
                       _text(licence), _text(tier))
     console.print(table)
 

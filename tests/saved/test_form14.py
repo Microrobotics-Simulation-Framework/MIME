@@ -195,7 +195,7 @@ def by_request_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     form."""
     from write_form13 import scan_bytes
 
-    from mime.scene import asset
+    from mime.assets import asset
     from mime.testing._graph import declare_in_order
     from mime.testing.toys._experiments import ADD_PROBE, ATTACH_SPRING, toy_experiment
 

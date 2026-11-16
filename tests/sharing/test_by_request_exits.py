@@ -36,7 +36,7 @@ from mime.saved import _card
 from mime.saved._versions import CURRENT
 from mime.saved._bundle import FORMAT_3, MANIFEST_MEMBER, bundle_hash
 from mime.saved._terms import FolderTerms, LockAsset
-from mime.scene import asset
+from mime.assets import asset
 from mime.terms import CustomLicence, licence_verdict
 from mime.testing._graph import declare_in_order
 from mime.testing.toys._experiments import ADD_PROBE, ATTACH_SPRING, toy_experiment

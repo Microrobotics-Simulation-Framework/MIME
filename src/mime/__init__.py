@@ -12,7 +12,8 @@ from mime import units  # noqa: E402
 from mime.errors._display import install as _install_errors  # noqa: E402
 from mime.experiment import Experiment  # noqa: E402
 from mime.study import Study  # noqa: E402
-from mime.scene import Scene, asset  # noqa: E402
+from mime.scene import Scene  # noqa: E402
+from mime.assets import asset  # noqa: E402
 from mime.things import Apparatus, Body, CommandPort, Measurement, Medium, PermanentMagnet, State, Structure  # noqa: E402
 
 # MIME's own entries register when MIME is imported: a load finds them with no entry point.
