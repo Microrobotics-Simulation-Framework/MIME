@@ -7,7 +7,6 @@ dynamics.wrong-thing      # no test names it
 frame.gravity-invalid     # no test names it
 group.no-dynamics         # no test names it
 maddening.compile         # no test names it
-maddening.dtype           # no test names it
 magnet.no-part            # no test names it
 magnet.part-missing       # no test names it
 magnet.role               # no test names it
