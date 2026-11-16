@@ -92,5 +92,14 @@
       "one_ulp": "script A in both dtypes, a0_graph and the coil sphere in float32, every leaf one ulp up: arrays differ (4 of 4)"
     }
   },
-  "outcomes": null
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43853073207",
+    "head": "ba4904db (probe/ap4a-stall, deleted), the branch at d17c17b1 plus probe/",
+    "gate_1_float32_stall": "12 of 12 runs passed (Hypothesis seeds 200 to 211, the explicit example of seed 510511 in each); non-discriminating on the random draws, as predicted; each run 6 min on the runner",
+    "gate_2_flag_and_follower": "silent 10/10 caught, clean 0/10; unpolished follower 5/5 caught, clean 0/5 (every_run on both arms)",
+    "gate_3_the_touched_files": "tests_alloc 13 passed (16 min; test_float32_is_judged_against_float64 327 s, up from 221 s); tests_ctrl 170 passed (24 min), the combination test 34.7 s (float64) and 34.4 s (float32)",
+    "costs": "iterative/exact 1.17x (203 vs 174 us; builds 1.166, 1.167, 1.177); follower/ArmTracking-0.1.0 8.86x (2.70 vs 0.305 ms; builds 8.74, 8.94, 8.89), on an EPYC 7763 (run 43777271404's 1.16 and 8.7 were on an EPYC 9V45; before the bend 6.2x on a 7763): inside the predicted 6 to 10, and above the earlier 4 to 9 band",
+    "bits": "11 of 11 programs array_equal against the release commit 69d9a4db; the 4 one-ulp controls differ (script A both dtypes, a0_graph and the coil sphere in float32)",
+    "memory": "each arm's largest process 0.9 to 4.8 GiB (f32_clean and tests_alloc 4.8), under 12; the memory-check step is red on 5 arms because the estimator's uncalibrated bound (about 2 GiB) sits below the peaks: the estimate failing, not a gate"
+  }
 }
