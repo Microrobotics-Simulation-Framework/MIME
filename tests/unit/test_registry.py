@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Annotated, Literal, Optional, get_args
+from typing import Annotated, Literal, NewType, Optional, TypeVar, get_args, get_origin
 
 import pytest
 
@@ -145,6 +145,9 @@ def test_a_dimensioned_setting_declared_wrongly_is_refused_at_registration(annot
 
 type _LengthAlias = Annotated[Quantity, Length]
 type _MaybeQuantity = Quantity | None
+_Len2 = NewType("_Len2", Quantity)
+_Anything = TypeVar("_Anything")
+_QuantityLike = TypeVar("_QuantityLike", bound=Quantity)
 
 
 def test_an_angle_setting_is_kept_as_an_angle_and_documented_with_its_unit():
@@ -180,6 +183,9 @@ UNREAD = {
     "a list of quantities": list[Quantity],
     "a tuple of quantities": tuple[Quantity, ...],
     "a mapping of quantities": dict[str, Quantity],
+    "a NewType of Quantity": _Len2,
+    "a type variable": _Anything,
+    "a type variable bound to Quantity": _QuantityLike,
 }
 
 
@@ -189,6 +195,8 @@ def test_a_setting_of_a_type_the_reader_cannot_read_is_refused_at_registration_n
     assert found == {} and len(problems) == 1 and "setting 'margin'" in problems[0], \
         "the setting is in neither the settings it reads nor the refusals: it was dropped"
     assert "does not read" in problems[0] or "declares no dimension" in problems[0]
+    if get_origin(annotation) in (list, tuple, dict):
+        assert "CheckedByEntry" in problems[0], "a container of quantities is told the route that registers it"
     with pytest.raises(TypeError, match="setting 'margin' holds .* the reader does not read"):
         register_interaction(_law_with(annotation, None))
 
@@ -220,9 +228,26 @@ def test_quantities_in_a_container_the_entry_checks_itself_are_declared_so_and_t
 
     declared = Annotated[tuple[tuple[str, Quantity], ...], CheckedByEntry]
     assert dimensioned_settings(_law_with(declared, ())) == ({}, [])
+    assert dimensioned_settings(_law_with(Annotated[dict[str, Quantity] | tuple[tuple[str, Quantity], ...],
+                                                    CheckedByEntry], ())) == ({}, [])
     assert dimensioned_settings(Arm)[1] == [] and "armature" not in dimensioned_settings(Arm)[0]
     with pytest.raises(TypeError, match="one marker"):
         register_interaction(_law_with(Annotated[tuple[tuple[str, Quantity], ...], CheckedByEntry, Length], ()))
+
+
+@pytest.mark.parametrize("held", [Quantity, Quantity | None, float, str, tuple[float, ...]],
+                         ids=["a quantity", "an optional quantity", "a float", "a string", "a container of floats"])
+def test_the_checked_by_entry_marker_on_anything_but_a_container_of_quantities_is_refused(held):
+    """The reviewer's case: ``half_angle: Annotated[Quantity, CheckedByEntry]`` registered, accepted ``mm(1)``, ``30.0``
+    and ``deg(30)`` alike, and left the entry's ``setting_problems`` with no ``half_angle``: the silent drop again."""
+    from mime.registry import CheckedByEntry
+
+    marked = Annotated[held, CheckedByEntry]
+    found, problems = dimensioned_settings(_law_with(marked, None))
+    assert found == {} and len(problems) == 1 and "setting 'margin' is marked CheckedByEntry" in problems[0]
+    assert "Annotated[Quantity, Length]" in problems[0]
+    with pytest.raises(TypeError, match="is not a container of quantities"):
+        register_interaction(_law_with(marked, None))
 
 
 # -- groups of settings ------------------------------------------------------------------------------------------------

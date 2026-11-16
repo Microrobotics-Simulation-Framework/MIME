@@ -165,7 +165,9 @@ FREQUENCY: Dimension = _Turns((DIMENSIONLESS / TIME).exponents)
 #: frequency in Hz.
 ANGULAR_VELOCITY: Dimension = _Radians(FREQUENCY.exponents)
 #: A plane angle, in radians: ``deg(30)`` and ``rad(0.5)``. A site declared with it takes a quantity of an angle and refuses
-#: a bare number (30 of what?), a quantity of any other dimension, and a number of turns (a frequency times a time).
+#: a bare number (30 of what?), a quantity of any other dimension, and a number of turns (a frequency times a time). It
+#: equals :data:`DIMENSIONLESS` (a radian is one in SI), so a plain ratio, ``dimensionless(x)``, passes an angle site as ``x``
+#: radians: write ``deg()`` or ``rad()`` to be explicit.
 Angle: Dimension = _PlaneAngle(DIMENSIONLESS.exponents)
 VELOCITY = LENGTH / TIME
 ACCELERATION = LENGTH / TIME**2
