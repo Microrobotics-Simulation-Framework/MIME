@@ -12,11 +12,11 @@ from typing import Any, override
 from jax import Array
 from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta
-from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, ReadOnly, TypedDict
 
 from mime.nodes.flow._waveform import waveform
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, typed_view
+from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, \
+    typed_view
 
 EQUATIONS = (r"\mathbf{g}_{n} = \hat{\mathbf{e}} \left( g_{0} + g_{1} \cos\left( 2 \pi f \left( n - 1 + \theta \right) h + \varphi "
              r"\right) \right)")

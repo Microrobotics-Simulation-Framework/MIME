@@ -11,11 +11,10 @@ from jax import Array
 from jaxtyping import Float
 from maddening.core.compliance.metadata import NodeMeta
 from maddening.core.node import BoundaryInputSpec
-from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
-    switch, typed_view
+from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, \
+    node_input, switch, typed_view
 
 EQUATIONS = (r"b_{n} = |\mathbf{B}_{n}|, \quad g_{n} = \|G_{n}\|_{F}, \quad "
              r"r_{n} = \frac{|\mathbf{B}_{n} - \mathbf{B}_{n-1}|}{h} \ (r_{0} \text{ not measured, held } 0), \quad "

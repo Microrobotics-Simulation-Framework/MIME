@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import cast
 
+from mime.units import UnitError, parse_label
+from mime.vocabulary._versions import version_problem
+
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 MIME_NAMESPACE = "mime"
 
@@ -76,7 +79,10 @@ class Capability(Enum):
 class Interface:
     """One named port that dynamics publish or accept and that entries read or deliver into.
 
-    ``units`` are SI symbols, for the report and for readers: arrays crossing an edge carry SI values and no units.
+    ``units`` are SI symbols, for the report and for readers: arrays crossing an edge carry SI values and no units. A
+    label is read when the interface is defined (:func:`mime.units.parse_label`), so a typo fails at import with the
+    ``units.label`` refusal; ``unit_label(Length, DIMENSIONLESS)`` writes one from the dimension markers settings are
+    declared with, so an editor completes them.
     ``dtype`` is ``"run"`` (the run's precision) or ``"float64"``. Every interface that carries values declares a
     typical magnitude, which a coupling group's acceleration weighs fields by. A reserved entry fixes its kind,
     units, frame and sign now and leaves its shape open (``None``) until it is built; using it is refused until
@@ -99,6 +105,11 @@ class Interface:
             raise ValueError(f"interface name {self.name!r}: lower-case words joined by dots, such as 'body.pose'")
         if not isinstance(cast(object, self.kind), (TargetKind, ReadKind)):  # declared by a lab's code, unchecked
             raise TypeError(f"interface {self.name!r}: kind is a TargetKind or a ReadKind, not {self.kind!r}")
+        if self.units or self.kind is not TargetKind.REGISTRATION:  # a registration carries no values, so no units
+            try:
+                parse_label(self.units)
+            except UnitError as error:
+                raise UnitError(f"interface {self.name!r}: {error}", label=True) from None
         if self.dtype not in ("run", "float64"):
             raise ValueError(f"interface {self.name!r}: dtype is 'run' or 'float64', not {self.dtype!r}")
         if self.reserved:
@@ -137,6 +148,8 @@ def register_namespace(name: str, version: str) -> None:
             raise ValueError(f"namespace {name!r} is the first word of MIME's {what} ({', '.join(taken[:3])}"
                              f"{', ...' if len(taken) > 3 else ''}), which it would take for its own; choose another "
                              f"name")
+    if (problem := version_problem(version)) is not None:
+        raise ValueError(f"namespace {name!r} has {problem}")
     held = _namespaces.get(name)
     if held is not None and held != version:
         raise ValueError(f"namespace {name!r} is registered at version {held}, not {version}")

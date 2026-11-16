@@ -116,7 +116,7 @@ def test_control_units_two_typed_states_declare_otherwise_or_none_names_the_fiel
     from mime.core import _field_kinds
 
     class OtherUnits(TypedDict, closed=True):
-        held: ReadOnly[Annotated[HeldPoints, Units("mm")]]
+        held: ReadOnly[Annotated[HeldPoints, Units("m/s")]]
         taken: ReadOnly[HeldForces]
         count: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
         stopped: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]

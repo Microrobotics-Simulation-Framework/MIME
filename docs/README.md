@@ -33,6 +33,10 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
 - [`allocation.md`](allocation.md): the exact allocation, `mime.control.exact_allocation`, and `allocate()` on it: what
   it solves, how it is exact, its guards, its bound of 8 commands (a choice against the rule set before it was measured,
   with the numbers), its derivative and which path to use; printed among the pages.
+- [`units.md`](units.md): quantities and units, the unit label grammar (what `parse_unit` reads, the rule for a quotient,
+  a turn and a radian kept apart), labels from the dimension markers, where a label is checked, `**`, `abs` and `sum` on
+  quantities, `==` with a bare number, the units `kPa`, `MPa`, `mmHg`, `mL`, `cP`, `rpm` and `deg_per_s`, and what
+  `--override` reads; printed among the pages.
 - [`compilation_cache.md`](compilation_cache.md): the compilation cache `mime run` and `mime serve` keep in the user's
   cache directory: what is stored, the cap, `mime cache clear`, `--no-xla-cache`, `mime verify` leaving it out, and the
   lines that turn it on in a script of your own.

@@ -53,10 +53,25 @@ def test_the_control_the_same_experiment_sealed_builds_in_research():
     assert plans.profile.stamp().text() == "profile research: nothing pending"
 
 
-def test_a_pending_reason_is_refused_by_name_where_a_todo_text_passes():
-    """Today's check takes any text, so a placeholder passes it; ``pending()`` is the placeholder research refuses."""
-    settling_ball(replace(SEALED, density="TODO")).plan()
+def test_a_pending_reason_is_refused_by_name_and_a_text_that_is_only_a_placeholder_word_is_refused_as_one():
+    """A text that is only a placeholder word is refused, saying ``pending()`` is the call (usability bundle 5, F15);
+    ``pending()`` is the placeholder research refuses by name, and a text that says something passes."""
+    assert "value.reason" in codes(replace(SEALED, density="TODO"))
     assert codes(replace(SEALED, density=pending())) == ["value.reason-pending"]
+    settling_ball(replace(SEALED, density="steel, from the supplier's datasheet")).plan()
+
+
+@pytest.mark.parametrize("text", ["TODO: fill in", "todo - ask", "TBD: the supplier's sheet", "pending: vendor",
+                                  "  FIXME\u2014later", "Pending-vendor"])
+def test_a_reason_that_starts_as_a_placeholder_label_is_refused_as_one(text):
+    assert "value.reason" in codes(replace(SEALED, density=text))
+    assert "value.reason" in codes(replace(SEALED, density=chosen(text)))
+
+
+@pytest.mark.parametrize("text", ["pending the vendor's datasheet", "todo items are tracked in the log",
+                                  "tbdisbury steel, from the datasheet", "steel, pending: no it is from a sheet"])
+def test_control_prose_that_merely_begins_with_the_word_is_still_a_reason(text):
+    settling_ball(replace(SEALED, density=text)).plan()
 
 
 def test_an_acceptance_with_a_pending_reason_is_stamped_in_exploratory_and_refused_in_research():
@@ -130,7 +145,7 @@ def test_a_choice_of_a_computed_default_is_no_choice_and_research_refuses_it():
     """W2: ``exp.source(spacing, reason=chosen(...))`` on a spacing left to its computed default chooses a value nobody
     wrote, so research refuses it by name, as it does a text reason there. The control: the value written, with the same
     choice, builds."""
-    left = replace(SEALED, spacing=None, sources={**SEALED.sources, "drag:ball.spacing": chosen("TODO")})
+    left = replace(SEALED, spacing=None, sources={**SEALED.sources, "drag:ball.spacing": chosen("the spacing this study sweeps")})
     assert codes(left) == ["setting.numerical-default"]
     assert codes(replace(left, sources={**SEALED.sources, "drag:ball.spacing": "a text"})) == \
         ["setting.numerical-default"]

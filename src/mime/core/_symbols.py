@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from mime.core._labels import read_label
+
 
 class SymbolKind(Enum):
     """Where a symbol's ``name`` is declared: a parameter in ``param_specs()``, a state field in ``initial_state()``,
@@ -31,3 +33,11 @@ class Symbol:
     name: str
     units: str
     implemented_by: str
+    #: ``units`` is text and no unit label (a drive's value, in whatever units its command is declared in). Every other
+    #: row's units are read where the row is defined (:func:`mime.units.parse_label`), so a typo is the ``units.label``
+    #: refusal at import, never a row nothing compares.
+    prose_units: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.prose_units:
+            read_label(self.units)

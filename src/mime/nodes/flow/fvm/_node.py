@@ -55,11 +55,10 @@ import numpy as np
 from jax import Array
 from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta, Reference
-from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
-    run_constants_given, run_dtype
+from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, \
+    node_input, run_constants_given, run_dtype
 from mime.core import ledger as books
 from mime.core._node import STAGNATED, rechecked
 from mime.nodes.flow.fvm._band import PorousRegion, TreeSolid, TubeSolid, WallFields, band_named, interior_depth, \

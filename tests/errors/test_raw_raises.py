@@ -20,7 +20,7 @@ import mime
 PACKAGE = Path(mime.__file__).parent
 LISTED = Path(__file__).parent / "raw_raises.txt"
 #: The plain classes MIME raises below its boundary, beside Python's own.
-PLAIN = frozenset({"UnitError", "TableRefused", "DescriptionRefused", "ClosedChainRefused", "UncataloguedRefusal"})
+PLAIN = frozenset({"TableRefused", "DescriptionRefused", "ClosedChainRefused", "UncataloguedRefusal"})
 BUILTIN = frozenset(name for name in dir(builtins) if isinstance(getattr(builtins, name), type)
                     and issubclass(getattr(builtins, name), BaseException))
 LINE = re.compile(r"(?P<key>\S+::\S+ \w+) (?P<count>\d+)  # (?P<reason>.+)")

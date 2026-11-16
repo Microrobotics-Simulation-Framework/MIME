@@ -26,7 +26,7 @@ from mime.build._builders import (
     ProviderBuilder,
     RestrictedBuilder,
 )
-from mime.build._checks import ledger_wiring_refusals, node_lines, post_build_checks, solving_lines
+from mime.build._checks import ledger_wiring_refusals, node_lines, post_build_checks, refuse_by_author, solving_lines
 from mime.build._control import Mode
 from mime.build._declared_lags import net_of_declared_lags
 from mime.build._derived import DerivedGraph, derive
@@ -367,6 +367,38 @@ def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder
     return builder, [*builder.finish()]
 
 
+def _nodes_in(issue: str, graph: GraphManager) -> list[str]:
+    """The nodes a MADDENING issue is about: the ends of the edge it names, or the nodes it quotes."""
+    edges = [edge for edge in graph.edges
+             if f"{edge.source_node}.{edge.source_field} -> {edge.target_node}.{edge.target_field}" in issue]
+    if edges:
+        return [node for edge in edges[:1] for node in (edge.source_node, edge.target_node)]
+    return [name for name in graph.node_names if f"'{name}'" in issue]
+
+
+#: What the author of a node class changes for each kind of issue MADDENING's ``validate()`` stops a compile for.
+_AUTHOR_FIXES = {
+    "maddening.shape": "make the shape of the node's state field, and of the receiving input's BoundaryInputSpec, the "
+                       "shape the vocabulary gives the interface the edge carries",
+    "maddening.dtype": "give the node's state field and the receiving input's BoundaryInputSpec the dtype the "
+                       "build runs in",
+    "maddening.units": "give the receiving input's BoundaryInputSpec the units the vocabulary spells for the "
+                       "interface the edge carries",
+}
+#: The one ``ERROR`` of ``validate()`` whose cause is the node's class: an edge reads a field its source node's state
+#: does not hold. MADDENING's other errors (a coupling group of mixed kinds, a loop of non-float state, a cycle, a
+#: missing node) are about the graph's wiring, which this class of node does not decide, and stay MIME's.
+_MISSING_FIELD = "not in state of node"
+_MISSING_FIELD_FIX = "hold the field the edge reads in the node's state, spelt as the entry names it"
+
+
+def _author_fix(code: str, issue: str) -> str | None:
+    """What the author of the node's class changes for ``issue``, or ``None`` where the issue is not the class's."""
+    if code == "maddening.error":
+        return _MISSING_FIELD_FIX if _MISSING_FIELD in issue else None
+    return _AUTHOR_FIXES[code]
+
+
 def _validate(graph: GraphManager) -> tuple[list[ReportedWarning], list[Refusal], list[str]]:
     """MADDENING's own checks of the graph: each issue that would stop ``compile()`` is a refusal, a units warning
     among them (MIME labels every edge from the vocabulary, so one means a node and the vocabulary disagree); every
@@ -378,7 +410,9 @@ def _validate(graph: GraphManager) -> tuple[list[ReportedWarning], list[Refusal]
     for issue in issues:
         code = next((code for prefix, code in _REFUSED_ISSUES.items() if issue.startswith(prefix)), None)
         if code is not None:
-            refusals.append(Refusal(code, RefusalClass.INTERNAL, f"MADDENING's validate(): {issue}", MIME_DEFECT))
+            message, fix = f"MADDENING's validate(): {issue}", _author_fix(code, issue)
+            refusals += (refuse_by_author(code, graph, _nodes_in(issue, graph), message, fix) if fix is not None
+                         else [Refusal(code, RefusalClass.INTERNAL, message, MIME_DEFECT)])
         elif issue.startswith("WARNING"):
             reported.append(ReportedWarning("MADDENING GraphManager.validate()", issue))
     return reported, refusals, [issue for issue in issues if issue.startswith("INFO")]
@@ -399,8 +433,8 @@ def _compile(graph: GraphManager, reported: list[ReportedWarning]) -> list[Refus
     for warning in caught:
         message = str(warning.message)
         if issubclass(warning.category, UnitMismatchWarning):
-            refusals.append(Refusal("maddening.units", RefusalClass.INTERNAL,
-                                    f"MADDENING's compile(): {message}", MIME_DEFECT))
+            refusals += refuse_by_author("maddening.units", graph, _nodes_in(message, graph),
+                                         f"MADDENING's compile(): {message}", _AUTHOR_FIXES["maddening.units"])
         elif message not in seen:
             seen.add(message)
             reported.append(ReportedWarning(f"MADDENING GraphManager.compile(): {warning.category.__name__}", message))
