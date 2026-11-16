@@ -41,17 +41,52 @@ last place of the scale each result came from (CLAUDE.md: no absolute part), com
   control sets the rule's width to zero, so that most groups read unresolved. It does not hold the Newton count to the
   last step: a search one step short of ``CONTACT_NEWTON`` (11 of 12) passes, as searches converge in 9 to 11.
 
+  **The first steps**, in the same draws: the looped search after one to four steps (``EARLY_STEPS``) against the
+  unrolled one from the same kept starts, on every group of the kinds whose support is a closed form of its direction
+  (``EARLY_KINDS``: the sphere, the capsule, the cylinder and the ellipsoid), the groups 0.4.0 does not resolve at its
+  end included: it needs no end state. It holds them to **an estimate with a stated factor, not a derived bound**: a
+  group past ``EARLY_FACTOR`` (5) times ``early_estimate`` fails the draw. The estimate is a first-order model of two
+  programs' rounding (each step's ``eps cond(A) (|x| + |x'| + size)``, carried to the count by the later steps'
+  derivatives along 0.4.0's own steps) that leaves out each step's operation-count constants, its data term widened
+  once after a local finding; the factor follows a rule committed before its run (``EARLY_FACTOR``). The margin, as
+  measured on CI's runners (run 43963958420): 0.4.0's own steps run op by op, a legitimately different program, stood
+  at most 0.36 of the allowance (1.80 times the estimate, at an ellipsoid's first step; past the estimate alone on 309
+  of 389,810 draws), and one float32 program's own rounding at most 0.47 (2.37 times). That op-by-op program is the
+  comparison's clean control (``EAGER_PINNED``), which must pass on every run in both dtypes. The looped and unrolled
+  points of these kinds are the same to the bit on CI's runners (run 43927692071: 3,509,271 float32 and 4,123,040
+  float64 draws, uniform and at the strategy's bounds and simple values, on six CPU models; and 1,200 clean runs of run
+  43963958420), so today the comparison uses none of its margin; what it leaves a program that rounds otherwise (a
+  change of XLA's, or a GPU) is the clean control's measure. Its controls (``EARLY_PINNED``): a loop five steps short,
+  a stale carry and a stop at 1e-5 of the size each fail it at two pinned cylinder draws on every run, in both dtypes.
+  At the counts of one to four the short loop takes no step at all, so what is caught there is a loop that does
+  nothing. The realistic short loop is ``capped``, a fixed loop of seven steps, which at those counts is the clean
+  loop: it is **the comparison's measured blind spot**, not a control, seen only at the end where a search needs more
+  than seven steps.
+
+  **FL-9's screw is a gap of the first steps**, held by the end state alone: its support is refined on its surface
+  from the search's point, held as a value, which the step's derivative does not carry. Its two programs' points stood
+  past the estimate on 5.7 % of its draws in each dtype (run 43927692071, up to 4.4e7 times); on a laptop's CPU most
+  such draws followed a step at least two hull sizes off the body, but 38 of 1,503 came with no step past half a size.
+  Every plant is pinned on a screw draw at the end (``PLANT_DRAWS``), and its per-run detection there is measured
+  below. The route to exact is a separate change of the law, queued for the maintainer's word: the screw's support
+  refined independently of the search's start point, and then the screw judged in the first steps too.
+
   **What it bounds and what it samples.** It bounds the looped search to 0.4.0's on the groups 0.4.0 resolves at the
-  poses it draws; a defect elsewhere is sampled, and how often a run sees one is measured, not bounded. The property
-  as committed (100 examples a dtype) failed, of 200 runs a row (run 43877350461), with a defect of
-  ``planted_search`` on every kind / on the cylinder alone: a loop of 7 steps, float32 190 / 3, float64 200 / 9; a
-  carry from two steps back, 195 / 3 and 200 / 119; a stop at 1e-5 of the hull's size, 196 / 64 and 200 / 195; clean,
-  0 of 600 runs in each dtype. A defect of one kind is seen by the draws of that kind, about a fifth of a run's,
-  and 30 of 1,200 clean runs drew no cylinder at all, so no defect of one kind fails every run. On the cylinder a
-  short loop or a stale carry changes the end only where its search needs more than six steps, and in float32 a stop
-  at 1e-5 of the size leaves the end within 84 units of its fixed point, under the bound wherever the step's matrix is
-  well conditioned (3 of 133,600 cylinder draws stood past four times the bound). Each defect is caught on every run
-  by its pinned control (``PLANT_DRAWS``), in both dtypes.
+  poses it draws, and holds its first steps on every group of ``EARLY_KINDS`` to an estimate, with the margin above. A
+  defect elsewhere is sampled, and how often a run sees one is measured, not bounded. The property as committed (100
+  examples a dtype, a factor of 5) failed, of 200 runs a row (run 43963958420), with a defect of ``planted_search`` on
+  one kind alone, float32 / float64: on the cylinder, a loop five steps short (seven of twelve) 197 / 198, one capped
+  at seven 3 / 6, a carry from two steps back 196 / 198, a stop at 1e-5 of the hull's size 196 / 195; on FL-9's screw
+  (the end state alone, where the capped loop is the short one), short 187 / 198, stale 198 / 200, early 200 / 200; on
+  every kind, 200 in each row but the capped loop's float32 197. Clean, 0 of 600 runs in each dtype. A defect of one
+  kind is seen only by the draws of that kind, about a sixth of a run's (17.9 and 17.6 cylinder draws a clean run; 16
+  and 19 of 600 runs drew none), so no defect of one kind fails every run. Of the cylinder runs that passed with a
+  plant in, all but one drew no cylinder (the other, a stop at 1.7 times the estimate, 0.34 of the allowance); the 13
+  screw runs that passed with the short loop drew the screw, and the end state did not see it there. The capped loop
+  changes the end only where a cylinder group's search needs more than seven steps: 2 and 5 cylinder draws in 1,000 in
+  float32 and float64 (run 43927692071). Each defect but the capped loop is caught on every run by its pinned controls
+  (``PLANT_DRAWS`` at the end, on a cylinder and on the screw, and ``EARLY_PINNED`` in the first steps), in both
+  dtypes; the capped loop is caught at the end by the short loop's pins, where the two are one program.
 - **The whole step**, the contact active: script A's FL-9 held from its first step (``hull_cases.hull_contact``, 20
   steps) and the tube demo (``examples/sphere_settling_tube.py``, 40), each built fresh on each version and run, in
   float32 and float64, by the history scan and by one-step chunks (the tube demo's own run): the pose's position and
@@ -456,6 +491,144 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
     return Searched(np.where(resolved, alone, 0.0), alone, spread, np.abs(gaps(s_l) - gaps(s_u)) / unit, resolved)
 
 
+#: The counts of the search's Newton steps after which the early comparison holds the looped search to the unrolled one,
+#: both from the same kept starts.
+EARLY_STEPS = (1, 2, 3, 4)
+#: The kinds the early comparison judges: those whose support is a closed form of its direction (``near`` choosing an
+#: end at most). **FL-9's screw is a gap of this comparison**, held by the end state alone: it refines its support on
+#: its own surface from the search's point, held as a value (``_screw.Screw.support``), so a step's point depends on the
+#: last through that start, which the step's derivative does not carry, and where a step lands hull sizes off the body
+#: the refinement's start moves the next point by what the estimate (``early_estimate``) leaves out (5.7 % of screw
+#: draws past it in each dtype on CI's runners, run 43927692071). The route to exact is a change of the law, queued for
+#: the maintainer's word: the screw's support refined independently of the search's start point, and then the screw
+#: judged here too.
+EARLY_KINDS = ("capsule", "cylinder", "ellipsoid", "sphere")
+#: The early comparison's allowance, in multiples of its estimate of two programs' rounding (``early_estimate``): a
+#: stated factor, chosen, not derived. The estimate leaves out each step's operation-count constants. On its scale a
+#: legitimately different program of the same steps (0.4.0's own, op by op: ``eager_against_0_4_0``) stood up to 1.80
+#: times it (174,226 float32 and 215,584 float64 draws), and one float32 program's own rounding, against the same steps
+#: in float64 from the same data, up to 2.37 times it (1,337,555 draws), both at the first step of an ellipsoid, on CI's
+#: runners (run 43963958420). The factor is the smallest whole number at least twice the larger, the rule committed
+#: before that run: the op-by-op program stands at most 0.36 of the allowance, and two programs each as far off as that
+#: float32 one, in opposite directions, at 0.95.
+EARLY_FACTOR = 5
+
+
+@cache
+def early_searches(name: str, dtype: str, plant: str | None = None):
+    """For ``name``'s node in ``dtype``, jitted, from the node's constants, the pose and the kept starts: the unrolled
+    and the looped search's points after each of ``EARLY_STEPS`` steps (``plant``, a defect of ``planted_search``, in
+    the looped one's place), and 0.4.0's first steps one at a time: each step's point, the condition number of its
+    matrix and its derivative in its point."""
+    kind, held = SUPPORTED[name]
+    node = hull_node(kind, held, SPACING, mass=MASS, inertia=INERTIA)
+    planted = {count: planted_search(name, dtype, plant, count) for count in EARLY_STEPS} if plant else {}
+
+    def run(q, pose, seeds_):
+        found = node.contact_pairs(q, node.hull_points(q, pose.dtype), pose)[0]
+        unrolled = jnp.stack([contact.climbed(found._replace(loops=False), seeds_, k)[0] for k in EARLY_STEPS])
+        looped = jnp.stack([planted[k](q, pose, seeds_)[0] if plant else
+                            contact.climbed(found._replace(loops=True), seeds_, k)[0] for k in EARLY_STEPS])
+        hull, wall = found.body, found.other
+        values = jax.lax.stop_gradient((hull.pose, contact._numbers(hull.parameters),
+                                        contact._numbers(wall.parameters), wall.margin))
+        parameters = {**hull.parameters, **values[1]}
+        surface = contact.Wall(wall.shape, {**wall.parameters, **values[2]}, values[3])
+
+        def step(x):
+            return contact._step(found, x, values[0], parameters, surface)
+
+        x, points, conditions, slopes = seeds_, [seeds_], [], []
+        for _ in range(max(EARLY_STEPS)):
+            conditions.append(jnp.linalg.cond(contact._supported(found, x, values[0], parameters, surface)[1]))
+            slopes.append(jnp.stack([jax.jvp(step, (x,), (jnp.broadcast_to(e, x.shape),))[1]
+                                     for e in jnp.eye(3, dtype=x.dtype)], axis=-1))
+            x = step(x)
+            points.append(x)
+        return unrolled, looped, jnp.stack(points), jnp.stack(conditions), jnp.stack(slopes)
+
+    return jax.jit(run)
+
+
+def early_estimate(points: np.ndarray, conditions: np.ndarray, slopes: np.ndarray, eps: float,
+                   size: float) -> np.ndarray:
+    """An estimate, not a bound, of how far two programs of 0.4.0's steps round apart after each of ``EARLY_STEPS``
+    steps (``steps x groups``, m): a first-order model of the step's rounding. The step ``x' = x - A^-1 (x - s(x))``
+    rounds its data, the point it starts from, the point it lands on and the body's point ``s`` (within the hull's
+    size), each to ``eps`` of its size, and carries them through ``A^-1``, whose norm is at most ``A``'s condition
+    number (``A = I - S B`` keeps a direction fixed, so its norm is at least one): ``eps cond(A) (|x| + |x'| +
+    size)`` in either program, twice between two. A difference made at step ``j`` reaches step ``k`` through the
+    later steps' derivatives along 0.4.0's own steps (``G'(x_{k-1}) ... G'(x_j)``), by their product's largest
+    singular value. It leaves out each step's operation-count constants, which is why the comparison allows
+    ``EARLY_FACTOR`` times it. The data's term was first ``|x|`` alone, and was widened to ``|x| + |x'| + size`` (two
+    to three times) after a local exploration found the screw past it: a judgement, as the factor is."""
+    groups = points.shape[1]
+    lengths = np.linalg.norm(points, axis=-1)
+    kicks = [eps * conditions[j] * (lengths[j] + lengths[j + 1] + size) for j in range(max(EARLY_STEPS))]
+    carried: list[np.ndarray] = []
+    estimates = []
+    for k in range(1, max(EARLY_STEPS) + 1):
+        carried = [slopes[k - 1] @ p for p in carried] + [np.broadcast_to(np.eye(3), (groups, 3, 3))]
+        estimates.append(2.0 * sum(np.linalg.norm(p, ord=2, axis=(-2, -1)) * kick
+                                   for p, kick in zip(carried, kicks, strict=False)))
+    return np.stack(estimates)[[k - 1 for k in EARLY_STEPS]]
+
+
+class Early(NamedTuple):
+    """A program's first steps against 0.4.0's jitted unrolled ones, per count of ``EARLY_STEPS`` and group:
+    ``missed``, their points' distance over the allowance (``EARLY_FACTOR`` times ``early_estimate``); ``apart`` and
+    ``allowed``, the distance and the allowance in units of the hull's size's resolution (``unit``, m)."""
+
+    missed: np.ndarray
+    apart: np.ndarray
+    allowed: np.ndarray
+    unit: float
+
+
+def judged_early(unrolled: Any, other: Any, points: Any, conditions: Any, slopes: Any, dtype: str,
+                 size: float) -> Early:
+    unrolled, other, points, conditions, slopes = (np.asarray(v, dtype=np.float64)
+                                                   for v in (unrolled, other, points, conditions, slopes))
+    eps = float(np.finfo(dtype).eps)
+    unit = eps * size
+    apart = np.linalg.norm(other - unrolled, axis=-1)
+    allowed = EARLY_FACTOR * early_estimate(points, conditions, slopes, eps, size)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        missed = np.where(apart == 0.0, 0.0, apart / allowed)
+    return Early(missed, apart / unit, allowed / unit, unit)
+
+
+def early_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, plant: str | None = None) -> Early:
+    """``Early`` of the looped search at ``pose``, from the kept starts the end-state judgement takes; ``plant``, a
+    defect of ``planted_search`` in its place."""
+    with jax.enable_x64(DTYPES[dtype]):
+        p, size, seeds = searches(name, dtype)[:3]
+        q, at = traced(p, dtype), jnp.asarray(pose, dtype=dtype)
+        unrolled, looped, points, conditions, slopes = early_searches(name, dtype, plant)(q, at, seeds(q, at))
+        return judged_early(unrolled, looped, points, conditions, slopes, dtype, size)
+
+
+def eager_against_0_4_0(name: str, dtype: str, pose: np.ndarray) -> Early:
+    """``Early`` at ``pose`` of 0.4.0's own unrolled steps run op by op (``jax.disable_jit``: no fusion and no
+    contraction across operations) in the looped search's place: a legitimately different program of the same steps,
+    which the early comparison must pass (its clean control)."""
+    kind, held = SUPPORTED[name]
+    node = hull_node(kind, held, SPACING, mass=MASS, inertia=INERTIA)
+    with jax.enable_x64(DTYPES[dtype]):
+        p, size, seeds = searches(name, dtype)[:3]
+        q, at = traced(p, dtype), jnp.asarray(pose, dtype=dtype)
+        kept = seeds(q, at)
+        unrolled, _, points, conditions, slopes = early_searches(name, dtype)(q, at, kept)
+        with jax.disable_jit():
+            found = node.contact_pairs(q, node.hull_points(q, at.dtype), at)[0]._replace(loops=False)
+            x, eager = kept, []
+            for _ in range(max(EARLY_STEPS)):
+                x = contact.climbed(found, x, 1)[0]
+                eager.append(np.asarray(x))
+        return judged_early(unrolled, np.stack(eager)[[k - 1 for k in EARLY_STEPS]], points, conditions, slopes,
+                            dtype, size)
+
+
 #: The most groups of a run, in a dtype, that the Newton steps' property may leave unjudged against 0.4.0's end (its groups
 #: where 0.4.0's own ends one ulp away, or from its rattled searches, stand past ``NEWTON_ULPS``): a share of all the groups
 #: its draws held. These groups are not judged (the module's docstring says why). The ceiling is a monitor of the rule's
@@ -477,12 +650,14 @@ def over_the_ceiling(unjudged: int, groups: int) -> bool:
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_the_looped_newton_steps_are_the_unrolled_ones_to_rounding_where_0_4_0_resolves_them(dtype, record_property):
     unjudged: dict[str, list[int]] = {}  # by kind: the groups left unjudged, the groups drawn
+    worst = [0.0]  # the early comparison's largest distance over its allowance
 
     @settings(deadline=None)
     @given(name=st.sampled_from(sorted(SUPPORTED)), spin=st.floats(0.0, 2 * math.pi), tilt=st.floats(0.0, 1.5),
            about=st.floats(0.0, 2 * math.pi), towards=st.floats(0.0, 2 * math.pi), share=st.floats(-0.5, 1.0))
     def draws(name, spin, tilt, about, towards, share):
-        found = searched_against_0_4_0(name, dtype, placed(name, spin, tilt, about, towards, share * MARGIN))
+        pose = placed(name, spin, tilt, about, towards, share * MARGIN)
+        found = searched_against_0_4_0(name, dtype, pose)
         missed = float(np.max(found.missed))
         counts = unjudged.setdefault(name, [0, 0])
         counts[0] += int(np.sum(~found.resolved))
@@ -490,14 +665,21 @@ def test_the_looped_newton_steps_are_the_unrolled_ones_to_rounding_where_0_4_0_r
         event("bit for bit" if not np.any(found.alone) else "rounding apart")
         event("0.4.0 ends elsewhere one ulp away" if np.any(~found.resolved) else "0.4.0 settled one ulp away")
         target(min(missed, 1e30), label="units of the hull's size apart where 0.4.0 resolves them")
+        early = early_against_0_4_0(name, dtype, pose).missed if name in EARLY_KINDS else np.zeros((1, 1))
+        first = float(np.max(early))
+        worst[0] = max(worst[0], first)
         assert missed <= NEWTON_ULPS, (f"{name}: groups {np.flatnonzero(found.missed > NEWTON_ULPS)}, where 0.4.0's "
                                        f"end stays within one ulp of the pose or its rounding, end {missed:.3g} units "
                                        f"of the hull's size apart")
+        assert first <= 1.0, (f"{name}: groups {np.flatnonzero(np.max(early, axis=0) > 1.0)} apart within its first "
+                              f"steps, {first:.3g} times the allowance ({EARLY_FACTOR} times the estimate of two "
+                              f"programs' rounding)")
 
     draws()
     left, groups = (sum(counts[i] for counts in unjudged.values()) for i in (0, 1))
     measured = {"cpu": cpu_model(), "unjudged": left, "groups": groups, "share": left / groups if groups else 0.0,
-                "by kind": unjudged, "ceiling": UNJUDGED_CEILING}
+                "by kind": unjudged, "ceiling": UNJUDGED_CEILING,
+                "early comparison's largest share of its allowance": worst[0]}
     record_property("unjudged", json.dumps(measured))
     print(f"\nthe groups the Newton steps' property leaves unjudged, {dtype}: {measured}")
     assert groups > 0 and not over_the_ceiling(left, groups), (
@@ -607,10 +789,13 @@ def test_control_the_poses_alone_read_the_shallow_basin_group_as_resolved_and_th
 EARLY_STOP = 1e-5
 
 
-def planted_search(name: str, dtype: str, plant: str):
-    """The looped search with a planted defect, jitted, from the node's constants, the pose and the kept starts: ``short``,
-    seven of the twelve Newton steps; ``stale``, each step taken from the iterate two steps back; ``early``, a group
-    stopped once its residual is within ``EARLY_STOP`` of the hull's size."""
+def planted_search(name: str, dtype: str, plant: str, count: int = contact.CONTACT_NEWTON):
+    """The looped search of ``count`` steps with a planted defect, jitted, from the node's constants, the pose and the
+    kept starts: ``short``, five steps short of its count (seven of the twelve, and at the early comparison's counts of
+    one to four no step at all); ``capped``, no more than seven steps (seven of the twelve, and the clean loop at seven
+    or fewer: a loop short only where a search needs more, the realistic short loop); ``stale``, each step taken from
+    the iterate two steps back; ``early``, a group stopped once its residual is within ``EARLY_STOP`` of the hull's
+    size."""
     kind, held = SUPPORTED[name]
     node = hull_node(kind, held, SPACING, mass=MASS, inertia=INERTIA)
 
@@ -625,18 +810,18 @@ def planted_search(name: str, dtype: str, plant: str):
         def step(x):
             return contact._step(found, x, values[0], parameters, surface)
 
-        if plant == "short":
-            x = jax.lax.fori_loop(0, 7, lambda _, x: step(x), seeds_)
+        if plant in ("short", "capped"):
+            x = jax.lax.fori_loop(0, max(count - 5, 0) if plant == "short" else min(count, 7), lambda _, x: step(x),
+                                  seeds_)
         elif plant == "stale":
-            x = jax.lax.fori_loop(0, contact.CONTACT_NEWTON, lambda _, held_: (held_[1], step(held_[0])),
-                                  (seeds_, seeds_))[1]
+            x = jax.lax.fori_loop(0, count, lambda _, held_: (held_[1], step(held_[0])), (seeds_, seeds_))[1]
         else:
             def stopped(_, x):
                 near = jnp.linalg.norm(x - contact._supported(found, x, values[0], parameters, surface)[0],
                                        axis=-1) < EARLY_STOP * node._size
                 return jnp.where(near[:, None], x, step(x))
 
-            x = jax.lax.fori_loop(0, contact.CONTACT_NEWTON, stopped, seeds_)
+            x = jax.lax.fori_loop(0, count, stopped, seeds_)
         reached = contact._supported(found, x, values[0], parameters, surface)[0]
         return x, reached, contact.search_tolerance(x.dtype, node._size) - jnp.linalg.norm(x - reached, axis=-1)
 
@@ -650,8 +835,11 @@ def planted_search(name: str, dtype: str, plant: str):
 #: apart (its end unconverged where 0.4.0's resolved end converged, or the reverse) in float64, and the short loop and
 #: the stale carry in float32, every group resolved, the clean search at 0 units. A stop at 1e-5 of the size is under
 #: the bound at both in float32 (7 and 24 units) and at all but 3 of the 133,600 cylinder draws of run 43871832051 past
-#: four times it: its float32 controls are FL-9's, where it stood at least 1,440 and 1,473 units apart on every arm (the
-#: clean search within 5 and 7).
+#: four times it: its float32 controls are FL-9's, where it stood at least 1,430 and 1,470 units apart on every arm (the
+#: clean search within 5 and 7). FL-9 holds every plant too: at its first draw the short loop and the stale carry, and
+#: at both the stop at 1e-5 of the size in float64, stood infinitely apart on 17 runner arms a dtype of six (float32)
+#: and five (float64) CPU models (run 43927793890) and on 20 and 18 arms of five CPU models each (run 43963958420), the
+#: clean search within 4.7 units (float32) and 3.9 (float64).
 PINNED_CYLINDER = (("cylinder", (3.85659060848782, 0.4300469233088282, 5.195302023152226, 0.4300469233088282,
                                  -0.2660959494337816)),
                    ("cylinder", (5.14871469598194, 0.44253834367545297, 1.1295627824972891, 5.81562520775212,
@@ -659,17 +847,82 @@ PINNED_CYLINDER = (("cylinder", (3.85659060848782, 0.4300469233088282, 5.1953020
 PINNED_SCREW = (("screw", (0.0, 0.25, 1.5, 4.0, 0.7285262466692002)),
                 ("screw", (3.5967220181521684, 0.9208618346550588, 0.9208618346550588, 3.5967220181521684,
                            0.9208618346550588)))
-PLANT_DRAWS = {("short", "float32"): PINNED_CYLINDER, ("stale", "float32"): PINNED_CYLINDER,
-               ("early", "float32"): PINNED_SCREW, ("short", "float64"): PINNED_CYLINDER,
-               ("stale", "float64"): PINNED_CYLINDER, ("early", "float64"): PINNED_CYLINDER}
+PLANT_DRAWS = {("short", "float32"): PINNED_CYLINDER + PINNED_SCREW[:1],
+               ("stale", "float32"): PINNED_CYLINDER + PINNED_SCREW[:1], ("early", "float32"): PINNED_SCREW,
+               ("short", "float64"): PINNED_CYLINDER + PINNED_SCREW[:1],
+               ("stale", "float64"): PINNED_CYLINDER + PINNED_SCREW[:1],
+               ("early", "float64"): PINNED_CYLINDER + PINNED_SCREW}
 
 
-@pytest.mark.parametrize("plant, dtype", PLANT_DRAWS)
-def test_control_each_plant_is_caught_at_its_pinned_draws(plant, dtype):
-    for kind, (spin, tilt, about, towards, share) in PLANT_DRAWS[plant, dtype]:
+@pytest.mark.parametrize("plant, dtype, kind, draw", [(plant, dtype, kind, draw) for (plant, dtype), draws in
+                                                      PLANT_DRAWS.items() for kind, draw in draws],
+                         ids=[f"{plant}-{dtype}-{kind}-{index}" for (plant, dtype), draws in PLANT_DRAWS.items()
+                              for index, (kind, _) in enumerate(draws)])
+def test_control_each_plant_is_caught_at_its_pinned_draws(plant, dtype, kind, draw):
+    found = searched_against_0_4_0(kind, dtype, placed(kind, *draw[:4], draw[4] * MARGIN),
+                                   planted=planted_search(kind, dtype, plant))
+    assert float(np.max(found.missed)) > NEWTON_ULPS, f"{plant} {dtype} at {kind} {draw}"
+
+
+#: The plants the early comparison sees within ``EARLY_STEPS``. ``capped`` is not one: it is the clean loop at seven
+#: steps or fewer, the comparison's blind spot (the module's docstring).
+EARLY_PLANTS = ("short", "stale", "early")
+#: The early comparison's pinned draws, two cylinders (the spin, tilt, about, towards and share of the property
+#: above): on eleven runner arms a dtype of six CPU models (run 43927793890) each plant failed it at both, the stop at
+#: 1e-5 of the size by 10.1 to 13.3 times the estimate in float32 and 5e9 times in float64, the short loop and the
+#: stale carry by 1e5 times and more, and the clean search stood at 0 (bit for bit); the same again on 20 (float32) and
+#: 18 (float64) arms of five CPU models each (run 43963958420), where the float32 stop stood at 2.0 and 2.7 times the
+#: allowance. ``PINNED_CYLINDER``'s first draw is not one: the float32 stop stood at 0.79 of the estimate there.
+EARLY_PINNED = (("cylinder", (2.052718941131401, 0.9110605435756676, 2.6036556336742747, 1.955715350275813,
+                              -0.3524855429988902)),
+                ("cylinder", (1.804626857088745, 0.7071424954843506, 0.47111529515606554, 2.8203637689262715,
+                              0.3753564597465622)))
+
+
+@pytest.mark.parametrize("plant", EARLY_PLANTS)
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_control_each_plant_fails_the_early_comparison_at_its_pinned_draws_where_the_clean_search_passes(dtype, plant):
+    for kind, (spin, tilt, about, towards, share) in EARLY_PINNED:
         pose = placed(kind, spin, tilt, about, towards, share * MARGIN)
-        found = searched_against_0_4_0(kind, dtype, pose, planted=planted_search(kind, dtype, plant))
-        assert float(np.max(found.missed)) > NEWTON_ULPS, f"{plant} {dtype} at {kind} {spin, tilt, about, towards, share}"
+        clean = float(np.max(early_against_0_4_0(kind, dtype, pose).missed))
+        caught = float(np.max(early_against_0_4_0(kind, dtype, pose, plant=plant).missed))
+        assert clean <= 1.0 < caught, (f"{plant} {dtype} at {kind} {spin, tilt, about, towards, share}: clean {clean}, "
+                                       f"planted {caught} of the allowance")
+
+
+#: The early comparison's clean control: a draw of each judged kind, a dtype, at which 0.4.0's own unrolled steps run op
+#: by op (``eager_against_0_4_0``) stood far from the jitted ones: of the four largest of each in a local sweep (10,284
+#: draws), the one whose least distance over 20 (float32) and 18 (float64) runner arms of five CPU models was the
+#: largest (run 43963958420). There they stood at 0.63 to 1.43 times the estimate, 0.13 to 0.29 of the allowance, never
+#: the same to the bit; at a factor of one (the estimate alone) three of the eight fail on every arm.
+EAGER_PINNED = {
+    "float32": (("capsule", (4.923087969161614, 1.1229219476888443, 3.699573805898897, 4.982324833462939,
+                             -0.34669240539373286)),
+                ("cylinder", (0.5009602593850673, 0.70845632664436, 2.4933736674693647, 3.3056659755098265,
+                              0.2932284179223881)),
+                ("ellipsoid", (2.104619230153, 1.3796273782297674, 0.3423589475579191, 2.158940113398577,
+                               0.8200931477949713)),
+                ("sphere", (1.6364222465320195, 0.35480286327995186, 2.557626460363025, 3.954559094231765,
+                            0.5076097692278205))),
+    "float64": (("capsule", (1.4234769910382559, 1.0678819972968183, 2.689679984642504, 3.9376977116587577,
+                             -0.29107239188319634)),
+                ("cylinder", (1.8661176178569467, 1.1232636359895567, 3.92268640127612, 2.6443710552330155,
+                              0.8174053094363329)),
+                ("ellipsoid", (4.674327443479518, 0.9291689698315451, 1.3250661252921205, 5.654027395037456,
+                               0.13384672068298076)),
+                ("sphere", (3.960256781641818, 1.4473394799053714, 5.462099136520079, 5.526578648439593,
+                            -0.31188227460078133)))}
+
+
+@pytest.mark.parametrize("dtype, kind, draw", [(dtype, kind, draw) for dtype, pins in EAGER_PINNED.items()
+                                               for kind, draw in pins],
+                         ids=[f"{dtype}-{kind}" for dtype, pins in EAGER_PINNED.items() for kind, _ in pins])
+def test_control_a_differently_compiled_program_of_the_same_steps_passes_the_early_comparison(dtype, kind, draw,
+                                                                                               record_property):
+    found = float(np.max(eager_against_0_4_0(kind, dtype, placed(kind, *draw[:4], draw[4] * MARGIN)).missed))
+    record_property("measured", json.dumps({"cpu": cpu_model(), "share of the allowance": found}))
+    assert found > 0.0, f"{kind} {dtype}: the op-by-op program agreed with the jitted one to the bit: no evidence"
+    assert found <= 1.0, f"{kind} {dtype}: a legitimately different program at {found:.3g} of the allowance"
 
 
 #: Two draws of FL-9 on which stress runs of the pull request read a looped end not stationary against a floor of the
