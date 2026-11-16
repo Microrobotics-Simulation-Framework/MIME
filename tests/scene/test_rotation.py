@@ -14,7 +14,7 @@ import pytest
 from hypothesis import given, strategies as st
 
 from mime.build import BuildRefused
-from mime.errors import ArgumentRefused
+from mime.build._refusals import ArgumentRefused
 from mime.scene import X, Y, Z, rotation
 from mime.scene._kinds import rotate
 from mime.units import deg, mm, rad

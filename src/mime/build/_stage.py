@@ -79,7 +79,7 @@ def _units(record: Registered) -> dict[str, str]:
 
 
 def _defect(record: Registered, problem: str, error: BaseException | None = None) -> BuildRefused:
-    from mime.errors import raised_at
+    from mime.errors._translate import raised_at
 
     return BuildRefused([entry_defect(record.cls, problem, where=raised_at(error) if error is not None else None)])
 

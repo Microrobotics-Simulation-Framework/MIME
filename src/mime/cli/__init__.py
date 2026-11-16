@@ -27,7 +27,8 @@ from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
 from mime.cli._display import AMBER, amber_line, set_plain, styled
 from mime.cli._durations import FORMS, is_bare_number, seconds, unit_examples
 from mime.cli._shell import quoted
-from mime.errors import TRACEBACK_VARIABLE, crossed, full_mode, short_text
+from mime.errors._boundary import crossed
+from mime.errors._display import TRACEBACK_VARIABLE, full_mode, short_text
 from mime.experiment import Experiment
 from mime.validity import Profile
 

@@ -94,7 +94,7 @@ def _network() -> Callable[[np.ndarray], np.ndarray]:
     import jax.numpy as jnp
 
     from mime.data import asset, asset_bytes
-    from mime.surrogates import predict_resistance, read_cholesky_mlp
+    from mime.surrogates._cholesky_mlp import predict_resistance, read_cholesky_mlp
 
     network = read_cholesky_mlp(asset_bytes(asset("dejongh_mlp_v2")))
 

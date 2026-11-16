@@ -23,7 +23,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from mime.build._refusals import ArgumentRefused, MimeError, Refusal, RefusalClass
-from mime.errors import public
+from mime.errors._boundary import public
 from mime.registry import Reduction
 from mime.results._layout import FlagLayout, OutputLayout, ended_after, position
 from mime.units import TIME, Quantity, Unit, Values, si, unit_symbol

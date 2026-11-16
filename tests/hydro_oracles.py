@@ -34,7 +34,8 @@ from mime.interactions.hydrodynamic import UniformTube, uniform_tube
 from mime.nodes.hydro import AXIS_ULPS, SurrogateDragNode
 from mime.nodes.hydro._surrogate_drag import END_TIE
 from mime.registry import BuildContext, Delivery, Interaction, Read, RoleKind, Value, register_interaction
-from mime.surrogates import DEJONGH_MLP_V2, TRIANGLE
+from mime.surrogates._cholesky_mlp import TRIANGLE
+from mime.surrogates._screw import DEJONGH_MLP_V2
 from mime.testing._mime_families import SCREW
 from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, EnergyClass, register_namespace
 

@@ -21,7 +21,7 @@ from mime.build import Declaration, ThingDeclaration
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.drives import Constant
 from mime.drives import Ramp as RampDrive
-from mime.errors import public
+from mime.errors._boundary import public
 from mime.results._series import Series
 from mime.things import Apparatus, CommandPath
 from mime.units import FREQUENCY, TIME, Quantity, s, si

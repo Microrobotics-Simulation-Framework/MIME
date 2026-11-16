@@ -100,7 +100,8 @@ from mime.registry import (
     versions_of,
     wall_kinds_matching,
 )
-from mime.surrogates import SURROGATES, ScrewSurrogate
+from mime.surrogates import SURROGATES
+from mime.surrogates._screw import ScrewSurrogate
 from mime.units import Length, Magnitude, Quantity, m
 from mime.vocabulary import BACKGROUND_LOAD, EXCHANGE_PARTNER, FLOW_EXCHANGE_X, FLOW_EXCHANGE_Y, FLOW_EXCHANGE_Z, \
     FLOW_FACES, FLOW_PARTNERS, FLOW_RESOLVED, MASS_MATRIX, POSE, RESISTANCE, RESOLVED_PARTNER, TWIST, Capability, \

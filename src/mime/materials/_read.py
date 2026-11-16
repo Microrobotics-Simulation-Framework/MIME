@@ -28,7 +28,9 @@ import materica
 from mime.build._refusals import ISSUES, Explained
 from mime.materials._records import Extrapolation, LoadedRecord, Record
 from mime.materials._values import RecordField
-from mime.validity import Action, Decision, Finding, Judge, basis_text, decide
+from mime.validity import decide
+from mime.validity._bases import basis_text
+from mime.validity._profiles import Action, Decision, Finding, Judge
 from mime.units import (
     FREQUENCY,
     LENGTH,

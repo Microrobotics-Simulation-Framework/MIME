@@ -22,7 +22,9 @@ from control_cases import spun_magnet
 from mime import Body, Experiment, State
 from mime.build import ArgumentRefused, InternalError, MimeError, Refusal, RefusalClass, UnrecognisedError
 from mime.dynamics import RigidInertial
-from mime.errors import TRACEBACK_VARIABLE, public, short_text, translated
+from mime.errors._boundary import public
+from mime.errors._display import TRACEBACK_VARIABLE, short_text
+from mime.errors._translate import translated
 from mime.errors import _boundary
 from mime.errors._translate import UNCODED
 from mime.gradients import GradientStatus
