@@ -335,6 +335,7 @@ def arm_draw(seed: int, reachable: bool) -> tuple[np.ndarray, np.ndarray]:
     return target, last
 
 
+@pytest.mark.memory_heavy
 @pytest.mark.parametrize("reachable", [True, False], ids=["reachable", "unreachable"])
 @settings(max_examples=40, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
 @given(seed=st.integers(0, 2 ** 32 - 1))
@@ -559,6 +560,7 @@ def stationary_within_the_limits(rows: Callable[[Any], Any], found: Any, lower: 
     return problems_
 
 
+@pytest.mark.memory_heavy
 @settings(max_examples=40, deadline=None, print_blob=True, suppress_health_check=[HealthCheck.too_slow])
 @given(seed=st.integers(0, 2 ** 32 - 1), reachable=st.booleans())
 def test_float32_is_judged_against_float64(seed, reachable):

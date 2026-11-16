@@ -156,6 +156,7 @@ def test_the_coil_sphere_on_the_iterative_path_writes_the_exact_paths_currents(d
 
 # -- a study, and its derivative --------------------------------------------------------------------------------
 
+@pytest.mark.memory_heavy
 def test_a_study_sweeps_a_setting_of_a_controller_on_the_iterative_path():
     from mime.study import Study, grid
 
@@ -187,6 +188,7 @@ def test_the_derivative_through_the_iterative_path_is_central_differences(monkey
     assert not [flag for flag in result.members[0].flags if "allocation_unconverged" in str(flag)]
 
 
+@pytest.mark.memory_heavy
 def test_the_derivative_of_the_follower_in_its_standoff_is_central_differences(monkeypatch):
     """``Study.gradient`` in ``controller.standoff`` of the arm's final second joint, through five ticks of the
     follower's solves (a nonlinear model, the exact Hessian's tangent) and the body's contact, against central
