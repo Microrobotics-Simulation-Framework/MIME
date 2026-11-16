@@ -1,0 +1,21 @@
+{
+  "written": "2026-11-16, committed before the second probe round ran: the first round (run 43852587824 at 676f64e8) flagged the clean looped arm on 1 of 12,000 mixed draws (arm mix_3) and lost 2 of 18 short-loop and 3 of 38 stale-carry catches of the base's on cylinder draws",
+  "phase": "PR 337 fix round 2, diagnosis of the first probe's misses",
+  "labels": "predictions by the builder (Sonnet); the same script and seeds as the first round with the draws recorded",
+  "seen_before": ["run 43852587824: cylinder arms caught short 18 vs 18 (base), stale 39 vs 38, early 706 vs 317 of 12,000 draws; mixed arms short 691 vs 673, stale 1248 vs 1230, early 914 vs 841; lost per draw (base caught, new did not): cylinder short 2, stale 3, mixed short 9, stale 7, early 1; clean flagged mix_3 1 of 3,000 (others 0); local replay of mix_3 on the laptop's CPU flags none"],
+  "operating_point": {
+    "dtype": ["float32"],
+    "platform": "CPU, a GitHub runner of 4 vCPU (the probe workflow)",
+    "sizes_and_parameters": "as the first round",
+    "seeds_and_draws": "arm mix_3 (3,000 draws over the five kinds, seed 3) and cyl_1 (3,000 cylinder draws, seed 1), the same seeds as the first round"
+  },
+  "gate_2_clean_flag_and_lost_draws_named": {
+    "claim": "the draw on which the clean looped arm was flagged is named with its groups' flags, spreads and misses, and each lost catch is named",
+    "kind": "estimates",
+    "case": "probe/rates.py with clean_flagged and lost_draws recorded",
+    "prediction": {"value": "1 clean_flagged entry in mix_3 and 2 short, 1 stale lost draws in cyl_1 (the first round's counts, same seeds and runner image)", "basis": "measured-before", "why": "the script and seeds are the first round's; a runner of another CPU may differ, and then the counts say so"},
+    "control": {"plant": "none; the plants' rates are the first round's", "expected_rate": "n/a", "runs": 3000, "clean_expected": "1/3000 on mix_3", "resolution": "a draw is named or it is not"},
+    "if_wrong": "counts that differ say the runner's codegen differs between runs, so the flag is not a function of the draw alone"
+  },
+  "outcomes": null
+}

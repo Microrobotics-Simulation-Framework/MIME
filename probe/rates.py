@@ -25,6 +25,10 @@ for i in range(draws):
     out["unresolved_groups"] += int(np.sum(~clean.resolved))
     out["groups"] += len(clean.resolved)
     out["new"]["clean"] += int(np.max(clean.missed) > bound)
+    if np.max(clean.missed) > bound:
+        out.setdefault("clean_flagged", []).append({"i": i, "kind": kind, "draw": [spin, tilt, about, towards, share],
+            "unstationary": clean.unstationary.tolist(), "resolved": clean.resolved.tolist(), "spread": clean.spread.tolist(),
+            "alone": clean.alone.tolist(), "missed": [float(v) for v in clean.missed]})
     for p in PLANTS:
         new = np.max(T.searched_against_0_4_0(kind, "float32", pose, planted=planted[kind, p]).missed) > bound
         base = T.searched_against_0_4_0(kind, "float32", pose, planted=planted[kind, p], rattles=0)
@@ -32,6 +36,8 @@ for i in range(draws):
         out["new"][p] += int(new)
         out["old"][p] += int(old)
         out["lost"][p] += int(old and not new)
+        if old and not new:
+            out.setdefault("lost_draws", []).append({"i": i, "plant": p, "kind": kind, "draw": [spin, tilt, about, towards, share]})
     if i % 100 == 0:
         print(i, out, flush=True)
 os.makedirs("probe/out", exist_ok=True)
