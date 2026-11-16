@@ -96,6 +96,33 @@ stages:
   right; `no-crease-measure` fails 40 of 40 in each; `crease-lag` (the caps a share of the body's step behind it) fails
   the motion line on 40 of 40, and the smallest lag caught on every pinned view is 0.05 of a one-pixel step (0.025 was
   predicted, a miss, recorded).
+- **A creased body's derivative is the rendered image's; the image's own derivative error is known, by class, and
+  pinned.** G17 holds the jvp to the rendered image's central difference within that difference's own error. The
+  rendered image's derivative is not the exact geometry's everywhere: against the exact image's (`hull_oracle`), on the
+  pixels about the outline, over the 360 poses of `scripts/camera_route2/crease_image_line.py` (in px² of share a pixel
+  of the body's motion; `tests/sensing/crease_image_*_pr5b.json`):
+  - **the sliver**: at the rod's end, the cap nearly edge-on, a sub-ray within 0.0025 px of the side's axis: 14.9 and
+    5.1 (x, z) at one pose (turn 6, roll 75), 1.48 and 0.72 (z) at two others, against an exact derivative of about 0 there; from
+    0.003 px off the axis at most 2.4e-4. It is the held least's: with each sub-ray's least exact it is 0.
+  - **the ripple**: at caps seen nearly edge-on (turns under about 8 degrees), at ordinary pixels, the share's error is
+    small in value (within the pixel line) but ripples with the body's place, so its derivative is up to about twice
+    the exact one: up to 0.88 (over 0.1 at 168 of the 360 poses), at most 0.16 from 15 degrees up; on G17's aggregates
+    (the equivalent radius and centroid on the caps' rims) up to 0.49 px a px, above 0.1 at 21 poses, at most 0.04 from
+    8 degrees. It is not the held least's (unchanged with an exact least); its source is not yet found.
+  - **thin caps** (narrower than two sub-pixels): up to 50.8 at one pixel; judged by the `thin_cap` flag.
+
+  These are an **acceptance of a known error, not an accuracy claim**: CI pins each class by band of the turn, its line
+  1.25 times the scan's largest in the band (`IMAGE_BANDS` in `tests/sensing/test_crease.py`, from
+  `crease_image_line.py --bands`), at G17's views and at the poses that set each line, so neither can grow unseen:
+
+  | turn (degrees) | 0 to 1 | 1 to 2 | 2 to 4 | 4 to 8 | 8 to 15 | 15 to 30 |
+  |---|---|---|---|---|---|---|
+  | the ripple's line | 1.10 | 0.73 | 0.99 | 0.99 | 0.30 | 0.20 |
+  | the sliver's line | 0.038 | 1.26 | 1.78 | 18.5 | 0.0018 | 0.0019 |
+
+  The route to exact is the follow-up **"creased image accuracy"** (approved, next): the ripple's source found, each
+  sub-ray's least refined where the side's profile is a V (a gathered Newton refinement, for the sliver), and the crease
+  line, G18, G17 and the switch scan's lines re-derived once.
 - **The kinds' sign functions** (`mime.scene._signs`, `Geometry.sign_function`): the sphere, capsule, cylinder (side and
   span) and slab their exact signed distances; the ellipsoid its radius in units of its semi-axes, less one, with its gradient's length;
   the screw's thread its radius less its modulated cross-section's, with its gradient's length in closed form; the helix the distance from its centreline's
