@@ -500,4 +500,5 @@ def freest(verdicts: Sequence[Verdict]) -> Verdict:
     return min(verdicts, key=_rank)
 
 
-__all__ = ["CustomLicence", "Evidence", "Permission", "Scope", "Terms", "Verdict"]
+__all__ = ["CustomLicence", "Evidence", "EvidenceKind", "LicenceGiven", "Permission", "Role", "Scope", "Status", "Terms",
+           "Tier", "Verdict"]
