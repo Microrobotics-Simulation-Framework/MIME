@@ -1341,7 +1341,62 @@
    "grown_sliver": "size 2, per view: under 8 degrees caught only where a band pixel outside thin boxes lies 0.01 to 0.04 px from the axis (the rest class, judged by the ripple's line, at most 1.10), no longer by the sliver's own line (18.5, against the sliver plus 2: at most 16.9 at turn 6): of the 13 seen views every one but the singular views turned 2 and 3 (0.16 and 0.12 of their lines re-read: those views' near-axis pixels are all within 0.01 px); every tail (7 of 7, the ripple's class at 1.8 to 9.8 of its line); from 8 degrees every view and tail. At test level: detection_rate on the whole band-tails test, 8 of 8, clean 0 of 8 (if it is not 8 of 8: stop and report; never loosen, grow or re-aim the plant). Size 0.25: fails only at the views and tails turned 8 degrees and more with a pixel within 0.04 px (the turn-15 view, 21.6 and 29.4, the 8, 10 and 20 tails); none under 8 degrees",
    "power": "the sliver's power under 8 degrees is lower by design: a growth of the sliver at its own pixels is caught there only past 18.5 (a growth of 3.7 at turn 6, where it is 14.8; about 18 at the singular views turned 2 and 3, where it is 0.7 and 1.4); its growth beside the axis (0.01 to 0.04 px) is caught by the ripple's line as before. Above 8 degrees unchanged"
   },
-  "fresh_drawn": null,
+  "fresh_drawn": {
+   "when": "2026-11-16 12:43 CET, after e6d0bed7 (the classes thin first, the scan re-run, the bands and lines and this round's predictions committed) and before any run of them",
+   "seed": 12623130533721122703,
+   "generator": "numpy.random.default_rng(seed), turn U(0, 30), roll U(0, 90), offsets U(0, 1), the seed from secrets.randbits(64)",
+   "views": [
+    [
+     4.955053700369372,
+     55.12693375836997,
+     [
+      0.9527046003383626,
+      0.9431572270694022
+     ]
+    ],
+    [
+     11.260245957246276,
+     11.723617036975805,
+     [
+      0.5122441478803482,
+      0.8746822271780829
+     ]
+    ],
+    [
+     5.639246213494711,
+     60.89595119835083,
+     [
+      0.5880991766778857,
+      0.041059588390126245
+     ]
+    ],
+    [
+     7.6736007349550945,
+     46.778119015871994,
+     [
+      0.7861468838228813,
+      0.25967823307132387
+     ]
+    ],
+    [
+     12.38555855493949,
+     51.82453720642759,
+     [
+      0.39766334656559943,
+      0.26379711316504206
+     ]
+    ],
+    [
+     16.62318344638479,
+     51.742260318465,
+     [
+      0.01654780985922355,
+      0.8605970733429448
+     ]
+    ]
+   ],
+   "bands": "turns 4.96, 5.64 and 7.67 in [4, 8], 11.3 and 12.4 in [8, 15], 16.6 in [15, 30]"
+  },
   "outcomes": null
  }
 }

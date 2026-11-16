@@ -510,8 +510,16 @@ DERIVATIVE_FIRST_FRESH: tuple[tuple[float, float, tuple[float, float]], ...] = (
     (11.932991353146052, 18.46225045457095, (0.6634188681067769, 0.3227586724944974)),
     (21.635710677105802, 66.65891259309886, (0.1369225864345428, 0.20859012790484321)),
 )
-#: Not yet drawn: drawn after the class order and the lines are committed.
-DERIVATIVE_FRESH: tuple[tuple[float, float, tuple[float, float]], ...] = ()
+#: Drawn 2026-11-16 by ``numpy.random.default_rng(12623130533721122703)`` (the seed from fresh entropy), after the class
+#: order and the lines were committed: turn U(0, 30), roll U(0, 90), offsets U(0, 1).
+DERIVATIVE_FRESH: tuple[tuple[float, float, tuple[float, float]], ...] = (
+    (4.955053700369372, 55.12693375836997, (0.9527046003383626, 0.9431572270694022)),
+    (11.260245957246276, 11.723617036975805, (0.5122441478803482, 0.8746822271780829)),
+    (5.639246213494711, 60.89595119835083, (0.5880991766778857, 0.041059588390126245)),
+    (7.6736007349550945, 46.778119015871994, (0.7861468838228813, 0.25967823307132387)),
+    (12.38555855493949, 51.82453720642759, (0.39766334656559943, 0.26379711316504206)),
+    (16.62318344638479, 51.742260318465, (0.01654780985922355, 0.8605970733429448)),
+)
 
 
 def derivative_line(differences: list[np.ndarray], floor: np.ndarray) -> float:
