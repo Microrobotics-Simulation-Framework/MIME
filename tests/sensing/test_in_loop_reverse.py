@@ -10,11 +10,32 @@ rates run over drawn points), and ``CAMERA_PLANT`` switches a planted error on: 
 
 from __future__ import annotations
 
+import _cache_ceiling
 import pytest
 import reverse_gates as gates
 from in_loop_cases import SEED
 
 gates.plant()
+
+
+#: How far above where a worker stands after giving its compiled programs back this file lets its resident memory
+#: grow before it gives them back again (tests/_cache_ceiling.py). Each arm's test compiles the run's reverse
+#: derivative afresh, and a worker that ran one kept 1 to 2 GB of its programs beside the next test; three workers at
+#: 3 to 4 GB beside a memory-heavy test lost CI's shard 16 its runner (a probe on a runner, 2026-11-16).
+HEADROOM_MIB = 1024
+LIMIT_MIB: list[float] = []  # one worker's limit: where it stood after the last give-back, plus the headroom
+
+
+@pytest.fixture(autouse=True)
+def programs_given_back():
+    """As ``test_lubrication.py``'s: give JAX's compiled programs back once a worker grows past its headroom."""
+    yield
+    now = _cache_ceiling.resident_mib()
+    if now is None:
+        return
+    if not LIMIT_MIB or now > LIMIT_MIB[0]:
+        _cache_ceiling.give_back_programs()
+        LIMIT_MIB[:] = [(_cache_ceiling.resident_mib() or now) + HEADROOM_MIB]
 
 
 @pytest.mark.parametrize("arm", list(gates.ARMS))
