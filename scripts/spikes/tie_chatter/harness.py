@@ -100,11 +100,15 @@ class Arm:
     name: str
     ties: int
     sticky: bool = False
+    #: The reference is the previous tick's commands (the law's own ``reference=`` argument, which the Allocator passes as
+    #: ``toward='last'``): the tie among equal-residual faces then goes to the face nearest the commands held last.
+    toward_last: bool = False
     dtypes: tuple[str, ...] = ("float32", "float64")
 
 
 ARMS = {a.name: a for a in (Arm("tie0", 0), Arm("tie16", 16), Arm("tie64", 64), Arm("tie128", 128),
-                            Arm("sticky64", 64, True), Arm("w64x", WIDE64, dtypes=("float64",)))}
+                            Arm("sticky64", 64, True), Arm("w64x", WIDE64, dtypes=("float64",)),
+                            Arm("last64", 64, toward_last=True))}
 
 
 def run_law(spec: Spec, targets: np.ndarray, arm: Arm, dtype: str) -> dict[str, Any]:
@@ -126,16 +130,18 @@ def run_law(spec: Spec, targets: np.ndarray, arm: Arm, dtype: str) -> dict[str, 
             traced.append(("plain", law.TIE_ULPS))
             return original(*args, **kwargs)
 
-    def tick(previous: Any, target: Any) -> Any:
+    def tick(carry: Any, target: Any) -> Any:
+        previous, held = carry
         STICKY["previous"] = previous
-        found = law.exact_allocation(matrix, target, lower=-LIMIT, upper=LIMIT, scales=scales, owner="spike")
+        found = law.exact_allocation(matrix, target, lower=-LIMIT, upper=LIMIT, scales=scales, owner="spike",
+                                     reference=held if arm.toward_last else None)
         face = jnp.argmax(jnp.all(signs == found.active[None, :], axis=1)).astype(jnp.int32)
-        return face, (found.commands, face)
+        return (face, found.commands), (found.commands, face)
 
     law.TIE_ULPS = arm.ties
     law._selection = hooked
     try:
-        scan = jax.jit(lambda ts: lax.scan(tick, jnp.int32(-1), ts)[1])  # a fresh function: a fresh trace
+        scan = jax.jit(lambda ts: lax.scan(tick, (jnp.int32(-1), jnp.zeros((commands,), dtype=dtype)), ts)[1])  # a fresh function: a fresh trace
         out_commands, out_face = scan(jnp.asarray(targets, dtype=dtype))
         out_commands = np.asarray(out_commands, dtype=np.float64)
         out_face = np.asarray(out_face)
