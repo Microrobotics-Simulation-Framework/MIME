@@ -37,6 +37,7 @@ from typing import Any
 from jax import Array
 
 from mime.core import jnp
+from mime.core._precision import eye as identity
 from mime.core.solves import SolveSite, register, solving
 
 #: Matrix products here, and the node's placement of the samples, are taken at full precision: on a GPU the default is
@@ -74,7 +75,7 @@ def stokeslet_matrix(points: Array, eps_squared: Any, viscosity: Any) -> Array:
     r = points[:, None, :] - points[None, :, :]
     r2 = jnp.sum(r * r, axis=-1)
     scale = 1.0 / (8.0 * math.pi * viscosity * (r2 + eps_squared) ** 1.5)
-    eye = jnp.eye(3, dtype=points.dtype)
+    eye = identity(3, points.dtype)
     blocks = (eye * (r2 + 2.0 * eps_squared)[..., None, None] + r[..., :, None] * r[..., None, :]) \
         * scale[..., None, None]
     return blocks.transpose(0, 2, 1, 3).reshape(3 * count, 3 * count)
@@ -84,7 +85,7 @@ def rigid_motions(points: Array, centre: Array) -> Array:
     """``M``, ``3N x 6``: each sample's velocity for a unit translation along x, y, z and a unit rotation about each,
     about ``centre``."""
     arm = points - centre
-    eye = jnp.eye(3, dtype=points.dtype)
+    eye = identity(3, points.dtype)
     columns = [jnp.broadcast_to(eye[i], arm.shape) for i in range(3)] + [jnp.cross(eye[i], arm) for i in range(3)]
     return jnp.stack(columns, axis=-1).reshape(3 * points.shape[0], 6)
 

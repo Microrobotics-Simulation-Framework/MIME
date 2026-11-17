@@ -96,6 +96,12 @@ When you name test files, name each directory's files together (`sorted` does it
 `tests/saved` without its float64 mode. The run is refused, naming the fixture, when that happens
 (`tests/_collection_guard.py`); a run with no path never meets it.
 
+The suite builds an experiment that states no precision as JAX's 64-bit flag says (`tests/conftest.py` sets
+`MIME_PRECISION_FROM_JAX_FLAG=1`, and a fixture restores the flag and the applied precision after each test): a
+test-only migration bridge that precision's P5 removes, once the tests declare their precision. It reaches the processes
+the tests start, and MIME reads it only inside a pytest session (`PYTEST_VERSION` set): it is no setting of a user's, and
+outside the suite an experiment that states no precision is float64 (`tests/precision/test_user_values.py`).
+
 ## CI: how many shards
 
 CI runs each test lane (`default` on three Pythons, `maddening-main` and `openmaterica-main`) as several shard jobs,
@@ -189,7 +195,7 @@ The steps that read the branch (the docs check's `--base`, the confidentiality s
 
 ## CI: the `ready` label
 
-A run of the whole matrix is 63 jobs against the organisation's 60 at once, so two pull requests in CI queue each other,
+A run of the whole matrix is 64 jobs against the organisation's 60 at once, so two pull requests in CI queue each other,
 and an agent pushes two to four times a round. So `ci.yml` has two modes. The **full** matrix runs on a push to a branch
 (the development branch's post-merge run included), on a manual run, and on a pull request that carries the label **`ready`**
 (for a pull request, 27 jobs, or more when its diff starts the lanes of "CI: which lanes a pull request runs"). A pull

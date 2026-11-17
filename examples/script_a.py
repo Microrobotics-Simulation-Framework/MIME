@@ -11,8 +11,8 @@ acceptance for what the records leave unstated (water's shear rate; the magnets'
 profile waives with a pending reason and stamps on every output, and the resin's density declared with no reason. It
 builds the record arm's graph; ``built.report.pending()`` prints what sealing it takes, which is the record arm.
 
-    python examples/script_a.py                     # float32
-    JAX_ENABLE_X64=1 python examples/script_a.py    # float64
+    python examples/script_a.py                     # float64, the default where an experiment states none
+    python examples/script_a.py --float32           # float32, as the 0.2 line's reference was run
     python examples/script_a.py --records           # the record arm
     python examples/script_a.py --explore           # the record arm before it is sealed, and what is pending
 
@@ -69,10 +69,11 @@ FL9 = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), mo
             starts=2)
 
 
-def script_a(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
+def script_a(frequency=Hz(10.0), dt=ms(0.5), precision=None) -> Experiment:
     # region: world
-    # The world: up is +z, so gravity points along -z.
-    experiment = Experiment("script_a", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt)
+    # The world: up is +z, so gravity points along -z. The precision is float64 where none is stated.
+    experiment = Experiment("script_a", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt,
+                            precision=precision)
 
     # The 1/4" silicone tube, along +x, and the water inside it.
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
@@ -217,7 +218,8 @@ def main() -> None:
         built = exploring_arm().build()
         print(built.report.pending())
         return
-    built = (record_arm() if "--records" in sys.argv[1:] else script_a()).build()
+    precision = "float32" if "--float32" in sys.argv[1:] else None
+    built = (record_arm() if "--records" in sys.argv[1:] else script_a(precision=precision)).build()
     print(built.report.text())
     # Every step's state, so that every per-step output is a series too.
     result = built.run(s(5.0), history=True)

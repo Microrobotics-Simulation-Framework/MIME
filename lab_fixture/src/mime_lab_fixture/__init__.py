@@ -30,7 +30,7 @@ from typing_extensions import NotRequired, ReadOnly, TypedDict
 from maddening.core.node import BoundaryInputSpec
 
 from mime.build import DynamicsBuilder, InteractionBuilder, ObservationBuilder, ResolvedRegistration
-from mime.core import NodeFields, node_fields, typed_view
+from mime.core import NodeFields, node_fields, run_dtype, typed_view
 from mime.core.multibody import compose
 from mime.gradients import GradientStatus
 from mime.registry import (
@@ -84,6 +84,8 @@ class NudgeNode(SimulationNode):
 
     @override
     def initial_state(self) -> NodeFields:
+        # JAX's flag's dtype, as the toys it loads take theirs (mime.testing.toys); the gantry, which feeds MIME's
+        # nodes, takes the run's
         return node_fields(NudgeState(load=jnp.asarray(cast(dict[str, Any], self.params)["force"],
                                                        dtype=jnp.zeros(()).dtype)))
 
@@ -144,11 +146,11 @@ class GantryNode(SimulationNode):
     def initial_state(self) -> NodeFields:
         held = cast(dict[str, Any], self.params)
         return node_fields(GantryState(frame_poses=self.poses(held, jnp.asarray(held["initial_position"],
-                                                                                dtype=jnp.zeros(()).dtype))))
+                                                                                dtype=run_dtype()))))
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
-        dtype = jnp.zeros(()).dtype
+        dtype = run_dtype()
         return {"position": BoundaryInputSpec(shape=(), dtype=dtype, default=jnp.zeros((), dtype=dtype),
                                               expected_units="m")}
 
@@ -157,7 +159,7 @@ class GantryNode(SimulationNode):
                params: Mapping[str, Any] | None = None) -> NodeFields:
         held = {**cast(dict[str, Any], self.params), **(params or {})}
         dtype = typed_view(GantryState, state)["frame_poses"].dtype
-        position = jnp.asarray(boundary_inputs.get("position", jnp.zeros(())), dtype=dtype)
+        position = jnp.asarray(boundary_inputs.get("position", jnp.zeros((), dtype=dtype)), dtype=dtype)
         return node_fields(GantryState(frame_poses=self.poses(held, position)))
 
 
@@ -252,7 +254,7 @@ class HeightNode(SimulationNode):
 
     @override
     def initial_state(self) -> NodeFields:
-        zero = jnp.zeros(())
+        zero = jnp.zeros(())  # JAX's flag's dtype, as the toys it reads take theirs
         return node_fields(HeightState(height=zero, height_integral=zero))
 
     @override

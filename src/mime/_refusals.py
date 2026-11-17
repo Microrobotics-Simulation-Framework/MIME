@@ -13,7 +13,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from importlib.resources import files
 from types import FunctionType, MappingProxyType
-from typing import TYPE_CHECKING, Any, ClassVar, cast, override
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, cast, override
 
 if TYPE_CHECKING:
     from mime.build._report import BuildReport
@@ -444,3 +444,20 @@ def standing_for(coded: MimeError, original: BaseException) -> MimeError | None:
     held.__dict__.update({key: value for key, value in original.__dict__.items() if key != "__notes__"})
     held.__dict__.update(coded.__dict__)
     return held
+
+
+def _refuse_lossy(owner: str, named: str) -> NoReturn:
+    """``run.precision-lossy``, raised by ``mime.core._precision.declared_values`` through the refuser installed here."""
+    raise BuildRefused([Refusal(
+        "run.precision-lossy", RefusalClass.USER,
+        f"{owner} is handed a JAX array narrower than float64 in a float64 run: {named}. It was computed in "
+        f"float32, JAX's default before a build enables 64-bit types, so it would enter the run rounded",
+        "pass a Python float or a NumPy float64 array (the build makes it float64), or compute it with "
+        "jax.numpy after the build has enabled 64-bit types; or declare the run float32: "
+        "Experiment(..., precision='float32')",
+        why="widening a float32 value to float64 does not bring back the digits float32 rounded away")])
+
+
+from mime.core._precision import install_lossy_refuser  # noqa: E402  (the core calls this module's refusal through it)
+
+install_lossy_refuser(_refuse_lossy)

@@ -51,6 +51,7 @@ from typing import Any, cast
 import jax
 import numpy as np
 
+from mime.core._precision import in_float64
 from mime.core import jnp
 from mime.nodes.hydro.mrs import stokeslet_matrix
 from mime.registry import Geometry, Sampling, Solid, WallKind, implements
@@ -128,7 +129,7 @@ def _parameters(settings: Mapping[str, Magnitude]) -> dict[str, Any]:
 def sampled_points(kind: Geometry, settings: Mapping[str, Magnitude], sampling: Sampling) -> tuple[np.ndarray,
                                                                                                     np.ndarray]:
     """``sampling``'s samples of ``kind`` in float64: their points and weights."""
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         held = sampling.samples(kind, _parameters(settings))
         return (np.asarray(held.points, dtype=np.float64).reshape(-1, 3),
                 np.asarray(held.weights, dtype=np.float64).reshape(-1))
@@ -228,7 +229,7 @@ def condition_number(kind: Geometry, settings: Mapping[str, Magnitude], spacing:
     float64 (``inf`` where its least is not above zero)."""
     held = sampling if sampling is not None else kind.sampling(settings, spacing, tuple(kind.patches))
     points, weights = sampled_points(kind, settings, held)
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         eps_squared = blob * blob * float(np.sum(weights)) / len(weights)
         matrix = np.asarray(stokeslet_matrix(jnp.asarray(points), eps_squared, 1.0), dtype=np.float64)
     values = np.linalg.eigvalsh((matrix + matrix.T) / 2.0)
@@ -286,7 +287,7 @@ def reach_problems(kind: Geometry, settings: Mapping[str, Magnitude], *,
     query = reach if reach is not None else kind.reach
     label = kind.label()
     found: list[str] = []
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         parameters = _parameters(settings)
 
         def reached(d: Any) -> Any:
@@ -339,7 +340,7 @@ def body_reach_problems(kind: Geometry, settings: Mapping[str, Magnitude], *,
     rounding = 64.0 * float(np.finfo(np.float64).eps) * coarse
     label = kind.label()
     found: list[str] = []
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         parameters = _parameters(settings)
         query = reach if reach is not None else body_reach(kind, settings, spacing)
 
@@ -400,7 +401,7 @@ def support_problems(kind: Geometry, settings: Mapping[str, Magnitude], *,
     found: list[str] = []
     held = directions()
     near = own[np.argmax(own @ held.T, axis=0)]
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         parameters = _parameters(settings)
         def answered(d: Any, n: Any) -> Any:
             return query(parameters, d, n)
@@ -447,7 +448,7 @@ def distance_problems(wall: WallKind, parameters: Mapping[str, Any], points: np.
     vector or not its distance's gradient, or the distance and normal not ``closed_form``'s (the caller's, written
     from the wall's definition); and, for a wall kind that matches no region, a distance at all."""
     label = wall.label()
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         held = {name: (jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple)) else value)
                 for name, value in parameters.items()}
         first = wall.distance(held, jnp.asarray(points[0], dtype=jnp.float64))

@@ -20,6 +20,7 @@ from maddening import GraphManager
 from mime.build._derived import array_record, canonical_json, derive
 from mime.build._in_graph import program_of
 from mime.build._maddening import parameter_tree, static_dependencies
+from mime.core._node import run_dtype
 from mime.nodes.control import ControllerNode, leaf_param
 
 #: JAX's tracer, whose hints name types from jaxlib, which ships no stubs.
@@ -54,7 +55,7 @@ def _controller_programs(graph: GraphManager) -> dict[str, Any]:
         constants = node.constants()
         start = cast(Mapping[str, Any], constants["initial_state"])
         reads = cast(Mapping[str, tuple[str, tuple[int, ...]]], constants["reads"])
-        zeros = {label: np.zeros(shape, dtype=_jax.numpy.zeros(()).dtype) for label, (_, shape) in reads.items()}
+        zeros = {label: np.zeros(shape, dtype=run_dtype()) for label, (_, shape) in reads.items()}
         if node.leaf_settings:
             # The settings it holds as leaves are arguments of the traced step, so their values are not its constants.
             leaves = {name: constants[leaf_param(name)] for name in node.leaf_settings}
@@ -90,7 +91,7 @@ def structure_key(graph: GraphManager, observation_nodes: Iterable[str]) -> Stru
         return {**section, "nodes": nodes}
 
     record = {"physics": stripped(derived.physics), "observations": stripped(derived.observations),
-              "controllers": _controller_programs(graph), "x64": bool(_jax.config.jax_enable_x64)}
+              "controllers": _controller_programs(graph), "x64": bool(run_dtype() == np.float64)}
     key = "structure:" + hashlib.sha256(canonical_json(record).encode()).hexdigest()
     return StructureKey(key, derived.physics_hash, tree, record)
 

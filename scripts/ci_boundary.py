@@ -51,8 +51,8 @@ CI_SCRIPTS = (
     "scripts/check_confidential.py", "scripts/check_no_skips.py",
     "scripts/check_shard_jobs.py", "scripts/check_shards.py", "scripts/ci_boundary.py", "scripts/ci_ready.py",
     "scripts/compilation_cache_mode.py", "scripts/install_shells.sh", "scripts/latest_attempt.py",
-    "scripts/nightly_wait.py", "scripts/platforms_smoke.py", "scripts/prune_jax_cache.py", "scripts/release.py",
-    "scripts/report_test_durations.py", "scripts/run_jobs.py", "scripts/shard_matrix.py", "scripts/stress_select.py",
+    "scripts/nightly_wait.py", "scripts/platforms_smoke.py", "scripts/precision_audit.py", "scripts/prune_jax_cache.py",
+    "scripts/release.py", "scripts/report_test_durations.py", "scripts/run_jobs.py", "scripts/shard_matrix.py", "scripts/stress_select.py",
     "scripts/stress_summary.py", "scripts/typing_check.py",
     "tests/test_ci_lane.py",
 )

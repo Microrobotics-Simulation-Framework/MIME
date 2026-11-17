@@ -44,7 +44,7 @@ def windowed_and_whole(width: int, height: int, focal: float, centre: tuple[floa
     ball = Subject("ball", "sphere", {"radius": radius}, appearance=Appearance.opaque(), moving=True, window=window)
     frame = render([ball], camera, pose, {"ball": (jnp.asarray(centre), jnp.asarray((1.0, 0.0, 0.0, 0.0)))})
     dtype = frame.transmission.dtype
-    corners_x, corners_y = render_module._corners(camera, None, (height, width))
+    corners_x, corners_y = render_module._corners(camera, None, (height, width), dtype)
     # The ball's centre in the optical frame as the render takes it, so that the arithmetic is the same.
     optical = render_module._rotation(pose.orientation, dtype).T @ (jnp.asarray(centre, dtype=dtype)
                                                                     - jnp.asarray(pose.position, dtype=dtype))

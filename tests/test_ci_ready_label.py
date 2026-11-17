@@ -10,11 +10,11 @@ needs is skipped unless its own ``if`` names a status function; a matrix expande
 summary job's steps do (the steps that run, the refusing step's script run in ``bash -e``, and a failed step's
 ``continue-on-error`` honoured, so the job's own result is what is judged). What this shows:
 
-- **Full** (a push, a manual run, a pull request whose labels hold ``ready`` when the run starts): 63 jobs for a push, 64
+- **Full** (a push, a manual run, a pull request whose labels hold ``ready`` when the run starts): 64 jobs for a push, 65
   for a manual run (``usd-core-newest``), the required checks among them, none refusing. A full pull request runs the
   lanes no longer required (``default`` on Python 3.13, ``maddening-main``, ``openmaterica-main``) only when its diff
-  touches the pins, CI or an adapter (``scripts/ci_boundary.py``, ``tests/test_ci_boundary.py``): 27 jobs when it
-  touches none of them, 63 when it touches the pins or CI, 39 when it touches one upstream's adapter alone.
+  touches the pins, CI or an adapter (``scripts/ci_boundary.py``, ``tests/test_ci_boundary.py``): 28 jobs when it
+  touches none of them, 64 when it touches the pins or CI, 40 when it touches one upstream's adapter alone.
 - **Reduced** (a pull request without ``ready``): 16 jobs, the typecheck, the confidentiality scan, the docs check and
   ``default`` on Python 3.12 with all its shards and its completion tests job. The one required job that did not run its
   lane (``default`` on 3.14) starts, runs nothing but the refusing step, and fails with its message. Every required name
@@ -135,7 +135,7 @@ class Run:
     read: tuple[str, ...] = ()
     attempt: int = 1
     mode: str = "full"
-    jobs: int | None = 63
+    jobs: int | None = 64
     platforms: int | None = 6
     changed: tuple[str, ...] = ()
     lanes: frozenset[str] = ALL_LANES
@@ -144,7 +144,7 @@ class Run:
 FULL, REDUCED = "full", "reduced"
 SCENARIOS: dict[str, Run] = {
     "a push to a branch": Run("push"),
-    "a manual run": Run("workflow_dispatch", jobs=64),
+    "a manual run": Run("workflow_dispatch", jobs=65),
     "a pull request opened without the label": Run("pull_request", "opened", mode=REDUCED, jobs=16, platforms=1,
                                                    lanes=NO_LANES),
     "a push to a pull request without the label": Run("pull_request", "synchronize", mode=REDUCED, jobs=16,
@@ -152,13 +152,13 @@ SCENARIOS: dict[str, Run] = {
     "a push to a pull request with another label": Run("pull_request", "synchronize", ("stress",), ("stress",),
                                                        mode=REDUCED, jobs=16, platforms=1, lanes=NO_LANES),
     "a push to a pull request carrying ready": Run("pull_request", "synchronize", ("ready",), ("stress", "ready"),
-                                                   jobs=27, lanes=NO_LANES),
-    "a pull request opened with ready, its payload without it": Run("pull_request", "opened", (), ("ready",), jobs=27,
+                                                   jobs=28, lanes=NO_LANES),
+    "a pull request opened with ready, its payload without it": Run("pull_request", "opened", (), ("ready",), jobs=28,
                                                                     lanes=NO_LANES),
     "ready removed before the run read the labels": Run("pull_request", "synchronize", ("ready",), (), mode=REDUCED,
                                                         jobs=16, platforms=1, lanes=NO_LANES),
-    "the label Ready, capitalised": Run("pull_request", "synchronize", ("Ready",), ("Ready",), jobs=27, lanes=NO_LANES),
-    "a re-run after ready was added": Run("pull_request", "synchronize", (), ("ready",), attempt=2, jobs=27,
+    "the label Ready, capitalised": Run("pull_request", "synchronize", ("Ready",), ("Ready",), jobs=28, lanes=NO_LANES),
+    "a re-run after ready was added": Run("pull_request", "synchronize", (), ("ready",), attempt=2, jobs=28,
                                           lanes=NO_LANES),
     "a re-run without ready": Run("pull_request", "synchronize", (), (), attempt=2, mode=REDUCED, jobs=16, platforms=1,
                                   lanes=NO_LANES),
@@ -167,19 +167,19 @@ SCENARIOS: dict[str, Run] = {
                                                              mode=REDUCED, jobs=None, platforms=None, lanes=NO_LANES),
     # The boundary: what a full pull request's diff touches decides the lanes no longer required.
     "a full pull request that changes only tests and a guide": Run(
-        "pull_request", "synchronize", ("ready",), ("ready",), jobs=27, lanes=NO_LANES,
+        "pull_request", "synchronize", ("ready",), ("ready",), jobs=28, lanes=NO_LANES,
         changed=("tests/test_x.py", "docs/guide.md", "src/mime/nodes/body/_gravity.py")),
     "a full pull request that changes the lock": Run(
-        "pull_request", "synchronize", ("ready",), ("ready",), jobs=63, changed=("uv.lock", "docs/guide.md")),
+        "pull_request", "synchronize", ("ready",), ("ready",), jobs=64, changed=("uv.lock", "docs/guide.md")),
     "a full pull request that changes a workflow": Run(
-        "pull_request", "synchronize", ("ready",), ("ready",), jobs=63, changed=(".github/workflows/ci.yml",)),
+        "pull_request", "synchronize", ("ready",), ("ready",), jobs=64, changed=(".github/workflows/ci.yml",)),
     "a full pull request that changes a script the workflows call": Run(
-        "pull_request", "synchronize", ("ready",), ("ready",), jobs=63, changed=("scripts/check_shards.py",)),
+        "pull_request", "synchronize", ("ready",), ("ready",), jobs=64, changed=("scripts/check_shards.py",)),
     "a full pull request that changes MADDENING's adapter": Run(
-        "pull_request", "synchronize", ("ready",), ("ready",), jobs=39, lanes=frozenset({"maddening-main"}),
+        "pull_request", "synchronize", ("ready",), ("ready",), jobs=40, lanes=frozenset({"maddening-main"}),
         changed=("src/mime/build/_maddening.py",)),
     "a full pull request that changes OpenMaterica's adapter": Run(
-        "pull_request", "synchronize", ("ready",), ("ready",), jobs=39, lanes=frozenset({"openmaterica-main"}),
+        "pull_request", "synchronize", ("ready",), ("ready",), jobs=40, lanes=frozenset({"openmaterica-main"}),
         changed=("src/mime/materials/_read.py",)),
     "a pull request without the label that changes the lock": Run(
         "pull_request", "synchronize", mode=REDUCED, jobs=16, platforms=1, lanes=NO_LANES, changed=("uv.lock",)),
@@ -693,12 +693,12 @@ PLANTS = {
     "a-lane-no-longer-required-ignores-the-boundary": (
         "ci.yml", lambda t: in_job(t, "openmaterica-main-tests", "needs.shards.outputs.openmaterica == 'true'",
                                    FULL),
-        "a push to a pull request carrying ready: starts 37 jobs; the full set is 27"),
+        "a push to a pull request carrying ready: starts 38 jobs; the full set is 28"),
     "python-3.13-ignores-the-boundary": (
         "ci.yml", lambda t: in_job(t, "default-tests", "fromJSON(needs.shards.outputs.exclude)",
                                    "fromJSON(needs.shards.outputs.full == 'true' && '[]' || "
                                    "'[{\"python-version\":\"3.13\"},{\"python-version\":\"3.14\"}]')"),
-        "a push to a pull request carrying ready: starts 37 jobs; the full set is 27"),
+        "a push to a pull request carrying ready: starts 38 jobs; the full set is 28"),
     "the-boundary-step-removed": (
         "ci.yml", lambda t: in_job(t, "shards", "      - name: Which lanes this run starts\n        id: boundary\n",
                                    "      - name: Which lanes this run starts\n        id: elsewhere\n"),
@@ -715,7 +715,7 @@ PLANTS = {
         "ci.yml", lambda t: in_job(t, "default-tests", "fromJSON(needs.shards.outputs.exclude)",
                                    f"fromJSON({FROM_THE_EVENT} && '[{{\"python-version\":\"3.13\"}}]' || "
                                    "'[{\"python-version\":\"3.13\"},{\"python-version\":\"3.14\"}]')"),
-        "a re-run after ready was added: starts 17 jobs; the full set is 27"),
+        "a re-run after ready was added: starts 18 jobs; the full set is 28"),
     "a-summary-reads-the-event": (
         "ci.yml", lambda t: in_job(t, "default", f"MIME_CI_RUNS: ${{{{ {FULL} || ", f"MIME_CI_RUNS: ${{{{ {FROM_THE_EVENT} || "),
         "a re-run after ready was added: 'default (Python 3.14)' refuses, and its lane runs here"),

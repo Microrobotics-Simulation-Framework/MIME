@@ -1804,7 +1804,7 @@ anomalies:
       - "entry: dynamics motor, rung dynamic; the angle state"
     verification: []
     residual_risk: "Phase 7c2 reads every phase against the angle of the same run and gates the angle's own rounding to a derived bound (a0_dynamic_expected_differences_b.json), so its comparison is not moved by it; nothing bounds the bias in a run that is not compared against an emulation of the same accumulator"
-    workaround: "Run in double precision (JAX_ENABLE_X64=1) where a run is long or its rate matters, or read rates from the motor's speed rather than from its angle"
+    workaround: "Run in double precision (Experiment(..., precision='float64'), the default where none is stated) where a run is long or its rate matters, or read rates from the motor's speed rather than from its angle"
     planned_resolution: "Wrap the angle (carry it modulo a turn, with the turns counted apart), or carry it compensated (a Kahan-style sum of the increments) or in double precision; a src change for the maintainer to triage, which changes nothing in 7c2's numbers"
   - anomaly_id: MIME-ANO-125
     title: "On a CPU with two sizes of core, the MRS resistance's last bits depend on which core a process started on"

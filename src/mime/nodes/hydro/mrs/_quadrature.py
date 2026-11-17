@@ -40,6 +40,8 @@ import numpy as np
 from jax import Array
 
 from mime.core import jnp
+from mime.core._precision import diagonal
+from mime.core._precision import eye as identity
 from mime.nodes.hydro.mrs._solve import PRECISION, force_sums, point_forces, rigid_motions
 
 #: The bytes one chunk's temporaries may hold: the pairs of every force point with a chunk's quadrature points, each
@@ -182,7 +184,7 @@ def regularised_stokeslet(eps_squared: Any) -> Kernel:
         r = targets[:, None, :] - sources[None, :, :]
         r2 = jnp.sum(r * r, axis=-1)
         s = 1.0 / (8.0 * math.pi * (r2 + eps_squared) ** 1.5)
-        eye = jnp.eye(3, dtype=targets.dtype)
+        eye = identity(3, targets.dtype)
         blocks = s[..., None, None] * (r[..., :, None] * r[..., None, :] + (r2 + 2.0 * eps_squared)[..., None, None]
                                        * eye)
         return blocks, jnp.asarray(True)
@@ -278,7 +280,7 @@ def scaled_least_eigenvalue(found: Array) -> Array:
     positive definite (the scaling is a congruence, which keeps the signs of the eigenvalues, a negative diagonal entry
     included). Not a number where a diagonal entry is zero."""
     symmetric = (found + found.T) / 2.0
-    scale = jnp.sqrt(jnp.abs(jnp.diag(symmetric)))
+    scale = jnp.sqrt(jnp.abs(diagonal(symmetric)))
     return jnp.linalg.eigvalsh(symmetric / (scale[:, None] * scale[None, :]))[0]
 
 
@@ -314,7 +316,7 @@ def semidefinite_floor(dtype: Any) -> float:
 def asymmetry(found: Array) -> Array:
     """``|R - R^T| / |R|`` (Frobenius) of a resistance, the part its symmetric part drops, with each row and column
     scaled by the square root of its diagonal entry, so that a force and a torque are compared on one scale."""
-    scale = jnp.sqrt(jnp.abs(jnp.diag(found)))
+    scale = jnp.sqrt(jnp.abs(diagonal(found)))
     unit = found / (scale[:, None] * scale[None, :])
     return jnp.linalg.norm(unit - unit.T) / jnp.linalg.norm(unit)
 

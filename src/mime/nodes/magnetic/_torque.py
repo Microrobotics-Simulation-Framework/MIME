@@ -20,6 +20,7 @@ from mime.core import (
     as_run_array,
     jnp,
     node_fields,
+    run_dtype,
     node_input,
     quaternion,
     typed_view,
@@ -79,7 +80,7 @@ class MagneticTorqueNode(MimeNode):
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
         given = typed_view(MagneticTorqueInputs, boundary_inputs)
-        field = given.get("flux_density", as_run_array(jnp.zeros(3)))
+        field = given.get("flux_density", jnp.zeros(3, dtype=run_dtype()))
         pose = given.get("pose", as_run_array(jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))))
         moment = quaternion.rotate(pose[3:], jnp.asarray(p["moment"], dtype=field.dtype))
         return node_fields(Wrench(wrench=jnp.concatenate([jnp.zeros_like(field), jnp.cross(moment, field)])))

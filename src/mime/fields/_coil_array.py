@@ -15,6 +15,7 @@ import jax
 import numpy as np
 from numpy.typing import NDArray
 
+from mime.core._precision import in_float64
 from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, RefusalClass
 from mime.core import as_run_array, run_dtype
 from mime.core.multibody import compose
@@ -288,7 +289,7 @@ def allocate(actuation: Actuation, *, limits: Quantity, field: Quantity | None =
                                        f"allocate {EXACT_COMMANDS} of the coils with mime.control.exact_allocation(...) "
                                        f"on their columns of actuation.matrix(), the others held; or wait for the "
                                        f"iterative path, which takes any number (a later 0.3.0 development release)")])
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         solved = _host_allocation(*matrix.shape)(matrix, target, lower=-bounds, upper=bounds, scales=weights)
         currents: NDArray[np.float64] = np.asarray(solved.commands, dtype=np.float64)
     made_field = actuation.field @ currents + actuation.background

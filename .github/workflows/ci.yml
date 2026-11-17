@@ -1083,3 +1083,45 @@ jobs:
             echo "::error::the snippet type-checked without py.typed, so the check above cannot fail"
             exit 1
           fi
+
+  # The dtype audit's report (precision's P1, scripts/precision_audit.py): the wide operations in each configuration's float32
+  # step with 64-bit types enabled. Report-only: the job prints and uploads the report and never fails the run
+  # (`continue-on-error`, and the script exits 0 whatever it finds); it is no required check, and a reduced run (a pull
+  # request without `ready`) does not start it. Precision's P2 makes it strict.
+  dtype-audit:
+    name: dtype audit (report only)
+    needs: shards
+    if: ${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
+      - name: Install the locked releases
+        run: uv sync --locked --extra verify
+      - name: Build and install the lab fixture package, registered from outside MIME
+        run: uv pip install --no-deps ./lab_fixture
+      - name: The unit tube table, in the cache shared by every job
+        uses: ./.github/actions/unit-tube
+      - name: The audit, float32 with 64-bit types enabled
+        env:
+          JAX_ENABLE_X64: "1"
+        run: |
+          set -o pipefail  # the script's exit, not tee's: the job stays report-only through continue-on-error
+          mkdir -p "$RUNNER_TEMP/report"
+          uv run --no-sync python scripts/precision_audit.py --json "$RUNNER_TEMP/report/dtype-audit.json" | tee "$RUNNER_TEMP/report/dtype-audit.txt"
+          sed -n '/== SUMMARY ==/,$p' "$RUNNER_TEMP/report/dtype-audit.txt" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dtype-audit
+          path: ${{ runner.temp }}/report
+          if-no-files-found: warn

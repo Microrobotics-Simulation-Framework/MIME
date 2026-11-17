@@ -1,0 +1,97 @@
+schema: mime.document/15
+mime: 0.3.0.dev1
+experiment: lubricated_ellipsoid
+profile: exploratory
+run:
+  dt:
+    value: 0.001
+    unit: s
+  seed: 0
+scene:
+  up: [0.0, 0.0, 1.0]
+  units: m
+  references: []
+sources: {}
+conditions: {}
+things:
+  ball:
+    kind: body
+    prim: /World/ball
+    dynamics:
+      motion:
+        name: rigid_inertial
+        version: 0.4.0
+    initial:
+      position:
+        value: [0.0, 0.0, 0.003]
+        unit: m
+      orientation: [1.0, 0.0, 0.0, 0.0]
+      velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: m/s
+      angular_velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: Hz
+    parts:
+      shell:
+        solid:
+          name: ellipsoid
+          version: 0.1.0
+          settings:
+            semi_axes:
+              value: [0.0011, 0.001, 0.00095]
+              unit: m
+  floor:
+    kind: structure
+    prim: /World/floor
+    geometry:
+      name: plane
+      version: 0.1.0
+      settings:
+        normal: [0.0, 0.0, 1.0]
+  water:
+    kind: medium
+    prim: /World/water
+    fills: floor.half_space
+interactions:
+- id: drag:ball
+  name: drag
+  version: 0.5.0
+  binds:
+    body: ball
+    medium: water
+  settings:
+    rung: mrs
+    spacing:
+      value: 0.00016
+      unit: m
+    blob: 0.25
+    wall_kind: plane
+    near_contact: true
+observations: []
+declared:
+  ball.inertia:
+    value: [1.0e-11, 1.0e-11, 1.0e-11]
+    unit: kg m^2
+    reason: a millimetre body's order
+  ball.mass:
+    value: 1.0e-05
+    unit: kg
+    reason: a millimetre body's order
+  ball.roughness:
+    value: 1.0e-09
+    unit: m
+    reason: the gate's declared roughness
+  floor.roughness:
+    value: 1.0e-09
+    unit: m
+    reason: the gate's declared roughness
+  water.viscosity:
+    value: 0.001
+    unit: Pa s
+    reason: water
+materials: {}
+controller: null
+gravity:
+  value: 0.0
+  unit: m/s^2

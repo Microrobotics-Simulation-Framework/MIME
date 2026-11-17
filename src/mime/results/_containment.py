@@ -26,6 +26,7 @@ import jax
 import numpy as np
 from numpy.typing import NDArray
 
+from mime.core._precision import in_float64
 from mime.build._watch import ContainmentPlan, UnwatchedContainment
 from mime.core import jnp, shape_named
 
@@ -147,7 +148,7 @@ def _compiled(plan: ContainmentPlan) -> Any:
     key = (plan.shape, tuple(sorted((name, repr(value)) for name, value in plan.parameters.items())))
     if key not in _COMPILED:
         shape = shape_named(plan.shape)
-        with cast(Any, jax).enable_x64(True):
+        with in_float64():
             parameters = {name: (jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple)) else value)
                           for name, value in plan.parameters.items()}
 
@@ -175,7 +176,7 @@ def depths(plan: ContainmentPlan, poses: NDArray[np.float64]) -> NDArray[np.floa
     vertices = plan.vertices
     block = max(1, BLOCK // (3 * len(vertices)))
     found = np.empty(len(poses), dtype=np.float64)
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         deepest = _compiled(plan)
         held = jnp.asarray(vertices, dtype=jnp.float64)
         for start in range(0, len(poses), block):

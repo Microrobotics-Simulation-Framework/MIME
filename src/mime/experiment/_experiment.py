@@ -40,6 +40,7 @@ from mime.build._checks import stopped_refusals
 from mime.build._construct import description_warnings, report_of
 from mime.build._ranges import judged_over_ranges, range_lines
 from mime.core.multibody import DescriptionWarning
+from mime.core._precision import Precision, unstated_precision
 from mime.build._watch import ContainmentPlan
 from mime.build._report import NodeLine
 from mime.build._plan import EntryPlan, Section
@@ -282,7 +283,10 @@ class Experiment:
     conditions every material record is read at, each with its tolerance (``{"temperature": degC(20,
     plus_minus=0.5)}``). ``duration`` is the length of a run of this experiment, a whole number of base steps, which
     a saved experiment carries: ``mime run`` on its folder runs that long unless ``--duration`` says another
-    (``built.duration`` reads it; ``built.run(duration)`` always takes its own).
+    (``built.duration`` reads it; ``built.run(duration)`` always takes its own). ``precision`` is what a run computes
+    in, ``"float32"`` or ``"float64"``: float64 when not stated, exact by default; float32 is the declared cheap option.
+    A build enables JAX's 64-bit types whatever the precision, so float32 is a run's declared dtype and not JAX's
+    default (``mime.core.run_dtype``).
 
     ``profile`` is how much the build asks (``mime.validity.Profile``): ``"exploratory"`` (the default) waives what
     the experiment leaves unstated with a pending reason, recorded in the saved form and stamped on every output;
@@ -307,10 +311,12 @@ class Experiment:
     def __init__(self, name: str, *, scene: Scene | None = None, gravity: Quantity = CONVENTIONAL_GRAVITY,
                  dt: Quantity | Literal["auto"] | None = None, seed: int = 0, up: Any = None,
                  conditions: Mapping[str, Condition] | None = None,
-                 profile: str | Profile = DEFAULT_PROFILE.value, duration: Quantity | None = None) -> None:
+                 profile: str | Profile = DEFAULT_PROFILE.value, duration: Quantity | None = None,
+                 precision: Precision | None = None) -> None:
         self.name = name
         self._settings = RunSettings(name, scene, gravity, dt, seed, up, conditions,
-                                     profile.value if isinstance(profile, Profile) else profile, duration)
+                                     profile.value if isinstance(profile, Profile) else profile, duration,
+                                     precision=precision)
         self._declarations: list[Declaration] = []
         #: The note of each declaration that replaced an earlier one in this session (a notebook's cell run again):
         #: what a warnings filter cannot remove, shown by ``plan()`` and the build report. Not part of the saved form.
@@ -367,7 +373,7 @@ class Experiment:
     def _declared(cls, settings: RunSettings, declarations: Sequence[Declaration]) -> Experiment:
         experiment = cls(settings.experiment, scene=settings.scene, gravity=settings.gravity, dt=settings.dt,
                          seed=settings.seed, up=settings.up, conditions=settings.conditions, profile=settings.profile,
-                         duration=settings.duration)
+                         duration=settings.duration, precision=settings.precision)
         experiment._settings = replace(experiment._settings, based_on=settings.based_on, blocks=settings.blocks,
                                        assets=settings.assets)
         experiment._declarations = list(declarations)
@@ -795,6 +801,9 @@ class Experiment:
             raise _folder.LoadRefused([other_release])
         experiment = cls._declared(*declarations_from(form.document, form.lock["entries"], Path(folder),
                                                       cast(Any, form.lock.get("assets", []))))
+        if unstated_precision() is not None:  # the precision its lock records (a process the flag decides keeps it)
+            experiment._settings = replace(experiment._settings,
+                                           precision="float64" if form.lock["environment"]["x64"] else "float32")
         experiment._saved = form
         try:
             experiment.load_report = experiment.build().load_report

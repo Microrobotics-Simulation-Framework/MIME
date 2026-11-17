@@ -22,7 +22,7 @@ from maddening.core.static_data import StaticArray
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.build._maddening import node_constructor_arguments
-from mime.core import MimeNode, NodeFields, Units, nearest_point, node_fields, shape_named, typed_view
+from mime.core import MimeNode, NodeFields, Units, nearest_point, node_fields, run_dtype, shape_named, typed_view
 
 #: ``jax.numpy``'s hints name a device type from jaxlib's compiled core, which ships no stubs, so a strict checker
 #: reads its array constructors as partly unknown; the toys call them through this name.
@@ -298,7 +298,8 @@ class ToyFieldNode(ToyNode):
     def __init__(self, name: str, timestep: float, slots: Sequence[str] = (), amplitude: float = 0.4,
                  wavenumber: float = 1.3) -> None:
         super().__init__(name, timestep, slots=tuple(slots), amplitude=amplitude, wavenumber=wavenumber)
-        self._phase = StaticArray(np.asarray(PHASE, dtype=np.dtype(jnp.zeros(()).dtype)))
+        # the run's dtype, as the toys' saves recorded it before precision was declared (their state is JAX's flag's)
+        self._phase = StaticArray(np.asarray(PHASE, dtype=np.dtype(run_dtype())))
 
     def _slots(self) -> tuple[str, ...]:
         return cast(tuple[str, ...], node_params(self)["slots"])

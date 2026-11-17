@@ -26,6 +26,11 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 #: The suite runs MIME's errors in full: every frame and every chained error, so that a failing test's error shows
 #: where it came from. The tests of the short form set it themselves, in the processes they start.
 os.environ["MIME_TRACEBACK"] = "full"
+#: TEST-ONLY MIGRATION BRIDGE (precision's P5 removes it; not a user's setting): the suite builds an experiment that
+#: states no precision as JAX's flag says, and leaves the flag (``mime.core._precision.FROM_JAX_FLAG``), in the
+#: processes it starts too, until its tests declare their precision. An experiment that states its precision is built
+#: in it, with 64-bit types enabled.
+os.environ["MIME_PRECISION_FROM_JAX_FLAG"] = "1"
 
 import pytest  # noqa: E402
 from hypothesis import settings  # noqa: E402
@@ -55,6 +60,20 @@ def user_xla_cache_in_the_sessions_own_directory(tmp_path_factory: pytest.TempPa
         root = tmp_path_factory.mktemp("user-xla-cache")
         patch.setattr("mime.env._xla_cache.user_xla_cache_root", lambda: root)
         yield
+
+
+@pytest.fixture(autouse=True)
+def precision_restored() -> Iterator[None]:
+    """JAX's 64-bit flag and the precision a build applied, as the test found them: a build that states its precision
+    enables 64-bit types for the process, and no later test runs in a mode it did not ask for."""
+    import jax
+
+    from mime.core import _precision
+
+    flag, applied = jax.config.jax_enable_x64, _precision._applied[0]
+    yield
+    jax.config.update("jax_enable_x64", flag)
+    _precision._applied[0] = applied
 
 
 @pytest.fixture(autouse=True)

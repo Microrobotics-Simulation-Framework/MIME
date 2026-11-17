@@ -56,6 +56,7 @@ import jax
 import numpy as np
 from numpy.typing import NDArray
 
+from mime.core._precision import in_float64
 from mime.core import jnp
 from mime.registry import Density, Geometry, Samples, Sampling, uniform
 from mime.units import Magnitude
@@ -103,7 +104,7 @@ def quadrature_arrays(kind: Geometry, settings: Mapping[str, Magnitude], patches
                       counts: Sequence[tuple[int, ...]]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """The kind's quadrature on ``patches`` at ``counts``, concatenated in order, in float64 whatever the run's
     precision: its points ``(M, 3)``, weights ``(M,)`` and each point's patch (its index in ``patches``)."""
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         held = _parameters(settings)
         found = [kind.samples(held, patch, tuple(count)) for patch, count in zip(patches, counts, strict=True)]
         points = [np.asarray(s.points, dtype=np.float64).reshape(-1, 3) for s in found]
@@ -139,7 +140,7 @@ _SELECT = _jit(_select, static_argnames=("count",))
 def _farthest(points: np.ndarray, density: np.ndarray, count: int, quantum: float) -> np.ndarray:
     """``count`` indices of ``points`` by farthest-point selection from the first, each squared distance weighted by
     ``density`` and read in whole ``quantum``s, so that ties go to the lower index (``argmax`` takes the first)."""
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         return np.asarray(_SELECT(jnp.asarray(points, dtype=jnp.float64), jnp.asarray(density, dtype=jnp.float64),
                                   jnp.asarray(quantum, dtype=jnp.float64), count=count), dtype=np.int64)
 
@@ -219,7 +220,7 @@ def tie_quantum(points: np.ndarray) -> float:
 def sampled_points(kind: Geometry, settings: Mapping[str, Magnitude], sampling: Sampling) -> np.ndarray:
     """The samples of ``sampling`` on ``kind`` at ``settings`` in SI, in the kind's own frame, in float64 whatever the
     run's precision: what a choice made from them at build is made from."""
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         return np.asarray(sampling.samples(kind, _parameters(settings)).points, dtype=np.float64).reshape(-1, 3)
 
 
@@ -521,7 +522,7 @@ def hull_shortfall(kind: Geometry, settings: Mapping[str, Magnitude], patches: S
     directions = shortfall_directions()
     apart = SHORTFALL_APART * float(np.median(nearest(points, points, k=2)[0][:, 1]))
     starts, sampled = _spread_farthest(coarse, directions, apart, SHORTFALL_STARTS)
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         along = jnp.asarray(np.broadcast_to(directions[:, None, :], (*starts.shape, 3)))
         found = kind.support(_parameters(settings), along, jnp.asarray(coarse[starts]))
         reach = np.asarray(np.einsum("ijk,ik->ij", np.asarray(found.point, dtype=np.float64), directions),

@@ -569,6 +569,8 @@ run.nothing-to-step           user
 run.out-not-empty             user
 run.out-of-memory             environment
 run.out-over-source           user
+run.precision                 user
+run.precision-lossy           user
 run.rate-not-multiple         user
 run.rate-units                user
 run.record                    user

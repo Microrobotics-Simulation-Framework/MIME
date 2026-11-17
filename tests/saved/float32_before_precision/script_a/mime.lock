@@ -1,0 +1,1096 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [
+    {
+     "source_field": "twist",
+     "source_node": "umr",
+     "source_units": "m/s; rad/s",
+     "target_field": "twist",
+     "target_node": "swim_speed:umr",
+     "target_units": "m/s; rad/s"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "swim_speed:umr",
+     "params": {
+      "after": 0.0,
+      "along": [
+       1.0,
+       0.0,
+       0.0
+      ]
+     },
+     "timestep": 0.0005,
+     "type": "SwimSpeedNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "swim_speed:umr": {}
+   }
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [
+    {
+     "source_field": "value",
+     "source_node": "drive:field.amplitude",
+     "source_units": "T",
+     "target_field": "amplitude",
+     "target_node": "field.magnetic",
+     "target_units": "T"
+    },
+    {
+     "source_field": "value",
+     "source_node": "drive:field.frequency",
+     "source_units": "Hz",
+     "target_field": "frequency",
+     "target_node": "field.magnetic",
+     "target_units": "Hz"
+    },
+    {
+     "source_field": "pose",
+     "source_node": "umr",
+     "source_units": "m; 1",
+     "target_field": "pose",
+     "target_node": "drag:umr",
+     "target_units": "m; 1"
+    },
+    {
+     "source_field": "flux_density_magnetic_torque_umr",
+     "source_node": "field.magnetic",
+     "source_units": "T",
+     "target_field": "flux_density",
+     "target_node": "magnetic.torque:umr",
+     "target_units": "T"
+    },
+    {
+     "source_field": "pose",
+     "source_node": "umr",
+     "source_units": "m; 1",
+     "target_field": "pose",
+     "target_node": "magnetic.torque:umr",
+     "target_units": "m; 1"
+    },
+    {
+     "additive": true,
+     "source_field": "wrench",
+     "source_node": "gravity:umr",
+     "source_units": "N; N m",
+     "target_field": "applied_wrench",
+     "target_node": "umr",
+     "target_units": "N; N m"
+    },
+    {
+     "additive": true,
+     "source_field": "wrench",
+     "source_node": "magnetic.torque:umr",
+     "source_units": "N; N m",
+     "target_field": "applied_wrench",
+     "target_node": "umr",
+     "target_units": "N; N m"
+    },
+    {
+     "additive": true,
+     "source_field": "background_load",
+     "source_node": "drag:umr",
+     "source_units": "N; N m",
+     "target_field": "background_load",
+     "target_node": "umr",
+     "target_units": "N; N m"
+    },
+    {
+     "additive": true,
+     "source_field": "resistance",
+     "source_node": "drag:umr",
+     "source_units": "N s/m; N s; N m s",
+     "target_field": "resistance",
+     "target_node": "umr",
+     "target_units": "N s/m; N s; N m s"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "field.magnetic",
+     "params": {
+      "initial_direction": [
+       0.0,
+       1.0,
+       0.0
+      ],
+      "rotation_axis": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "slots": [
+       "magnetic_torque_umr"
+      ]
+     },
+     "timestep": 0.0005,
+     "type": "IntegratingRotatingNode"
+    },
+    {
+     "name": "drag:umr",
+     "params": {
+      "helix_wavenumber": 2.33,
+      "length": 0.00747,
+      "lubrication_epsilon": 0.00015,
+      "outer_radius": 0.0020748000000000003,
+      "radius": 0.0015600000000000002,
+      "reference_point": "centre",
+      "vessel_axis": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "vessel_centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "vessel_radius": 0.00317499996162951,
+      "vessel_shape": "cylinder",
+      "viscosity": 0.001,
+      "weights": "dejongh_mlp_v2",
+      "weights_sha256": "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345"
+     },
+     "timestep": 0.0005,
+     "type": "SurrogateDragNode"
+    },
+    {
+     "name": "gravity:umr",
+     "params": {
+      "buoyant_volume": 6.022068099805108e-08,
+      "centre_of_buoyancy": null,
+      "fluid_density": 1000.0,
+      "gravity": [
+       -0.0,
+       -0.0,
+       -9.81
+      ],
+      "mass": 8.491116020725203e-05
+     },
+     "timestep": 0.0005,
+     "type": "GravityNode"
+    },
+    {
+     "name": "magnetic.torque:umr",
+     "params": {
+      "moment": [
+       0.0,
+       0.00168,
+       0.0
+      ]
+     },
+     "timestep": 0.0005,
+     "type": "MagneticTorqueNode"
+    },
+    {
+     "name": "umr",
+     "params": {
+      "extent": 0.0020748000000000003,
+      "inertia": [
+       1.0331989974018431e-10,
+       0.0,
+       0.0,
+       0.0,
+       1.0331989974018431e-10,
+       0.0,
+       0.0,
+       0.0,
+       1.0331989974018431e-10
+      ],
+      "initial_pose": [
+       0.01,
+       0.0,
+       -0.001,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_twist": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "margin": 0.0001,
+      "mass": 8.491116020725203e-05,
+      "surface_axis": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "surface_centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "surface_radius": 0.003175,
+      "surface_shape": "cylinder",
+      "velocity_rule": "remove_outward"
+     },
+     "timestep": 0.0005,
+     "type": "RigidInertialTensorNode"
+    },
+    {
+     "name": "drive:field.amplitude",
+     "params": {
+      "value": 0.0012
+     },
+     "timestep": 0.0005,
+     "type": "ConstantNode"
+    },
+    {
+     "name": "drive:field.frequency",
+     "params": {
+      "value": 10.0
+     },
+     "timestep": 0.0005,
+     "type": "ConstantNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "drag:umr": {
+     "mlp_L_mean": {
+      "dtype": "float64",
+      "replication": "replicate",
+      "sha256": "376e61f332797fddacc1bf62d4b354c3324526698f2e19ff0dd42c4dd166311a",
+      "shape": [
+       21
+      ],
+      "shard_axis": null
+     },
+     "mlp_L_std": {
+      "dtype": "float64",
+      "replication": "replicate",
+      "sha256": "61b8d660957860aa21c080c4371509c62a5258785c00e1cf34f4ea4e20fa9f5d",
+      "shape": [
+       21
+      ],
+      "shard_axis": null
+     },
+     "mlp_W0": {
+      "dtype": "float32",
+      "replication": "replicate",
+      "sha256": "eb75ef693c2df8278ff36a7b08a548d65ac151cf6392c3e0b8b0ffddd295bfcf",
+      "shape": [
+       8,
+       128
+      ],
+      "shard_axis": null
+     },
+     "mlp_W1": {
+      "dtype": "float32",
+      "replication": "replicate",
+      "sha256": "d3927f3a3903d6e34e11fce24feea2e38b33e958ce5dec17432e860568f58df9",
+      "shape": [
+       128,
+       128
+      ],
+      "shard_axis": null
+     },
+     "mlp_W2": {
+      "dtype": "float32",
+      "replication": "replicate",
+      "sha256": "b46c0a1526a1db879991798edf48aaa3f162f96f5e113a1183b8d0cfaa4d3e8f",
+      "shape": [
+       128,
+       128
+      ],
+      "shard_axis": null
+     },
+     "mlp_W3": {
+      "dtype": "float32",
+      "replication": "replicate",
+      "sha256": "a91421371cce88588deedca250be7247dce277c69f2559b8e621678f6b6e9d5d",
+      "shape": [
+       128,
+       21
+      ],
+      "shard_axis": null
+     },
+     "mlp_X_mean": {
+      "dtype": "float32",
+      "replication": "replicate",
+      "sha256": "e8a50a072ae025e0f859fc013f18560c2ab91fec94fb117ca59a40be22ff5077",
+      "shape": [
+       8
+      ],
+      "shard_axis": null
+     },
+     "mlp_X_std": {
+      "dtype": "float32",
+      "replication": "replicate",
+      "sha256": "8609f4f103551549b3c47a41c79ffd4d1f65648bd73f69ff9b478f640dcef374",
+      "shape": [
+       8
+      ],
+      "shard_axis": null
+     },
+     "mlp_b0": {
+      "dtype": "float32",
+      "replication": "replicate",
+      "sha256": "05cd221a6651effcdeb1734dc7896fe7eea8cc387dc5b2ef327cb39db6f26031",
+      "shape": [
+       128
+      ],
+      "shard_axis": null
+     },
+     "mlp_b1": {
+      "dtype": "float32",
+      "replication": "replicate",
+      "sha256": "650f9025894dbdaecc2157a85f36cd192ecef1a776f252e86dbcaaa99544403a",
+      "shape": [
+       128
+      ],
+      "shard_axis": null
+     },
+     "mlp_b2": {
+      "dtype": "float32",
+      "replication": "replicate",
+      "sha256": "3b8dd532f2d507c1472c393c18f5015c339779d0cca286506b71b9a7f3c47c41",
+      "shape": [
+       128
+      ],
+      "shard_axis": null
+     },
+     "mlp_b3": {
+      "dtype": "float32",
+      "replication": "replicate",
+      "sha256": "c923126ca12d46017be5d1c62c30d0da5bb0d9c087019b103028d988818aa6c8",
+      "shape": [
+       21
+      ],
+      "shard_axis": null
+     }
+    },
+    "drive:field.amplitude": {},
+    "drive:field.frequency": {},
+    "field.magnetic": {},
+    "gravity:umr": {},
+    "magnetic.torque:umr": {},
+    "umr": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "drive",
+   "name": "drive.constant",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "dynamics",
+   "name": "rigid_inertial",
+   "version": "0.4.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "field provider",
+   "name": "uniform_rotating",
+   "version": "0.2.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "geometry",
+   "name": "tube",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "interaction",
+   "name": "contact",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "interaction",
+   "name": "drag",
+   "version": "0.4.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "interaction",
+   "name": "gravity",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "interaction",
+   "name": "magnetic.torque",
+   "version": "0.2.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "observation",
+   "name": "swim_speed",
+   "version": "0.1.0"
+  }
+ ],
+ "environment": {
+  "blas_threads": 1,
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev1",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.12.15",
+  "runner": {},
+  "runner_info": {},
+  "usable_cpus": 24,
+  "usd_core": "26.11",
+  "x64": false,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:fa1d086535cdd1874e480c995f81bb4710d6d83c154a6cd5953d60e22289dc41",
+  "document": "sha256:dcbe080da81e616cc3222488fd624f409a29fe4559705f9643bea9044a340adb",
+  "input": "sha256:7f866dc4bbcdc35b9ffa7e4ac82708294a40f7654223124d28489a8f026e6aa3",
+  "observations": "sha256:808b9d6b8b5a15d09a192e18b781f70a2161b86276190f90116205651ceffa85",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 0.0,
+  "file": "reference.npz",
+  "resolution": {
+   "drag:umr.background_load": {
+    "N": 0.0,
+    "N m": 0.0
+   },
+   "drag:umr.bore_fired": {
+    "1": 0.0
+   },
+   "drag:umr.clamp_fired": {
+    "1": 0.0
+   },
+   "drag:umr.resistance": {
+    "N m s": 1.2434497875801753e-14,
+    "N s": 9.208633855450898e-12,
+    "N s/m": 5.587935447692871e-09
+   },
+   "drag:umr.tilt_fired": {
+    "1": 0.0
+   },
+   "drive:field.amplitude.value": {
+    "the command's own": 1.1641532182693481e-10
+   },
+   "drive:field.frequency.value": {
+    "the command's own": 9.5367431640625e-07
+   },
+   "field.magnetic.flux_density_magnetic_torque_umr": {
+    "T": 1.1641532182693481e-10
+   },
+   "field.magnetic.gradient_magnetic_torque_umr": {
+    "T/m": 0.0
+   },
+   "field.magnetic.phase": {
+    "1": 9.313225746154785e-10
+   },
+   "field.magnetic.residual": {
+    "1": 2.2351731576719658e-11
+   },
+   "gravity:umr.wrench": {
+    "N": 7.275957614183426e-11,
+    "N m": 0.0
+   },
+   "magnetic.torque:umr.wrench": {
+    "N": 0.0,
+    "N m": 1.4210854715202004e-14
+   },
+   "swim_speed:umr.distance": {
+    "m": 9.853229343548264e-16
+   },
+   "swim_speed:umr.mean_speed": {
+    "m/s": 1.1102230246251565e-12
+   },
+   "swim_speed:umr.observed": {
+    "s": 0.0
+   },
+   "swim_speed:umr.speed": {
+    "m/s": 1.1102230246251565e-12
+   },
+   "umr.pose": {
+    "1": 3.254285729781259e-12,
+    "m": 9.313225746154785e-10
+   },
+   "umr.twist": {
+    "m/s": 3.621467188630323e-11,
+    "rad/s": 6.6356733441352844e-09
+   }
+  },
+  "resolution_factor": 30.0,
+  "rtol": 1e-05,
+  "sha256": "sha256:9d677a5d241ee0d37d4983279c69aced24de2a333a2d2c48d48eebb382754e9f",
+  "steps": 2
+ },
+ "resolved": {
+  "assets": {
+   "dejongh_mlp_v2": {
+    "sha256": "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345",
+    "source": "mime.data/mlp_cholesky_weights_v2.npz"
+   }
+  },
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "contact:umr": {
+    "binds": {
+     "body": "umr",
+     "surface": "tube.inner_surface"
+    },
+    "differentiability": "piecewise_jump",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "contact",
+    "nodes": [],
+    "settings": {
+     "margin": {
+      "unit": "m",
+      "value": 0.0001
+     },
+     "rule": "remove_outward",
+     "rung": "projection",
+     "spacing": null
+    },
+    "version": "0.1.0"
+   },
+   "drag:umr": {
+    "binds": {
+     "body": "umr",
+     "medium": "water"
+    },
+    "differentiability": "piecewise_jump",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "drag",
+    "nodes": [
+     "drag:umr"
+    ],
+    "settings": {
+     "blob": null,
+     "lubrication": {
+      "group": "lubrication",
+      "settings": {
+       "epsilon": {
+        "unit": "m",
+        "value": 0.00015
+       }
+      }
+     },
+     "patches": null,
+     "quadrature_refinement": null,
+     "rung": "surrogate",
+     "spacing": null,
+     "wall_kind": null,
+     "wall_refinement": null,
+     "weights": {
+      "asset": "dejongh_mlp_v2",
+      "sha256": "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345"
+     }
+    },
+    "version": "0.4.0"
+   },
+   "drive:field.amplitude": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "drive",
+    "name": "drive.constant",
+    "nodes": [
+     "drive:field.amplitude"
+    ],
+    "settings": {
+     "value": {
+      "unit": "T",
+      "value": 0.0012
+     }
+    },
+    "version": "0.1.0"
+   },
+   "drive:field.frequency": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "drive",
+    "name": "drive.constant",
+    "nodes": [
+     "drive:field.frequency"
+    ],
+    "settings": {
+     "value": {
+      "unit": "Hz",
+      "value": 10.0
+     }
+    },
+    "version": "0.1.0"
+   },
+   "field.magnetic": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "field provider",
+    "name": "uniform_rotating",
+    "nodes": [
+     "field.magnetic"
+    ],
+    "settings": {
+     "initial_direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotation_axis": "tube.axis"
+    },
+    "version": "0.2.0"
+   },
+   "gravity:umr": {
+    "binds": {
+     "body": "umr",
+     "medium": "water"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "gravity",
+    "nodes": [
+     "gravity:umr"
+    ],
+    "settings": {},
+    "version": "0.1.0"
+   },
+   "magnetic.torque:umr": {
+    "binds": {
+     "body": "umr",
+     "field": "field.magnetic"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "magnetic.torque",
+    "nodes": [
+     "magnetic.torque:umr"
+    ],
+    "settings": {},
+    "version": "0.2.0"
+   },
+   "swim_speed:umr": {
+    "binds": {
+     "body": "umr"
+    },
+    "differentiability": "piecewise_jump",
+    "every": 1,
+    "initial": {},
+    "kind": "observation",
+    "name": "swim_speed",
+    "nodes": [
+     "swim_speed:umr"
+    ],
+    "settings": {
+     "after": {
+      "unit": "s",
+      "value": 0.0
+     },
+     "along": "tube.axis",
+     "rate": null
+    },
+    "version": "0.1.0"
+   },
+   "umr": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "angular_velocity": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "orientation": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position": [
+      0.01,
+      0.0,
+      -0.001
+     ],
+     "velocity": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "kind": "dynamics",
+    "name": "rigid_inertial",
+    "nodes": [
+     "umr"
+    ],
+    "settings": {
+     "rate": null
+    },
+    "version": "0.4.0"
+   }
+  },
+  "fills": {
+   "water": "tube.lumen"
+  },
+  "geometry": {
+   "tube": {
+    "name": "tube",
+    "settings": {
+     "axis": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "centre": {
+      "unit": "m",
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "inner_radius": {
+      "unit": "m",
+      "value": 0.003175
+     },
+     "length": {
+      "unit": "m",
+      "value": 0.1
+     },
+     "wall": {
+      "unit": "m",
+      "value": 0.0016
+     }
+    },
+    "version": "0.1.0"
+   }
+  },
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {
+    "umr": {
+     "shell": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "inertia_per_mass": [
+       [
+        1.5360993100886725e-06,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        5.454088758486272e-06,
+        5.860749414725356e-09
+       ],
+       [
+        0.0,
+        5.860749414725356e-09,
+        5.382160551602401e-06
+       ]
+      ],
+      "inside": null,
+      "magnet": false,
+      "material": null,
+      "rotation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ],
+      "solid": {
+       "name": "screw",
+       "settings": {
+        "length": {
+         "unit": "m",
+         "value": 0.00747
+        },
+        "modulation": {
+         "unit": "1",
+         "value": 0.33
+        },
+        "radius": {
+         "unit": "m",
+         "value": 0.0015600000000000002
+        },
+        "starts": 2,
+        "wavenumber": {
+         "unit": "1",
+         "value": 2.33
+        }
+       },
+       "version": "0.3.0"
+      },
+      "volume": 6.022068099805107e-08
+     }
+    }
+   },
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "field.magnetic",
+   "drag:umr",
+   "gravity:umr",
+   "magnetic.torque:umr",
+   "umr",
+   "swim_speed:umr",
+   "drive:field.amplitude",
+   "drive:field.frequency"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {
+    "contact:umr.rule": {
+     "entry": "contact 0.1.0",
+     "kind": "convention",
+     "value": "remove_outward"
+    },
+    "swim_speed:umr.after": {
+     "entry": "swim_speed 0.1.0",
+     "kind": "convention",
+     "value": {
+      "unit": "s",
+      "value": 0.0
+     }
+    },
+    "tube.centre": {
+     "entry": "tube 0.1.0",
+     "kind": "convention",
+     "value": {
+      "unit": "m",
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   },
+   "listed": [],
+   "pending": [],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": []
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.0005,
+   "experiment": "script_a",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -9.81
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {},
+   "meters_per_unit": 1.0,
+   "prims": {
+    "field": "/World/field",
+    "tube": "/World/tube",
+    "umr": "/World/umr",
+    "water": "/World/water"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {
+   "field.magnetic": [
+    {
+     "interfaces": [
+      "field.magnetic.flux_density"
+     ],
+     "name": "magnetic_torque_umr",
+     "reader": "magnetic.torque:umr"
+    }
+   ]
+  },
+  "things": {
+   "field": "apparatus",
+   "tube": "structure",
+   "umr": "body",
+   "water": "medium"
+  },
+  "values": {
+   "umr.buoyant_volume": {
+    "details": [],
+    "read_by": [
+     "gravity:umr"
+    ],
+    "reason": "A's reference provenance (phase 0, MIME-port041 at 6485516)",
+    "source": "declared in the experiment, in place of the value its parts give, 6.022068099805107e-08 m^3",
+    "unit": "m^3",
+    "value": 6.022068099805108e-08
+   },
+   "umr.centre_of_buoyancy": {
+    "details": [],
+    "read_by": [
+     "gravity:umr"
+    ],
+    "reason": "the reference's body has one density, so its centre of buoyancy is its centre of mass",
+    "source": "declared in the experiment, in place of the value its parts give, (0, 0, 0) m",
+    "unit": "m",
+    "value": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "umr.extent": {
+    "details": [
+     "shell: the radial reach of its screw 0.3.0 about its axis, 0.0020748 m"
+    ],
+    "read_by": [
+     "contact:umr"
+    ],
+    "reason": "from shell (screw 0.3.0)",
+    "source": "derived from its parts",
+    "unit": "m",
+    "value": 0.0020748000000000003
+   },
+   "umr.inertia": {
+    "details": [],
+    "read_by": [
+     "umr"
+    ],
+    "reason": "A's reference provenance (phase 0, MIME-port041 at 6485516)",
+    "source": "declared in the experiment, in place of the value its parts would give (none: body umr's mass and inertia are derived from its parts, and 'shell' has no density)",
+    "unit": "kg m^2",
+    "value": [
+     1.0331989974018431e-10,
+     1.0331989974018431e-10,
+     1.0331989974018431e-10
+    ]
+   },
+   "umr.magnetic_moment": {
+    "details": [],
+    "read_by": [
+     "magnetic.torque:umr"
+    ],
+    "reason": "A's reference provenance (phase 0, MIME-port041 at 6485516)",
+    "source": "declared in the experiment, in place of the value its parts would give (none: body 'umr' has parts and no magnet among them, so no moment to derive)",
+    "unit": "A m^2",
+    "value": [
+     0.0,
+     0.00168,
+     0.0
+    ]
+   },
+   "umr.mass": {
+    "details": [],
+    "read_by": [
+     "gravity:umr",
+     "umr"
+    ],
+    "reason": "A's reference provenance (phase 0, MIME-port041 at 6485516)",
+    "source": "declared in the experiment, in place of the value its parts would give (none: body umr's mass and inertia are derived from its parts, and 'shell' has no density)",
+    "unit": "kg",
+    "value": 8.491116020725203e-05
+   },
+   "water.density": {
+    "details": [],
+    "read_by": [
+     "gravity:umr"
+    ],
+    "reason": "A's reference provenance (phase 0, MIME-port041 at 6485516)",
+    "source": "declared in the experiment",
+    "unit": "kg/m^3",
+    "value": 1000.0
+   },
+   "water.viscosity": {
+    "details": [],
+    "read_by": [
+     "drag:umr"
+    ],
+    "reason": "A's reference provenance (phase 0, MIME-port041 at 6485516)",
+    "source": "declared in the experiment",
+    "unit": "Pa s",
+    "value": 0.001
+   }
+  },
+  "vocabulary": {
+   "mime": "0.3.0.dev1"
+  }
+ },
+ "schema": "mime.lock/15",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "b8c55f094f984b62385bba07221f58caa74c9f32d863e115ef6b187556680484",
+  "writer": 2
+ }
+}

@@ -11,9 +11,9 @@ from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
-import jax
 import numpy as np
 
+from mime.core._precision import applied
 from mime.build import BuildRefused, Declaration, PlanSet, Refusal, RunSettings, plan_experiment
 from mime.build._checks import node_refusals, node_lines  # noqa: PLC2701 - a node's own checks, judged per point
 from mime.build._construct import assemble
@@ -33,11 +33,12 @@ type Arrays = dict[str, dict[str, np.ndarray]]
 
 @contextlib.contextmanager
 def precision(x64: bool | None) -> Generator[None]:
-    """The block in float64 (``True``) or float32 (``False``), or in the process's precision (``None``)."""
+    """The block in float64 (``True``) or float32 (``False``) declared, with JAX's 64-bit types enabled in both
+    (``mime.core._precision.applied``), or in the process's precision (``None``)."""
     if x64 is None:
         yield
         return
-    with cast(Any, jax).enable_x64(x64):
+    with applied("float64" if x64 else "float32"):
         yield
 
 

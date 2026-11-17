@@ -402,15 +402,16 @@ def disc(corners_x: Any, corners_y: Any, centre: Any, radius: Any) -> Any:
     centre_x = 0.25 * (quad[0][0] + quad[1][0] + quad[2][0] + quad[3][0])
     centre_y = 0.25 * (quad[0][1] + quad[1][1] + quad[2][1] + quad[3][1])
     inside = sum((_edge_in_disc(*quad[i], *quad[(i + 1) % 4], centre_x, centre_y) for i in range(4)),
-                 start=jnp.zeros(()))
+                 start=jnp.zeros((), dtype=corners_x.dtype))
     area = 0.5 * sum(((quad[i][0] - centre_x) * (quad[(i + 1) % 4][1] - centre_y)
                       - (quad[i][1] - centre_y) * (quad[(i + 1) % 4][0] - centre_x) for i in range(4)),
-                     start=jnp.zeros(()))
+                     start=jnp.zeros((), dtype=corners_x.dtype))
     # A pixel wholly inside the disc is covered exactly (the ellipse is convex); one with no corner inside and no
     # side crossing the circle is clear, or holds the whole disc.
     corners = [qx * qx + qy * qy < 1.0 for qx, qy in quad]
     full = corners[0] & corners[1] & corners[2] & corners[3]
-    crossed = sum((jnp.where(_crosses(*quad[i], *quad[(i + 1) % 4]), 1.0, 0.0) for i in range(4)), start=jnp.zeros(()))
+    crossed = sum((jnp.where(_crosses(*quad[i], *quad[(i + 1) % 4]), 1.0, 0.0) for i in range(4)),
+                  start=jnp.zeros((), dtype=corners_x.dtype))
     clear = ~(corners[0] | corners[1] | corners[2] | corners[3]) & (crossed == 0)
     holds = _holds_origin(quad)
     def smallest(values: list[Any]) -> Any:

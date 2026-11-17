@@ -7,7 +7,6 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, NamedTuple, cast, override
 
-import jax
 import numpy as np
 from jax import Array
 from numpy.typing import NDArray
@@ -16,6 +15,7 @@ from maddening.core.compliance.metadata import DiscretizationOrder, NodeMeta, Re
 from maddening.core.node import BoundaryInputSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
+from mime.core._precision import in_float64
 from mime.core import (
     VELOCITY_RULES,
     HeldForces,
@@ -37,6 +37,7 @@ from mime.core import (
     typed_view,
 )
 from mime.core import ledger as books
+from mime.core._precision import diagonal_matrix, eye
 from mime.core.solves import dense_solve
 from mime.nodes._kinds import held_as_built, kind_from_settings, registered_kind, setting_units, traced_settings
 from mime.nodes.body._contact import (
@@ -447,7 +448,7 @@ class RigidInertialNode(MimeNode):
 
     def _body_points(self, hull: Mapping[str, Any], settings: Mapping[str, object]) -> np.ndarray:
         """The hull's points in the body's frame at its settings as built, in float64: what its groups are made of."""
-        with cast(Any, jax).enable_x64(True):
+        with in_float64():
             parameters = {name: (jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple)) else value)
                           for name, value in settings.items()}
             found = [self._hull.samples(parameters, patch, tuple(count))
@@ -763,7 +764,7 @@ class RigidInertialNode(MimeNode):
         omega = twist[3:]
         inertia = rotation @ self.body_inertia(p, twist.dtype) @ rotation.T
         mass_matrix = jnp.zeros((6, 6), dtype=twist.dtype)
-        mass_matrix = mass_matrix.at[:3, :3].set(p["mass"] * jnp.eye(3, dtype=twist.dtype)).at[3:, 3:].set(inertia)
+        mass_matrix = mass_matrix.at[:3, :3].set(p["mass"] * eye(3, twist.dtype)).at[3:, 3:].set(inertia)
         none = jnp.zeros_like(twist)
         load = (given.get("applied_wrench", none) + given.get("background_load", none)
                 + jnp.concatenate([jnp.zeros_like(omega), -jnp.cross(omega, inertia @ omega)]))
@@ -1024,7 +1025,7 @@ def split_gyroscopic_jacobian(rotation: Array, tensor: Array, omega: Array) -> A
     gap = jnp.stack([moments[1] - moments[2], moments[2] - moments[0], moments[0] - moments[1]])
     zero = jnp.zeros_like(w[0])
     cross = jnp.stack([jnp.stack([zero, w[2], w[1]]), jnp.stack([w[2], zero, w[0]]), jnp.stack([w[1], w[0], zero])])
-    products = tensor - jnp.diag(moments)
+    products = tensor - diagonal_matrix(moments)
     return rotation @ (gap[:, None] * cross + _cross_matrix(products @ w) - _cross_matrix(w) @ products) @ rotation.T
 
 
