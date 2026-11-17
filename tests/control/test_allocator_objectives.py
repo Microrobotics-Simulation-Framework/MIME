@@ -46,7 +46,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from mime.control import _models
-from mime.data import asset
+from mime.assets import asset
 from mime.fields import CalibratedMultipole
 from mime.fields._coil_array import calibration_of
 from mime.registry import ForwardModel

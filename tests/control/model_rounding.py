@@ -141,7 +141,7 @@ def _rows(held: Calibration, point: Any, moment: Any, background: Any, d: dict[s
 
 @cache
 def _calibration(system: str) -> Calibration:
-    from mime.data import asset
+    from mime.assets import asset
 
     return calibration_of(asset(system))
 

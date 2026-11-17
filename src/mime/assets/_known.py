@@ -7,7 +7,7 @@ from collections.abc import Mapping
 
 from mime.assets._reference import AssetRef
 from mime.assets._sources import conflicts, resolve_name, shared_records
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._refusals import BuildRefused, Refusal, RefusalClass
 
 
 def known() -> Mapping[str, AssetRef]:

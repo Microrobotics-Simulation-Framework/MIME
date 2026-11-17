@@ -75,7 +75,7 @@ from mime.scene._screw import Screw
 from mime.scene._kinds import kind_frame, placed, shape_settings
 from mime.scene._read import KindOnStage, geometry_schema_problems, read_kind
 from mime.scene._solids import Box, Capsule, Cylinder, Ellipsoid, Sphere
-from mime.scene._scene import Asset, Reference, Scene, asset, sha256_hex
+from mime.scene._scene import Reference, Scene, sha256_hex
 from mime.scene._stage import (
     ARROW,
     DRAWING_SEGMENTS,
@@ -124,7 +124,7 @@ __all__ = [
     "PeriodicBox",
     "VesselRegion",
     "CameraPrim", "DisplayRead", "SceneryGprim", "SceneryMesh", "display_authors", "display_primvars", "read_display", "read_camera", "write_camera",
-    "ARROW", "Asset", "Axis", "active_visual_pins", "Box", "Capsule", "ComposedLayer", "Composition", "Cylinder", "DERIVED_FROM",
+    "ARROW", "Axis", "active_visual_pins", "Box", "Capsule", "ComposedLayer", "Composition", "Cylinder", "DERIVED_FROM",
     "DERIVED_HASH", "DRAWING_SEGMENTS", "DerivedFinding", "Ellipsoid", "GEOMETRY_API", "KEPT", "KindOnStage",
     "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY", "Plane", "Plug",
     "QUADRATURE", "QUASI_UNIFORM", "Reference", "RegionPrim", "STAGE_FILE", "STAGE_WRITER", "STAGE_WRITERS", "Scene",
@@ -135,7 +135,7 @@ __all__ = [
     "Screw", "Shape", "Sphere", "StageEdits", "StageFinding", "StageSpec", "ThingPrim", "Tube", "UP_AXES",
     "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256",
     "MESH_DISPLAY", "MESH_FIELDS", "MESH_FIELD_PREFIX", "MESH_OWNER", "MeshPrim", "mesh_field_attribute",
-    "VectorPrim", "VisualPins", "VisualPrim", "WorldFrame", "X", "Y", "Z", "asset", "body_reach",
+    "VectorPrim", "VisualPins", "VisualPrim", "WorldFrame", "X", "Y", "Z", "body_reach",
     "check_stage", "compose", "derived_findings", "geometry_schema_problems", "kind_frame", "length_of", "manifest_beside", "mesh_path",
     "mesh_source", "meters_per_unit", "pinned_visuals", "placed", "quadrature", "quadrature_counts", "quadrature_owners", "quasi_uniform",
     "read_kind", "register_shape", "sampled_points", "sampled_reach", "scene_up", "sha256_hex", "shape_settings",

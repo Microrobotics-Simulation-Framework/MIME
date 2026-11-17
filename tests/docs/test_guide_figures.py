@@ -75,8 +75,8 @@ def test_a_wrong_figure_in_the_page_or_the_script_fails_every_run(plant):
 
 
 def test_the_size_the_install_page_gives_the_tube_table_is_the_assets_size_to_the_nearest_hundred_megabytes():
-    from mime import assets
+    from mime.assets import _known
 
     text = (GUIDE / "install.md").read_text(encoding="utf-8")
     assert "unit_tube_R0.997" in text and says(text, "about two hundred megabytes")
-    assert round(assets.known()["unit_tube_R0.997"].size / 1e8) == 2
+    assert round(_known.known()["unit_tube_R0.997"].size / 1e8) == 2

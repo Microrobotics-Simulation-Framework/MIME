@@ -34,7 +34,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from mime.core import quaternion
-from mime.data import asset
+from mime.assets import asset
 from mime.nodes.hydro import SurrogateDragNode
 
 DT, MU, NU, LENGTH, RADIUS, TUBE = 5e-4, 1e-3, 2.33, 7.47e-3, 1.56e-3, 3.175e-3

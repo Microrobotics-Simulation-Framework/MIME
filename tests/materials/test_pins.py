@@ -22,7 +22,7 @@ from script_a import CONDITIONS, WATER_RECORD, record_arm
 import mime
 from mime import Experiment
 from mime.build import BuildRefused
-from mime.data import asset, asset_bytes
+from mime.assets import asset
 from mime.materials import record_file
 from mime.saved import DOCUMENT_FILE, LOCK_FILE, LoadRefused
 
@@ -31,7 +31,7 @@ PACKAGE = Path(mime.__file__).parent
 
 def copied_water(folder: Path) -> Path:
     path = folder / "water.json"
-    path.write_bytes(asset_bytes(asset("openmaterica_example_water")))
+    path.write_bytes(asset("openmaterica_example_water").read())
     return path
 
 
@@ -160,7 +160,7 @@ def test_the_saved_folder_carries_its_records_byte_for_byte(tmp_path):
     record_arm().save(tmp_path)
     for name, file in (("openmaterica_example_water", "water.json"), ("openmaterica_example_ndfeb_n45",
                                                                       "ndfeb_n45.json")):
-        assert (tmp_path / "records" / file).read_bytes() == asset_bytes(asset(name))
+        assert (tmp_path / "records" / file).read_bytes() == asset(name).read()
     shutil.rmtree(tmp_path)
 
 

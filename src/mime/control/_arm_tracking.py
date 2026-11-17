@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import warnings
+from pathlib import Path
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Annotated, Any, cast, override
@@ -18,7 +19,7 @@ from mime.core.multibody import DescriptionRefused, DescriptionWarning, InvalidD
 from mime.gradients import GradientStatus
 from mime.registry import DESIGN, PHYSICAL, convention, numerical_default
 from mime.registry import BuildContext, ControlLaw, Controller, GradientRecord, LiveInput, Signal, register_controller
-from mime.scene import Asset
+from mime.assets import Asset
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity, Time, m, s
 
 #: Where the controller computes: in single precision whatever the run's, as the 0.2 line's did.
@@ -158,14 +159,15 @@ class ArmTracking(Controller):
             with warnings.catch_warnings():
                 # It reads the kinematics alone; what the file holds beyond them the arm's segment reports.
                 warnings.simplefilter("ignore", DescriptionWarning)
-                return read_urdf(held.path, sha256=found, acknowledged=dict(self.acknowledged)).tree
+                return read_urdf(held.path or Path(held.name), sha256=found, acknowledged=dict(self.acknowledged)).tree
         except (DescriptionRefused, InvalidDescription) as error:
             raise ValueError(f"{held.path}: {error}") from error
 
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
-        if not isinstance(cast(object, self.description), Asset):
-            return [f"description={self.description!r} is not a file asset: write description=asset(\"arm.urdf\")"]
+        if not isinstance(cast(object, self.description), Asset) or self.description.origin == "named":
+            return [f"description={self.description!r} is not a file asset: write "
+                    f"description=asset(Path(\"arm.urdf\"))"]
         try:
             tree = self.read()
         except (OSError, ValueError) as error:

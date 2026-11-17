@@ -38,7 +38,8 @@ from typing_extensions import ReadOnly, TypedDict
 
 from mime._shell import quoted
 from mime._terminal import plain
-from mime.assets import folder_assets, known_bytes
+from mime.assets._audit import known_bytes
+from mime.assets._lock import folder_assets
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._refusals import ArgumentRefused, MimeError
 from mime.results._study_folder import (
@@ -383,7 +384,7 @@ def _too_large(member: str, size: int) -> Refusal | None:
     if message is None:
         return None
     if saved_folder_of(member) is not None:
-        action = ("give its terms an origin, asset(path, terms=Terms(..., origin=(\"https://...\",))), and save the "
+        action = ("give its terms an origin, asset(Path(...), terms=Terms(..., origin=(\"https://...\",))), and save the "
                   "experiment again, built.save(folder): it then travels as a reference that `mime assets fetch "
                   "<folder>` fetches on request")
     else:

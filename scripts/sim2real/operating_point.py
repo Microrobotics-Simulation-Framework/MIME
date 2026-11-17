@@ -158,7 +158,7 @@ def experiment(rung: str = "surrogate", *, name: str = "script_a_7ja", weights: 
     ``spacing_mm``, ``blob`` and ``patches``). ``body_density`` (kg/m^3), when given, sets the mass from the body's
     volume, which is otherwise the reference's ``m_eff``."""
     from mime import Apparatus, Body, Experiment, Medium, State, Structure
-    from mime.data import asset
+    from mime.assets import asset
     from mime.dynamics import RigidInertial
     from mime.fields import UniformRotating
     from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic

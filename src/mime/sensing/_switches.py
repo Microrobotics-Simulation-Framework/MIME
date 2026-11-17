@@ -344,8 +344,47 @@ UNION_SWITCHES = (
         route="none: a line that misses the cell has no chord, its length zero"),
 )
 
-SWITCHES = (*EDGE_SWITCHES, *PIECES_SWITCHES, *CORNER_SWITCHES, *DISC_SWITCHES, *FORM_SWITCHES, *SAMPLED_SWITCHES,
-            *UNION_SWITCHES)
+#: A creased body's exact share of its composition in a cell (``_coverage.composed_covered``): the interval of a segment
+#: (a side of the cell, a line's chord) inside every body of a subset of the composition's terms; and the body's
+#: first-order distance for its chord, the greatest of its regions' (``_sampled.body``).
+COMPOSED_SWITCHES = (
+    switch.Declaration(
+        owner="camera.composed.end",
+        indicator="a linear function's change along a segment (positive where it rises, so that the share on which it "
+                  "is at most zero is kept from the segment's start)",
+        orders={"expected": 0},
+        route="none: the kept share starts at one end or the other",
+        unmeasured="where the change passes zero the function is flat along the segment and its share is zero or one: "
+                   "the whole segment from either end, or an empty interval at one end or the other, whose length, and "
+                   "so every area it enters, is zero either way"),
+    switch.Declaration(
+        owner="camera.composed.low",
+        indicator="the start of a segment's interval kept so far less the start another body keeps, in segments "
+                  "(positive where the interval kept so far starts later)",
+        orders={"expected": 0},
+        route="none: an intersection of intervals starts at the latest of their starts"),
+    switch.Declaration(
+        owner="camera.composed.high",
+        indicator="another body's kept end less the end of the interval kept so far, in segments (positive where the "
+                  "interval kept so far ends earlier)",
+        orders={"expected": 0},
+        route="none: an intersection of intervals ends at the earliest of their ends"),
+    switch.Declaration(
+        owner="camera.composed.empty",
+        indicator="the intersection's end less its start, in segments (positive where it is not empty)",
+        orders={"expected": 0},
+        route="none: an empty intersection keeps no length"),
+    switch.Declaration(
+        owner="camera.sampled.body",
+        indicator="the marched region's first-order distance less another region's at a sample, in metres (positive "
+                  "where the marched region's is the greater)",
+        orders={"expected": 0},
+        route="none: a creased body is the intersection of its regions, its first-order distance the greatest of "
+              "theirs, whose slope changes where two meet (the chord's interpolation reads it, continuous)"),
+)
 
-__all__ = ["CORNER_SWITCHES", "DISC_SWITCHES", "EDGE_SWITCHES", "FORM_SWITCHES", "PIECES_SWITCHES", "SAMPLED_SWITCHES",
+SWITCHES = (*EDGE_SWITCHES, *PIECES_SWITCHES, *CORNER_SWITCHES, *DISC_SWITCHES, *FORM_SWITCHES, *SAMPLED_SWITCHES,
+            *UNION_SWITCHES, *COMPOSED_SWITCHES)
+
+__all__ = ["COMPOSED_SWITCHES", "CORNER_SWITCHES", "DISC_SWITCHES", "EDGE_SWITCHES", "FORM_SWITCHES", "PIECES_SWITCHES", "SAMPLED_SWITCHES",
            "SWITCHES", "UNION_SWITCHES"]

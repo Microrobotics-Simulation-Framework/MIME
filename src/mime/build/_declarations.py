@@ -172,7 +172,7 @@ class PermissionDeclaration:
 @dataclass(frozen=True)
 class TermsDeclaration:
     """A third-party file's terms by its path below the saved folder and the sha256 they were declared against, as a
-    loaded document holds them; a script declares them on the file instead (``asset(path, terms=Terms(...))``)."""
+    loaded document holds them; a script declares them on the file instead (``asset(Path(...), terms=Terms(...))``)."""
 
     path: str
     sha256: str

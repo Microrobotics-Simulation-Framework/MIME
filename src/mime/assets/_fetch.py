@@ -79,7 +79,7 @@ from mime.assets._reference import (
     redacted,
     scheme_of,
 )
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._refusals import BuildRefused, Refusal, RefusalClass
 from mime.credentials import Token
 from mime.terms import NO_ASSERTION
 

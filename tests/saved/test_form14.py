@@ -34,7 +34,7 @@ import yaml
 from test_form11 import codes_of, reader_of, restated
 
 from mime import assets
-from mime.assets import AssetRef
+from mime.assets import AssetRef, _fetch, _gates
 from mime.experiment import Experiment
 from mime.saved import DOCUMENT_FILE, LOCK_FILE, LoadRefused, read_folder
 from mime.saved import _versions
@@ -86,8 +86,8 @@ def placed(cache: Path, ref: AssetRef, data: bytes) -> None:
 
     cache.mkdir(parents=True, exist_ok=True)
     (cache / ref.name).write_bytes(data)
-    _acceptances.remember(assets.licences_of(ref))
-    assets.fetch(ref)
+    _acceptances.remember(_gates.licences_of(ref))
+    _fetch.fetch(ref)
 
 
 def scan_record(folder: Path, **changes: object) -> AssetRef:
@@ -195,7 +195,7 @@ def by_request_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     form."""
     from write_form13 import scan_bytes
 
-    from mime.scene import asset
+    from mime.assets import asset
     from mime.testing._graph import declare_in_order
     from mime.testing.toys._experiments import ADD_PROBE, ATTACH_SPRING, toy_experiment
 

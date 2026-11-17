@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 def mesh_path(mesh: str) -> str:
     """A description's mesh file name as a manifest lists it (``mime.assets.mesh_path``)."""
-    from mime.assets import mesh_path as listed
+    from mime.assets._manifest import mesh_path as listed
 
     return listed(mesh)
 
@@ -32,7 +32,7 @@ def mesh_path(mesh: str) -> str:
 def visual_sets() -> Mapping[str, Manifest]:
     """Every manifest the installed packages ship (``mime.assets`` entry points; MIME ships none of its own), by
     name: the visual sets ``mime visuals fetch <name>`` knows without a path."""
-    from mime.assets import shared_manifests
+    from mime.assets._sources import shared_manifests
 
     found: dict[str, Manifest] = {}
     for _, manifest in shared_manifests():
@@ -49,7 +49,7 @@ def shipped_visual_sets() -> Mapping[str, Manifest]:
     import importlib.resources
     import json
 
-    from mime.assets import read_manifest_data
+    from mime.assets._manifest import read_manifest_data
 
     found: dict[str, Manifest] = {}
     for entry in sorted((importlib.resources.files("mime.data") / "visual_sets").iterdir(), key=lambda held: held.name):
@@ -62,7 +62,7 @@ def shipped_visual_sets() -> Mapping[str, Manifest]:
 def manifest_beside(description: Path) -> Manifest | None:
     """The manifest beside a description file, read (once for each version of its file); ``None`` where there is
     none."""
-    from mime.assets import beside
+    from mime.assets._manifest import beside
 
     path = beside(description)
     if path is None:

@@ -16,7 +16,7 @@ along -z. The field starts along the body's moment (body y here, the reference's
 
 
 from mime import Apparatus, Body, Experiment, Medium, State, Structure
-from mime.data import asset
+from mime.assets import asset
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotating
 from mime.interactions import KEPT, Gravity, Lubrication, Magnetic

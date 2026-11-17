@@ -1,9 +1,9 @@
 """The namespace this plugin's entries live in, registered once, at import.
 
-The naming rule, in one place (nothing here renames anything: it is how MIME names things today):
+The naming rule, in one place:
 
 - an **entry** is `<namespace>.<name>`, with a dot: `${namespace}.example_load`;
-- a **record** (an asset) is `<namespace>_<name>`, with an underscore: `${namespace}_example_record`;
+- a **record** (an asset) is `<namespace>.<name>`, with a dot too: `${namespace}.example_record`;
 - an **instance** of an entry on a thing is `<entry>:<thing>`, with a colon: `${namespace}.example_load:probe`.
 
 The namespace appears in six places, filled from one value by `mime scaffold plugin`: the `mime.entries` and `mime.assets`

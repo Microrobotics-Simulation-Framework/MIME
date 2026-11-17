@@ -371,9 +371,9 @@ def test_a_file_that_may_not_be_redistributed_never_reaches_the_bucket(ar4: Path
     fake = FakeRecords(token)
     seen = Seen(fake)
     pushed(copy_of(ar4, tmp_path), fake, seen=seen, full=True)
-    from mime import assets
+    from mime.assets import _lock
 
-    forbidden = {ref.sha256 for ref in assets.folder_assets(ar4)}
+    forbidden = {ref.sha256 for ref in _lock.folder_assets(ar4)}
     assert len(forbidden) == 1 and not forbidden & fake.stored_sha256s()
     assert len(fake.stored()) > 2, "the stored bundle's members are among the bytes held to it"
     said = "\n".join(seen.events)
@@ -415,12 +415,12 @@ def test_control_a_choice_that_uploads_every_asset_is_caught_every_run(ar4: Path
     monkeypatch.setattr(_plan, "upload_problems", lambda files, lock: [])
     import shutil
 
-    from mime import assets
+    from mime.assets import _cache, _lock
     from terms_cases import mesh_bytes
 
     folder = copy_of(ar4, tmp_path)
-    ref = assets.folder_assets(folder)[0]
-    cached = assets.file_path(ref)
+    ref = _lock.folder_assets(folder)[0]
+    cached = _cache.file_path(ref)
     cached.parent.mkdir(parents=True, exist_ok=True)
     cached.write_bytes(mesh_bytes("ar4_visual", 6000))
     monkeypatch.setattr(_plan, "locate", lambda held, folder=None: cached)

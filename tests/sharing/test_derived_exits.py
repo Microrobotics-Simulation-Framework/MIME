@@ -33,14 +33,17 @@ from terms_cases import NO_REDISTRIBUTION, mesh_bytes, same_reference_run, write
 from zenodo_records import FakeRecords
 
 from mime import assets, push
+from mime.assets import _audit, _derivation, _fetch, _gates
 from mime.assets._acceptances import remember
-from mime.assets import AssetRef, DerivationInput, DerivationRecord, _derivation, _sources
+from mime.assets import AssetRef, _derivation, _sources
+from mime.assets._derivation import DerivationRecord
+from mime.assets._derivation import DerivationInput
 from mime.build import BuildRefused
 from mime.experiment import Experiment
 from mime.push import _plan
 from mime.saved import LOCK_FILE, _bundle, pack
 from mime.saved._card import judged_folder
-from mime.scene import asset
+from mime.assets import asset
 from mime.testing._graph import declare_in_order
 from mime.testing.toys._experiments import ADD_PROBE, ATTACH_SPRING, toy_experiment
 
@@ -88,8 +91,8 @@ def placed(cache: Path, data: bytes, record: AssetRef | None = None) -> None:
     is an asset's. A person who placed it has accepted its licence (a first use of a cached file asks)."""
     (cache / sha(data)).write_bytes(data)
     if record is not None:
-        assets.fetch(record, accept_licences={each.id for each in assets.licences_of(record)})
-        remember(assets.licences_of(record))  # the person who placed it accepted: a build's read of it is gated
+        _fetch.fetch(record, accept_licences={each.id for each in _gates.licences_of(record)})
+        remember(_gates.licences_of(record))  # the person who placed it accepted: a build's read of it is gated
 
 
 @pytest.fixture
@@ -183,7 +186,7 @@ def the_guard_finds_it(tmp_path: Path, derived: AssetRef) -> None:
     (root / "pkg").mkdir(parents=True)
     (root / "pkg" / "records.json").write_text(json.dumps(held), encoding="utf-8")
     (root / "pkg" / "derived.bin").write_bytes(DERIVED)
-    found = [(each.path, each.kind) for each in assets.audit(root).findings]
+    found = [(each.path, each.kind) for each in _audit.audit(root).findings]
     assert found == [("pkg/derived.bin", "derived")], found
 
 
@@ -202,7 +205,7 @@ def test_a_derivation_record_that_cannot_be_read_makes_the_file_referenced(cache
     placed(cache, CLOSED, closed)
     derived = derived_record(derivation_text(closed))  # its derivation record kept nowhere
     placed(cache, DERIVED, derived)
-    assert assets.record_terms(derived, {closed.sha256: closed}).by == _derivation.UNREAD_DERIVATION_BY
+    assert _derivation.record_terms(derived, {closed.sha256: closed}).by == _derivation.UNREAD_DERIVATION_BY
     pack_carries_none_of_its_bytes(tmp_path, derived)
 
 

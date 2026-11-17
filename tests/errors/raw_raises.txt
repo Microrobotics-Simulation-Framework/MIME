@@ -159,7 +159,6 @@ scene/_sampling.py::_quasi_uniform ValueError 2  # a kind's sampling at the buil
 scene/_sampling.py::_density_at ValueError 2  # a kind's sampling at the build, from a density a kind's or a grading's own code gives: one not above zero, or above the floor's (FINEST), is a defect of that code; reached, it is error.uncoded
 scene/_grading.py::GradedDensity.traced ValueError 1  # a kind's declared feature of a form not in FEATURE_FORMS: a defect of that kind's own code, raised at the build; reached, it is error.uncoded
 scene/_grading.py::graded_density ValueError 1  # invariant: features asked of a kind that declares none, which drag.grading-features refuses when planned; reached, it is error.uncoded
-scene/_scene.py::asset ValueError 1  # construction: a file declared by its record given a sha256 or terms too, raised where the script declares it, outside every public call
 scene/_scene.py::Scene.__init__ ValueError 1  # construction: raised where the script makes the value or the entry, outside every public call
 scene/_scene.py::Scene.open NotImplementedError 1  # construction: a scene opened from a file, not yet supported, outside every public call
 scene/_screw.py::Screw.area KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
@@ -194,7 +193,9 @@ scene/_solids.py::_lengths TypeError 1  # invariant: MIME's own check, which no 
 scene/_stage.py::_region ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_union.py::ExactUnion.__post_init__ ValueError 2  # construction: a union's meeting pairs misnamed, raised where a script or a kind makes the union, outside every public call of an experiment
 observations/_camera.py::Camera.project TypeError 1  # a call: a script asking a camera mounted on a moving frame where points fall without the pose it is at, raised where the script calls it, outside every public call of an experiment (a JAX function, which a controller's model of its camera calls)
+sensing/_coverage.py::terms_of ValueError 1  # a kind's contract: a crease measure's composition of more terms than the exact share takes (MOST_TERMS), raised when a creased body's form is made, before any image; the cylinder's has fewer, and no kind MIME ships reaches it (coding it as a refusal is a public code, left to the screw's measure, camera PR 5b-ii)
 sensing/_detector.py::Pinhole.__post_init__ ValueError 1  # construction: a script constructing a detector of no pixels, raised where the script calls it, outside every public call of an experiment
+sensing/_sampled.py::_creased_form.unmarched TypeError 1  # an internal contract, as form.unmarched: a creased body's form before its march exists, whose pieces are made from the march; the renderer always passes the held march, so no script's call reaches it
 sensing/_sampled.py::form.unmarched TypeError 1  # an internal contract: a sampled body's form before its march exists, whose pieces are made from the march (``form(sampled, held)``); the renderer always passes the held march, so no script's call reaches it, and a caller of the private function that omits it is a programming error
 sensing/_subjects.py::register_closed_form ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 surrogates/_type.py::Surrogate.__post_init__ ValueError 3  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class

@@ -10,7 +10,7 @@ normal). Packaged as `asset("sphere_plane_resistance")`, read by the near-contac
 (`near_contact`).
 
 **The file.** `src/mime/data/sphere_plane_resistance.json`: 97 knots uniform in `ln d` from `1e-3` to `10`, and the 96
-midpoints between them, which every read checks (`mime.data.asset_bytes`), its sha256:
+midpoints between them, which every read checks (`mime.assets.Asset.read`), its sha256:
 
 `346bc025d0b56460a20ba98bdfc9023457cba32ca975d44e363585f80a904f5f`
 

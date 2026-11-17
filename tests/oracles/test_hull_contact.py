@@ -915,7 +915,7 @@ def test_control_its_search_left_at_five_steps_and_held_where_they_end_turns_the
 def screw_in_the_tube(lubricated: bool):
     from hull_cases import hull_contact
 
-    from mime.data import asset
+    from mime.assets import asset
     from mime.interactions import KEPT, Lubrication
 
     kept, _ = KEPT["drag", "0.4.0"]  # the surrogate's blend, which drag 0.5.0 retired, kept on 0.4.0

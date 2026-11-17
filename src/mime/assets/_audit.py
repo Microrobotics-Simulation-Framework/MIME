@@ -56,7 +56,7 @@ from mime._lock_json import lock_data
 from mime.assets._derivation import DerivationRecord, by_sha256, read_derivation, record_terms
 from mime.assets._manifest import Manifest, is_manifest_data, read_manifest, read_manifest_data
 from mime.assets._reference import AssetRef
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime._refusals import BuildRefused, Refusal, RefusalClass
 
 #: The file name extensions of mesh, scene and CAD formats: a second hint beside a file's bytes, for the formats whose
 #: bytes say nothing plain (an FBX in ASCII, a 3MF, an IGES).

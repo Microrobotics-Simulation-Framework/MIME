@@ -13,7 +13,8 @@ import sys
 
 import numpy as np
 
-PROGRAMS = ("step32", "step64", "run32", "run64", "jvp32", "jvp64", "render32", "render64", "mesh32", "mesh64")
+PROGRAMS = ("step32", "step64", "run32", "run64", "jvp32", "jvp64", "render32", "render64", "mesh32", "mesh64",
+            "sampled32", "sampled64")
 SINGLE_THREAD = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
 
 

@@ -204,8 +204,9 @@ def test_assets_check_ends_with_a_total_even_when_nothing_is_cached(capsys, monk
     from types import SimpleNamespace
 
     from mime import assets
+    from mime.assets import _known
 
-    monkeypatch.setattr(assets, "known", lambda: {name: SimpleNamespace(name=name) for name in ("a", "b", "c")})
+    monkeypatch.setattr(_known, "known", lambda: {name: SimpleNamespace(name=name) for name in ("a", "b", "c")})
     outcomes = {"a": "not cached", "b": "not cached", "c": "not cached"}
     monkeypatch.setattr(assets, "check", lambda ref: outcomes[ref.name])
     assert mime_main(["assets", "check"]) == 0

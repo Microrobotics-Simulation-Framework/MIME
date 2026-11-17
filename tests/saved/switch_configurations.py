@@ -13,7 +13,9 @@ sphere above a plane within the film's window, whose drag takes lubrication's ha
 no round-trip case's body is fine enough for (where the package has the hand-over); the coil sphere with every rung of
 both port stages, its currents clipped and, in a second, tripped (``port_cases.staged_sphere``); the point body with its fitted
 self-history (``self_history="modes"``), which no round-trip case writes; the exposure at a sphere round which a coil
-array moves on A0's rotor (``mount_cases``), its step and the mounted array's; and those steps, with each node's
+array moves on A0's rotor (``mount_cases``), its step and the mounted array's; the in-loop camera seeing a creased
+body by the sampled route (``creased_cases``, a test-only kind, as no shipped one takes that route in a step yet); and
+those steps, with each node's
 run-constants as a derivative's run makes them, traced and scanned, once per process, for the tests that read the scan.
 ``step_jaxprs.py`` also runs these configurations on a merge base, whose package has no switch scan, so the scan is
 imported only where it is used."""
@@ -26,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 import jax
 from cases import CASES
 from chain_cases import friction_arm, massive_rpm, tracked_rpm, tracking
+from creased_cases import creased_camera
 from hull_cases import rod_contact
 from script_a import script_a
 
@@ -63,6 +66,10 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
 
     if hasattr(camera_scene, "TracedMesh"):  # a merge base before camera 6a traces no static mesh
         found["camera/mesh"] = mesh_camera
+    from mime.registry import CreaseMeasure
+
+    if "faces" in CreaseMeasure._fields:  # a merge base before camera 5b has no crease measure to compose
+        found["camera/creased"] = creased_camera
     import mime.control
 
     if hasattr(mime.control, "exact_allocation"):  # a merge base before the exact allocation has no law to reach

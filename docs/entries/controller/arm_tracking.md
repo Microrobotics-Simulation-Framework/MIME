@@ -4,7 +4,7 @@ describes: "0.1.0"
 # A magnet carried by an arm, following a body
 
 **What it models.** The controller of an arm that carries a magnet above a robot in a tube and keeps it there as the
-robot swims: `exp.set_controller(ArmTracking(description=asset("arm.urdf"), end_effector="link_6", home=rad(...),
+robot swims: `exp.set_controller(ArmTracking(description=asset(Path("arm.urdf")), end_effector="link_6", home=rad(...),
 axis=X, up=Z, at=m(...)), reads={"body_pose": "umr.pose", "body_twist": "umr.twist", "joint_positions":
 "rpm.arm.joint_positions"}, writes={"joint_positions": "rpm.arm.joint_positions"}, mode="callback")`, or `mode="graph"`
 to run it inside the compiled step. Each control period it reads the body's pose, its twist and the arm's joint

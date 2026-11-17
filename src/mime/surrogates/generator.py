@@ -50,7 +50,8 @@ from typing import Any, cast
 import jax
 import numpy as np
 
-from mime.assets import AssetRef, CheckResult, Json, Produced
+from mime.assets import AssetRef, CheckResult
+from mime.assets._derivation import Json, Produced
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.surrogates._type import Accuracy
 

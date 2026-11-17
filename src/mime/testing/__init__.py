@@ -45,6 +45,7 @@ from mime.testing._ledger_harness import FlagReading, FlagReport, OrderCheck, Or
     flag_readings, judge_flags, ledger_closes, run_flags, term_orders
 from mime.testing._port_laws import PORT_LAW_DRAWS, port_law_suite
 from mime.testing._loopback import Certificates, ConnectProxy, LoopbackStore, Seen, certificates
+from mime.testing._resolver import RecordResolver
 from mime.testing._families import (
     OUTWARD_SPEED,
     check_energy,
@@ -161,6 +162,7 @@ from mime.testing._centreline import CENTRELINE_ROUNDING_ULPS, centreline_proble
 from mime.testing._kind_conformance import (
     KIND_ROUNDING_ULPS,
     NORMAL_ROUNDING_ULPS,
+    crease_measure_problems,
     drawing_checks,
     drawing_kinds,
     drawing_problems,
@@ -258,6 +260,7 @@ __all__ = [
     "SUITE_SAMPLES",
     "AdapterReport",
     "At",
+    "RecordResolver",
     "CaseKind",
     "Certificates",
     "Classification",
@@ -361,6 +364,7 @@ __all__ = [
     "sampling_quality",
     "shape_probes",
     "sign_function_problems",
+    "crease_measure_problems",
     "suite_spacing",
     "support_problems",
     "switch_distances",

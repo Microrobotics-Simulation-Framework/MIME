@@ -49,7 +49,7 @@ from mime import Apparatus
 from mime.build import BuildRefused
 from mime.build._derived import derive
 from mime.build._plan import Section
-from mime.data import asset
+from mime.assets import asset
 from mime.fields import CalibratedMultipole, UniformRotating
 from mime.fields._coil_array import calibration_of
 from mime.interactions import Magnetic

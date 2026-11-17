@@ -62,7 +62,7 @@ from mime import Study
 from mime.build import BuildRefused
 from mime.build._plan import _Planner as Planner
 from mime.core.multibody import frame_pose, read_urdf
-from mime.data import asset
+from mime.assets import asset
 from mime.experiment import Experiment
 from mime.fields import CalibratedMultipole, allocate
 from mime.fields._coil_array import calibration_of

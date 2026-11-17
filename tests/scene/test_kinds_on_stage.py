@@ -417,7 +417,7 @@ def test_mime_geometry_without_its_schema_or_the_schema_without_a_kind_is_refuse
 def test_scene_open_refuses_stage_first_authoring_naming_the_python_first_way():
     with pytest.raises(NotImplementedError) as refused:
         Scene.open("robot.usda")
-    for words in ("stage-first authoring", "Scene.new(up=..., units=...)", "scene.reference(asset(path), at=...)"):
+    for words in ("stage-first authoring", "Scene.new(up=..., units=...)", "scene.reference(asset(Path(...)), at=...)"):
         assert words in str(refused.value)
 
 

@@ -17,14 +17,16 @@ from pathlib import Path
 
 import pytest
 
-from mime.data import PACKAGED, asset, asset_bytes
+from mime.assets import asset
+from mime.assets._asset import packaged_path
+from mime.errors import MimeError
 from mime.surrogates._cholesky_mlp import read_cholesky_mlp
 
 ROOT = Path(__file__).resolve().parent.parent
 PINNED = "ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345"
 WEIGHTS = "src/mime/data/mlp_cholesky_weights_v2.npz"
 SCRIPT_A = "tests/differential/references/script_a/"
-TRACKED = (WEIGHTS, "src/mime/data/sphere_plane_resistance.json", "src/mime/data/derivations/sphere_plane_resistance.json",
+TRACKED = (WEIGHTS, "src/mime/data/assets/packaged.json", "src/mime/data/sphere_plane_resistance.json", "src/mime/data/derivations/sphere_plane_resistance.json",
            "tests/differential/references/sphere_plane_graded_mfs.json",
            "tests/differential/references/sphere_tube_mfs.json", "tests/differential/references/port_drag.npz", "tests/differential/references/port_nodes.npz",
            "tests/differential/references/port_table.npz", "tests/differential/references/port_table_provenance.json",
@@ -47,11 +49,18 @@ TRACKED = (WEIGHTS, "src/mime/data/sphere_plane_resistance.json", "src/mime/data
            "src/mime/env/modal_app.txt")
 
 
+def packaged_file(name: str) -> str:
+    """Where MIME's record of ``name`` says its bytes are, below ``mime.data``."""
+    path = packaged_path(asset(name).ref())
+    assert path is not None, f"{name} is not one of MIME's packaged files"
+    return path
+
+
 def test_the_packaged_weights_exist_load_and_are_the_pinned_ones():
-    path = importlib.resources.files("mime.data") / PACKAGED["dejongh_mlp_v2"].file
+    path = importlib.resources.files("mime.data") / packaged_file("dejongh_mlp_v2")
     data = path.read_bytes()
     assert len(data) == 151887 and hashlib.sha256(data).hexdigest() == PINNED
-    assert asset("dejongh_mlp_v2").sha256 == PINNED and asset_bytes(asset("dejongh_mlp_v2")) == data
+    assert asset("dejongh_mlp_v2").sha256 == PINNED and asset("dejongh_mlp_v2").read() == data
     network = read_cholesky_mlp(data)
     assert len(network.layers) == 4 and network.squared_features and network.reference_radius_mm == 1.56
 
@@ -64,18 +73,19 @@ CALIBRATIONS = {"navion_2": "ea6eeb803b48d73551648e4df08116373a03fed4e871eb2b5c1
 
 @pytest.mark.parametrize("name", sorted(CALIBRATIONS))
 def test_each_calibration_is_packaged_as_its_upstream_bytes_and_pinned(name):
-    data = (importlib.resources.files("mime.data") / PACKAGED[name].file).read_bytes()
+    data = (importlib.resources.files("mime.data") / packaged_file(name)).read_bytes()
     assert hashlib.sha256(data).hexdigest() == CALIBRATIONS[name] == asset(name).sha256
-    assert asset_bytes(asset(name)) == data
+    assert asset(name).read() == data
 
 
 def test_control_a_calibration_with_one_byte_changed_is_refused(monkeypatch):
-    from mime import data
+    from mime.assets import _asset
 
-    held = data._contents(PACKAGED["navion_2"].file)[0]
-    monkeypatch.setattr(data, "_contents", lambda file: (held + b" ", hashlib.sha256(held + b" ").hexdigest()))
-    with pytest.raises(data.AssetError, match="other contents"):
-        asset_bytes(asset("navion_2"))
+    held = _asset._packaged_contents(packaged_file("navion_2"))[0]
+    monkeypatch.setattr(_asset, "_packaged_contents", lambda file: (held + b" ", hashlib.sha256(held + b" ").hexdigest()))
+    with pytest.raises(MimeError, match="other contents") as refused:
+        asset("navion_2").read()
+    assert refused.value.code == "asset.hash-mismatch"
 
 
 def git(*args: str) -> subprocess.CompletedProcess[str]:

@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 import mime.nodes.hydro._surrogate_drag as drag_module
-from mime.data import asset
+from mime.assets import asset
 from mime.nodes.hydro import SurrogateDragNode
 from mime.surrogates import Evaluator, Provenance, Surrogate, _cholesky_mlp, evaluator_named, register_evaluator
 from mime.surrogates._cholesky_mlp import CHOLESKY_MLP, predict_resistance, read_cholesky_mlp
@@ -105,9 +105,8 @@ def test_the_planted_evaluator_with_the_packaged_floor_is_the_cholesky_mlp():
 
 
 def asset_bytes_v2() -> bytes:
-    from mime.data import asset_bytes
 
-    return asset_bytes(asset("dejongh_mlp_v2"))
+    return asset("dejongh_mlp_v2").read()
 
 
 def test_the_records_accuracy_is_per_use_and_an_unmeasured_use_is_none():

@@ -186,7 +186,8 @@ def patch(table_path: str, radius_cyl: float) -> list[dict[str, object]]:
 
 
 def check(name: str) -> dict[str, object]:
-    from mime.assets import locate, reference
+    from mime.assets import reference
+    from mime.assets._cache import locate
 
     path = str(locate(reference(name)))
     started = time.perf_counter()

@@ -17,6 +17,7 @@ from mime.gradients import GradientStatus
 from mime.registry import PHYSICAL, SurfaceFeature
 from mime.registry import (
     Centreline,
+    CreaseMeasure,
     Density,
     Direction,
     DirectionLike,
@@ -34,6 +35,7 @@ from mime.registry import (
     register_geometry,
     uniform,
 )
+from mime.scene import _creases as creases
 from mime.scene import _signs as signs
 from mime.scene._caps import cap_rings, ring_floor
 from mime.scene._centreline import straight
@@ -127,6 +129,10 @@ CYLINDER_SUPPORT = switch.Declaration(
           "to its rim as the direction leaves the axis, as the body's own does")
 
 
+#: The cylinder's caps' facing in its crease measure (``mime.scene._creases.cap``).
+CYLINDER_CAP_SIDE = creases.cap_side("cylinder")
+
+
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
 class Cylinder(Solid):
@@ -143,7 +149,7 @@ class Cylinder(Solid):
     version = "0.1.0"
     setting_roles = dict.fromkeys(("radius", "length", "axis"), PHYSICAL)
     differentiability = GradientStatus.PIECEWISE_JUMP
-    gradient = GradientRecord(switches=(CYLINDER_SUPPORT,))
+    gradient = GradientRecord(switches=(CYLINDER_SUPPORT, CYLINDER_CAP_SIDE))
     support_basis = "closed form"
     references = ("WeissteinCylinder",)
     builds = {"": ()}
@@ -187,6 +193,21 @@ class Cylinder(Solid):
         else:
             value = signs.slab(point, axis, parameters["length"] / 2.0)
         return SignValue(value, jnp.ones_like(value))
+
+    @override
+    def crease_measure(self, parameters: Mapping[str, Any], o: tuple[Any, Any, Any],
+                       d: tuple[Any, Any, Any]) -> CreaseMeasure:
+        """Its caps' rims, where the side meets the span: each cap disc by its cone from the pinhole, and its bound, the
+        ball of the radius about its centre (``mime.scene._creases``); a capped body's composition."""
+        axis = signs.unit(parameters["axis"])
+        radius, half = parameters["radius"], parameters["length"] / 2.0
+        ends = (-half, half)
+        caps = tuple(creases.cap(o, d, axis, z, lambda vx, vy, vz: radius, owner="cylinder.cap_side", scale=radius)
+                     for z in ends)
+        centres = tuple(tuple(z * axis[i] for i in range(3)) for z in ends)
+        balls = tuple(creases.ball(o, d, centre, radius, radius) for centre in centres)
+        return CreaseMeasure((*caps, *balls), creases.capped,
+                             tuple((centre, axis, radius) for centre in centres))
 
     @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:

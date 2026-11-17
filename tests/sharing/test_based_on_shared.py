@@ -37,6 +37,7 @@ from terms_cases import NO_REDISTRIBUTION, layered, write_mesh
 from zenodo_records import FakeRecords
 
 from mime import assets, push
+from mime.assets import _cache, _gates
 from mime.build import BuildRefused
 from mime.experiment import Experiment
 from mime.push import _plan
@@ -286,14 +287,14 @@ def test_a_doi_run_again_is_gated_on_its_assets_as_the_first_run_was(saved_toy: 
     work = fresh_work(tmp_path, monkeypatch, "work")
     with zenodo(rig, {"full_toy.mimebundle": bundle.read_bytes()}):
         for run in range(2):
-            with assets.asking(None), pytest.raises(BuildRefused) as refused, \
+            with _gates.asking(None), pytest.raises(BuildRefused) as refused, \
                     (untouched(work / "full_toy") if run else warnings.catch_warnings()):
                 Experiment.based_on(DOI, name="child")
-            assert refused.value.codes() == ["asset.licence-not-accepted"] and not assets.is_cached(ref)
-        with assets.asking(None), untouched(work / "full_toy"):
+            assert refused.value.codes() == ["asset.licence-not-accepted"] and not _cache.is_cached(ref)
+        with _gates.asking(None), untouched(work / "full_toy"):
             child = Experiment.based_on(DOI, name="child", accept_licences={"CC-BY-NC-4.0"})
     assert bundle_downloads(rig) == 1, "the bundle was downloaded once, by the first run"
-    assert assets.is_cached(ref) and child.document()["based_on"]["experiment"] == "full_toy"
+    assert _cache.is_cached(ref) and child.document()["based_on"]["experiment"] == "full_toy"
 
 
 def test_an_address_is_pulled_through_the_asset_cache(saved_toy: Path, rig: Rig, tmp_path: Path,
@@ -387,17 +388,17 @@ def test_a_pulled_sources_assets_pass_the_licence_gate_and_are_accepted_by_name(
         work = tmp_path / f"refused{attempt}"
         work.mkdir()
         monkeypatch.chdir(work)
-        with assets.asking(None), pytest.raises(BuildRefused) as refused:
+        with _gates.asking(None), pytest.raises(BuildRefused) as refused:
             Experiment.based_on(bundle, name="child", **given)
         assert refused.value.codes() == ["asset.licence-not-accepted"]
         assert "accept_licences={'CC-BY-NC-4.0'}" in refused.value.refusals[0].action
-        assert not assets.is_cached(ref)
+        assert not _cache.is_cached(ref)
     work = tmp_path / "accepted"
     work.mkdir()
     monkeypatch.chdir(work)
-    with assets.asking(None):
+    with _gates.asking(None):
         child = Experiment.based_on(bundle, name="child", accept_licences={"CC-BY-NC-4.0"})
-    assert assets.is_cached(ref) and child.document()["based_on"]["experiment"] == "full_toy"
+    assert _cache.is_cached(ref) and child.document()["based_on"]["experiment"] == "full_toy"
 
 
 def test_a_cell_run_again_after_its_licence_was_refused_is_refused_again_until_the_licence_is_accepted(
@@ -413,13 +414,13 @@ def test_a_cell_run_again_after_its_licence_was_refused_is_refused_again_until_t
     bundle = write_bundle(tmp_path / "full_toy.mimebundle", files, "full_toy", lock_with_assets(files, ref))
     monkeypatch.chdir(tmp_path)
     for run in range(2):
-        with assets.asking(None), pytest.raises(BuildRefused) as refused, \
+        with _gates.asking(None), pytest.raises(BuildRefused) as refused, \
                 (untouched(tmp_path / "full_toy") if run else warnings.catch_warnings()):
             Experiment.based_on(bundle, name="child")
-        assert refused.value.codes() == ["asset.licence-not-accepted"] and not assets.is_cached(ref)
-    with assets.asking(None), untouched(tmp_path / "full_toy"):
+        assert refused.value.codes() == ["asset.licence-not-accepted"] and not _cache.is_cached(ref)
+    with _gates.asking(None), untouched(tmp_path / "full_toy"):
         child = Experiment.based_on(bundle, name="child", accept_licences={"CC-BY-NC-4.0"})
-    assert assets.is_cached(ref) and child.document()["based_on"]["experiment"] == "full_toy"
+    assert _cache.is_cached(ref) and child.document()["based_on"]["experiment"] == "full_toy"
 
 
 # --- pack and push -------------------------------------------------------------------------------------------------------

@@ -450,7 +450,8 @@ def missing_referenced(folder: Path, lock: Lock, file: str) -> Refusal:
     """``asset.missing`` for a file that travels as a reference and is not in the folder: the command that fetches it
     into the cache and places it; ``asset.by-request`` where its asset is not in the cache and nothing names a location
     to fetch it from (saved form 14): where to request it, and where to put it once held."""
-    from mime.assets import AssetRef, is_cached, size_text
+    from mime.assets import AssetRef
+    from mime.assets._cache import is_cached, size_text
     from mime.assets._cache import by_request, no_location
     from mime.assets._commands import fetch_command
 

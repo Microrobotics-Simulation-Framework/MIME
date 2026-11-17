@@ -14,7 +14,8 @@ from pxr import Gf, Sdf, Usd, UsdGeom, Vt
 from mime import Body, Experiment, State
 from mime.dynamics import RigidInertial
 from mime.observations import Camera, Detector, World
-from mime.scene import Scene, Z, asset
+from mime.scene import Scene, Z
+from mime.assets import asset
 from mime.things import Part
 from mime.scene import Sphere
 from mime.units import kg_per_m3, m, m_per_s, ms, rad_per_s, um

@@ -19,7 +19,7 @@ import pytest
 from packaging.licenses._spdx import LICENSES  # the list packaging ships, read only to draw real ids
 
 from mime.experiment import Experiment, _experiment
-from mime.scene import asset
+from mime.assets import asset
 from mime.terms import CustomLicence, Permission, Terms
 from mime.testing._graph import declare_in_order
 from mime.testing.toys._experiments import ADD_PROBE, ATTACH_SPRING, toy_experiment

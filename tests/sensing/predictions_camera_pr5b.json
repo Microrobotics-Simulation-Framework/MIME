@@ -1,0 +1,1442 @@
+{
+ "written": "2026-11-16, camera PR 5b-i, before any draw of its gates (the composition's share, the cylinder's crease measure, the cylinder on the sampled route against the exact image, the creased derivative)",
+ "disclosed": "Before the lines were derived, development renders of the cylinder by route 2 at turns 0, 10 and 20 degrees (roll 0, no offset) were made against the exact image while the code was being fixed (a least at the samples' ends read as the side's; the least's place's derivative at the side's medial kink); the derivation (scripts/camera_route2/crease_line.py) reads neither them nor the renderer, and its simulation reproduced the renderer's pixel error at turn 10 to 1e-11 (0.00568987). Those development renders (turns 0, 10 and 20, roll 0, no offset) are not gate evidence: the pinned views (turns 0, 2 and 4, roll 0, no offset; turn 0's view is one of them) hold the controls, and the gate's evidence is the drawn views on fresh seeds.",
+ "lines": {
+  "pixel_line": {
+   "float64": 0.05015091762931918,
+   "float32": 0.05090956090251528
+  },
+  "motion_line": 0.015286380823400104,
+  "derivation": "scripts/camera_route2/crease_line.py: SAFETY (1.25) times the scan's largest error of the scheme re-implemented on the exact geometry, plus float32's rounding of a sub-ray's point in float32 (camera PR 5a's term)",
+  "scan": {
+   "file": "tests/sensing/crease_line_pr5b.json",
+   "largest_pixel_error": 0.04012073410345535,
+   "largest_motion_error": 0.012229104658720083,
+   "note": "the half-density scan's largest are the same points (turn 0, roll 0 for the pixel; turn 1.5, roll 0 for the motion), so it does not test the factor between the scan's points: the factor 1.25 is a declaration, the space between the points a stated risk the drawn views measure"
+  },
+  "margin": "the factor 1.25 on the scan's largest is declared, not derived: what the lines bound is the scan's 360 poses, measured by an exact numpy re-implementation of the scheme (equal to the renderer's to 1e-11 where both ran); the margin is a declaration for the poses between the scan's points, which the drawn views test; it is never moved after them",
+  "image_bands": {
+   "derivation": "scripts/camera_route2/crease_image_line.py --bands, from tests/sensing/crease_image_line_pr5b.json (the 360-pose scan re-run with the classes thin first, the same numpy arithmetic and poses): in each band of the turn, for the ripple's class (rest), SAFETY (1.25) times the scan's largest image error over its poses whose turn lies in the closed band; for the sliver's (singular) the same from 8 degrees up, and under 8 degrees one line for every band, SAFETY times the scan's largest over all the poses turned 0 to 8 degrees; in px^2 a px of the body's motion; the pose that set each line is its tail",
+   "decision": "the maintainer's word, F0 record item 103 ('I agree with both leans'), 2026-11-16: (1) thin caps first: a thin cap's pixels are judged by its flag wherever the axis passes, and the sliver's class holds only pixels outside thin boxes; (2) one sliver line of 18.5 for every band under 8 degrees (the [0, 1], [1, 2], [2, 4] and [4, 8] bands), keeping the derived lines above 8 degrees: the single-pose lines of 1.25 times one sliver vary about 25 % between the laptop and the runner (the tenth probe: 1.112 against 1.427 at turn 3, 14.39 against 14.84 at turn 6) and would flake; the ripple's lines and the other classes stay derived as before. The creased-image-accuracy follow-up (item 96, the route to exact) removes the sliver, after which these lines tighten",
+   "classes": "thin: the band's pixels about a cap narrower than two sub-pixels (G18's judged_pixels' complement), judged by the thin_cap flag; singular: the band's other pixels one of whose sixteen sub-rays passes within 0.01 px of the side's axis; rest: every other band pixel (the ripple's). The rest class is the same set under either order, so the ripple's lines cannot move",
+   "edges": [
+    0.0,
+    1.0,
+    2.0,
+    4.0,
+    8.0,
+    15.0,
+    30.0
+   ],
+   "edges_why": "at the scan's own turns, each band about twice the last (the error falls with the turn: FOR_HIM_iii's per-turn table); chosen after the scan's per-turn largest were known (the fifth agent's report), before any fresh view or renderer run of the check",
+   "margin": "1.25 is declared, not derived, as the crease line's: the scan bounds its own 360 poses; a view between them is bracketed by both edges' turns (the closed band) and tested by the fresh views",
+   "view_rule": "a view is judged by the strictest line of the bands whose closed range holds its turn (on an edge, both, since the scan's poses there set both)",
+   "thin": "the thin class (about a cap narrower than two sub-pixels) has no line: judged by the thin_cap flag, as G18 judges it",
+   "safety": 1.25,
+   "sliver_one_below": 8.0,
+   "bands": [
+    {
+     "turns": [
+      0.0,
+      1.0
+     ],
+     "poses": 96,
+     "rest": 1.1004850759145646,
+     "rest_tail": {
+      "turn": 0.0,
+      "roll": 20.0,
+      "offset": [
+       0.3,
+       0.8
+      ],
+      "largest": 0.8803880607316517,
+      "direction": "x",
+      "at_v_u": [
+       49,
+       25
+      ]
+     },
+     "singular": 18.545283316920983,
+     "singular_tail": {
+      "turn": 6.0,
+      "roll": 75.0,
+      "offset": [
+       0.3,
+       0.8
+      ],
+      "largest": 14.836226653536787,
+      "direction": "x",
+      "at_v_u": [
+       59,
+       43
+      ]
+     },
+     "singular_band": 0.0019374934094595897,
+     "singular_band_tail": {
+      "turn": 0.25,
+      "roll": 45.0,
+      "offset": [
+       0.5,
+       0.5
+      ],
+      "largest": 0.0015499947275676718,
+      "direction": "x",
+      "at_v_u": [
+       8,
+       74
+      ]
+     }
+    },
+    {
+     "turns": [
+      1.0,
+      2.0
+     ],
+     "poses": 72,
+     "rest": 0.7286689915207006,
+     "rest_tail": {
+      "turn": 1.0,
+      "roll": 10.0,
+      "offset": [
+       0.3,
+       0.8
+      ],
+      "largest": 0.5829351932165605,
+      "direction": "x",
+      "at_v_u": [
+       34,
+       83
+      ]
+     },
+     "singular": 18.545283316920983,
+     "singular_tail": {
+      "turn": 6.0,
+      "roll": 75.0,
+      "offset": [
+       0.3,
+       0.8
+      ],
+      "largest": 14.836226653536787,
+      "direction": "x",
+      "at_v_u": [
+       59,
+       43
+      ]
+     },
+     "singular_band": 0.8786112375903932,
+     "singular_band_tail": {
+      "turn": 2.0,
+      "roll": 0.0,
+      "offset": [
+       0.0,
+       0.0
+      ],
+      "largest": 0.7028889900723145,
+      "direction": "z",
+      "at_v_u": [
+       29,
+       81
+      ]
+     }
+    },
+    {
+     "turns": [
+      2.0,
+      4.0
+     ],
+     "poses": 72,
+     "rest": 0.9917407790711699,
+     "rest_tail": {
+      "turn": 4.0,
+      "roll": 30.0,
+      "offset": [
+       0.0,
+       0.0
+      ],
+      "largest": 0.7933926232569359,
+      "direction": "x",
+      "at_v_u": [
+       37,
+       19
+      ]
+     },
+     "singular": 18.545283316920983,
+     "singular_tail": {
+      "turn": 6.0,
+      "roll": 75.0,
+      "offset": [
+       0.3,
+       0.8
+      ],
+      "largest": 14.836226653536787,
+      "direction": "x",
+      "at_v_u": [
+       59,
+       43
+      ]
+     },
+     "singular_band": 1.7839166463287994,
+     "singular_band_tail": {
+      "turn": 3.0,
+      "roll": 0.0,
+      "offset": [
+       0.0,
+       0.0
+      ],
+      "largest": 1.4271333170630396,
+      "direction": "z",
+      "at_v_u": [
+       29,
+       83
+      ]
+     }
+    },
+    {
+     "turns": [
+      4.0,
+      8.0
+     ],
+     "poses": 72,
+     "rest": 0.9917407790711699,
+     "rest_tail": {
+      "turn": 4.0,
+      "roll": 30.0,
+      "offset": [
+       0.0,
+       0.0
+      ],
+      "largest": 0.7933926232569359,
+      "direction": "x",
+      "at_v_u": [
+       37,
+       19
+      ]
+     },
+     "singular": 18.545283316920983,
+     "singular_tail": {
+      "turn": 6.0,
+      "roll": 75.0,
+      "offset": [
+       0.3,
+       0.8
+      ],
+      "largest": 14.836226653536787,
+      "direction": "x",
+      "at_v_u": [
+       59,
+       43
+      ]
+     },
+     "singular_band": 18.545283316920983,
+     "singular_band_tail": {
+      "turn": 6.0,
+      "roll": 75.0,
+      "offset": [
+       0.3,
+       0.8
+      ],
+      "largest": 14.836226653536787,
+      "direction": "x",
+      "at_v_u": [
+       59,
+       43
+      ]
+     }
+    },
+    {
+     "turns": [
+      8.0,
+      15.0
+     ],
+     "poses": 72,
+     "rest": 0.30079945329761215,
+     "rest_tail": {
+      "turn": 8.0,
+      "roll": 20.0,
+      "offset": [
+       0.5,
+       0.5
+      ],
+      "largest": 0.24063956263808972,
+      "direction": "x",
+      "at_v_u": [
+       32,
+       19
+      ]
+     },
+     "singular": 0.0017589009151941504,
+     "singular_tail": {
+      "turn": 10.0,
+      "roll": 45.0,
+      "offset": [
+       0.5,
+       0.5
+      ],
+      "largest": 0.0014071207321553203,
+      "direction": "z",
+      "at_v_u": [
+       7,
+       74
+      ]
+     }
+    },
+    {
+     "turns": [
+      15.0,
+      30.0
+     ],
+     "poses": 96,
+     "rest": 0.20445960626641613,
+     "rest_tail": {
+      "turn": 20.0,
+      "roll": 20.0,
+      "offset": [
+       0.0,
+       0.0
+      ],
+      "largest": 0.1635676850131329,
+      "direction": "x",
+      "at_v_u": [
+       25,
+       82
+      ]
+     },
+     "singular": 0.0018681266762687887,
+     "singular_tail": {
+      "turn": 20.0,
+      "roll": 20.0,
+      "offset": [
+       0.0,
+       0.0
+      ],
+      "largest": 0.001494501341015031,
+      "direction": "x",
+      "at_v_u": [
+       18,
+       81
+      ]
+     }
+    }
+   ]
+  },
+  "image_bands_first": {
+   "superseded": "2026-11-16, by the maintainer's word (F0 record item 103: 'I agree with both leans'): thin caps first and one sliver line under 8 degrees; kept as it was committed in 369830af and judged in the tenth probe",
+   "derivation": "scripts/camera_route2/crease_image_line.py --bands, from tests/sensing/crease_image_line_pr5b.json (the 360-pose scan, committed in 35c786eb before this): in each band of the turn, for the ripple's class (rest) and the sliver's (singular), SAFETY (1.25) times the scan's largest image error over its poses whose turn lies in the closed band, in px^2 a px of the body's motion; the pose that set it is the band's tail",
+   "edges": [
+    0.0,
+    1.0,
+    2.0,
+    4.0,
+    8.0,
+    15.0,
+    30.0
+   ],
+   "edges_why": "at the scan's own turns, each band about twice the last (the error falls with the turn: FOR_HIM_iii's per-turn table); chosen after the scan's per-turn largest were known (the fifth agent's report), before any fresh view or renderer run of the check",
+   "margin": "1.25 is declared, not derived, as the crease line's: the scan bounds its own 360 poses; a view between them is bracketed by both edges' turns (the closed band) and tested by the fresh views",
+   "view_rule": "a view is judged by the strictest line of the bands whose closed range holds its turn (on an edge, both, since the scan's poses there set both)",
+   "thin": "the thin class (about a cap narrower than two sub-pixels) has no line: judged by the thin_cap flag, as G18 judges it",
+   "safety": 1.25,
+   "bands": [
+    {
+     "turns": [
+      0.0,
+      1.0
+     ],
+     "poses": 96,
+     "rest": 1.1004850759145646,
+     "rest_tail": {
+      "turn": 0.0,
+      "roll": 20.0,
+      "offset": [
+       0.3,
+       0.8
+      ],
+      "largest": 0.8803880607316517,
+      "direction": "x",
+      "at_v_u": [
+       49,
+       25
+      ]
+     },
+     "singular": 0.03783584249864025,
+     "singular_tail": {
+      "turn": 1.0,
+      "roll": 10.0,
+      "offset": [
+       0.0,
+       0.0
+      ],
+      "largest": 0.0302686739989122,
+      "direction": "x",
+      "at_v_u": [
+       35,
+       20
+      ]
+     }
+    },
+    {
+     "turns": [
+      1.0,
+      2.0
+     ],
+     "poses": 72,
+     "rest": 0.7286689915207006,
+     "rest_tail": {
+      "turn": 1.0,
+      "roll": 10.0,
+      "offset": [
+       0.3,
+       0.8
+      ],
+      "largest": 0.5829351932165605,
+      "direction": "x",
+      "at_v_u": [
+       34,
+       83
+      ]
+     },
+     "singular": 1.2641928378798184,
+     "singular_tail": {
+      "turn": 1.5,
+      "roll": 0.0,
+      "offset": [
+       0.5,
+       0.5
+      ],
+      "largest": 1.0113542703038547,
+      "direction": "x",
+      "at_v_u": [
+       30,
+       20
+      ]
+     }
+    },
+    {
+     "turns": [
+      2.0,
+      4.0
+     ],
+     "poses": 72,
+     "rest": 0.9917407790711699,
+     "rest_tail": {
+      "turn": 4.0,
+      "roll": 30.0,
+      "offset": [
+       0.0,
+       0.0
+      ],
+      "largest": 0.7933926232569359,
+      "direction": "x",
+      "at_v_u": [
+       37,
+       19
+      ]
+     },
+     "singular": 1.7839166463287994,
+     "singular_tail": {
+      "turn": 3.0,
+      "roll": 0.0,
+      "offset": [
+       0.0,
+       0.0
+      ],
+      "largest": 1.4271333170630396,
+      "direction": "z",
+      "at_v_u": [
+       29,
+       83
+      ]
+     }
+    },
+    {
+     "turns": [
+      4.0,
+      8.0
+     ],
+     "poses": 72,
+     "rest": 0.9917407790711699,
+     "rest_tail": {
+      "turn": 4.0,
+      "roll": 30.0,
+      "offset": [
+       0.0,
+       0.0
+      ],
+      "largest": 0.7933926232569359,
+      "direction": "x",
+      "at_v_u": [
+       37,
+       19
+      ]
+     },
+     "singular": 18.545283316920983,
+     "singular_tail": {
+      "turn": 6.0,
+      "roll": 75.0,
+      "offset": [
+       0.3,
+       0.8
+      ],
+      "largest": 14.836226653536787,
+      "direction": "x",
+      "at_v_u": [
+       59,
+       43
+      ]
+     }
+    },
+    {
+     "turns": [
+      8.0,
+      15.0
+     ],
+     "poses": 72,
+     "rest": 0.30079945329761215,
+     "rest_tail": {
+      "turn": 8.0,
+      "roll": 20.0,
+      "offset": [
+       0.5,
+       0.5
+      ],
+      "largest": 0.24063956263808972,
+      "direction": "x",
+      "at_v_u": [
+       32,
+       19
+      ]
+     },
+     "singular": 0.0017589009151941504,
+     "singular_tail": {
+      "turn": 10.0,
+      "roll": 45.0,
+      "offset": [
+       0.5,
+       0.5
+      ],
+      "largest": 0.0014071207321553203,
+      "direction": "z",
+      "at_v_u": [
+       7,
+       74
+      ]
+     }
+    },
+    {
+     "turns": [
+      15.0,
+      30.0
+     ],
+     "poses": 96,
+     "rest": 0.20445960626641613,
+     "rest_tail": {
+      "turn": 20.0,
+      "roll": 20.0,
+      "offset": [
+       0.0,
+       0.0
+      ],
+      "largest": 0.1635676850131329,
+      "direction": "x",
+      "at_v_u": [
+       25,
+       82
+      ]
+     },
+     "singular": 0.0018681266762687887,
+     "singular_tail": {
+      "turn": 20.0,
+      "roll": 20.0,
+      "offset": [
+       0.0,
+       0.0
+      ],
+      "largest": 0.001494501341015031,
+      "direction": "x",
+      "at_v_u": [
+       18,
+       81
+      ]
+     }
+    }
+   ]
+  }
+ },
+ "predictions": {
+  "composed_share": "the composed share equals the clipped polygons' area to 1e-12 on 100 drawn line sets; two one-line terms equal union_covered to 1e-12; CAMERA_PLANT=composed-sign fails on every run",
+  "conformance": "the cylinder's crease measure passes crease_measure_problems on 40 drawn settings and ray sets; CAMERA_PLANT=wide-cap (caps one per cent wide) fails on every run",
+  "g18_pixel": "every pinned and drawn view within the pixel line in both dtypes; the largest ratio to the line at most 0.8",
+  "g18_motion": "every pinned and drawn view's motion within the motion line",
+  "thin_cap": "raised exactly where a cap's ellipse is narrower than two sub-pixels",
+  "controls": "CAMERA_PLANT=single-edge-crease and CAMERA_PLANT=no-crease-measure each fail the pinned views (turns 0, 2, 4) on every run, in both dtypes",
+  "g17_derivative": "the jvp of the equivalent radius and centroid within the central difference's own error (the sweep's line) at turns 0, 2, 4 and 15, on the pixels about the rims and on the rest; CAMERA_PLANT=no-crease-measure fails",
+  "bits": "route 1's compiled programs (step, run, jvp, render and a mesh scene; float32 and float64) and camera PR 5a's helix and ellipsoid programs equal the base 24e955bf; a one-ulp control differs",
+  "cost": "a creased cylinder's structural frame estimate is 2 to 4 times that of a ray of an uncreased body of the same evaluation cost"
+ },
+ "outcomes": {
+  "composed_share": "passes 100 drawn line sets against the clipped polygons (exact to 1e-12); two-term unions exact, coinciding lines and lines along a cell side included. Found on the way: 5a's union_covered reads 0.125 for a line repeated along a cell's side (exact 0), a measure-zero degeneracy of 5a's code, not changed here",
+  "conformance": "the cylinder passes crease_measure_problems on 40 draws (local); wide-cap's rate not yet measured",
+  "g18_pinned": "turns 0, 2, 4 at roll 0, no offset, both dtypes: largest pixel errors 0.0222, 0.0104, 0.0208 (0.44, 0.21, 0.42 of the line); motion 1.1e-4, 3.5e-3, 5.7e-4 (line 0.0153); thin_cap raised at turn 2 exactly where a cap is that thin. Local, 2026-11-16",
+  "controls_pinned": "single-edge-crease fails 6 of 6 (pixel 0.20 to 0.26, 4 to 5 times the line); no-crease-measure fails 6 of 6 (pixel 0.17 to 0.21). Neither moves the motion past its line at these views (single edge 0.0013 to 0.0029, no measure 0.0010 to 0.0080 against 0.0153): the motion gate does not discriminate these plants here, the pixel gate does",
+  "swap": "turn 7, roll 33: route 1 within its line (1/16) and route 2 within its own, of the same exact image (local)",
+  "g18_drawn": "probes 4 and 5 (runs 43794581554 and 43795523498) each finished 16 fresh views and then hung (their pool's max_tasks_per_child, once each of four workers had done four) until cancelled after about three hours: the 16 float64 and 16 float32 views all within both lines, thin_cap where a cap is that thin, the largest pixel ratio 0.34 and 0.32, the largest motion ratio 0.013 and 0.038; the 200 a dtype are re-drawn by the seventh probe (four arms of 100); seventh probe (probe/cam-pr5b-i7, run 43814057533, head 13f01a3a, four arms of 100, entropy recorded in each arm's drawn_<arm>.json): 200 of 200 fresh float64 views and 200 of 200 float32 within the pixel line and the motion line, thin_cap exactly where a cap is that thin (20 and 22 thin views); the largest pixel ratio 0.96 in float64 (turn 0.090, roll 40.2, offset 0.257, 0.955: past the predicted 0.8, a miss, the gate still passing) and 0.71 in float32 (turn 0.083, roll 7.8); the largest motion ratio 0.18 and 0.16 (thin-cap views at turns 1.4 and 2.0); each arm's peak about 1.6 GiB; about 19 s a view",
+  "g17_derivative": "local, 2026-11-16, float64, the sweep 1/64 to 1/16384 px and the line with camera PR 5a's envelope band: turns 0, 2, 4, 15 at 0.00037, 0.020, 0.0011, 0.020 of the line; of the central difference's own error alone 0.93, 0.53, 2.56, 3.44 (turns 4 and 15 over it: the held march's envelope error, the jvp at most 1.2e-5 of the motion from the converged difference off the crease). The first form (the sweep 1/4 to 1/256 px, the difference's own error alone): 0.48, 9.97, 2.03, 3.06. The criterion changed after data, disclosed in second_predictions.seen_before",
+  "bits": "third probe (probe/cam-pr5b-i3, run 43794331229, head 876802b4): bit_compare with the full base hash 24e955bf56310feedb7ec1f9cd1f40a2e3d18990 against the head, every array equal over the twelve programs (route 1's step, run, jvp, render and mesh scene in float32 and float64, and camera PR 5a's sampled32 and sampled64); bits_controls: each compiled twice equal and one ulp of the camera's mount different. The arm failed a step after its script (the memory check against the estimate: peak 1.02 GiB against 0.44, the estimator's known underestimate)",
+  "g17_derivative_controls": "held-least: bit-identical to the clean run at every view (cannot discriminate on the cylinder; third_predictions.why). held-caps, first form (pieces under stop_gradient): passes every view, 0.0029 to 0.98 of the line (cannot discriminate; fourth_predictions.why). held-caps, the measure from a held pinhole: fails every view, 2800 to 3550 times the line (turns 0, 2, 4, 15; deterministic views, so every run)",
+  "motion_control_pinned": "crease-lag at 0.05: fails the motion line on 6 of 6 pinned views (motion 0.0277 to 0.0494 against 0.0153; the pixel unchanged, 0.0104 to 0.0222). Ladder: 0.025 caught on 4 of 6 (turn 2, where both caps are thin and flagged, reads 0.0104), 0.0125 on 0 of 6: the smallest caught on every pinned view is 0.05, not the predicted 0.025",
+  "known_gap": "union_covered(L, L) for a line along a cell's side reads 0.125 (exact 0) and 1.125 (exact 1); composed_covered exact; recorded by test_known_gap_union_covered_of_a_line_repeated_along_a_cells_side, not fixed",
+  "controls_drawn": "probe/cam-pr5b-i, run 43788351160 (head 19d918f5, before the side fix, which moves no share off a line within 2^-20 of a cell's side), 40 fresh views a plant and dtype: crease-lag fails the motion line on 40 of 40 (float32 and float64; the pixel line on none; motion 1.5 to 3.5 times its line); no-crease-measure fails 40 of 40 in each (the pixel line on 40 and 39); single-edge-crease fails the pixel line on 26 and 24 of 40: every view turned under 10 degrees, and none turned 15.5 degrees or more but one (its misses' largest 0.73 and 0.94 of the line): where the caps open, one straight edge a pixel is nearly right",
+  "control_rates": "same run: wide-cap caught on 20 of 20 fresh-seeded runs, its clean arm 0 of 20 (lower bound 0.86); composed-sign caught on 20 of 20, but its clean arm flagged 8 of 20 on that head: the composed share's side tie (a line on a cell's side beside one across it, 0.545 for 0.5) and the composition's floor where two lines are parallel within 2^-20, both fixed or allowed in bceffb66; the clean arm re-measured on the fixed head (fourth probe); fourth probe (probe/cam-pr5b-i4, run 43794581554, head 876802b4 with the side fix): composed-sign caught on 20 of 20 fresh-seeded runs and its clean arm quiet on 20 of 20 (lower bound 0.86); the union test's clean runs quiet on 40 of 40 (CAMERA_PLANT=none plants nothing, so both arms are clean)",
+  "switch_scan": "second probe (run 43791145026, head bceffb66): 28 raw sites in the creased route's functions and the cap's owner passed by position, no problem of another kind; the guard coverage and the harness rows passed (13); listed and fixed in 876802b4, rechecked by the third probe; third probe (run 43794331229, head 876802b4): the tree test, the owner pass and the positional-owner control 3 passed, the harness guard coverage and rows 13 passed (the arm failed only the memory check after its script)",
+  "bits_controls": "second probe: each of the twelve programs (route 1's ten, sampled32, sampled64) compiled twice equal and one ulp of the camera's mount different; its bit_compare did not run (an abbreviated base hash cannot be fetched): third probe",
+  "durations": "second probe, one process: drawn views 445 and 446 s, the derivative 62 to 69 s, the pinned views 12.7 to 19.1 s, the conformance 6.7 s, the swap 6.0 and 6.1 s; rows in tests/duration_allowlist.txt",
+  "drawn_split": "the drawn views split into ten bands of the turn (3 degrees each), four Hypothesis draws a band, 40 a dtype (the single test drew 30 a dtype in 445 and 446 s): sixth probe (probe/cam-pr5b-i6, run 43811108428, one process on a 4-vCPU runner), all 20 passed, each 56.6 to 69.0 s (predicted 40 to 75); rows in tests/duration_allowlist.txt. The process's peak memory was 10.5 GiB over the 80 views (the second probe's whole-file arm peaked at 12.8 GiB: each view's renders compile afresh and stay cached), not new with the split",
+  "tails": "the seventh probe's tails pinned (test_g18_the_drawn_tails_are_within_the_lines; in each dtype the two views nearest the pixel line and the two nearest the motion line), local, 2026-11-16, deterministic views so every run alike: clean, 8 of 8 pass, reproducing the probe's ratios (pixel 0.711, 0.601, 0.961, 0.701 of the line at the pixel tails; motion 0.159, 0.117, 0.179, 0.078 at the motion tails). crease-lag fails 8 of 8 (the motion 1.86 to 3.26 times its line, the pixel unchanged). no-crease-measure fails 8 of 8 (the pixel 2.1 to 4.3 times its line at the four pixel tails and one motion tail; at the thin-cap motion tails the flag left unraised, and at one, float32's turn 2.0, roll 87.2, the flag alone). single-edge-crease fails 7 of 8 (the pixel 1.8 to 6.8 times its line) and escapes one: float32's turn 2.0, roll 87.2, where both caps are thinner than two sub-pixels, their pixels are judged by the flag (which the plant leaves right), the judged pixels' largest error is 1e-4 of the line and the motion 0.16 of its line: a view the gate sees by the flag alone"
+ },
+ "second_predictions": {
+  "written": "2026-11-16, camera PR 5b-i's second agent, before the motion control, the derivative control, the drawn views on fresh seeds, the control rates, the switch scan and the bits ran",
+  "seen_before": "G17's derivative test was run in its first form (the sweep 1/4 to 1/256 px, the line the central difference's own error alone): it failed at turns 2, 4 and 15 (9.97, 2.03, 3.06 of the line), and a per-pixel look at turn 2 showed the central difference not yet in its small-step behaviour at 1/256 px about the thin caps (non-monotone, settling at 1/1024 px); with the sweep extended to 1/16384 px turn 0 read 1.66 and turn 2 0.858, turn 0's excess off the crease (the jvp 1.2e-5 of the motion from the converged difference), the held march's envelope error, which camera PR 5a's gate_deriv bounds at 3e-4 of the motion (predictions_camera_pr5a_round5_gates.json)",
+  "motion_control": "CAMERA_PLANT=crease-lag (the caps placed 0.05 of the body's one-pixel step behind it in each moved image, the view's own image unchanged) fails the motion gate on every pinned view in both dtypes while the pixel gate passes there (6 of 6, the motion about 3 times its line); on drawn views it fails the motion gate on every draw; the ladder on the pinned views (CAMERA_PLANT_SIZE 0.05, 0.025, 0.0125): the smallest caught on every pinned view 0.025",
+  "g17_derivative_control": "CAMERA_PLANT=held-least (the regions read at each branch's least with no derivative of its place) fails G17's derivative at turn 15 at least; at turns 0 to 4 the term it removes is small (the span's slope along rays nearly across the axis), and its outcome there is stated per view",
+  "drawn": "the probe draws 200 fresh views per dtype (turn 0 to 30 degrees, roll 0 to 90, offsets 0 to 1 px; seeds from fresh entropy, recorded): every view within the pixel line and the motion line, thin_cap exactly where a cap is that thin, the largest pixel ratio at most 0.8 of the line; the tails (the worst views by each line) are pinned afterwards and single-edge-crease, no-crease-measure and crease-lag each fail every pinned tail",
+  "control_rates": "wide-cap and composed-sign each caught on 20 of 20 fresh-seeded runs (detection_rate.py; lower bound 0.86), their clean arms quiet",
+  "scan": "the switch scan passes on the head with the camera/creased configuration (a test-only creased kind in the in-loop camera) and the raw lines its output names; every new owner passed by a node's step"
+ },
+ "third_predictions": {
+  "written": "2026-11-16, after CAMERA_PLANT=held-least ran (its outcome below), before CAMERA_PLANT=held-caps ran",
+  "why": "held-least left G17's derivative bit-identical at all four views: the span's least's place reaches the image only where the span's line is the outline (a cap seen edge-on, turns near 0), and there the place's derivative in the body's motion is the axis's tilt in depth times the motion, about sin(turn): zero at turn 0, under 0.07 at turn 4; where the caps open, their outlines hide the span's. It cannot discriminate on the cylinder, so it is no control of this test",
+  "g17_derivative_control": "CAMERA_PLANT=held-caps (the crease measure's pieces held: values without derivative) fails G17's derivative at turns 4 and 15, where the caps' outlines are the crease pixels' outline, by many times its line; at turns 0 and 2 (caps narrower than two sub-pixels) its outcome is stated per view"
+ },
+ "fourth_predictions": {
+  "written": "2026-11-16, after the first held-caps ran (its outcome below), before the second ran",
+  "why": "the first held-caps (stop_gradient on the measure's pieces) passed G17's derivative at every view (0.0029 to 0.98 of the line; the difference's own error alone 0.98 to 264): it held the caps' lines across the pixel too (their slopes along the ray table are the pieces' derivatives), so it changed the image, and the jvp and the central difference of that image agreed. It cannot discriminate either",
+  "g17_derivative_control": "CAMERA_PLANT=held-caps, now the measure read from a held pinhole (the caps' values and lines kept, only their derivative in the body's place gone): fails G17's derivative at turns 4 and 15 by many times its line; turns 0 and 2 stated per view"
+ },
+ "march_derivation_finding": {
+  "written": "2026-11-16, camera PR 5b-i's third agent, after the maintainer's word 'Derive the march term' and before any renderer measurement of the derivative after it",
+  "derivation": "scripts/camera_route2/crease_march_line.py, output tests/sensing/crease_march_line_pr5b.json: crease_line.py's numpy re-implementation of the scheme on exact geometry, extended with the image's derivative in the body's place along x and z with the held points held (the jvp's) and recomputed with the scheme's discrete choices kept (the rendered image's on its branch), central differences at 1e-4 px (at the two worst poses a quarter and four times that step agree to 0.7 per cent), on the test's aggregates (equivalent radius, centroid) on the crease pixels and the rest; the term is their difference, in px a px of the body's motion; 360 poses (the crease line's), 1053 s on 4 processes",
+  "found": "on 357 of 360 poses the term is at most 9.8e-5 px a px on the crease pixels (median 2.3e-6, 99th percentile 9.7e-5) and 3.3e-5 on the rest. At three poses it is far larger on the crease pixels: 0.50 (turn 6, roll 75, offset 0.3, 0.8), 0.030 (turn 3, roll 0, offset 0) and 0.024 (turn 2, roll 0, offset 0), all of it at one pixel each, at the rod's end, where a sub-ray passes 0.0013, 0.0010 and 0.0025 px from the side's axis (the march spacing is about 1.1 px). There the span's line is ill-conditioned in both arms (at the first: its distance moves 78 px a px of the body's motion, the sub-cell's share 240 a px) and the jvp's implicit step (the second difference a spacing wide, 5.5e4, against the profile's curvature at the least, 2.4e7) moves the span's place at another rate than the image's held point. The term is narrow in the pose (0.50 at offset u 0.3 px, 0.76 at 0.3005, 7e-6 at 0.302) and not bounded by a scan: a view nearer the alignment can read more",
+  "seen_check": "a check against numbers already seen, not evidence: at turn 15, roll 20 the simulated term is 5.8e-6 and 6.2e-6 of the crease pixels' motion (x and z) and at turn 4, roll 20 2.8e-7 and 2.5e-7; the first form's measured jvp less the difference there, inferred from its two recorded ratios (3.44 and 0.020 at turn 15, 2.56 and 0.0011 at turn 4), was about 6e-6 and 3.3e-7 of the motion",
+  "scan_band": "1.25 times the scan's largest: 0.62 px a px on the crease pixels, 4.1e-5 on the rest; not a bound (above), and as a line it would pass any missing jvp term under about a tenth of the crease pixels' motion (held-caps, at 2800 to 3550 times the 3e-4 line, about 4 to 5 px a px, would still fail by about 7 times)",
+  "status": "no line committed: the gate's form is put to the maintainer (the coordinator relays). Options: (a) the term derived per view, the line the central difference's own error plus 1.25 times the simulated term at the view itself (the derivation run inside the test, about 8 s a view), confirmed on fresh views with each view's simulated term predicted first; (b) the scan's band, 0.62 px a px on the crease pixels, weak and no bound; (c) the singular pixel fixed first (the span's line and its implicit step where a sub-ray passes near the side's axis), then the band re-derived"
+ },
+ "singular_check": {
+  "written": "2026-11-16, camera PR 5b-i's third agent, at the coordinator's request (the design agent's default for G17), before scripts/camera_route2/crease_singular_check.py ran",
+  "question": "is the march term's singular pixel (0.50, 0.030 and 0.024 px a px at the three poses march_derivation_finding names) the scheme's error, or a near-singularity of the geometry the scheme follows?",
+  "case": "at each of the three poses, along x and z, the band pixel where the held and live derivatives differ most; the scheme's derivative there (held, the jvp's; live, the rendered image's on its branch; and the renderer's own jvp and central difference, float64) against the exact image's (hull_oracle) central difference at 1e-4, 1e-3, 1e-2 and 1e-1 px, taken at 1e-4 px where it is within 1e-3 of the 1e-3 px step's",
+  "line": "the scheme agrees with the geometry at a pixel when its derivative lies within 0.1 px^2 a px of the body's motion of the exact one (declared: a tenth of a straight edge crossing a whole pixel at the body's own speed; a rigidly moved convex body's exact pixel derivative is at most its outline's length in the pixel, at most 4, times its images' speed, about 1.04 px a px)",
+  "control": "the plant (the near-axis sub-ray's span line moved an extra 1 px a px of the body's motion in the held arm) must move the held derivative at the pixel by more than the line; the positive control: every other band pixel of the same pose and direction agrees within the line (where one does not, the check is judged by whether the singular pixel lies more than ten times as far as the largest of them)",
+  "prediction": "the scheme's error, not the geometry's: at each singular pixel, in the direction of the larger term, held and live both lie more than ten times the line from the exact derivative, which has settled and is at most 4.2 px^2 a px (the re-implementation reads 15.1 and 14.8 along x at the first pose, a share no rigidly moved convex body's image can change at); every other band pixel agrees within the line; the plant crosses it; the renderer's jvp and central difference at the pixel read as the held and live arms within 10 per cent",
+  "then": "if the scheme disagrees: option (c), the singular pixel fixed, then (a), the term per view; if it agrees: that pixel class declared (as camera.composed.end is declared unmeasured), (a) for the rest, the class recorded for the maintainer's list",
+  "outcomes": {
+   "run": "2026-11-16, local, scripts/camera_route2/crease_singular_check.py at f5689c8c (output tests/sensing/crease_singular_check_pr5b.json); no change to the script or the line after it ran",
+   "case": "the scheme's error, not the geometry's",
+   "evidence": "turn 6, roll 75, offset 0.3, 0.8, pixel (u 43, v 59): the exact image's derivative is 0 at every step 1e-4 to 1e-1 px along x and z (the pixel does not meet the exact image's outline at any of them), while the scheme's is 15.1 (held) and 14.8 (live) along x and -2.6 and -5.1 along z: 151 and 26 times the line, 273 and 24 times the largest other band pixel; the scheme's share there departs from the exact one by 0.008 to 0.013 within 1e-2 px of the view along z and by 0.0078 at 1e-4 px along x (0 from 1e-3 px on): a spurious sliver the motion switches within a thousandth of a pixel. Turn 3, roll 0, pixel (83, 29), along z: exact 0.0035, scheme -1.28 and -1.42 (13 times the line, 25 times the largest other); along x 0.13 and 0.14 against an exact 1.009, which other pixels exceed (0.23), so x cannot tell there. Turn 2, roll 0, pixel (81, 29), along z: exact 0, scheme 0.67 and 0.70 (6.7 and 7.0 times the line; 9.8 and 10.3 times the largest other, against the stated ten: narrowly short for the held arm); along x within the line (0.03, 0.09). The renderer reads as the re-implementation at every one of the six (its jvp within 3.9 per cent of the held arm, its central difference within 2.0 per cent of the live arm)",
+   "controls": "the plant (the near-axis sub-ray's span line moved an extra 1 px a px) moved the held derivative by 0.17 at the first pose in both directions, crossing the line; at the second and third it moved nothing (0.0): there four sub-rays of the pixel's row lie within 0.0011 px of the axis (roll 0 lays the axis along a sub-ray row), and the planted one's span line does not reach its sub-cell, so the plant could not discriminate at those two (predicted to cross: a miss). The positive control (every other band pixel within the line) held at three of six (first pose x, second and third z) and failed at three: 0.1075 (first pose z, at pixel 35, 58), 0.23 and 1.00 (second and third poses x, at the far cap's corner, pixel 20, 38, at turns 3 and 2 where the caps are under two sub-pixels thin and the gate judges those pixels by the thin_cap flag); by the stated fallback the check is judged on each singular pixel's distance against ten times the largest other: met at the first pose (both directions) and the second (z), and narrowly short at the third (9.8 for the held arm, 10.3 for the live)",
+   "then": "option (c) by the rule (the singular pixel fixed, then the per-view term); not built in this sitting: the fix touches the image too (the spurious sliver), not only the derivative, so its design is put to the maintainer"
+  }
+ },
+ "held_point_check": {
+  "written": "2026-11-16, camera PR 5b-i's fourth agent, after option (c) was built with design (i) (the coordinator's default under the maintainer's G17 rule: the image's own held point differentiated) and its images were shown bit for bit the same as before it at eight views in both dtypes, and before any renderer run of its derivative",
+  "built": "src/mime/sensing/_sampled.py: _place gives each branch's read point the derivative of the image's own held point (the march's refined points and spacing as they move with the body, _grid_moving; the quartic's least through its five live values at the held offsets, its Newton steps and branches as they fell; a verified window's parabola likewise), and _moving reads the implicit step's slope and its curvature at that moving place along the held direction, so the step is zero in the body's place and its change with the body is the rendered image's; the branch's own value is read at the moving place too. Derivatives only: the primal of each carried point is the held value (a custom_jvp), so nothing is computed where nothing is differentiated. A turn's share through a sub-ray's own direction is still the implicit step's (the gates move the body along x and z)",
+  "script": "scripts/camera_route2/crease_held_point_check.py (float64, the renderer): at the three poses of the singular check and their pixels, along x and z, the jvp, the rendered image's central difference at steps 4^-7 to 4^-12 px, and the exact image's (hull_oracle) at 1e-4 to 1e-1 px; at the pixel and on the crease aggregates",
+  "line": "the jvp equals the rendered image's derivative at a pixel when it lies within the sweep's own error of the last step's difference: twice the change between the last two steps plus 64 units in the last place of the share over the last step (G17's derivative_line, at the pixel); declared before the run",
+  "prediction": "the jvp within the line at the singular pixel at all six (three poses, x and z)",
+  "controls": "the plant (near-axis: every sub-ray within 0.01 px of the side's axis has its place moved an extra 1 of the body's motion along x and z, in the jvp only) crosses the line at the singular pixel at all three poses, in both directions (6 of 6); the positive control (every other band pixel, the jvp against the rendered difference by the same line) holds at all six",
+  "image": "the images are unchanged, so the rendered and exact images' derivatives still differ at the singular pixels as the singular check found (about 15 and 5 px^2 a px at the first pose along x and z, about 1.4 at the second along z, about 0.7 at the third along z), and on the crease aggregates by more than 1e-2 px a px at the first pose: an image error in one sub-cell, not a derivative error, recorded for the maintainer with option (iii) (the safeguarded-Newton refinement of the held least) as the fallback that would fix the image; not built",
+  "first_run_fix": "2026-11-16, camera PR 5b-i's fifth agent, after the check's first run (one pose read, the session ended before the rest): the positive control read nan. The line is never zero (its floor, 64 units in the last place over the last step, is about 2.4e-7), so the nan was not 0/0 in the control's arithmetic: the jvp itself was nan at 2506 pixels of the first pose's image, every one empty (rendered and exact share 0), 21 of them in the band. jax_debug_nans located it in _sampled._leasts: a read point's recipe counted its descent's moves as (centre - start) / spacing, and a ray that misses the widened ball has no spacing (0/0); _place then made its derivative from start + moves x spacing (nan x 0). A derivative defect of design (i), found by the positive control; the images are untouched (the recipe is read only by the derivative). Fixed in the source (the spacing guarded, the moves 0 there, exactly what the descent did), after which the jvp is finite at every pixel of the three poses (0 of 6144, x and z). The control's arithmetic is otherwise unchanged: a non-finite distance now counts as a failure explicitly (it did before only through argmax picking the nan), and the count of non-finite jvp pixels is reported. The first pose's pixel arm (jvp 14.8696 against the rendered difference within 5.5e-6 of a 5.9e-6 line along x, 1.8e-5 of 3.0e-5 along z) read the same pixel, whose jvp was finite; it is re-run with the rest.",
+  "outcomes": {
+   "run": "2026-11-16, local (float64, the renderer), scripts/camera_route2/crease_held_point_check.py at 1e7f6195 (the recipe's 0/0 fixed; the check's line unchanged), both arms in full",
+   "pixel": "the jvp within the line at the singular pixel at 6 of 6 (predicted 6): along x and z, 5.5e-6 of 5.9e-6 and 1.8e-5 of 3.0e-5 at the first pose, 2.6e-6 of 5.6e-6 and 2.4e-6 of 4.0e-6 at the second, 3.4e-7 of 6.3e-7 and 6.2e-7 of 2.2e-6 at the third: the jvp is the rendered image's derivative there",
+   "plant": "near-axis crossed the line at 6 of 6 (predicted 6): the jvp moved 13.6, 3.05 and 0.86 px^2 a px at the three poses (lines about 1e-6); in the singular check's form it had moved nothing at the second and third (one sub-ray's span line); this plant moves every sub-ray within 0.01 px",
+   "positive_control": "held at 6 of 6 (predicted 6): every other band pixel's jvp within the same line of its rendered difference, the largest 0.24, 0.27, 0.063, 0.052, 0.118 and 0.055 of it; no non-finite jvp pixel (the first run's nan was the jvp's, fixed in 1e7f6195)",
+   "image": "the rendered image's derivative less the exact one's: at the singular pixel 14.87 (x) and 5.09 (z) at the first pose, 0.139 and 1.476 at the second, 0.717 (z) at the third (where along x the singular class's largest, 0.991, is the far cap's end pixel, u 20, a thin-cap pixel whose sub-row also passes the axis); every other band pixel outside the thin class at most 0.055 and 0.108 (first pose, the largest at the near cap's corner, v58 u35), 0.063 and 0.027 (second), 0.119 and 0.026 (third, v20 u82); the thin class (about a cap under two sub-pixels, judged by the flag) up to 0.226 (second, x) and 0.998 (third, x: the far cap's column u 20, about 0.99 at each of its pixels, the rendered thin cap's edge not moving with the body). On the crease aggregates the rendered image's derivative departs from the exact one's by 2.98 and 0.97 px a px at the first pose (its singular pixel), 0.33 and 0.32 at the second, 5.49 and 0.15 at the third (its far thin cap's column, then its singular pixel): the masks hold both classes, and the aggregates' excess is theirs",
+   "rows_clean": [
+    {
+     "turn": 6.0,
+     "roll": 75.0,
+     "offset": [
+      0.3,
+      0.8
+     ],
+     "pixel_u_v": [
+      43,
+      59
+     ],
+     "direction": "x",
+     "jvp": 14.869596884788566,
+     "rendered_last": 14.869591372087598,
+     "apart": 5.512700967713613e-06,
+     "line": 5.893874913454056e-06,
+     "within": true,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.24129956313805986,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 2.9839390961426018,
+     "image": {
+      "rest": {
+       "error": 0.055278432837222446,
+       "at_v_u": [
+        58,
+        35
+       ],
+       "near_px": 7.958664628958402
+      },
+      "singular": {
+       "error": 14.869596884788566,
+       "at_v_u": [
+        59,
+        43
+       ],
+       "near_px": 0.0012625037054931113
+      }
+     }
+    },
+    {
+     "turn": 6.0,
+     "roll": 75.0,
+     "offset": [
+      0.3,
+      0.8
+     ],
+     "pixel_u_v": [
+      43,
+      59
+     ],
+     "direction": "z",
+     "jvp": -5.090283651110284,
+     "rendered_last": -5.090301231481135,
+     "apart": 1.758037085064501e-05,
+     "line": 3.0174385756254196e-05,
+     "within": true,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.27094188702451455,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.9705102372587174,
+     "image": {
+      "rest": {
+       "error": 0.10753132720834602,
+       "at_v_u": [
+        58,
+        35
+       ],
+       "near_px": 7.958664628958402
+      },
+      "singular": {
+       "error": 5.090283651110284,
+       "at_v_u": [
+        59,
+        43
+       ],
+       "near_px": 0.0012625037054931113
+      }
+     }
+    },
+    {
+     "turn": 3.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      83,
+      29
+     ],
+     "direction": "x",
+     "jvp": 1.1477355638455546,
+     "rendered_last": 1.1477381847798824,
+     "apart": 2.620934327790536e-06,
+     "line": 5.600973963737488e-06,
+     "within": true,
+     "exact_1e-4": 1.0085743269883096,
+     "positive_control_largest_share": 0.06335615187652352,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.33336574815424547,
+     "image": {
+      "rest": {
+       "error": 0.06299625335850123,
+       "at_v_u": [
+        37,
+        82
+       ],
+       "near_px": 7.264078986681315
+      },
+      "singular": {
+       "error": 0.13916123685724502,
+       "at_v_u": [
+        29,
+        83
+       ],
+       "near_px": 0.0009775997439370333
+      },
+      "thin": {
+       "error": 0.22571168613911174,
+       "at_v_u": [
+        38,
+        20
+       ],
+       "near_px": 8.243672525166515
+      }
+     }
+    },
+    {
+     "turn": 3.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      83,
+      29
+     ],
+     "direction": "z",
+     "jvp": -1.4726703441571622,
+     "rendered_last": -1.4726679231971502,
+     "apart": 2.4209600120173036e-06,
+     "line": 4.041008651256561e-06,
+     "within": true,
+     "exact_1e-4": 0.0034640106605365872,
+     "positive_control_largest_share": 0.051695861750178866,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.31767871548042426,
+     "image": {
+      "rest": {
+       "error": 0.026616096955518476,
+       "at_v_u": [
+        39,
+        82
+       ],
+       "near_px": 9.267492113626835
+      },
+      "singular": {
+       "error": 1.4761343548176988,
+       "at_v_u": [
+        29,
+        83
+       ],
+       "near_px": 0.0009775997439370333
+      },
+      "thin": {
+       "error": 0.051586581291181544,
+       "at_v_u": [
+        39,
+        20
+       ],
+       "near_px": 9.241756410506225
+      }
+     }
+    },
+    {
+     "turn": 2.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      81,
+      29
+     ],
+     "direction": "x",
+     "jvp": -0.08731553306230411,
+     "rendered_last": -0.08731587138026953,
+     "apart": 3.3831796542038717e-07,
+     "line": 6.249174475669861e-07,
+     "within": true,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.11842145519345582,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 5.492770180740431,
+     "image": {
+      "rest": {
+       "error": 0.11856220034825915,
+       "at_v_u": [
+        20,
+        82
+       ],
+       "near_px": 9.007601821414214
+      },
+      "singular": {
+       "error": 0.9909735126711894,
+       "at_v_u": [
+        29,
+        20
+       ],
+       "near_px": 0.007508154244385756
+      },
+      "thin": {
+       "error": 0.9975153079722077,
+       "at_v_u": [
+        38,
+        20
+       ],
+       "near_px": 8.247383289325677
+      }
+     }
+    },
+    {
+     "turn": 2.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      81,
+      29
+     ],
+     "direction": "z",
+     "jvp": 0.7167912492410216,
+     "rendered_last": 0.7167918728664517,
+     "apart": 6.236254301850153e-07,
+     "line": 2.2202730178833008e-06,
+     "within": true,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.054560437409774114,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.14596352968485102,
+     "image": {
+      "rest": {
+       "error": 0.02552945740547974,
+       "at_v_u": [
+        39,
+        82
+       ],
+       "near_px": 9.263224033447164
+      },
+      "singular": {
+       "error": 0.7167912492410216,
+       "at_v_u": [
+        29,
+        81
+       ],
+       "near_px": 0.002488521757999555
+      },
+      "thin": {
+       "error": 0.06843918624166268,
+       "at_v_u": [
+        39,
+        20
+       ],
+       "near_px": 9.246073008731194
+      }
+     }
+    }
+   ],
+   "rows_planted": [
+    {
+     "turn": 6.0,
+     "roll": 75.0,
+     "offset": [
+      0.3,
+      0.8
+     ],
+     "pixel_u_v": [
+      43,
+      59
+     ],
+     "direction": "x",
+     "jvp": 28.517313082949318,
+     "rendered_last": 14.869591372087598,
+     "apart": 13.64772171086172,
+     "line": 5.893874913454056e-06,
+     "within": false,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.24129956313805986,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 2.9839390961426018,
+     "image": {
+      "rest": {
+       "error": 0.055278432837222446,
+       "at_v_u": [
+        58,
+        35
+       ],
+       "near_px": 7.958664628958402
+      },
+      "singular": {
+       "error": 28.517313082949318,
+       "at_v_u": [
+        59,
+        43
+       ],
+       "near_px": 0.0012625037054931113
+      }
+     }
+    },
+    {
+     "turn": 6.0,
+     "roll": 75.0,
+     "offset": [
+      0.3,
+      0.8
+     ],
+     "pixel_u_v": [
+      43,
+      59
+     ],
+     "direction": "z",
+     "jvp": 8.557432547050473,
+     "rendered_last": -5.090301231481135,
+     "apart": 13.647733778531608,
+     "line": 3.0174385756254196e-05,
+     "within": false,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.27094188702451455,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.9705102372587174,
+     "image": {
+      "rest": {
+       "error": 0.10753132720834602,
+       "at_v_u": [
+        58,
+        35
+       ],
+       "near_px": 7.958664628958402
+      },
+      "singular": {
+       "error": 8.557432547050473,
+       "at_v_u": [
+        59,
+        43
+       ],
+       "near_px": 0.0012625037054931113
+      }
+     }
+    },
+    {
+     "turn": 3.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      83,
+      29
+     ],
+     "direction": "x",
+     "jvp": 4.202312956931759,
+     "rendered_last": 1.1477381847798824,
+     "apart": 3.0545747721518763,
+     "line": 5.600973963737488e-06,
+     "within": false,
+     "exact_1e-4": 1.0085743269883096,
+     "positive_control_largest_share": 0.06335615187652352,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.33336574815424547,
+     "image": {
+      "rest": {
+       "error": 0.06299625335850123,
+       "at_v_u": [
+        37,
+        82
+       ],
+       "near_px": 7.264078986681315
+      },
+      "singular": {
+       "error": 3.193738629943449,
+       "at_v_u": [
+        29,
+        83
+       ],
+       "near_px": 0.0009775997439370333
+      },
+      "thin": {
+       "error": 0.22571168613911174,
+       "at_v_u": [
+        38,
+        20
+       ],
+       "near_px": 8.243672525166515
+      }
+     }
+    },
+    {
+     "turn": 3.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      83,
+      29
+     ],
+     "direction": "z",
+     "jvp": 1.5819070489290423,
+     "rendered_last": -1.4726679231971502,
+     "apart": 3.0545749721261926,
+     "line": 4.041008651256561e-06,
+     "within": false,
+     "exact_1e-4": 0.0034640106605365872,
+     "positive_control_largest_share": 0.051695861750178866,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.31767871548042426,
+     "image": {
+      "rest": {
+       "error": 0.026616096955518476,
+       "at_v_u": [
+        39,
+        82
+       ],
+       "near_px": 9.267492113626835
+      },
+      "singular": {
+       "error": 1.5784430382685057,
+       "at_v_u": [
+        29,
+        83
+       ],
+       "near_px": 0.0009775997439370333
+      },
+      "thin": {
+       "error": 0.051586581291181544,
+       "at_v_u": [
+        39,
+        20
+       ],
+       "near_px": 9.241756410506225
+      }
+     }
+    },
+    {
+     "turn": 2.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      81,
+      29
+     ],
+     "direction": "x",
+     "jvp": 0.7722179880857978,
+     "rendered_last": -0.08731587138026953,
+     "apart": 0.8595338594660673,
+     "line": 6.249174475669861e-07,
+     "within": false,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.11842145519345582,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 5.492770180740431,
+     "image": {
+      "rest": {
+       "error": 0.11856220034825915,
+       "at_v_u": [
+        20,
+        82
+       ],
+       "near_px": 9.007601821414214
+      },
+      "singular": {
+       "error": 0.9909735126711894,
+       "at_v_u": [
+        29,
+        20
+       ],
+       "near_px": 0.007508154244385756
+      },
+      "thin": {
+       "error": 0.9975153079722077,
+       "at_v_u": [
+        38,
+        20
+       ],
+       "near_px": 8.247383289325677
+      }
+     }
+    },
+    {
+     "turn": 2.0,
+     "roll": 0.0,
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "pixel_u_v": [
+      81,
+      29
+     ],
+     "direction": "z",
+     "jvp": 1.5763247703891228,
+     "rendered_last": 0.7167918728664517,
+     "apart": 0.859532897522671,
+     "line": 2.2202730178833008e-06,
+     "within": false,
+     "exact_1e-4": 0.0,
+     "positive_control_largest_share": 0.054560437409774114,
+     "nonfinite_jvp_pixels": 0,
+     "aggregates_rendered_less_exact": 0.14596352968485102,
+     "image": {
+      "rest": {
+       "error": 0.02552945740547974,
+       "at_v_u": [
+        39,
+        82
+       ],
+       "near_px": 9.263224033447164
+      },
+      "singular": {
+       "error": 1.5763247703891228,
+       "at_v_u": [
+        29,
+        81
+       ],
+       "near_px": 0.002488521757999555
+      },
+      "thin": {
+       "error": 0.06843918624166268,
+       "at_v_u": [
+        39,
+        20
+       ],
+       "near_px": 9.246073008731194
+      }
+     }
+    }
+   ]
+  }
+ },
+ "image_check": {
+  "written": "2026-11-16, camera PR 5b-i's fifth agent, under F0's rule on the maintainer's behalf (an image error beyond G17's band is an image error in one sub-cell, not a derivative error; G17's per-view term carries it explicitly, never hides it; option (iii) goes back to the maintainer with numbers, not built), before scripts/camera_route2/crease_image_line.py ran and before any fresh view was drawn",
+  "quantity": "a band pixel's image error: the rendered image's derivative on its branch (the renderer's jvp; the scheme's live arm in the derivation) less the exact image's (hull_oracle, central difference at 1e-4 px), in pixels of share a pixel of the body's motion along x or z",
+  "classes": {
+   "singular": "a pixel one of whose sixteen sub-rays passes within NEAR = 0.01 px (at the body) of the side's axis line: the near-axis plant's reach, declared with that plant before any data, four times the farthest the march scan found its term (0.0025 px); inside the rod such pixels are wholly covered (radius about 9.3 px), so the class reaches the band only at the rod's ends",
+   "thin": "the pixels about a cap narrower than two sub-pixels (G18's judged_pixels), judged by the thin_cap flag, as G18 judges them",
+   "rest": "every other band pixel: the pixels the check judges"
+  },
+  "line": "1.25 (declared, as the crease line's) times the scan's largest image error at the rest, over the crease line's 360 poses and both directions; committed after the scan and before any fresh view; never moved",
+  "check": "G17's derivative test fails a view when any rest pixel's image error, along x or z, exceeds the line; the singular and thin classes' largest are printed per view, never judged; their size is stated in the PR body and the docs as a known image error, with option (iii) named as the fix that would remove it",
+  "predictions": {
+   "scan_rest": "the rest's largest image error between 0.05 and 0.2 px^2 a px (the singular check's positive control read 0.1075 at a corner pixel of the first pose, z), so the line about 0.06 to 0.25",
+   "scan_singular": "the singular class's largest about 15 (the first pose, x), above the line at the three singular poses and at no other pose of the scan (the march scan found the term only there)",
+   "scan_thin": "the thin class's largest about 1 (the far cap's corner at turn 2, x)",
+   "sweep": "at each singular pose the singular pixel's image error falls as the body moves its nearest sub-ray off the axis, below the line before that sub-ray is NEAR (0.01 px) away: the class holds the error",
+   "renderer_three_poses": "check 1's image block: the rest within the line at all six (three poses, x and z) once the line is fixed; the singular pixel the largest in its class",
+   "controls": "single-edge-crease (an image error planted at the corners, outside the class) fails the image check at every view at turn 6 or below, the jvp gate holding (both arms see the same image); at turn 15 it may pass (G18's pixel line missed it at turns of 15.5 and up); held-caps fails the jvp gate at every view"
+  },
+  "outcomes": {
+   "run": "2026-11-16, local, scripts/camera_route2/crease_image_line.py at 1e7f6195 (the classes, the rule and the predictions committed before it ran): --sweep (27 points, tests/sensing/crease_image_sweep_pr5b.json) and the 360-pose scan (1185 s on 4 processes, tests/sensing/crease_image_line_pr5b.json)",
+   "sweep": "MET. At each singular pose the singular pixel's image error is 0.14 to 16.3 px^2 a px while its nearest sub-ray lies within 0.0025 px of the side's axis (not monotone in the distance: it depends on where the held least falls against the kink), and at most 2.4e-4 (or 0) from 0.003 px out; the class (0.01 px) holds it with about four times margin",
+   "scan_singular": "MET in size, MISSED in place: the class's largest is 14.84 at the first pose (x); above 0.2 at 9 poses, not 3: six of them (turns 1.5 and 2, rolls 0 and 10) at the far cap's end pixel (u 20), which is also a thin cap's (0.51 to 1.01: the thin-cap error, not the sliver), and one at turn 2, roll 60 (0.22)",
+   "scan_thin": "MISSED: the thin class's largest is 50.8 (turn 1.5, roll 0, offset 0.3/0.8, v39 u20, x; predicted about 1): the rendered image's derivative there is -50.4 to -51.8 at steps 1e-5 to 1e-4 px against the exact image's -0.98, a share that flips within about a fiftieth of a pixel, a sliver at a thin cap",
+   "scan_rest": "MISSED, and the rule's premise with it: the rest's largest image error is 0.880 px^2 a px (turn 0, roll 20, offset 0.3/0.8, v49 u25, x; predicted 0.05 to 0.2), so the rule's line would be 1.10. The error is not confined to one sub-cell: at 168 of the 360 poses a pixel outside both classes departs from the exact image's derivative by more than 0.1, at 71 by more than 0.2, at 9 by more than 0.5; by turn the largest is 0.88, 0.67, 0.65, 0.58, 0.48, 0.42, 0.28, 0.79, 0.25, 0.24, 0.14 at turns 0, 0.25, 0.5, 1, 1.5, 2, 3, 4, 6, 8, 10 degrees and at most 0.16 from 15 degrees up (median per pose 0.32 at turn 0, 0.27 at turn 4, under 0.04 from 15 up): the caps seen nearly edge-on",
+   "oracle_check": "the exact image's central difference is stable at the worst pixels (to 4 to 6 digits over steps 1e-6 to 1e-2 px), and the scheme's live one over 1e-5 to 1e-3 px, so the departures are the scheme's: at turn 0, roll 20, v49 u25 along x the exact -0.921 and the scheme's -1.802 (values 0.593 and 0.620, within the pixel line); turn 4, roll 30, v37 u19, x: -0.586 and -1.380; turn 0, roll 90, v61 u47, z: -0.702 and 0 (the scheme's share 1.0 against 0.996); turn 0.25, roll 10, v34 u83, x: 0.593 and 1.266; the first singular pose's corner v58 u35, z: -0.999 and -0.892. The image's value is within the pixel line while its local derivative is up to about twice the exact one's",
+   "status": "the image check is not committed: under the rule declared before the scan its line would be 1.10 px^2 a px, larger than most pixels' whole derivative (an edge crossing a pixel at the body's speed moves its share about 1 a px), so it would hide the error F0's rule says must be carried; no fresh view drawn on it. Reported to the coordinator for the maintainer's word (the premise, an image error concentrated in one sub-cell, does not hold)",
+   "ripple": "measured, not inferred (a first guess of a sawtooth, a steep branch with jumps back, was checked and is wrong): the scheme's share at turn 0, roll 20, v49 u25, every choice recomputed at each place, as the body moves 0 to 0.1 px along x in steps of 0.0025, is continuous, with no jump; its error against the exact share is a smooth ripple, 0.025 at the view, 0.015 about 0.033 px on, 0.023 at 0.1 px (a kink near 0.055), so its slope runs from -1.76 to -0.63 and back to -0.9 against the exact -0.92 to -0.96; the secant over the 0.1 px is -0.977 against -0.940. The image's error is small in value and not smooth at the scale of a few hundredths of a pixel of motion, and the derivative is that ripple's slope",
+   "aggregates": "crease_image_line.py --aggregates (360 poses, tests/sensing/crease_image_aggregates_pr5b.json): the image's term on the gate's aggregates (equivalent radius and centroid), the rendered image's derivative on its branch less the exact one's, in px a px. On the rest mask (away from the caps' rims) under 5e-4 at every pose. On the crease mask with every pixel: up to 55.4 (thin caps, turns 1.5 and 2), 2.98 (the singular sliver, turn 6), 2.45 (turn 1); with the singular and thin classes' pixels given the exact derivative (what the ripple alone carries): largest 0.49 (turn 0.25), and by turn 0.20, 0.49, 0.20, 0.16, 0.22, 0.17, 0.055, 0.23, 0.087, 0.040, 0.034, 0.015, 0.008, 0.008, 0.006 at turns 0, 0.25, 0.5, 1, 1.5, 2, 3, 4, 6, 8, 10, 15, 20, 25, 30; over 0.05 at 57 poses, over 0.1 at 21; the exact crease aggregates move 2 to 11 px a px, so the ripple is up to some 5 to 20 per cent of the motion at caps nearly edge-on and under about 1 per cent from 8 degrees",
+   "source": "scripts/camera_route2/crease_image_ripple.py (tests/sensing/crease_image_ripple_pr5b.json): the oracle's steadiness reproduced, and the ripple traced with each sub-ray's least as held and exact (the ray's closest approach to the side's axis, which option (iii)'s refinement and (ii)'s closed form converge to), the body moved 0 to 0.1 px along x: at the worst rest pixels the largest slope error is 0.789 (turn 0, roll 20) and 0.620 (turn 4, roll 30) with the held least AND with the exact one (equal to the 10th digit): the ripple is not the held least's, and (iii) would not remove it; at the first singular pixel it is 1.86 held and 0.0 exact (the value error -0.0093 at the view, 0 exact): the sliver is the held least's, and (iii) would remove it. The ripple's source is not measured (the first-order lines across a sub-cell at a sharply curved, nearly edge-on cap outline are a candidate, unverified)",
+   "missed": "scan_rest (0.88 against 0.05 to 0.2), scan_thin (50.8 against about 1) and scan_singular's place (9 poses above 0.2, not 3) missed; the sweep met; renderer_three_poses and controls not run (no line)"
+  }
+ },
+ "image_guard": {
+  "written": "2026-11-16, camera PR 5b-i's sixth agent, after the maintainer's decision (F0 record item 96: 'Lets go with your leans, but take the route to exact': (C), G17 gating the jvp against the rendered image, with (A)'s lines as a CI guard) and before any renderer run of the image check, any fresh view, any plant",
+  "decision": "G17 gates the jvp against the rendered image (check 1); the image's own derivative error against the exact geometry is documented by class (the sliver, the ripple, thin caps by their flag); CI pins per-band lines from the 360-pose scan (lines.image_bands) so neither class can grow unseen; the route to exact is the approved follow-up 'creased image accuracy' (the ripple's source found, the gathered (iii) for the sliver, the crease line, G18, G17 and the switch-scan lines re-opened once). The parked image check with one line of 1.10 is not used",
+  "where": "test_g17_the_creased_derivative_is_the_images (the seen, singular and fresh views: the jvp gate and the image check) and test_g17_the_image_error_is_within_its_band_at_the_bands_tails (the image check at each band's tails: 10 poses, the scan's own)",
+  "plants": {
+   "grown-ripple": "every partial pixel's share moved by CAMERA_PLANT_SIZE px^2 a px of the body's motion (along x and z) times 4c(1 - c), as a ripple of period 0.1 px (its value within size x 0.016): in the image, so the jvp follows it",
+   "grown-sliver": "every pixel a sub-ray of which passes within 0.04 px (four times the class's reach) of the side's axis moved by CAMERA_PLANT_SIZE px^2 a px of the body's motion, as the same ripple: the sliver grown in its class and widened beside it"
+  },
+  "predictions": {
+   "seen_singular": "the jvp gate holds at the 7 seen and singular views as before (the derivative is unchanged); the image check holds at each: they are scan poses, so each class's largest is the scan's own there, at most 0.8 of its line where the pose set the line ((6, 75) the [4, 8] band's sliver: about 0.80; (3, 0) the [2, 4] band's: about 0.80 to 0.83, the renderer's 1.476 against the scan's 1.427), the rest under 0.8",
+   "tails": "at each of the 10 tails the class that set the line reads about 0.8 of it (the renderer's against the scan's numpy re-implementation: equal to a few digits at ordinary pixels, within a few per cent at a sliver); every tail within both lines; thin_cap raised exactly where a cap is that thin",
+   "fresh": "6 fresh views (turn U(0, 30), roll U(0, 90), offsets U(0, 1), seed from fresh entropy, recorded): each within the jvp gate and within both band lines, the flag right; no ratio above 1 (a view's error is a draw from its band's, the margin 1.25 declared for the poses between the scan's)",
+   "grown_ripple": "size 1.5: fails the image check at every view and tail (every band's ripple line is at most 1.10, and some partial pixel near half covered at each takes about 1.5 less the error already there); size 0.25: fails at the views and tails turned 8 degrees and more (lines 0.30 and 0.20), not predicted below; the jvp gate holds under both (the plant is the image's); the suite fails on every run at both sizes (deterministic views)",
+   "grown_sliver": "size 2: fails at every view and tail with a band pixel whose sub-ray passes within 0.04 px of the axis (predicted: every one), by the sliver's line where its line is under 2 and the ripple's beside it (from 0.01 to 0.04 px, judged as the rest); size 0.25: fails at the views and tails in the bands [0, 1], [8, 15] and [15, 30] (sliver lines 0.038, 0.0018, 0.0019) where a pixel is within 0.01 px; the jvp gate holds; the suite fails every run at both sizes",
+   "held_caps": "fails the jvp gate at every G17 view (as before: 2800 to 3550 times the line at the seen views); at the tails (the image check alone) fails at every tail turned 1 degree or more (the caps' outline still in the jvp, about 1 px^2 a px at a cap's rim pixels), not predicted at turn 0",
+   "near_axis": "fails the jvp gate at the three singular views (as in check 1); at the others and the tails not predicted (it moves the jvp only where a sub-ray passes within 0.01 px and the share there is sensitive to its read point)",
+   "single_edge_crease": "fails the image check at every view and tail turned 6 degrees or less, the jvp gate holding (both see the same image); at 8 and more it may pass (G18's pixel line missed it from 15.5 degrees); on G18's pinned tails it stays 7 of 8 (float32's turn 2.0, roll 87.2 escapes: both caps thinner than two sub-pixels, their pixels judged by the flag, which the plant leaves right; never loosened)",
+   "power": "at each tail a growth of the judged class's error by more than a quarter (the margin) at its worst pixel fails, along the direction that set it; elsewhere the headroom (the line less the largest) printed per view is the smallest growth seen there"
+  },
+  "fresh_drawn": {
+   "when": "2026-11-16, after 369830af (the bands, lines and predictions committed) and before any run of them",
+   "seed": 10666201688275216299,
+   "generator": "numpy.random.default_rng(seed), turn U(0, 30), roll U(0, 90), offsets U(0, 1), the seed from secrets.randbits(64)",
+   "views": [
+    [
+     1.3482647412161108,
+     24.808128585345663,
+     [
+      0.7863700316759962,
+      0.129462421621917
+     ]
+    ],
+    [
+     1.8428440541539104,
+     19.019379682163457,
+     [
+      0.8730422629648931,
+      0.21199331858582915
+     ]
+    ],
+    [
+     29.36202677012414,
+     87.47250430703737,
+     [
+      0.7066187859364247,
+      0.34617106753450977
+     ]
+    ],
+    [
+     2.5482240708320045,
+     52.449788818546224,
+     [
+      0.13916151897523987,
+      0.4291590510679173
+     ]
+    ],
+    [
+     11.932991353146052,
+     18.46225045457095,
+     [
+      0.6634188681067769,
+      0.3227586724944974
+     ]
+    ],
+    [
+     21.635710677105802,
+     66.65891259309886,
+     [
+      0.1369225864345428,
+      0.20859012790484321
+     ]
+    ]
+   ],
+   "bands": "turns 1.35 and 1.84 in [1, 2], 2.55 in [2, 4], 11.9 in [8, 15], 21.6 and 29.4 in [15, 30]"
+  },
+  "outcomes": {
+   "run": "the tenth probe (probe/cam-pr5b-i10, run 43839821841, head 9ad4ed0f: db1cee46 with the probe's files; one process an arm on a 4-vCPU runner)",
+   "g17_jvp_gate": "MET: within its line at all 13 views (the largest 0.843 of it at turn 15, the rest 0.018 to 0.216)",
+   "seen_singular": "MET: the image check within at the 7 seen and singular views (0.178 to 0.784 of the line)",
+   "tails": "MET in place, MISSED in two values: all 10 tails within; eight read 0.78 to 0.80 of the line (the scan's own value over 1.25, as predicted), the turn-3 sliver 0.623 (1.112 along z on the runner, against 1.427 in the scan and 1.476 in check 1 on the laptop) and the turn-6 sliver 0.776 (14.39 along x, against 14.84 and 14.87): the sliver's derivative moves by a quarter between machines (the images bit-equal on one machine), ill-conditioned as the sweep found (where the held least falls against the kink)",
+   "fresh": "MISSED at one of six: five within both lines (0.035 to 0.256), the jvp gate within at all six; the view turned 1.84 degrees (roll 19.0, offset 0.873, 0.212) fails the image check: the sliver class's error 4.554 (x) and 1.56 (z) at v40 u23 against the [1, 2] band's sliver line 1.264 (3.6 of it). That pixel lies in the far cap's thin box (the cap's minor axis 0.053 px; thin_cap raised, rightly), a sub-ray 0.0005 px from the side's axis: the class order declared before the scan (a pixel near the axis is the sliver's, before the thin's) judges a thin cap's pixel by the sliver's line, while the decision judges thin caps by their flag; the thin class's own largest at that view is 21.2 (x). The [1, 2] band's sliver line was itself set by such a pixel (the scan's turn 1.5, roll 0, offset 0.5, 0.5, u 20: the far cap's end pixel, also thin), and 47 of the scan's rows (turns 0.25 to 3) have their sliver-class largest at a thin-box pixel. Not moved: put to the maintainer",
+   "held_caps": "MET: fails 23 of 23 (the jvp gate at every view, 1033 to 1.0e8 times its line; the image check at every tail, also the turn-0 tail, not predicted there, by the sliver's line)",
+   "near_axis": "MET: fails the jvp gate at the three singular views (1191, 2922 and 5203 times its line) and the image check at the turn-3 and turn-6 tails (the sliver moved to 3.52 and 26.7 against 1.78 and 18.5); the other 17 pass (the 1.84 fresh view fails as clean)",
+   "single_edge_crease": "MISSED in part: the jvp gate within at every view (0.033 to 0.034); the image check fails 16 of 23: every view and tail turned under 8 degrees but four (the turn-0 tail at offset 0.3, 0.8, the turn-1.5 tail, the fresh views turned 1.84 and 2.55: predicted to fail), and the turn-15 view and the 8, 10 and 20 tails; the fresh views turned 11.9, 21.6 and 29.4 pass. G18: pinned 6 of 6, tails 7 of 8 (float32's turn 2.0, roll 87.2 escapes, as before: both caps thinner than two sub-pixels, judged by the flag, which the plant leaves right; never loosened)",
+   "grown_ripple": "MET: 1.5 fails 23 of 23; 0.25 fails 12 of 23, every view and tail turned 8 degrees or more (as predicted) and the turn-0 view and the turn-0 and turn-1 tails (the sliver class's small lines there); the jvp gate within under both (at most 0.12); detection_rate.py at the turn-20 tail, size 1.5: caught 8 of 8 (lower bound 0.69), its clean arm 0 of 8",
+   "grown_sliver": "MET at 2 (23 of 23; detection_rate.py at the turn-20 tail: 8 of 8, lower bound 0.69, clean 0 of 8); at 0.25 fails 11 of 23 (the bands [0, 1] and [15, 30], and the 8 and 10 tails), MISSED at the fresh view turned 11.9 (predicted to fail: no band pixel there within 0.01 px of the axis was moved past the line, and the ripple's line 0.30 is above 0.25)",
+   "bits": "route 1's ten programs and camera PR 5a's two equal to the release tip 0f9a76bc, every array (bit_compare, one CPU, one thread); each repeat equal and each one-ulp move different (12 of 12). The creased images (8 views, transmission and flags, both dtypes) equal to d3e7ea26 (before the held-point fix) in all 16 arrays a dtype; the again/bumped control: bumped differs in all 8 views a dtype. The forward program's structural count differs: 104727620 against 103670852 (float32) and 104835172 against 103778404 (float64), +1056768 (+1.0 %); measured locally to the digit at each commit since d3e7ea26 (float64: d3e7ea26 103778404, ef2ef17c 104835172, unchanged after): the held-point derivative (design (i)) makes the forward program larger while its images are bit for bit the same. The changelog's 'an image computes nothing more' was wrong and is corrected; the cause is not traced",
+   "durations": "the G17 views 53.3 to 56.3 s each, the tails 56.1 to 65.0 s each (one process, the probe's g17 arm)",
+   "memory": "each arm's peak 1.5 to 5.9 GiB (the test arms 3.5 to 5.9) against the estimator's 0.44 GiB for the raw program (its known underestimate: each arm failed its memory step after its script); every arm under 12 GiB"
+  }
+ },
+ "image_guard_thin_first": {
+  "written": "2026-11-16, camera PR 5b-i's seventh agent, after the maintainer's word (F0 record item 103) and lines.image_bands re-derived from the re-run scan, before any renderer run under them, any view of the second fresh draw, any plant; the release tip 99614e48 merged first (no conflict)",
+  "decision": "the maintainer's word, F0 record item 103 ('I agree with both leans'), 2026-11-16: (1) thin caps first: a thin cap's pixels are judged by its flag wherever the axis passes, and the sliver's class holds only pixels outside thin boxes; (2) one sliver line of 18.5 for every band under 8 degrees (the [0, 1], [1, 2], [2, 4] and [4, 8] bands), keeping the derived lines above 8 degrees: the single-pose lines of 1.25 times one sliver vary about 25 % between the laptop and the runner (the tenth probe: 1.112 against 1.427 at turn 3, 14.39 against 14.84 at turn 6) and would flake; the ripple's lines and the other classes stay derived as before. The creased-image-accuracy follow-up (item 96, the route to exact) removes the sliver, after which these lines tighten",
+  "where": "test_g17_the_creased_derivative_is_the_images at 19 views (4 seen, 3 singular, the first fresh draw's 6 pinned as seen views, the second fresh draw's 6) and test_g17_the_image_error_is_within_its_band_at_the_bands_tails at the 7 poses that set the lines (t0-r20-u0.3-v0.8, t1-r10-u0.3-v0.8, t4-r30-u0-v0, t6-r75-u0.3-v0.8, t8-r20-u0.5-v0.5, t10-r45-u0.5-v0.5, t20-r20-u0-v0); the first round's turn-1, roll-10 (offset 0, 0), turn-1.5 and turn-3 tails set no line now (the sliver's lines under 8 degrees are one, set at turn 6, roll 75) and are no longer tails",
+  "evidence_for_these": "the tenth probe's per-view image-check lines (run 43839821841), each class's largest re-read against the new lines: the ripple's class is the same set and its lines are unchanged, so its ratios carry over; the sliver's class differs only by thin-box pixels (which move to the thin class); its ratios under 8 degrees are its largest over 18.5",
+  "predictions": {
+   "g17_jvp_gate": "within its line at all 19 views (the derivative unchanged: the first 13 as measured, 0.018 to 0.843 of the line)",
+   "seen": "the image check within at the 13 seen views, the first fresh draw's included: the view turned 1.84 (roll 19.0) now within, its thin cap's pixels judged by the flag (raised) and its sliver class, thin first, about 2e-4 by the scan's arithmetic (6.7e-5 px from the axis), against 18.5",
+   "tails": "every tail within; the class that set each line about 0.8 of it on the laptop (the scan's own value over 1.25); on the runner the turn-6 sliver about 0.78 (14.39 against 18.5, the tenth probe), the others 0.78 to 0.80 as before; thin_cap raised exactly where a cap is that thin",
+   "fresh": "the 6 views of the second draw (turn U(0, 30), roll U(0, 90), offsets U(0, 1), the seed from fresh entropy, recorded): each within the jvp gate and both band lines, the flag right; no ratio above 1",
+   "held_caps": "fails the jvp gate at every one of the 19 views (1033 to 1.0e8 times its line in the tenth probe); the image check at every tail but turn 0 (0.92 of the ripple's line there: the sliver's line no longer catches it at turn 0); detection_rate at the turn-15 view: 8 of 8, clean 0 of 8",
+   "near_axis": "fails the jvp gate at the three singular views (1191, 2922, 5203 times its line); the image check at the turn-6 tail (the sliver moved to 26.7 against 18.5, 1.44 of it); not at the others; detection_rate at the singular view turned 6: 8 of 8, clean 0 of 8",
+   "single_edge_crease": "fails the image check by the ripple's class, unchanged by the new lines: at every view and tail turned 6 degrees or less but the turn-0 tail at offset 0.3, 0.8 (0.92) and the first draw's views turned 1.84 and 2.55 (0.96, 0.90), and at the turn-15 view and the 8, 10 and 20 tails; the first draw's views turned 11.9, 21.6 and 29.4 pass; the second draw's views not predicted one by one (turned under 8 degrees most likely caught); the jvp gate within; G18 pinned 6 of 6, tails 7 of 8 (float32's turn 2.0, roll 87.2 escapes by the flag, as before, never loosened); detection_rate on the whole band-tails test: 8 of 8, clean 0 of 8",
+   "grown_ripple": "size 1.5: fails the image check at every view and tail (every band's ripple line at most 1.10; 1.42 to 7.5 of it in the tenth probe); detection_rate on the whole band-tails test: 8 of 8, clean 0 of 8. Size 0.25: fails at the views and tails turned 8 degrees and more (the ripple's lines 0.30 and 0.20, the sliver's 0.0018 and 0.0019), and at the turn-1, roll-10 tail at offset 0.3, 0.8 (1.14 of the ripple's line 0.73); no longer at the turn-0 view and tail (they failed by the sliver's line 0.038 in the tenth probe); the jvp gate holds under both",
+   "grown_sliver": "size 2, per view: under 8 degrees caught only where a band pixel outside thin boxes lies 0.01 to 0.04 px from the axis (the rest class, judged by the ripple's line, at most 1.10), no longer by the sliver's own line (18.5, against the sliver plus 2: at most 16.9 at turn 6): of the 13 seen views every one but the singular views turned 2 and 3 (0.16 and 0.12 of their lines re-read: those views' near-axis pixels are all within 0.01 px); every tail (7 of 7, the ripple's class at 1.8 to 9.8 of its line); from 8 degrees every view and tail. At test level: detection_rate on the whole band-tails test, 8 of 8, clean 0 of 8 (if it is not 8 of 8: stop and report; never loosen, grow or re-aim the plant). Size 0.25: fails only at the views and tails turned 8 degrees and more with a pixel within 0.04 px (the turn-15 view, 21.6 and 29.4, the 8, 10 and 20 tails); none under 8 degrees",
+   "power": "the sliver's power under 8 degrees is lower by design: a growth of the sliver at its own pixels is caught there only past 18.5 (a growth of 3.7 at turn 6, where it is 14.8; about 18 at the singular views turned 2 and 3, where it is 0.7 and 1.4); its growth beside the axis (0.01 to 0.04 px) is caught by the ripple's line as before. Above 8 degrees unchanged"
+  },
+  "fresh_drawn": {
+   "when": "2026-11-16 12:43 CET, after e6d0bed7 (the classes thin first, the scan re-run, the bands and lines and this round's predictions committed) and before any run of them",
+   "seed": 12623130533721122703,
+   "generator": "numpy.random.default_rng(seed), turn U(0, 30), roll U(0, 90), offsets U(0, 1), the seed from secrets.randbits(64)",
+   "views": [
+    [
+     4.955053700369372,
+     55.12693375836997,
+     [
+      0.9527046003383626,
+      0.9431572270694022
+     ]
+    ],
+    [
+     11.260245957246276,
+     11.723617036975805,
+     [
+      0.5122441478803482,
+      0.8746822271780829
+     ]
+    ],
+    [
+     5.639246213494711,
+     60.89595119835083,
+     [
+      0.5880991766778857,
+      0.041059588390126245
+     ]
+    ],
+    [
+     7.6736007349550945,
+     46.778119015871994,
+     [
+      0.7861468838228813,
+      0.25967823307132387
+     ]
+    ],
+    [
+     12.38555855493949,
+     51.82453720642759,
+     [
+      0.39766334656559943,
+      0.26379711316504206
+     ]
+    ],
+    [
+     16.62318344638479,
+     51.742260318465,
+     [
+      0.01654780985922355,
+      0.8605970733429448
+     ]
+    ]
+   ],
+   "bands": "turns 4.96, 5.64 and 7.67 in [4, 8], 11.3 and 12.4 in [8, 15], 16.6 in [15, 30]"
+  },
+  "outcomes": {
+   "run": "the eleventh probe (probe/cam-pr5b-i11, run 43861193854, head 5166037b: 2426b1eb with the probe's files; one process an arm on a 4-vCPU runner)",
+   "g17_jvp_gate": "MET: within its line at all 19 views (the largest 0.843 at turn 15; the second draw's 0.033 to 0.160)",
+   "seen": "MET: the image check within at the 13 seen views (0.035 to 0.776 of the line); the first draw's view turned 1.84 (roll 19.0) now within: the ripple 0.221 of its line, its sliver class 1.7e-4 (x) at v19 u81 against 18.5, its thin class 21.2 (x) at v48 u25 judged by the flag (raised)",
+   "tails": "MET: all 7 within; the class that set each line 0.776 to 0.801 of it (the turn-6 sliver 0.776, 14.39 on the runner as in the tenth probe)",
+   "fresh": "MET: the second draw's 6 views within the jvp gate (0.033 to 0.160) and both band lines (0.057 to 0.303), the flag right; no ratio above 1",
+   "held_caps": "MET: fails 25 of 26 (the jvp gate at all 19 views, 1030 to 1.0e8 times its line; the image check at 6 of 7 tails, the turn-0 tail passing at 0.918 of the ripple's line, as predicted); detection_rate.py at the turn-15 view: caught 8 of 8 (lower bound 0.69), clean 0 of 8",
+   "near_axis": "MET: fails 4 of 26 (the jvp gate at the three singular views, 1190, 2920 and 5200 times its line; the image check at the turn-6 tail, the sliver 1.44 of 18.5); detection_rate.py at the singular view turned 6: caught 8 of 8 (lower bound 0.69), clean 0 of 8",
+   "single_edge_crease": "MET where predicted, the lean on the second draw MISSED in part: fails 17 of 26, every one by the ripple's class, the jvp gate within at all 19 (0.010 to 0.037). The seen views and tails exactly as predicted (passing: the turn-0 tail at offset 0.3, 0.8, 0.918; the first draw's 1.84, 2.55, 11.9, 21.6, 29.4). The second draw: 4.96, 12.4 and 16.6 caught, 5.64 (0.669), 7.67 (0.639) and 11.3 (0.493) pass (the lean 'turned under 8 degrees most likely caught' missed at two of three). detection_rate.py on the whole band-tails test: caught 8 of 8 (lower bound 0.69), clean 0 of 8. G18 under it, as before: the pinned views 6 of 6, the tails 7 of 8 (float32's tail 2, turn 2.0, roll 87.2, escapes by the flag, never loosened)",
+   "grown_ripple": "size 1.5 MET: fails 26 of 26 (the ripple's class 1.42 to 7.49 of its line); detection_rate.py on the whole band-tails test: caught 8 of 8 (lower bound 0.69), clean 0 of 8. Size 0.25 MISSED at one view: fails 10 of 26 (the views turned 11.9, 12.4, 15, 16.6, 21.6, 29.4, the 8, 10 and 20 tails and the turn-1 roll-10 tail at offset 0.3, 0.8, 1.14, as predicted; none other under 8 degrees, the turn-0 view and tail no longer, as predicted); the second draw's view turned 11.3 passes at 0.986 of the ripple's line 0.30 (predicted to fail: every view from 8 degrees). The jvp gate within under both (at most 0.12)",
+   "grown_sliver": "size 2 MET: fails 24 of 26, every tail (7 of 7) and every view but the singular views turned 2 and 3 (0.163 and 0.064 of the ripple's line, 0.131 and 0.116 of the sliver's), as predicted; under 8 degrees every catch is the ripple's class (1.82 to 2.74 of its line: the plant's pixels 0.01 to 0.04 px from the axis), the sliver's own class at most 0.884 of 18.5 (turn 6); detection_rate.py on the whole band-tails test: caught 8 of 8 (lower bound 0.69), clean 0 of 8. Size 0.25 MET: fails 9 of 26, only from 8 degrees (the views 11.3, 12.4, 15, 16.6, 21.6, 29.4 and the 8, 10 and 20 tails, by the sliver's line there, 134 to 142 of it); none under 8 degrees",
+   "bits": "MET: route 1's ten programs and camera PR 5a's two equal to the release tip 99614e48 in every array (bit_compare, one CPU, one thread), each repeat equal and each one-ulp move different (12 of 12); the creased images (8 views, transmission and flags, both dtypes) equal to d3e7ea26 in all 16 arrays a dtype, the forward count differing as before (104727620 against 103670852 in float32, 104835172 against 103778404 in float64, +1056768, +1.0 %, cause not traced); bumped differs in all 8 views a dtype",
+   "durations": "the G17 views 57.0 to 65.7 s each, the tails 62.7 to 65.9 s each (one process, the probe's g17 arm, one test after another); rows in tests/duration_allowlist.txt, the four old [0.0] [2.0] [4.0] [15.0] rows deleted",
+   "memory": "each arm's peak 1.5 to 5.9 GiB against the estimator's 0.42 GiB for the raw program (its known underestimate: each arm failed its memory step after its script, as in the tenth probe); every arm under 12 GiB",
+   "bits_after_second_merge": "MET: the twelfth probe (probe/cam-pr5b-i12, run 43902193783, head 391aaeef: e46bc79c, the branch after merging the release tip 2ebd69f8, with the probe's files; its predictions committed before the launch): route 1's ten programs and camera PR 5a's two equal to 2ebd69f8 in every array, each repeat equal and each one-ulp move different (12 of 12); the creased images equal to d3e7ea26 in every image and flag array, the forward count +1056768 as before; bumped differs in all 8 views a dtype"
+  }
+ },
+ "review358_controls": {
+  "written": "2026-11-16, camera PR 5b-i's eighth agent, after the refuting review of 238cc6dc (one major, three minors) and before any run of the plant or of the controls on the form b883dc70 gave the band-tails test; committed before the fourteenth probe",
+  "finding": "under 8 degrees the sliver's line (18.5) has no control of its own: every catch of grown-sliver 2 there is the ripple class's (the plant reaches WIDENED = 4 times the class's own reach); a plant confined to the class (reach 1, size 2) passes the 4 tails under 8 degrees, and crosses the line, the review measured, above about 3.7 at the turn-6 tail",
+  "controls": {
+   "confined-sliver": "CAMERA_PLANT=confined-sliver, CAMERA_PLANT_SIZE=s: the grown-sliver plant at reach 1 (a sub-ray within NEAR_AXIS of the side's axis), so only the sliver class's pixels move; tested at the turn-6 tail alone (the pose that sets the 18.5 line, 14.9 px^2 a px)"
+  },
+  "predictions": {
+   "confined_sliver": "at test level on that tail, 8 planted runs and 8 clean (detection_rate.py): size 5 not every run (machine to machine the pose's sliver moves by about a quarter, 14.9 +- 3.7, so size 5 crosses 18.5 where the sliver is at or above its own 13.5: caught on most runs, perhaps not all); size 8 and size 12 caught 8 of 8 (the error at least 11.2 + 8 against 18.5); clean 0 of 8 at every size. The control is added to the gate at the smallest size caught 8 of 8 with clean 0 of 8, and at the next size up if that one is a hair above the line, else it is not added and the docstring says there is none",
+   "held_caps": "caught 8 of 8 at the turn-15 view, clean 0 of 8 (as the eleventh probe)",
+   "near_axis": "caught 8 of 8 at the turn-6 singular view, clean 0 of 8 (as the eleventh probe)",
+   "single_edge_crease": "caught 8 of 8 on the whole band-tails test in its two-program form, clean 0 of 8",
+   "grown_ripple_1.5": "caught 8 of 8 on the whole band-tails test, clean 0 of 8",
+   "grown_sliver_2": "caught 8 of 8 on the whole band-tails test, clean 0 of 8, by the ripple class under 8 degrees and by the sliver class from 8 up (the review's reading, which this round corrects in the text)"
+  },
+  "outcomes": {
+   "run": "the fourteenth probe (probe/cam-pr5b-i14, run 43950601628, head 6c761969 = a0b369d9 with the probe's files; one process a run, 4-vCPU runners; detection_rate.py, 8 planted runs and 8 clean each)",
+   "confined_sliver": "at the turn-6 tail alone: sizes 5, 8 and 12 each caught 8 of 8 (95% lower bound 0.69), clean 0 of 8, no run inconclusive. Prediction: 8 and 12 at 8 of 8 (hit), 5 'not necessarily' (it was caught 8 of 8). Read locally at the same tail (image error along x at the sliver pixel v59 u43, line 18.55): the sliver 14.39 alone, 19.39 at size 5 (1.05 of the line, a hair above), 22.39 at size 8 (1.21). The control's size is 12 (about 1.45 of the line locally), not the smallest size caught: at size 5 a quarter less sliver on another machine (3.6) would pass, at 8 it would sit at 1.02, at 12 it stays above 1.23. The prediction named 8 as the size to add; 12 is the choice, recorded as a departure from the prediction's sentence for that reason",
+   "held_caps": "MET: 8 of 8, clean 0 of 8, on the view turned 15",
+   "near_axis": "MET: 8 of 8, clean 0 of 8, on the singular view turned 6",
+   "single_edge_crease": "MET: 8 of 8, clean 0 of 8, on the whole band-tails test in its two-program form",
+   "grown_ripple_1.5": "MET: 8 of 8, clean 0 of 8",
+   "grown_sliver_2": "MET: 8 of 8, clean 0 of 8 (by the ripple class under 8 degrees, as the review read it)",
+   "memory": "each arm's peak exceeded the probe estimator's bound (it estimates one frame's program, not a test's process): a known mismatch of the estimator, not a result"
+  }
+ }
+}

@@ -17,7 +17,7 @@ from script_a import EPSILON, REFERENCE_START, reproduction_arm, script_a
 from mime import Study
 from mime.build import BuildRefused
 from mime.cli import main
-from mime.data import asset
+from mime.assets import asset
 from mime.interactions import Lubrication
 from mime.interactions.hydrodynamic import UncoupledDrag
 from mime.study import DT, grid

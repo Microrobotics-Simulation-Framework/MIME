@@ -29,7 +29,7 @@ from script_a import script_a
 from mime.build import BuildRefused
 from mime.build._declarations import ValueDeclaration
 from mime.build._plan import _Planner
-from mime.data import asset
+from mime.assets import asset
 from mime.dynamics import FVM, RigidInertial, Womersley
 from mime.experiment import Experiment
 from mime.registry import EntryKind, register_dynamics, registered

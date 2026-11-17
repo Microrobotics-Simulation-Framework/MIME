@@ -124,7 +124,7 @@ def test_terms_and_permissions_load_as_they_were_saved_and_save_again_to_the_sam
 
 
 def test_a_permission_may_name_its_file_by_the_asset_that_declares_it(tmp_path: Path):
-    from mime.scene import asset
+    from mime.assets import asset
 
     mesh = write_mesh(tmp_path / "in", "Arm", 3000)
     experiment = layered("by_asset", [(mesh, third_party())], permissions=[a_permission(asset(mesh))])

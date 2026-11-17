@@ -70,6 +70,7 @@ import numpy as np
 from jax import Array
 
 from mime import assets
+from mime.assets import _cache
 from mime.core import jnp, switch
 from mime.core.tables import Axis, Scheme, Table, TableArrays, evaluate, query_range_problems
 from mime.nodes.hydro.mrs._solve import PRECISION
@@ -475,7 +476,7 @@ def shipped_unit_tube() -> Table:
     file's own. The asset is never downloaded here: one that is not in the cache is refused as ``asset.missing``, with
     the command that stores it (``mime assets fetch unit_tube_R0.997``), when the table is first asked for (planning
     an experiment with the tube wall kind), never when MIME is imported."""
-    return tube_table_from(str(assets.locate(assets.reference(UNIT_TUBE))))
+    return tube_table_from(str(_cache.locate(assets.reference(UNIT_TUBE))))
 
 
 #: The MRS's correction for the tube wall kind, on the shipped table.

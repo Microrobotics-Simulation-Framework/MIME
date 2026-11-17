@@ -7,6 +7,7 @@ from types import MappingProxyType
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast, override
 
 import jax
@@ -23,7 +24,7 @@ from mime.registry import DESIGN, PHYSICAL, convention
 from mime.registry import BuildContext, CalibrationInstance, CalibrationType, CapabilityRecord, ChainSegment, CheckedByEntry, \
     Command, ForwardModel, GradientRecord, Port, Problem, RungGradient, Segment, SegmentVisual, Signal, \
     register_calibration_type, register_dynamics
-from mime.scene import Asset
+from mime.assets import Asset
 from mime.units import ANGULAR_VELOCITY, DIMENSIONLESS, FORCE, LENGTH, MASS, MOMENT_OF_INERTIA, TORQUE, Magnitude, \
     Quantity, unit_symbol
 from mime.validity._bases import basis_text
@@ -134,6 +135,11 @@ DYNAMIC_LIMITS = (
     f"of whose joints reach a stop in one step (the median exact)",
     "a mounted motor's reaction loads it a step late: what the motor's stator passed over the step before "
     "(MIME-ANO-103)")
+
+
+def description_path(held: Asset) -> Path:
+    """Where a description's file is read from: a local file's path, or where the asset cache keeps a record's."""
+    return held.path if held.path is not None else Path(held.name)
 
 
 @register_dynamics
@@ -267,9 +273,9 @@ class Arm(ChainSegment):
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
         found: list[str] = []
-        if not isinstance(cast(object, self.description), Asset):
-            found.append(f"description={self.description!r} is not a file asset: write description=asset(\"arm.urdf\")"
-                         f" with asset from mime.scene")
+        if not isinstance(cast(object, self.description), Asset) or self.description.origin == "named":
+            found.append(f"description={self.description!r} is not a file asset: write "
+                         f"description=asset(Path(\"arm.urdf\")) with asset from mime")
         if self.rung == "dynamic":
             found += _keyed_problems(self.armature, "armature", rotor=False)
             found += _keyed_problems(self.actuators, "actuators", rotor=True)
@@ -294,15 +300,15 @@ class Arm(ChainSegment):
             content = description.read()
         except OSError as error:
             return Problem("description.missing", f"cannot read the description {description.path}: {error}",
-                           "pass the path of a URDF file that exists, as asset(\"arm.urdf\")")
+                           "pass the path of a URDF file that exists, as asset(Path(\"arm.urdf\"))")
         found = hashlib.sha256(content).hexdigest()
         if description.sha256 is not None and found != description.sha256.lower():
             return Problem("description.changed", f"the description {description.path} has SHA-256 {found}, and it is "
                                                   f"pinned to {description.sha256}",
-                           "use the file the experiment was written against, or pin the new one: asset(path, "
+                           "use the file the experiment was written against, or pin the new one: asset(Path(...), "
                            "sha256=...)")
         try:
-            return read_urdf(description.path, sha256=found, acknowledged=dict(self.acknowledged))
+            return read_urdf(description_path(description), sha256=found, acknowledged=dict(self.acknowledged))
         except DescriptionRefused as refused:
             return Problem("description.refused", str(refused),
                            "edit the file, or acknowledge each element named with its reason: acknowledged=((path, "
@@ -398,7 +404,7 @@ class Arm(ChainSegment):
                        initial_rates=tuple((float(r[0]), float(r[1]), float(r[2])) for r in turning),
                        massive=massive and not dynamic, initial_joints=tuple(float(c) for c in initial),
                        notes=armed.lines if armed is not None else transmission_lines(tree),
-                       visuals=segment_visuals(reading, frames), description_file=self.description.path,
+                       visuals=segment_visuals(reading, frames), description_file=description_path(self.description),
                        responds={} if dynamic else dict.fromkeys(commands, LAG))
 
     @override
@@ -447,7 +453,7 @@ class Arm(ChainSegment):
 
             licence = expression_of(terms.licence)
             tier = licence_verdict(licence).tier
-        return CalibrationInstance(URDF.label, held.path.name, sha256, licence, tier, URDF.unit(reading), URDF.fitted,
+        return CalibrationInstance(URDF.label, held.name, sha256, licence, tier, URDF.unit(reading), URDF.fitted,
                                    URDF.declared)
 
     def armed(self, tree: MultibodyTree) -> MultibodyTree:

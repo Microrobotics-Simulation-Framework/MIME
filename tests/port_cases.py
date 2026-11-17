@@ -16,14 +16,15 @@ import numpy as np
 from chain_cases import C_ARM
 
 from mime import Apparatus, Body, Experiment, State
-from mime.data import asset as packaged
+from mime.assets import asset as packaged
 from mime.drives import Constant
 from mime.dynamics import Arm, RigidInertial
 from mime.fields import CalibratedMultipole
 from mime.interactions import Magnetic
 from mime.gradients import GradientStatus
 from mime.registry import ControlLaw, Controller, Signal, register_controller
-from mime.scene import Scene, Sphere, Z, asset
+from mime.scene import Scene, Sphere, Z
+from mime.assets import asset
 from mime.things import Part
 from mime.units import A, A_m2, kg, kg_m2, m, m_per_s, m_per_s2, ms, rad, rad_per_s
 from mime.vocabulary import register_namespace

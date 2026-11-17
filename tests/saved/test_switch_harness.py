@@ -1473,6 +1473,7 @@ def test_replacing_every_fallback_changes_nothing_where_its_condition_is_false(g
 
 
 @pytest.mark.parametrize("where", [
+    "the camera's creased least's place on a ray along a side, its profile flat",
     "the camera's crossing test on a side of no length",
     "the camera's exact disc over pixels some of which the ball does not touch",
     "the camera's sampled march along a ray whose distance only rises",

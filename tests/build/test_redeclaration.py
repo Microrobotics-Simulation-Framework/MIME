@@ -53,7 +53,7 @@ from mime.fields import UniformRotating
 from mime.interactions import KEPT, Gravity, Magnetic
 from mime.observations import SwimSpeed
 from mime.scene import Scene, Tube, X, Z
-from mime.scene import asset as file_asset
+from mime.assets import asset as file_asset
 from mime.scene._scene import Reference
 from mime.terms import CustomLicence, Evidence, Permission, Scope
 from mime.things import Part
@@ -426,7 +426,7 @@ def pool() -> list[object]:
              LicenceDeclaration(CustomLicence("LicenseRef-Mine", "My licence", "https://example.org/licence")),
              PermissionDeclaration(Permission("A Maker", "A Lab", ("0" * 64,), Scope(True, False, True), "2026-11-05",
                                               Evidence("public_statement", "https://example.org/statement"))),
-             Reference(file_asset("robot.usda"), "/World/UMR")]
+             Reference(file_asset(Path("robot.usda")), "/World/UMR")]
     return held + specimens()
 
 

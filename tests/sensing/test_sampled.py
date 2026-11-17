@@ -361,10 +361,10 @@ def unread_second(found_gathered, found_verified):
     """The flag's control: the search's second branch lost before the verification (its point the first's, as if
     merged), and the verification left to find the leasts it reaches without reading them, so that each is in its
     bound: what a reading the verification cannot mend looks like."""
-    def gathered(at, start, other, spacing, near, read):
-        point, merged = found_gathered(at, start, other, spacing, near, read)
+    def gathered(at, start, other, spacing, near, read, *centred):
+        point, merged, *centres = found_gathered(at, start, other, spacing, near, read, *centred)
         half = point.shape[0] // 2
-        return point.at[half:].set(point[:half]), merged.at[half:].set(True)
+        return point.at[half:].set(point[:half]), merged.at[half:].set(True), *centres
 
     def verified(*arguments, **written):
         return found_verified(*arguments, **written, reads=False)
