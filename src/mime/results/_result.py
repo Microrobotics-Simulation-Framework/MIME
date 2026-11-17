@@ -886,6 +886,14 @@ def report_of_text(text: str) -> tuple[dict[str, Any] | None, str | None]:
     return cast(dict[str, Any], held), None
 
 
+def _shown(flag: Mapping[str, Any]) -> str | None:
+    """The node a saved flag's path names where it is not the node that holds it (``FlagLayout.shown``)."""
+    tail = f".{flag.get('name') or flag['field']}"
+    path = str(flag.get("path", ""))
+    shown = path[:-len(tail)] if path.endswith(tail) else None
+    return shown if shown and shown != str(flag["node"]) else None
+
+
 def layout_of(manifest: Mapping[str, Any]) -> Layout:
     """The layout a manifest was written from."""
     observations: list[ObservationLayout] = []
@@ -899,7 +907,7 @@ def layout_of(manifest: Mapping[str, Any]) -> Layout:
     flags = tuple(FlagLayout(str(f["entry"]), str(f["label"]), str(f["node"]), str(f["field"]), str(f["meaning"]),
                              cast(str | None, f.get("name")),
                              tuple(math.inf if v is None else float(v) for v in cast(list[float | None], f["limits"]))
-                             if f.get("limits") else None)
+                             if f.get("limits") else None, shown=_shown(f))
                   for f in cast(list[dict[str, Any]], manifest["flags"]))
     stamp = manifest.get("stamp")
     precision = manifest.get("precision")

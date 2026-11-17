@@ -803,6 +803,22 @@ def make_jaxpr(fn: Callable[..., object], *args: object) -> Jaxpr:
     return cast(Jaxpr, _held(jax).make_jaxpr(fn)(*args))
 
 
+def held_programs(params: Mapping[str, object]) -> Generator[Jaxpr]:
+    """The programs an equation's parameters hold, open or closed: a ``jit``'s, a ``cond``'s branches, a loop's body,
+    and a higher-order primitive's that JAX writes as ``call_hi_primitive`` (``lax.custom_root``'s solve, the
+    iterative allocation's), whose programs are in the primitive object it passes, listed by its ``pp_params`` as
+    JAX's printer reads them, not in the equation's parameters."""
+    for value in params.values():
+        for held in cast(tuple[object, ...], value) if isinstance(value, tuple | list) else (value,):
+            listed = getattr(held, "pp_params", None)
+            if callable(listed):
+                yield from held_programs(cast(Mapping[str, object], listed()))
+                continue
+            inner = cast(object, getattr(held, "jaxpr", held))
+            if isinstance(inner, Jaxpr):
+                yield inner
+
+
 def devices() -> list[tuple[str, str]]:
     """JAX's devices, each as its platform and its ``device_kind``."""
     return [(str(device.platform), str(device.device_kind)) for device in _held(jax).devices()]

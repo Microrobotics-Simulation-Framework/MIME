@@ -16,6 +16,17 @@ from mime.nodes.control._controller import (
     leaf_param,
     split_believed_name,
 )
+from mime.nodes.control._flags import (
+    HOLDER,
+    PREFIX,
+    declared_flags,
+    flag_values,
+    gathered,
+    hidden_step,
+    holder_step,
+    raise_flag,
+    raising,
+)
 from mime.nodes.control._ports import (
     CLIPPED,
     COMMAND_STAGE,
@@ -32,7 +43,7 @@ from mime.nodes.control._ports import (
     held_sample,
 )
 
-__all__ = ["BELIEVED_NAME", "CLIPPED", "COMMAND_STAGE", "MEASURE_STAGE", "SETTING", "STAGE_SWITCHES", "TRIPPED", "UNBOUNDED", "CommandStageNode",
+__all__ = ["BELIEVED_NAME", "CLIPPED", "COMMAND_STAGE", "HOLDER", "MEASURE_STAGE", "PREFIX", "SETTING", "STAGE_SWITCHES", "TRIPPED", "UNBOUNDED", "CommandStageNode",
            "ControllerInputs", "ControllerNode", "ControllerState", "DelayInputs", "DelayNode", "DelayState",
-           "MeasureStageNode", "ReadSpec", "StageInputs", "StageState", "Step", "believed_name", "clashes", "depth", "held_sample", "leaf_param",
-           "split_believed_name"]
+           "MeasureStageNode", "ReadSpec", "StageInputs", "StageState", "Step", "believed_name", "clashes", "declared_flags", "depth", "flag_values", "gathered", "held_sample", "hidden_step", "holder_step", "leaf_param",
+           "raise_flag", "raising", "split_believed_name"]

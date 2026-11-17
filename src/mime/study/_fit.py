@@ -248,10 +248,10 @@ class _Fit:
     def run_lines(self, tally: Any, final: Mapping[str, Any],
                   watches: Sequence[WatchPlan]) -> list[LineMargin]:
         counted, _, _ = (np.asarray(each) for each in tally)
-        meanings = dict(self.prepared.meanings)
-        found = [LineMargin(f"{test.node}.{test.field}", "run", float(counted[i]), 0.0, -float(counted[i]),
-                            meanings.get(f"{test.node}.{test.field}", ""))
-                 for i, test in enumerate(self.prepared.tests) if int(counted[i]) > 0]
+        # The tests are the layout's flags in its order, each with its path and meaning (``prepare``'s meanings).
+        found = [LineMargin(self.prepared.meanings[i][0], "run", float(counted[i]), 0.0, -float(counted[i]),
+                            self.prepared.meanings[i][1])
+                 for i in range(len(self.prepared.tests)) if int(counted[i]) > 0]
         found += [LineMargin(refusal.code, "run", 1.0, 0.0, -1.0, refusal.message)
                   for refusal in stopped_refusals(self.built.graph, final)]
         found += self.watch_lines(final, watches)

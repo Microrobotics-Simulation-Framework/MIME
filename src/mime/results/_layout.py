@@ -75,10 +75,13 @@ class FlagLayout:
     limits: tuple[float, ...] | None = None
     #: Whether a run that raised it warns of it, as a ``Flag`` that warns (a flag laid out by the build, not declared).
     warns: bool = False
+    #: The node its path names where that is not the node that holds it: a callback controller's flags, held by a
+    #: node of the build's own (``<controller>.flags``), read ``<controller>.<name>`` as inside the compiled step.
+    shown: str | None = None
 
     @property
     def path(self) -> str:
-        return f"{self.node}.{self.name or self.field}"
+        return f"{self.shown or self.node}.{self.name or self.field}"
 
     def raised(self, values: NDArray[Any]) -> NDArray[np.bool_]:
         """Its values over steps (one row each) as whether it was raised at each."""

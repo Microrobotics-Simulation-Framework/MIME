@@ -1,9 +1,11 @@
-# The exact allocation
+# Allocation: the exact path and the iterative path
 
 `mime.control.exact_allocation` chooses commands, within bounds you give, that come nearest the quantities you want
 through an affine model: coil currents for a wanted field, gradient or force, or any command whose effect is linear. It
 is JAX, it runs inside a controller's compiled step, and a derivative passes through it. `allocate()`, the coil array's
-host function, runs the same law.
+host function, runs the same law. `mime.control.iterative_allocation` takes what the exact path does not: more commands
+than it enumerates, and models that are not affine (an arm's frame from its joint positions), by projected Newton, its
+derivative the implicit function's. A controller's `ctx.allocator` chooses between them when its law is made.
 
 ## What it solves
 
@@ -55,11 +57,11 @@ bounds, which their solve meets to rounding.
 ## Its bound, and why it is eight
 
 `mime.control.EXACT_COMMANDS` is the most commands the law takes; it refuses more (`allocation.exact-size`) with its
-route, the iterative path, which takes any number and arrives in a later 0.3.0 development release. **The bound is a
+route, the iterative path, which takes any number (`ctx.allocator` takes it by itself above the bound). **The bound is a
 choice against the rule set before the cost was measured.** The rule was the largest bound at which the allocation costs
 no more than three times its cost at five commands; it gives six. Eight was taken because every coil array MIME ships
 has at most eight coils (Navion_2 three, CardioMag and OctoMag eight): at six, `allocate()` on CardioMag and OctoMag,
-which works today, would be refused until the iterative path, or keep a second solver beside the law. Changing
+which works today, would move to the iterative path, whose answer is the minimiser to its tolerance, not by enumeration. Changing
 `EXACT_COMMANDS` changes the bound, and nothing else depends on it. The costs measured on GitHub's runners, per base step
 and against the commands, are in the CHANGELOG's entry for the exact allocation.
 
@@ -151,11 +153,17 @@ def step(state, reads):
   several minimisers go to the commands nearest that reference.
 - **`owner`** is the switch's owner, which the controller declares, as for `exact_allocation`.
 
-What it refuses, at the build, each with its own code: a model not affine in the commands asked for
-(`allocation.model`: an arm's joint positions, which the iterative path will take), more commands than
-`EXACT_COMMANDS` (`allocation.exact-size`), an objective naming no quantity of the model or a scale of another unit
-(`allocation.objective`), and a command with no bounds (`allocation.bounds`). It is one function in both modes: traced
-inside the compiled step, called on the host as a callback, where no derivative passes through it.
+**The path is chosen when the law is made**, from the model's declaration and the commands' count alone, never from a
+measured time: the exact path where the model is affine in every command asked for (`affine_in`), there are at most
+`EXACT_COMMANDS` of them and each quantity's miss is the difference of its rows; the iterative path otherwise (an arm's
+joint positions; nine coils; a frame's orientation, whose miss is a rotation). The build report names each allocation's
+path and why.
+
+What it refuses, at the build, each with its own code: commands that name no one part of the apparatus
+(`allocation.model`), an objective naming no quantity of the model or a scale of another unit (`allocation.objective`),
+an iterative allocation with no effort whose rows cannot fix its commands (`allocation.objective`: three rows of a
+frame's position over six joints; give `effort=`), and a command with no bounds (`allocation.bounds`). It is one function
+in both modes: traced inside the compiled step, called on the host as a callback, where no derivative passes through it.
 
 **What it bounds, and what it estimates.** On camera spike R2's sphere the allocator writes the currents a hand-written
 law writes from the same rows, bounds and scales, bit for bit in float64; its first tick in float32 agrees to rounding
@@ -183,4 +191,133 @@ law a late pose; a callback (`mode="callback"`) reads the pose at the start of i
 - **Outside a run** (a script choosing currents once): `allocate(actuation, field=, gradient=, limits=, field_scale=,
   gradient_scale=)`, which runs the same law on the host in float64 and returns the currents with what they make and
   miss.
-- **More commands than the bound**: neither yet; the iterative path is the route.
+- **More commands than the bound, or a model that is not affine**: `ctx.allocator` takes the iterative path by itself;
+  with rows of your own, `iterative_allocation`.
+
+## The iterative path
+
+<!-- mime-fragment: a signature and what it returns, with names a reader fills in -->
+```python
+from mime.control import iterative_allocation
+
+found = iterative_allocation(rows, start, lower=lower, upper=upper, owner="my_controller.active_set")
+found.commands, found.active, found.objective, found.converged, found.stationarity, found.iterations
+
+# minimises, over lower <= u <= upper:  sum_i rows(u)_i ** 2 / 2
+```
+
+`rows` maps the commands to rows, each a miss over its scale (and an effort's rows, where you want one), in JAX; it may
+close over traced values (what is wanted, a believed model's numbers), and each carries its derivative. The bounds may be
+infinite. It starts from `start`, projected into the bounds: on a model that is not affine the point it returns is
+the stationary one reached from there (the last command, in `ctx.allocator`), which need not be the nearest. Unregularised,
+near a singular pose of an arm, Newton's step along the direction the rows barely fix is long: on the AR4's wrist the
+solve can end at a joint's limit far from its start, a constrained stationary point off the pose, where a damped solve met the
+pose close by. A slew box around the start bounds how far the solve can go.
+
+**The method** is Bertsekas's projected Newton, in commands scaled to unit columns: an epsilon-active set; Newton's step
+on the free commands where the exact Hessian is positive definite there, Gauss-Newton's where it is not (far from a
+minimiser); a scaled gradient step on the held ones; the bounds as a projection and Armijo's test on the projection arc,
+nonmonotone (Grippo, Lampariello and Lucidi) for Newton's step on a positive definite Hessian that no bound cuts: it is
+judged against the largest objective of the last four points, since in the curved valley of an arm's redundant
+joints that step first raises the objective and then lowers it past where it began (the Maratos effect); judged against
+the current point alone, those steps were halved at every other iteration, and a warm start near the minimiser took the
+whole cap. A step the box cuts, and a Gauss-Newton step, are judged against the current point: with the allowance, a
+box's corners can trade places for the whole cap. Where a step had to be cut, the next is damped (Levenberg's term,
+small, raised at each further cut and lowered at each step taken whole), so that on a curved valley's floor the
+steps shorten and turn towards the gradient instead of crawling by halvings to the cap. The step's path bends with the
+rows (Transtrum and Sethna's geodesic acceleration): a second-order term, the least-squares fit of the rows' second
+derivative along the step, keeps the step in a curved valley that the straight step leaves, where a cut step and the
+damped one after it had zigzagged a warm start to the cap; on an affine model the term is zero. Where the bend is long
+beside its step (twice its length past `ACCELERATION` of the step's, Transtrum and Sethna's acceptance) the rows'
+second-order model does not hold that far, and the bend is left out of that step: with every bend accepted, the step
+and its bend cycled in Rosenbrock's valley and several times as many starts met the cap. The acceptance is a default
+that may be revised: it trades some of the bend's help on the follower's far targets for safety on general rows (the
+CHANGELOG's entry gives the measurements). Its decrease is measured
+as a difference of squares, and a decrease within what the objective resolves passes, judged on the scale the rows came from:
+a row is a difference of terms (a frame's position and its goal) whose rounding is the terms', not the row's, so each
+row's rounding is taken as the dtype's of the problem's size, which bounds its terms (exactly so on an affine model). On
+an affine model Newton's and Gauss-Newton's steps are one, and the iteration is exact once its active set is the
+solution's.
+
+**Its local phase.** From the first point within the tolerance on, the solve takes full Newton steps with no line
+search, while a step is longer than the commands' rounding, at most eight, and returns the point within the
+tolerance whose step was the shortest. The tolerance bounds the stationarity, not the distance to the minimiser, and
+the derivative is taken at the point returned. On a weakly regularised problem (an arm's position rows over more joints
+than they fix, a weak effort holding the rest, whose scaled Hessian's least eigenvalues are far below its largest) the
+two part far: a warm start met the tolerance a step or two in, where the derivative was measurably not the
+minimiser's, over a closed loop's ticks as well, and a solve from a little further met it with its objective well
+above the minimum. There the objective cannot judge a step: along a soft direction the decrease is below its rounding,
+and in the curved valley the full step can raise it while it converges quadratically. With the local phase, the
+loop's derivative is central differences to the differences' own truncation; the CHANGELOG's entry gives each
+measurement.
+
+**Its guards, declared**, as MIME's rule for single precision asks: a cap on its iterations (`ITERATIONS`, read at a
+point already weighed, so that one within the tolerance still goes on to its local phase), a tolerance by dtype at or
+above the dtype's reachable floor (`TOLERANCE`, on the stationarity over the problem's size; the CHANGELOG's entry gives
+the floor measured in each), and a stagnation stop (`STALLS` steps in a row that leave the commands within their rounding,
+whose decrease is within what the objective resolves and which do not halve the stationarity: a step that moves the
+commands further is progress the objective cannot show, as in single precision on an unreachable target, whose
+objective is too large to resolve the steps that still converge). The stationarity is the projected gradient's length in the scaled
+commands over the problem's size, the rows' miss plus what the commands make, so its floor is the dtype's rounding of
+that size whatever the rows cancel.
+
+**`converged` is read at the commands returned**, never from the loop's own account, and claims a first-order
+stationary point within the bounds, isolated; it does not claim a local minimiser, and makes no second-order check (a
+strict maximum, where the gradient is zero, is a first-order stationary point, and in single precision the Hessian's
+least eigenvalue at the follower's problem is rounding). Its parts: the stationarity within its tolerance there, and
+the point isolated, the free commands' rows of full rank or the derivative's tangent system resolved (below). The rank
+is judged from the rows' singular values, never from the normal matrix `J^T J`, whose eigenvalues square the condition:
+a singular value at or below `RANK` times `max(M, K)` units in the last place of the largest is not resolved from
+zero (`M` rows, `K` commands; `jnp.linalg.pinv`'s line). Read from the normal matrix against a constant below what the
+dtype resolves, rows with an exact null vector claimed to converge on a third of draws, some with derivatives of NaN,
+and in single precision the follower's well-posed solves were called unconverged. Where a column vanishes at a
+minimiser that the rows' curvature holds (a sine's at its crest, out of the row's reach), its length is floored at that
+curvature, so that the stationarity reads the distance to it and not the rows' miss. **Where it did not converge**, the
+commands are the last iterate, inside the bounds, and `found.converged` says so; through `ctx.allocator` the controller
+raises its run flag `allocation_unconverged` at that tick, its value the stationarity, which the run counts and warns of and
+`Study.gradient`'s result carries. A value is never silent.
+
+**Its derivative** is the implicit function's at the converged commands: `jax.lax.custom_root` on the projected
+gradient's fixed point, its tangent system the exact Hessian's on the free commands (never the Gauss-Newton one, which
+is wrong wherever the rows are not met, an unreachable target's) and, on a held command, its bound's own derivative (a
+port's bound, or the slew box around the last command, so a derivative in the last command passes there). The tangent
+system is one dense LU of order the commands, its rows and columns equilibrated. Forward and reverse mode both pass
+through it. Where the solve did not converge it is the implicit function's at the iterate, which solves nothing, and the
+step's flag says so.
+
+**Its resolution.** The tangent system is the exact Hessian's, whose condition is the square of the rows': where it is
+past what the dtype resolves, the derivative is not resolved, whatever the commands' accuracy. The derivative is flagged
+resolved or unresolved; where it is resolved, its error is measured, not bounded. `found.resolution` is an indicator of
+its error over its size, not a bound on it: the tangent system's condition times the units in the last place that its
+assembly (the Hessian's sums over the rows) and its LU each add, and `found.resolved` holds where it is at most
+`RESOLVED`, a line that is declared (a tenth), not fitted; through `ctx.allocator` the controller raises the flag
+`allocation_derivative_unresolved` at a tick where it is not, carrying the indicator. It is no bound because the
+commands single precision reaches are not the minimiser's (their micro-radians move the derivative itself), and a drawn
+example read resolved with an error far past the line a first fit, on a few dozen draws, had set. The error of the
+derivatives called resolved is measured at the follower's problem in single precision over draws as the test makes
+them (its median, upper percentile and largest are in the docstring of `mime.control._iterative`, not restated here), and
+the test holds the flag to the declared line, never to a fitted constant. In single precision at a weak effort (the A0 follower's arm, its tangent's
+condition near the reciprocal of single precision's rounding) the derivative was off by more than its size at every
+draw while the joints were within micro-radians of double precision's: there the flag is raised at every tick, and a gradient through the run needs double precision. A
+double-precision tangent at the single-precision commands was as far off (the derivative there is not the minimiser's),
+and a pseudo-inverse on the resolved directions further, so the solve says so rather than altering the derivative.
+
+**Its status, per configuration**, declared as the controller's switch (`allocation_switch(owner, orders)`), evaluated
+once at the solution:
+
+| configuration | status | why |
+|---|---|---|
+| an affine model, regularised or its rows of full column rank | `piecewise_kink` | a convex quadratic: the minimiser is continuous, and its derivative jumps where a command reaches a bound or leaves it |
+| a model that is not affine (an arm) | `piecewise_jump` | the stationary point followed from the start can change branch, or settle at a bound, as what is wanted moves |
+| a step whose solve did not converge | flagged | the derivative solves nothing there: `allocation_unconverged` marks the step |
+| a step whose derivative the dtype does not resolve | flagged | `allocation_derivative_unresolved` marks the step, carrying the derivative's error indicator (not a bound) |
+
+**What it bounds, and what it estimates.** Against the exact path on the arrays MIME ships (three to eight coils, both
+dtypes), against SciPy's BVLS on nine to sixteen commands, and against the rigid-body library's inverse kinematics on
+reachable poses of the AR4, the iterative path's commands are the oracle's within the line its claim derives: the oracle's
+own least-squares perturbation bound plus the natural residual's error bound in the scaled commands (the distance to the
+minimiser at most the projected gradient's length times the scaled Hessian's largest eigenvalue, plus one, over its
+least) (`tests/control/test_iterative_allocation.py`). Its derivative is central differences of converged
+reference solves, and reverse mode is forward mode. These bound the solver against software oracles on the problems
+drawn; they say nothing of whether a model is the hardware, which is the model's own claim. The figures measured are in
+the CHANGELOG's entry.

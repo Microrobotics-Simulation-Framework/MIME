@@ -77,6 +77,10 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
 
         found["controller/allocating_in_graph"] = allocating_sphere
         found["controller/allocating_field_in_graph"] = allocating_field
+    if hasattr(mime.control, "iterative_allocation"):  # a merge base before the iterative path has none to reach
+        from iterative_cases import follower_rpm
+
+        found["controller/iterative_arm_in_graph"] = partial(follower_rpm, "iterative_arm_in_graph", turn=0.01)
     found["chain/friction_arm"] = friction_arm
     from mime.things import Apparatus
 

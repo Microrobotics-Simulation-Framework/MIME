@@ -175,16 +175,21 @@ class AllocatingProbe(Controller):
 @register_controller
 @dataclass(frozen=True, kw_only=True)
 class AllocatingArmProbe(AllocatingProbe):
-    """:class:`AllocatingProbe` writing an arm's joint positions: what the allocator refuses for a model affine in
-    none of its commands."""
+    """:class:`AllocatingProbe` writing an arm's joint positions, which it holds at home: a model affine in none of its
+    commands, which the allocator takes on the iterative path."""
 
     name = "oracle.allocating_arm_probe"
-    gradient = GradientRecord(switches=(allocation_switch(OWNER, {"joint_positions": 0}),))
+    differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord(switches=(allocation_switch(OWNER, {"joint_positions": -1}),))
     writes = {"joint_positions": Signal("1", (-1,))}
 
     def law(self, ctx: Any) -> ControlLaw:
+        from chain_cases import AR4_HOME
+
         ctx.allocator(self.apparatus, commands=self.commands, objective=dict(self.objective), owner=OWNER)
-        raise AssertionError("the allocator refuses an arm's joint positions")
+        home = jnp.asarray(AR4_HOME, dtype=jnp.zeros(()).dtype)
+        return ControlLaw(state={}, held={"joint_positions": home},
+                          step=lambda state, reads: ({}, {"joint_positions": home}))
 
 
 #: The camera the camera-belief rig sees the sphere with: 1 cm from the origin on -y, looking across (+y).

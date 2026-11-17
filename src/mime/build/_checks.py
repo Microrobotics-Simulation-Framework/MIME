@@ -21,6 +21,7 @@ from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass, entry_defec
 from mime.build._report import graph_config
 from mime.core import ledger
 from mime.core.solves import sites_of
+from mime.nodes.control import HOLDER
 from mime.registry import Problem
 
 
@@ -218,6 +219,9 @@ def _writer_refusals(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
                                     f"{'an' if key in declared else 'no'} external input: a command the controller "
                                     f"writes takes {fed}"))
     derived: set[tuple[str, str]] = set() if in_graph else set(writes)
+    if controller is not None and not in_graph and f"{controller.owner}.{HOLDER}" in graph.node_names:
+        holder = f"{controller.owner}.{HOLDER}"
+        derived |= {(holder, field) for field in cast(Any, graph.get_node(holder)).boundary_input_spec()}
     for node, field in sorted(declared - derived):
         refusals.append(_refuse("post-build.underived-input",
                                 f"the graph declares an external input {node}.{field} that no write of the "

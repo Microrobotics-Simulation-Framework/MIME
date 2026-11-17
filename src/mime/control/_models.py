@@ -11,15 +11,21 @@ placement, a camera's intrinsics). Where none is given the belief is the true de
 ``believed_<apparatus>__<part>__<parameter>``, so that a derivative of the run reaches the belief and a fit moves it,
 never the truth.
 
-**The allocation.** ``ctx.allocator(apparatus, commands=..., objective=..., owner=...)`` is the exact allocation
-(:func:`mime.control.exact_allocation`) through the believed model, its bounds the commands' ports' (:class:`Allocator`)."""
+**The allocation.** ``ctx.allocator(apparatus, commands=..., objective=..., owner=...)`` allocates through the believed
+model, its bounds the commands' ports' (:class:`Allocator`), on one of two paths chosen when the law is made, from the
+model's declaration and the commands' count alone: the exact one (:func:`mime.control.exact_allocation`) where the model
+is affine in every command allocated, at most :data:`~mime.control.EXACT_COMMANDS` of them, and each quantity's miss is
+the difference of its rows; the iterative one (:func:`mime.control.iterative_allocation`) otherwise, which declares the
+controller's flags ``allocation_unconverged``, raised at a tick whose solve did not converge, and
+``allocation_derivative_unresolved``, raised at a tick whose derivative the run's dtype does not resolve."""
 
 from __future__ import annotations
 
 import dataclasses
 import math
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
@@ -29,10 +35,12 @@ import numpy as np
 from mime.build._control import BeliefPlan, believed_key
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.control._allocation import EXACT_COMMANDS, exact_allocation
+from mime.control._flags import UNCONVERGED, UNRESOLVED, raise_flag
+from mime.control._iterative import iterative_allocation
 from mime.core import as_run_array
 from mime.nodes.control import UNBOUNDED
 from mime.nodes.control._controller import BELIEVED_NAME, PORT_NAME, believed_name, port_name
-from mime.registry import ChainSegment, FieldProvider, ForwardModel
+from mime.registry import ChainSegment, FieldProvider, Flag, ForwardModel
 from mime.units import Quantity, UnitError, parse_unit, si
 
 if TYPE_CHECKING:
@@ -49,6 +57,8 @@ BELIEVED = BELIEVED_NAME
 PORT = PORT_NAME
 #: What an allocation regularises towards: zero (least effort) or the last command (smooth).
 TOWARDS = ("zero", "last")
+#: The allocation's two paths: exact by its active sets, and iterative.
+EXACT, ITERATIVE = "exact", "iterative"
 
 
 def leaf_name(key: str, parameter: str) -> str:
@@ -123,11 +133,18 @@ type Model = ForwardModel | CameraModel
 class AllocationReport(NamedTuple):
     """What an allocation gives beside its commands: each command's place in the selected active set (``active``, by
     command, ``-1`` at its lower bound, ``0`` free, ``+1`` at its upper one), the minimised sum of scaled squares
-    (``objective``), and what the commands make by the believed model, each quantity of the objective (``made``)."""
+    (``objective``), what the commands make by the believed model, each quantity of the objective (``made``), the
+    ``path`` it took (``"exact"``, ``"iterative"``), whether it ``converged`` (always on the exact path, which
+    enumerates), its ``stationarity`` over the problem's size (zero on the exact path), and whether its derivative is
+    ``resolved`` in the run's dtype (always on the exact path, whose derivative is its active set's least squares)."""
 
     active: Mapping[str, Any]
     objective: Any
     made: Mapping[str, Any]
+    path: str = EXACT
+    converged: Any = True
+    stationarity: Any = 0.0
+    resolved: Any = True
 
 
 def _slew_steps(controller: int, port: int) -> float:
@@ -152,18 +169,23 @@ def _slew_steps(controller: int, port: int) -> float:
 
 @dataclass(frozen=True)
 class Allocator:
-    """The exact allocation over ``commands`` of a believed model affine in them: ``solve(wanted, at, last=None) ->
-    (commands, report)``, traceable, the same function in every mode. ``wanted`` holds a value of each quantity of the
-    objective, ``at`` the model's inputs (a world point; a moment, for a force or torque), ``last`` the commands the
-    controller wrote last (by command), required where a port declares a slew or the objective is smooth.
+    """The allocation over ``commands`` of a believed model: ``solve(wanted, at, last=None) -> (commands, report)``,
+    traceable, the same function in every mode. ``wanted`` holds a value of each quantity of the objective, ``at`` the
+    model's inputs (a world point; a moment, for a force or torque; the pose of the frame the model is mounted on),
+    ``last`` the commands the controller wrote last (by command), required where a port declares a slew or the
+    objective is smooth, and on the iterative path where the solve starts (from zero, in the box, without it).
 
-    The rows are each quantity's independent entries over its scale (``scales``, SI, by quantity), the model's
-    coefficients in the commands and its offset at zero command taken at ``at``. The bounds are the ports' (``low``,
-    ``high``, SI, by command), intersected where a port declares a slew with ``last`` plus or minus ``slew`` times
-    ``dt`` times the steps :func:`_slew_steps` gives (``box``, by command, the half-width in SI). ``effort`` is the
-    regularisation's scale by command, towards zero or ``last`` (``toward``); without it the tie among several
-    minimisers goes to the commands nearest that reference. ``owner`` is the switch's owner, which the controller
-    declares (``allocation_switch(owner, orders)``)."""
+    The rows are each quantity's miss over its scale (``scales``, SI, by quantity): on the exact path its independent
+    entries, the model's coefficients in the commands and its offset at zero command taken at ``at``; on the iterative
+    path the model's own miss (``ForwardModel.miss``). The bounds are the ports' (``low``, ``high``, SI, by command),
+    intersected where a port declares a slew with ``last`` plus or minus ``slew`` times ``dt`` times the steps
+    :func:`_slew_steps` gives (``box``, by command, the half-width in SI). ``effort`` is the regularisation's scale by
+    command, towards zero or ``last`` (``toward``); without it the exact path's tie among several minimisers goes to the
+    commands nearest that reference (the iterative path takes none: its rows fix its commands). ``owner`` is the
+    switch's owner, which the controller declares (``allocation_switch(owner, orders)``). ``path`` is the one chosen
+    when the law was made; the iterative one raises the controller's flag ``allocation_unconverged`` at a tick whose
+    solve did not converge, carrying its stationarity, and ``allocation_derivative_unresolved`` at a tick whose
+    derivative the run's dtype does not resolve, carrying the error indicator (not a bound)."""
 
     model: ForwardModel
     commands: tuple[str, ...]
@@ -174,35 +196,19 @@ class Allocator:
     effort: Mapping[str, Any] | None
     toward: str
     owner: str
+    path: str
+    #: The allocation itself, ``solver(allocator, wanted, at, last)``, its switches' owner bound where the law named it
+    #: (``ctx.allocator(..., owner=...)``): :func:`_allocated`.
+    solver: Callable[..., tuple[dict[str, Any], AllocationReport]] = field(repr=False)
 
     def __call__(self, wanted: Mapping[str, Any], at: Mapping[str, Any],
                  last: Mapping[str, Any] | None = None) -> tuple[dict[str, Any], AllocationReport]:
-        if set(wanted) != set(self.scales):
-            raise ValueError(f"the allocation of {', '.join(self.commands)} is asked for {sorted(wanted)}, and its "
-                             f"objective is {sorted(self.scales)}: give a wanted value of each")
-        if (self.box or self.toward == "last") and last is None:
-            raise ValueError(f"the allocation of {', '.join(self.commands)} moves from the last command (a port's "
-                             f"slew, or toward='last'): give solve(..., last={{command: value}})")
-        dtype = as_run_array(0.0).dtype
-        sizes = [self.model.commands[c].shape[0] for c in self.commands]
-        coefficients, offset = self.model.affine(at, commands=self.commands, dtype=dtype)
-        absent = [quantity for quantity in sorted(self.scales) if quantity not in coefficients]
-        if absent:
-            raise ValueError(f"the allocation of {', '.join(self.commands)} is asked for {', '.join(absent)}, which the "
-                             f"model gives only where {', '.join(sorted(set(self.model.optional) - set(at))) or 'an input'} "
-                             f"is given (the force or torque on a moment): give solve(..., at={{'point': ..., "
-                             f"'moment': ...}})")
-        rows: list[Any] = []
-        target: list[Any] = []
-        zero: list[Any] = []
-        scale: list[Any] = []
-        for quantity in sorted(self.scales):
-            block = [jnp.reshape(self.model.row_values(quantity, coefficients[quantity][c]), (-1, size))
-                     for c, size in zip(self.commands, sizes, strict=True)]
-            rows.append(jnp.concatenate(block, axis=1))
-            target.append(self.model.row_values(quantity, jnp.asarray(wanted[quantity], dtype=dtype)))
-            zero.append(self.model.row_values(quantity, offset[quantity]))
-            scale.append(jnp.full((rows[-1].shape[0],), self.scales[quantity], dtype=dtype))
+        return self.solver(self, wanted, at, last)
+
+    def box_of(self, last: Mapping[str, Any] | None, dtype: Any,
+               sizes: Sequence[int]) -> tuple[Callable[[Mapping[str, Any]], Any], Any, Any, Any]:
+        """The commands joined into one vector (a function of values by command), the box (the ports' bounds, narrowed
+        by a slew to the box around ``last``), and ``last`` joined (``None`` without it)."""
 
         def joined(by: Mapping[str, Any]) -> Any:
             return jnp.concatenate([jnp.broadcast_to(jnp.asarray(by[c], dtype=dtype), (size,))
@@ -213,16 +219,99 @@ class Allocator:
         if self.box and before is not None:
             half = joined({c: self.box.get(c, jnp.inf) for c in self.commands})
             lower, upper = jnp.clip(before - half, lower, upper), jnp.clip(before + half, lower, upper)
-        reference = before if self.toward == "last" else None
-        found = exact_allocation(jnp.concatenate(rows), jnp.concatenate(target), lower=lower, upper=upper,
-                                 scales=jnp.concatenate(scale), owner=self.owner, offset=jnp.concatenate(zero),
-                                 reference=reference,
-                                 reference_scales=joined(self.effort) if self.effort is not None else None)
-        split = np.cumsum([0, *sizes])
-        commands = {c: found.commands[split[i]:split[i + 1]] for i, c in enumerate(self.commands)}
-        active = {c: found.active[split[i]:split[i + 1]] for i, c in enumerate(self.commands)}
-        made = self.model(commands, at)
-        return commands, AllocationReport(active, found.objective, {q: made[q] for q in sorted(self.scales)})
+        return joined, lower, upper, before
+
+    def absent(self, absent: Sequence[str], at: Mapping[str, Any]) -> str:
+        """Why the model gives none of the quantities ``absent`` at ``at``."""
+        return (f"the allocation of {', '.join(self.commands)} is asked for {', '.join(absent)}, which the model gives "
+                f"only where {', '.join(sorted(set(self.model.optional) - set(at))) or 'an input'} is given (the force "
+                f"or torque on a moment): give solve(..., at={{'point': ..., 'moment': ...}})")
+
+
+def _allocated(allocator: Allocator, wanted: Mapping[str, Any], at: Mapping[str, Any],
+               last: Mapping[str, Any] | None, *, owner: str) -> tuple[dict[str, Any], AllocationReport]:
+    """``allocator(wanted, at, last)`` on its path, its switches ``owner``'s."""
+    self = allocator
+    if set(wanted) != set(self.scales):
+        raise ValueError(f"the allocation of {', '.join(self.commands)} is asked for {sorted(wanted)}, and its "
+                         f"objective is {sorted(self.scales)}: give a wanted value of each")
+    if (self.box or self.toward == "last") and last is None:
+        raise ValueError(f"the allocation of {', '.join(self.commands)} moves from the last command (a port's "
+                         f"slew, or toward='last'): give solve(..., last={{command: value}})")
+    dtype = as_run_array(0.0).dtype
+    sizes = [self.model.commands[c].shape[0] for c in self.commands]
+    if self.path == ITERATIVE:
+        return _iterative(self, wanted, at, last, dtype, sizes, owner=owner)
+    coefficients, offset = self.model.affine(at, commands=self.commands, dtype=dtype)
+    absent = [quantity for quantity in sorted(self.scales) if quantity not in coefficients]
+    if absent:
+        raise ValueError(self.absent(absent, at))
+    rows: list[Any] = []
+    target: list[Any] = []
+    zero: list[Any] = []
+    scale: list[Any] = []
+    for quantity in sorted(self.scales):
+        block = [jnp.reshape(self.model.row_values(quantity, coefficients[quantity][c]), (-1, size))
+                 for c, size in zip(self.commands, sizes, strict=True)]
+        rows.append(jnp.concatenate(block, axis=1))
+        target.append(self.model.row_values(quantity, jnp.asarray(wanted[quantity], dtype=dtype)))
+        zero.append(self.model.row_values(quantity, offset[quantity]))
+        scale.append(jnp.full((rows[-1].shape[0],), self.scales[quantity], dtype=dtype))
+    joined, lower, upper, before = self.box_of(last, dtype, sizes)
+    reference = before if self.toward == "last" else None
+    found = exact_allocation(jnp.concatenate(rows), jnp.concatenate(target), lower=lower, upper=upper,
+                             scales=jnp.concatenate(scale), owner=owner, offset=jnp.concatenate(zero),
+                             reference=reference,
+                             reference_scales=joined(self.effort) if self.effort is not None else None)
+    split = np.cumsum([0, *sizes])
+    commands = {c: found.commands[split[i]:split[i + 1]] for i, c in enumerate(self.commands)}
+    active = {c: found.active[split[i]:split[i + 1]] for i, c in enumerate(self.commands)}
+    made = self.model(commands, at)
+    return commands, AllocationReport(active, found.objective, {q: made[q] for q in sorted(self.scales)})
+
+
+def _iterative(allocator: Allocator, wanted: Mapping[str, Any], at: Mapping[str, Any], last: Mapping[str, Any] | None,
+               dtype: Any, sizes: Sequence[int], *, owner: str) -> tuple[dict[str, Any], AllocationReport]:
+    """The iterative path: the rows each quantity's own miss over its scale, and the effort's, from ``last``."""
+    self = allocator
+    joined, lower, upper, before = self.box_of(last, dtype, sizes)
+    reference = before if self.toward == "last" else None
+    split = np.cumsum([0, *sizes])
+    zero = {name: jnp.zeros(signal.shape, dtype=dtype) for name, signal in self.model.commands.items()}
+    targets = {q: jnp.asarray(wanted[q], dtype=dtype) for q in sorted(self.scales)}
+    spread = joined(self.effort) if self.effort is not None else None
+    toward = reference if reference is not None else jnp.zeros_like(lower)
+    rows = partial(_rows, allocator=self, at=at, zero=zero, targets=targets, spread=spread, toward=toward,
+                   split=split, dtype=dtype, owner=owner)
+    start = before if before is not None else jnp.zeros_like(lower)
+    found = iterative_allocation(rows, start, lower=lower, upper=upper, owner=owner)
+    raise_flag(UNCONVERGED.field, jnp.where(found.converged, jnp.zeros((), dtype=dtype),
+                                            jnp.maximum(found.stationarity, jnp.finfo(dtype).eps)))
+    raise_flag(UNRESOLVED.field, jnp.where(found.resolved, jnp.zeros((), dtype=dtype), found.resolution))
+    commands = _by_command(found.commands, self.commands, split)
+    active = _by_command(found.active, self.commands, split)
+    made = self.model({**zero, **commands}, at)
+    return commands, AllocationReport(active, found.objective, {q: made[q] for q in sorted(self.scales)}, ITERATIVE,
+                                      found.converged, found.stationarity, found.resolved)
+
+
+def _by_command(u: Any, commands: Sequence[str], split: Any) -> dict[str, Any]:
+    return {c: u[split[i]:split[i + 1]] for i, c in enumerate(commands)}
+
+
+def _rows(u: Any, *, allocator: Allocator, at: Mapping[str, Any], zero: Mapping[str, Any], targets: Mapping[str, Any],
+          spread: Any, toward: Any, split: Any, dtype: Any, owner: str) -> Any:
+    """The iterative path's rows at the commands ``u``: each quantity's miss as the model measures it, over its scale,
+    and the effort's rows where it is given."""
+    made = allocator.model({**zero, **_by_command(u, allocator.commands, split)}, at)
+    absent = [quantity for quantity in targets if quantity not in made]
+    if absent:
+        raise ValueError(allocator.absent(absent, at))
+    misses = [allocator.model.miss(q, made[q], targets[q], owner=owner)
+              / jnp.asarray(allocator.scales[q], dtype=dtype) for q in targets]
+    if spread is not None:
+        misses.append((u - toward) / spread)
+    return jnp.concatenate(misses)
 
 
 class ControlModels:
@@ -237,6 +326,10 @@ class ControlModels:
         self.read: list[str] = []
         #: One report line per command whose allocation is boxed by a port's slew (:func:`_slew_steps`).
         self.slewed: list[str] = []
+        #: One report line per allocation the law made, naming its path and why.
+        self.paths: list[str] = []
+        #: The flags the law's calls declared (the iterative allocation's), each once.
+        self.flags: list[Flag] = []
 
     def _parts(self) -> dict[str, EntryPlan]:
         from mime.build._plan import Section
@@ -346,27 +439,52 @@ class ControlModels:
                           f"{where}: {key} is a camera", "allocate an apparatus's commands, ctx.allocator(\"<apparatus>\", "
                            "commands=(...))")
         local = tuple(c.partition(".")[2] if "." in c else c for c in held)
-        beyond = [c for c in local if c not in model.affine_in]
-        if beyond:
-            raise _refuse("allocation.model", RefusalClass.USER,
-                          f"{where}: {key}'s model is not affine in {', '.join(beyond)} (it is affine in "
-                           f"{sorted(model.affine_in) or 'none of its commands'}), so its allocation is not exact",
-                           "allocate commands a model is affine in, ctx.allocator(\"<apparatus>\", commands=(\"currents\",)); "
-                           "the iterative path, which takes any model, arrives in a later 0.3.0 development release")
         count = sum(model.commands[c].shape[0] for c in local)
-        if count > EXACT_COMMANDS:
-            raise _refuse("allocation.exact-size", RefusalClass.USER,
-                          f"{where}: {count} commands, and the exact path takes at most EXACT_COMMANDS = "
-                           f"{EXACT_COMMANDS} ({3 ** EXACT_COMMANDS} active sets)",
-                           "allocate fewer commands at once, ctx.allocator(..., commands=(...)); or wait for the iterative "
-                           "path, which takes any number (a later 0.3.0 development release)")
         scales = self._scales(objective, model, where)
         if toward not in TOWARDS:
             raise _refuse("allocation.objective", RefusalClass.USER,
                           f"{where}: toward={toward!r}", f"write ctx.allocator(..., toward=...) as one of {TOWARDS}")
         low, high, box = self._bounds(apparatus, held, local, where)
         efforts = None if effort is None else self._efforts(effort, local, model, where)
-        return Allocator(model, local, scales, low, high, box, efforts, toward, owner)
+        beyond = [c for c in local if c not in model.affine_in]
+        own = sorted(q for q in scales if q in model.misses)
+        if not beyond and not own and count <= EXACT_COMMANDS:
+            self.paths.append(f"    {where}: exact, {count} commands of {key}'s model, affine in them, at most "
+                              f"EXACT_COMMANDS = {EXACT_COMMANDS} ({3 ** count} active sets)")
+            return Allocator(model, local, scales, low, high, box, efforts, toward, owner, EXACT,
+                             partial(_allocated, owner=owner))
+        why = (f"its model is not affine in {', '.join(beyond)}" if beyond else
+               f"the miss of {', '.join(own)} is the model's own" if own else
+               f"{count} commands, more than EXACT_COMMANDS = {EXACT_COMMANDS}")
+        rows = self._row_count(model, scales, owner)
+        if efforts is None and rows < count:
+            raise _refuse("allocation.objective", RefusalClass.USER,
+                          f"{where}: the iterative path ({why}) is asked for {rows} rows of {count} commands with no "
+                           f"effort, so its rows do not fix its commands and the solve has no one minimiser",
+                           "give the allocation an effort, ctx.allocator(..., effort=<a scale per command>), which "
+                           "chooses among the commands that meet the rows equally; or ask for as many rows as commands")
+        self.paths.append(f"    {where}: iterative ({why}), {count} commands of {key}'s model, its derivative the "
+                          f"implicit function's at the converged commands; it raises the flags "
+                          f"{UNCONVERGED.field} where its solve does not converge and {UNRESOLVED.field} where the "
+                          f"run's dtype does not resolve its derivative")
+        for flag in (UNCONVERGED, UNRESOLVED):
+            if flag not in self.flags:
+                self.flags.append(flag)
+        return Allocator(model, local, scales, low, high, box, efforts, toward, owner, ITERATIVE,
+                         partial(_allocated, owner=owner))
+
+    def _row_count(self, model: ForwardModel, scales: Mapping[str, float], owner: str) -> int:
+        """How many rows an objective's quantities make: each one's miss, as its model measures it."""
+        total = 0
+        for quantity in scales:
+            signal = model.quantities[quantity]
+            zero = jax.ShapeDtypeStruct(signal.shape, as_run_array(0.0).dtype)
+            def missed(made: Any, wanted: Any, held: str = quantity) -> Any:
+                return model.miss(held, made, wanted, owner=owner)
+
+            shape = cast(Any, jax).eval_shape(missed, zero, zero).shape
+            total += math.prod(shape)
+        return total
 
     def _owner_of(self, apparatus: str, command: str, parts: Mapping[str, EntryPlan]) -> str | None:
         head, _, tail = command.partition(".")

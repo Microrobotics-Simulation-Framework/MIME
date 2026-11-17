@@ -3,7 +3,7 @@ rate, and the delay line that holds its writes for its latency before they reach
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast, override
 
 from jax import Array
@@ -11,7 +11,8 @@ from jaxtyping import Float
 from maddening.core.node import BoundaryInputSpec
 from typing_extensions import ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, jnp, node_fields, node_input, typed_view
+from mime.core import MimeNode, NodeFields, as_run_array, jnp, node_fields, node_input, typed_view
+from mime.nodes.control._flags import PREFIX, flag_values, raising
 
 #: A controller's step, ``(state, reads) -> (state, writes)``, each a mapping of arrays by label.
 type Step = Callable[[Mapping[str, Any], Mapping[str, Any]], tuple[Mapping[str, Any], Mapping[str, Any]]]
@@ -67,7 +68,8 @@ def leaf_param(name: str) -> str:
 
 
 class ControllerState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
-    """``state_<key>`` for each key of the law's state, and ``write_<label>`` for each label it writes."""
+    """``state_<key>`` for each key of the law's state, ``write_<label>`` for each label it writes, and ``flag_<name>``
+    for each flag it declares."""
 
 
 class ControllerInputs(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
@@ -92,19 +94,29 @@ class ControllerNode(MimeNode):
     called inside the compiled step and is no parameter, so this node, unlike other MIME nodes, is not rebuilt from its
     ``params`` alone. Those name the controller and hold its reads' units and shapes, its law's state at the start
     (``initial_state``) and the writes it holds before its first (``initial_writes``), which the derived hash
-    covers."""
+    covers.
+
+    Where the controller declares flags (``flags``, each a ``mime.registry.Flag``, ``mime.nodes.control._flags``), it
+    holds each as ``flag_<name>``, the value its step raised at its last tick (zero where it raised none), in the run's
+    dtype. A controller called back on the host has a node of this class too, ``<controller>.flags``, whose step raises
+    again what its reads ``flag_<name>`` are fed at each tick: the flags alone. With none declared it holds none, and
+    its params are what they were."""
 
     def __init__(self, name: str, timestep: float, *, step: Step, controller: str, reads: Mapping[str, ReadSpec],
                  initial_state: Mapping[str, Any], initial_writes: Mapping[str, Any],
                  settings: Mapping[str, Any] | None = None,
-                 remake: Callable[[Mapping[str, Any]], Step] | None = None) -> None:
+                 remake: Callable[[Mapping[str, Any]], Step] | None = None, flags: Sequence[Any] = ()) -> None:
         held = {leaf_param(name_): jnp.asarray(value) for name_, value in sorted((settings or {}).items())}
+        if flags:
+            held["flags"] = {str(flag.field): jnp.zeros((), dtype=as_run_array(0.0).dtype) for flag in flags}
         super().__init__(name, timestep, controller=controller,
                          reads={label: (units, tuple(shape)) for label, (units, shape) in sorted(reads.items())},
                          initial_state={key: jnp.asarray(value) for key, value in sorted(initial_state.items())},
                          initial_writes={label: jnp.asarray(value) for label, value in sorted(initial_writes.items())},
                          **held)
         self.law_step = step
+        #: The flags it holds (each a ``mime.registry.Flag``: its name, its meaning, whether it warns), by name.
+        self.declared_flags = tuple(sorted(flags, key=lambda flag: str(flag.field)))
         #: Where settings are leaves (``settings``, each ``setting_<name>``), the law's step made again from them
         #: inside the traced step: ``remake(settings) -> step``.
         self.remake = remake
@@ -130,10 +142,15 @@ class ControllerNode(MimeNode):
     def _reads(self) -> Mapping[str, ReadSpec]:
         return cast(Mapping[str, ReadSpec], self.constants()["reads"])
 
+    def flag_names(self) -> tuple[str, ...]:
+        """The flags it holds, by name."""
+        return tuple(self.constants().get("flags", {}))
+
     @override
     def initial_state(self) -> NodeFields:
         return node_fields({**{f"state_{key}": value for key, value in self._arrays("initial_state").items()},
-                            **{f"write_{label}": value for label, value in self._arrays("initial_writes").items()}})
+                            **{f"write_{label}": value for label, value in self._arrays("initial_writes").items()},
+                            **{f"{PREFIX}{name}": value for name, value in self.constants().get("flags", {}).items()}})
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -144,11 +161,14 @@ class ControllerNode(MimeNode):
                 dt: float) -> NodeFields:
         held, given = typed_view(ControllerState, state), typed_view(ControllerInputs, boundary_inputs)
         keys, writes = self._arrays("initial_state"), self._arrays("initial_writes")
-        after, written = self.step_at(p)({key: held[f"state_{key}"] for key in keys},
-                                         {label: given[f"read_{label}"] for label in self._reads()})
+        flags = cast(Mapping[str, Array], self.constants().get("flags", {}))
+        with raising(flags) as raised:
+            after, written = self.step_at(p)({key: held[f"state_{key}"] for key in keys},
+                                             {label: given[f"read_{label}"] for label in self._reads()})
         return node_fields({**{f"state_{key}": after[key] for key in keys},
                             **{f"write_{label}": jnp.asarray(written[label], dtype=writes[label].dtype)
-                               for label in writes}})
+                               for label in writes},
+                            **(flag_values(raised, next(iter(flags.values())).dtype) if flags else {})})
 
 
 class DelayNode(MimeNode):

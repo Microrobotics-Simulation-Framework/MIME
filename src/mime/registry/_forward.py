@@ -8,7 +8,9 @@ stated on, the world pose of the frame the entry is mounted on), and ``theta`` i
 holds as leaves, under the node's own names and in its node's shapes. **Every number ``fn`` reads is in ``u``, ``x`` or
 ``theta``**: what the entry's model is made from (its build context) gives structure alone, names, shapes and what is
 mounted where, so that a belief replaces every number of the model by replacing ``theta``. ``affine_in`` names the
-commands it is affine in at every ``x`` and ``theta``: an allocation over them is exact."""
+commands it is affine in at every ``x`` and ``theta``: an allocation over them is exact. ``misses`` says how a
+quantity's miss is measured where it is not the difference of its rows (an orientation's, the rotation between the two),
+for the iterative allocation, which takes any model."""
 
 from __future__ import annotations
 
@@ -31,6 +33,10 @@ def _none() -> Mapping[str, Callable[[Any], Any]]:
     return MappingProxyType({})
 
 
+def _no_misses() -> Mapping[str, Callable[[Any, Any, str], Any]]:
+    return MappingProxyType({})
+
+
 @dataclass(frozen=True)
 class ForwardModel:
     """An entry's forward model: ``fn(u, x, theta)``, with what it takes and gives. ``commands``, ``inputs`` and
@@ -40,8 +46,10 @@ class ForwardModel:
     quantities that need them (a magnetic model's ``moment``: its ``force`` and ``torque`` are then not given).
     ``rows`` gives, for a quantity whose entries are not independent, the independent ones as a vector (a
     current-free field's gradient, symmetric and trace-free: its five), which the allocation's rows are made of; any
-    other quantity's rows are its entries, flattened. ``owner`` is the id of the entry it models
-    (``<apparatus>.<field>``, ``<apparatus>.<segment>``)."""
+    other quantity's rows are its entries, flattened. ``misses`` gives, for a quantity whose miss is not the difference
+    of its rows, ``miss(made, wanted, owner) -> rows``: how far what the commands make is from what is wanted, zero
+    where they meet, its switches the caller's ``owner`` (an orientation's: the rotation vector from the wanted one to
+    the one made). ``owner`` is the id of the entry it models (``<apparatus>.<field>``, ``<apparatus>.<segment>``)."""
 
     owner: str
     commands: Mapping[str, Signal]
@@ -53,6 +61,7 @@ class ForwardModel:
     affine_in: frozenset[str] = frozenset()
     optional: frozenset[str] = frozenset()
     rows: Mapping[str, Callable[[Any], Any]] = field(default_factory=_none)
+    misses: Mapping[str, Callable[[Any, Any, str], Any]] = field(default_factory=_no_misses)
 
     def __call__(self, u: Arrays, x: Arrays, theta: Arrays | None = None) -> dict[str, Any]:
         """The quantities at ``u`` and ``x``, at this model's ``theta`` with any of ``theta`` given in its place."""
@@ -97,6 +106,14 @@ class ForwardModel:
             return rows(held)
         size = len(self.quantities[quantity].shape)
         return jnp.reshape(held, (-1, *held.shape[size:]))
+
+    def miss(self, quantity: str, made: Any, wanted: Any, *, owner: str) -> Any:
+        """How far ``made`` is from ``wanted``, of ``quantity``, as rows (a vector): its own miss where the model gives
+        one (``misses``), else the difference of their rows. Zero where they meet."""
+        own = self.misses.get(quantity)
+        if own is not None:
+            return jnp.reshape(own(made, wanted, owner), (-1,))
+        return self.row_values(quantity, made) - self.row_values(quantity, wanted)
 
 
 __all__ = ["Arrays", "ForwardModel"]

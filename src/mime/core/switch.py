@@ -164,6 +164,23 @@ def collecting() -> Generator[list[Row]]:
         yield collector.rows
 
 
+@contextmanager
+def not_collected() -> Generator[None]:
+    """Hide an open collector from the switches traced inside: an iterative solve's body and its root, which no
+    derivative passes through but the root's and which are traced into programs of their own, whose tracers a row
+    would keep beyond them. The caller evaluates its switches once more outside, on the solution, where they are
+    gathered. The test-only setting stays in force inside."""
+    context = _context.get()
+    if not isinstance(context, _Collector):
+        yield
+        return
+    token = _context.set(None)
+    try:
+        yield
+    finally:
+        _context.reset(token)
+
+
 def collector_open() -> bool:
     """Whether a collector (:func:`collecting`) is open, read while a step is traced. A site in a loop's body is
     evaluated once a trace, on the body's tracers, which a collector's rows would keep beyond the loop; so a step
@@ -465,5 +482,5 @@ SELECTIONS = ("domain_guard", "nonzero_norm", "static_select", "without_slope")
 
 __all__ = ["OWNER_FORM", "ROUNDING_ULPS", "SELECTIONS", "SWITCH_FUNCTIONS", "Buckets", "Declaration", "Lazy", "Reached",
            "Row", "absolute", "argmin", "clip", "collecting", "collector_open", "domain_guard", "forcing", "maximum",
-           "minimum", "nonzero_norm", "norm", "predicate", "replacing_fallbacks", "rounding", "searchsorted",
-           "static_select", "where", "without_slope"]
+           "minimum", "nonzero_norm", "norm", "not_collected", "predicate", "replacing_fallbacks", "rounding",
+           "searchsorted", "static_select", "where", "without_slope"]

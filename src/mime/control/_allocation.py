@@ -27,7 +27,8 @@ stand-in. A column of zero
 length (a command with no effect, and no regularisation) has its scale held at one, and the command is held at the
 reference clipped into its bounds, never driven to a limit by a tie. The returned commands are clipped into the box:
 the selected set's solve and the selection's product differ by rounding. More than :data:`EXACT_COMMANDS` commands is
-refused by name: ``3^K`` grows past what a step should pay, and the iterative path is the route.
+refused by name: ``3^K`` grows past what a step should pay, and the iterative path is the route
+(:func:`mime.control.iterative_allocation`; ``ctx.allocator`` takes it by itself).
 
 **Its limit, measured and not refused.** Where the commands outnumber the rows and there is no regularisation, a subset
 with more free commands than rows is solved in the commands' own units (its least-norm solution is the least effort,
@@ -174,8 +175,9 @@ def exact_allocation(matrix: Any, wanted: Any, *, lower: Any, upper: Any, scales
         raise _refused(
             f"an exact allocation of {commands} commands: it enumerates 3^{commands} = {3 ** commands} active sets, "
             f"and the exact path takes at most {EXACT_COMMANDS} commands",
-            "allocate fewer commands at once, or wait for the iterative path, which takes any number (a later 0.3.0 "
-            "development release)", code="allocation.exact-size")
+            "allocate fewer commands at once, or allocate them on the iterative path, which takes any number: "
+            "mime.control.iterative_allocation, or ctx.allocator in a controller, which chooses it",
+            code="allocation.exact-size")
     wanted_, scales_ = (jnp.asarray(v, dtype=dtype) for v in (wanted, scales))
     offset_ = jnp.zeros((rows,), dtype=dtype) if offset is None else jnp.asarray(offset, dtype=dtype)
     for name, value in (("wanted", wanted_), ("scales", scales_), ("offset", offset_)):

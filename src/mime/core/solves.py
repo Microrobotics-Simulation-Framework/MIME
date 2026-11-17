@@ -135,8 +135,8 @@ def sites_of(node_class: type) -> tuple[SolveSite, ...]:
 
 DENSE = register(SolveSite(
     "dense", "dense", "mime.core.solves.dense_solve",
-    nodes=("DynamicArmNode", "JointDragNode", "MRSDragNode", "OpenFlowNode", "RFTDragNode", "RigidInertialMidpointNode",
-           "RigidInertialNode", "RigidInertialTensorNode"),
+    nodes=("ControllerNode", "DynamicArmNode", "JointDragNode", "MRSDragNode", "OpenFlowNode", "RFTDragNode",
+           "RigidInertialMidpointNode", "RigidInertialNode", "RigidInertialTensorNode"),
 ))
 
 

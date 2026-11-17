@@ -1,0 +1,159 @@
+{
+ "written": "2026-11-16, committed before AP4a's re-probe ran (the commit that adds this file is the timestamp): the diagnosis of run 43756307412's misses (the inverse kinematics test's premise, the warm start's sawtooth to the cap, the BVLS loose arm's three hours), the step's path bent with the rows, and the inverse kinematics test restated to what converged claims at a limit",
+ "phase": "apparatus lane AP4a, the probe's misses diagnosed and fixed",
+ "labels": "the diagnosing agent (Opus) from local reproductions and surveys on the laptop (correctness only, never rates or timing; scripts named below); the probe's numbers are the runner's",
+ "seen_before": [
+  "run 43756307412 (tests/control/predictions_ap4a.json): every planted control caught on every run; the inverse kinematics test's clean arm flagged 3/20 (draws 451, 57135088, 12766), the warm-start test's 2/20 (draws 575, 29557); the BVLS loose arm cancelled after 3 h",
+  "locally, all five blobs reproduce (laptop, Python 3.12.15, hypothesis 6.170.5): not runner-specific",
+  "the inverse kinematics draws: the solve converged (stationarity 4e-17 to 2e-16) at joint 4's limit, link_6 2.0 to 3.3 mm off the pose, where the library's damped least squares met the pose inside the limits without an iterate outside them; independently of the solve, the free joints' gradients 3.5e-11 to 5e-11 at objectives of 37 to 49, the held joint's gradient pushing out of the box, the free Hessian positive definite, and 800 feasible perturbations of 1e-6 to 1e-2 rad never lowering the objective: a constrained local minimiser, which converged claims. The solve left its start by 1.8 rad along the wrist's near-null direction (|joint 5| 0.14 to 0.24 rad); with no limits it ends 215 rad round. Of 403 draws (the three among them), 5 of this kind before the bend and 5 after it, partly other draws: the premise, not the bend",
+  "the warm-start draws: a reference solve took the cap of 50 iterations unconverged (stationarity 5.8e-7, 1.3e-6), reported converged false; traced: a definite Newton step along the soft direction cut by Armijo, a damped step taken whole, the damping dropped to zero, the next Newton step cut again: a sawtooth",
+  "surveys of the warm-start test's solves (scratch/diag/survey_warm.py, each draw with its 36 differenced solves): 202 draws (7474 solves): before 3 unconverged, max 50 iterations; Levenberg's damping lowered gradually (rejected) 15 unconverged; the bend 0, max 15, mean 3.79. 2000 fresh draws (74000 solves): before 1 unconverged (301704, which the bend converges in 11), max 52, mean 4.66, about 80 solves over 25 iterations; the bend: 0 unconverged, max 20 iterations, mean 3.74, none over 25 (16 over 15, against 248 before)",
+  "the BVLS loose plant timed locally (one planted run, both dtypes): 8 min 57 s, of which Hypothesis's explain phase 248 s and 236 s over 255 and 245 failing variations ('nothing left to do'); every loop in src bounded",
+  "on 80 affine draws (the BVLS test's synthetic problems, both dtypes, effort none or 1 to 100) the solve before and after the bend returns the same bits and iteration counts (scratch/diag/affine_bits.py): the exact-path and BVLS arms' rates of run 43756307412 (early and loose 20/20 against the exact path, early 20/20 against BVLS, clean 0/20 each) carry over unchanged",
+  "the held-branch judge (stationary_within_the_limits) on draw 12766: the solve's point passes; a free joint moved 1e-7 rad, the held joint 1e-6 rad into the box, and the held flag on the other limit each fail (scratch/diag/helper_control.py)",
+  "locally, after the fix and the merge of release/v0.3.0 (dcb411e8): the five blobs no longer fail; pyright 0 errors"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "CPU; GitHub runners, 4 vCPU; the cost arm and the bits on one CPU with one BLAS and XLA thread",
+  "sizes_and_parameters": "as tests/control/predictions_ap4a.json's operating point: the arm A0's AR4 (link_6 over 1 mm and 10 mrad; unregularised for the inverse kinematics, from 0.15 rad away, the limits and no box); the follower's warm starts (effort 20 rad, the target 0.2 to 2 mm from the flange, differenced at 0.2 and 0.1 mm); BVLS's synthetic problems of 9 to 16 commands",
+  "seeds_and_draws": "Hypothesis at the tests' own example counts; detection runs on FRESH seeds for the two clean arms that flagged and the changed nonlinear plants (seed bases 100 and 110), seeds 0-19 for the BVLS loose arm (which never finished); each run a fresh process with its Hypothesis seed; every arm bounded by timeout (40 to 110 min, from run 43756307412's arm times)"
+ },
+ "gate_1_inverse_kinematics": {
+  "claim": "on reachable poses the iterative solve converges; held at no limit it reaches the pose within 1e-9 m, and where the library reaches the pose inside the limits the joints are the library's within 1e-6 rad or the wrist's other solution; held at a limit, it is stationary there by the objective's own gradient (the first-order conditions, at the declared line)",
+  "kind": "bounds",
+  "case": "tests/control/test_iterative_allocation.py::test_iterative_inverse_kinematics_meets_the_librarys_on_reachable_poses",
+  "prediction": {
+   "value": "every draw passes: clean 0/20",
+   "band": [
+    0,
+    0
+   ],
+   "unit": "clean runs flagged of 20",
+   "basis": "measured-before (the three draws now pass; the judge's own control)",
+   "why": "the held branch asserts what the solve claims, which the three draws met by six orders of magnitude"
+  },
+  "control": {
+   "plant": "early (two iterations): unconverged",
+   "environment_variable": "ITERATIVE_PLANT=early",
+   "expected_rate": "20/20 (two arms of 10)",
+   "runs": 20,
+   "clean_expected": "0/20"
+  },
+  "if_wrong": "a clean flag in the held branch is a stationary-point claim that does not hold (a defect of the solve's converged); in the other branches a solve held at no limit off the pose",
+  "cannot_discriminate_if": "no draw of a run reaches the held branch (about 1 in 100 draws do): the branch's own control is local (helper_control.py), not this rate"
+ },
+ "gate_2_warm_start": {
+  "claim": "at the follower's operating point every reference solve converges, and the derivative is central differences within 1e-6 of its largest entry",
+  "kind": "bounds",
+  "case": "tests/control/test_iterative_allocation.py::test_a_warm_start_near_the_minimiser_gives_the_minimisers_derivative",
+  "prediction": {
+   "value": "clean 0/20",
+   "band": [
+    0,
+    0
+   ],
+   "unit": "clean runs flagged of 20",
+   "basis": "measured-before (the surveys above)",
+   "why": "the bend keeps the step in the curved valley, so no solve of the surveys reached the cap"
+  },
+  "control": {
+   "plant": "unpolished (no local phase)",
+   "environment_variable": "ITERATIVE_PLANT=unpolished",
+   "expected_rate": "20/20",
+   "runs": 20,
+   "clean_expected": "0/20"
+  },
+  "if_wrong": "a clean flag with a reference solve unconverged is the solve's convergence again (its trace, its draw); one past 1e-6 with every solve converged is the derivative's",
+  "cannot_discriminate_if": "ALWAYS, for the fix: before the bend the measured rate (1 in 74000 solves, 1480 a run) flags about 0.4 of 20 clean runs, so 0/20 cannot tell the two apart; the discriminating evidence is local: the four draws that took the cap converge with the bend, and the tail of iterations"
+ },
+ "gate_3_bvls_loose": {
+  "claim": "the loose plant (tolerance one, no local phase: the start claimed converged) is caught by the agreement with BVLS on every run, and nothing is flagged clean",
+  "kind": "bounds",
+  "case": "tests/control/test_iterative_allocation.py::test_the_iterative_path_meets_bvls_above_the_exact_paths_size",
+  "prediction": {
+   "value": "20/20 caught, clean 0/20, each arm within its 110 min",
+   "band": [
+    20,
+    20
+   ],
+   "unit": "planted runs caught of 20",
+   "basis": "derived (the start is zero, far from every draw's minimiser) and measured-before (run 43756307412's clean BVLS arm 0/20; the timed local run)",
+   "why": "a planted run fails at its first example in both dtypes; its time is Hypothesis's explain phase, bounded"
+  },
+  "control": {
+   "plant": "loose",
+   "environment_variable": "ITERATIVE_PLANT=loose",
+   "expected_rate": "20/20 (four arms of 5)",
+   "runs": 20,
+   "clean_expected": "0/20"
+  },
+  "if_wrong": "an arm at its timeout: a loop the timing did not see, read from its partial output"
+ },
+ "gate_4_derivative_plants": {
+  "claim": "the arm's implicit derivative is central differences within 1e-6 and reverse is forward within 1e-12, with the bend in the forward solve; the planted Gauss-Newton Hessian and the dropped bounds are caught on every run",
+  "kind": "bounds",
+  "case": "tests/control/test_iterative_allocation.py::test_the_implicit_derivative_is_central_differences_and_reverse_mode_is_forward",
+  "prediction": {
+   "value": "gauss_newton 20/20, bounds 20/20, clean 0/20 each",
+   "band": [
+    20,
+    20
+   ],
+   "unit": "planted runs caught of 20",
+   "basis": "measured-before (run 43756307412 on the solve before the bend)",
+   "why": "the bend changes the path to the root, not the root or the tangent system"
+  },
+  "control": {
+   "plant": "gauss_newton on unreachable targets; bounds on reachable ones",
+   "environment_variable": "ITERATIVE_PLANT",
+   "expected_rate": "20/20 each (two arms of 10)",
+   "runs": 20,
+   "clean_expected": "0/20"
+  }
+ },
+ "gate_5_follower_and_flag": {
+  "claim": "through a built controller: the follower's Study.gradient within 1e-6 of central differences (unpolished caught), and a capped solve raises allocation_unconverged (silent caught)",
+  "kind": "bounds",
+  "case": "tests/control/test_iterative_controller.py",
+  "prediction": {
+   "value": "unpolished 5/5 and clean 0/5; silent 10/10 and clean 0/10; tests_alloc and tests_ctrl pass",
+   "basis": "measured-before (run 43756307412)",
+   "why": "as gate 4"
+  },
+  "control": {
+   "plant": "unpolished; silent",
+   "environment_variable": "ITERATIVE_PLANT",
+   "expected_rate": "5/5; 10/10",
+   "runs": 15,
+   "clean_expected": "0/5; 0/10"
+  }
+ },
+ "costs": {
+  "prediction": "per base step, compiled, one thread: the coil sphere's iterative allocation 1.1 to 1.6 times its exact one's (run 43756307412: 1.14; the bend adds a second derivative of affine rows, zero, and one K x K solve an iteration); the follower 4 to 9 times ArmTracking 0.1.0's step (6.2 before; each iteration adds a second directional derivative of the arm's kinematics and a 6 x 6 solve, and the mean iterations fall from 4.7 to 3.8)",
+  "measured_at": "run 43756307412 before the bend; nothing after it"
+ },
+ "bits": {
+  "cases": "as tests/control/predictions_ap4a.json's bits, base dcb411e8 (the release commit the head merged) against the head, one job, one CPU, one thread",
+  "prediction": "every array np.array_equal",
+  "controls": {
+   "one_ulp": "script A in both dtypes, a0_graph and the coil sphere in float32, every leaf one ulp up: arrays differ"
+  }
+ },
+ "outcomes": {
+  "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43777271404",
+  "head": "01c53acb (probe/ap4a-fix, the branch at 01df9b75 plus probe/)",
+  "gate_1_inverse_kinematics": "early 20/20 caught (two arms of 10, seeds 100-119), clean 0/20; every_run on both arms",
+  "gate_2_warm_start": "unpolished 20/20 caught (seeds 100-119), clean 0/20; as predicted this cannot tell the fix from the code before it (about 0.4 flagged of 20 expected before); the fix's evidence is the local surveys",
+  "gate_3_bvls_loose": "loose 20/20 caught (four arms of 5, seeds 0-19), clean 0/20; the arms took 44 to 59 min",
+  "gate_4_derivative_plants": "gauss_newton 20/20, bounds 20/20 caught (seeds 100-119), clean 0/20 each",
+  "gate_5_follower_and_flag": "unpolished 5/5 caught, clean 0/5; silent 10/10 caught, clean 0/10; tests_alloc 11 passed; tests_ctrl (with test_in_graph) 168 passed",
+  "costs": "steady minimum, one thread, AMD EPYC 9V45 (another CPU than the first run's): exact sphere 78 us, iterative 91 us (1.16x, in the band 1.1-1.6); ArmTracking 0.1.0 on A0 160 us, the follower 1.38 ms (8.7x, in the band 4-9, at its top; the follower's three builds 1.38 to 1.69 ms)",
+  "bits": "base dcb411e8 against the head: all 11 programs array_equal; the 4 one-ulp controls differ",
+  "memory": "every arm's peak 0.9 to 8.6 GiB (tests_alloc the largest), under 12; the estimate's 1.95 GiB bound, uncalibrated, below most (the mem-check step red: the estimate, not a gate)",
+  "arm_times": "every arm within its timeout: 6 to 73 min (the longest det_bounds_a)"
+ }
+}

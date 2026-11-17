@@ -228,7 +228,8 @@ def test_control_a_write_dropped_from_the_derived_inputs_is_refused(monkeypatch)
 
 def check_dropped_write(monkeypatch) -> list[str]:
     derive = construct_module.derived_inputs
-    monkeypatch.setattr(construct_module, "derived_inputs", lambda plans: derive(plans)[:-1])
+    # A0's tracker declares no flags, so the last derived input is its last write (none is a flag holder's).
+    monkeypatch.setattr(construct_module, "derived_inputs", lambda plans, holder=None: derive(plans, holder)[:-1])
     try:
         tracked_rpm().build()
     except BuildRefused as caught:

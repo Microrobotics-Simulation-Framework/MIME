@@ -736,7 +736,7 @@ def test_more_commands_than_the_bound_is_refused_by_name_with_its_route():
         exact_allocation(np.ones((3, EXACT_COMMANDS + 1)), np.ones(3), lower=-1.0, upper=1.0, scales=np.ones(3),
                          owner=OWNER)
     (refusal,) = refused.value.refusals
-    assert refusal.code == "allocation.exact-size" and "iterative path" in refusal.action
+    assert refusal.code == "allocation.exact-size" and "iterative_allocation" in refusal.action
     with pytest.raises(ArgumentRefused, match="allocation.wanted"):
         exact_allocation(np.ones((3, 2)), np.ones(4), lower=-1.0, upper=1.0, scales=np.ones(3), owner=OWNER)
 

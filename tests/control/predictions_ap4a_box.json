@@ -1,0 +1,73 @@
+{
+  "written": "2026-11-16, committed before the box fix's re-measurement ran (the commit that adds this file is the timestamp): AP4a's arm_draw scaling (commit 1ab9870d), after stress run 43869113370",
+  "phase": "apparatus lane AP4a, the box fix's re-measurement of the bounds plant",
+  "labels": "the finishing agent (Sonnet), from the earlier measurement (predictions_ap4a_fix.json, run 43777271404: det_bounds_a and det_bounds_b, reachable, 20 planted runs) and from the fix's own arithmetic; the numbers will be the runners'",
+  "seen_before": [
+    "run 43777271404 (tests/control/predictions_ap4a_fix.json): the bounds plant on the reachable id was caught on every run of 20, before the box fix",
+    "stress run 43869113370, seed 459387629, test seed 698358 reachable: a CLEAN failure 'the box holds no joint at a bound', the test's own premise: all six offsets of the draw fell inside BOX (0.05), about 3e-4 of draws; the fix scales an offset set whose largest is under twice the box up to twice the box (about 1.5 % of draws are changed, none rejected), seed 698358 passes locally after it (scratch/repro_box.py)",
+    "the unreachable id has not been planted on a runner before: its prediction is a guess"
+  ],
+  "operating_point": {
+    "dtype": [
+      "float64"
+    ],
+    "platform": "GitHub runners, 4 vCPU, CPU; JAX_PLATFORMS=cpu",
+    "sizes_and_parameters": "tests/control/test_iterative_allocation.py::test_the_implicit_derivative_is_central_differences_and_reverse_mode_is_forward at its committed max_examples=40, both ids; the AR4 arm draw (six joints, BOX 0.05, slew box active at one joint at least)",
+    "seeds_and_draws": "detection_rate.py: 10 planted + 10 clean runs an arm, Hypothesis seeds 300 to 329 (reachable, arms r_a, r_b, r_c) and 400 to 429 (unreachable, arms u_a, u_b, u_c), 30 planted and 30 clean runs an id; fresh seeds, none used by an earlier measurement"
+  },
+  "gate_1_bounds_plant_reachable": {
+    "claim": "with the box fix in, the test fails on every run with the bounds plant (the root's bounds' derivative stopped) and on no run without it",
+    "kind": "bounds",
+    "case": "the test above, id [reachable], ITERATIVE_PLANT=bounds",
+    "prediction": {
+      "value": "30 of 30 planted runs caught, 0 of 30 clean runs failed",
+      "band": [
+        30,
+        30
+      ],
+      "unit": "planted runs caught of 30",
+      "basis": "measured-before (20 of 20 before the fix) and derived: the plant removes the bounds' derivative, which every draw with an active bound shows against central differences; the fix makes every draw have one, so no draw can pass the plant by having no bound",
+      "why": "a draw with no active bound previously failed the clean test on the premise assertion; planted, it failed on it too, so the old test also caught the plant on such draws (by the premise failing, not by the derivative); the fix removes the premise failure and tests the derivative on them. A plant that leaves a draw's derivative within 1e-6 of central differences would show as a missed run"
+    },
+    "control": {
+      "plant": "the bounds' derivative stopped (lax.stop_gradient on the slew box's low and high)",
+      "environment_variable": "ITERATIVE_PLANT",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30"
+    },
+    "if_wrong": "a miss or a clean failure stops this work and is reported with its seed; no tolerance or draw is loosened",
+    "cannot_discriminate_if": "a planted run is inconclusive (a timeout or a crash counts against caught); Hypothesis stops on the first failing example, so a planted run's detection says the plant is visible on SOME draw of the 40, which is what 'fails every run' asks"
+  },
+  "gate_2_bounds_plant_unreachable": {
+    "claim": "the same on the unreachable id",
+    "kind": "bounds",
+    "case": "the test above, id [unreachable], ITERATIVE_PLANT=bounds",
+    "prediction": {
+      "value": "30 of 30 planted runs caught, 0 of 30 clean runs failed",
+      "band": [
+        30,
+        30
+      ],
+      "unit": "planted runs caught of 30",
+      "basis": "guess (never planted on this id on a runner); the mechanism is the same as gate 1's",
+      "why": "unreachable targets leave rows unmet, but the box's bounds enter the solve identically; the derivative in the last joints passes through the active bound"
+    },
+    "control": {
+      "plant": "as gate 1",
+      "environment_variable": "ITERATIVE_PLANT",
+      "expected_rate": "30/30",
+      "runs": 30,
+      "clean_expected": "0/30"
+    },
+    "if_wrong": "reported with seeds; this id is the one a miss would most likely be on, and would mean the bounds' derivative is not tested there, not that the fix failed"
+  },
+  "memory": "each arm's largest process about 2.5 GiB (a fresh process of this test measured 2527 MiB); the estimator reads JAX programs, not tests, so probe/declared_peak.py declares a placeholder of that size (bound about 3.4 GiB) and says so",
+  "outcomes": {
+    "run": "https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/43878753023",
+    "head": "a7ad403b (probe/ap4a-box, deleted), the PR's 1ab9870d plus probe/ and these predictions (the predictions above are that commit's, unchanged)",
+    "gate_1_bounds_plant_reachable": "30 of 30 planted runs caught (Hypothesis seeds 300 to 329), 0 of 30 clean runs failed, none inconclusive",
+    "gate_2_bounds_plant_unreachable": "30 of 30 planted runs caught (seeds 400 to 429), 0 of 30 clean runs failed, none inconclusive; the guess held",
+    "memory": "each arm's largest process 3.00 to 3.07 GiB, above the 2.47 GiB the prediction took from a fresh-process measurement of the test (a runner's higher peak is not explained here); inside the declared placeholder's bound (3.45 GiB), no arm an underestimate"
+  }
+}

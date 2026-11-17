@@ -439,7 +439,7 @@ def prepare(built: BuiltExperiment, writes: Sequence[Written], of: Callable[[Any
              fed: Sequence[tuple[int, Any]] | None, steps: int) -> _Prepared:
     graph = built.graph
     tests = tuple(built.flag_tests())
-    meanings = tuple((f"{flag.node}.{flag.name or flag.field}", flag.meaning) for flag in built.layout.flags)
+    meanings = tuple((flag.path, flag.meaning) for flag in built.layout.flags)
     solving = solving_nodes(graph)
     kept = tuple((node, REPORT_STEP) for node in solving)
     run = differentiated_run(graph, steps, tests, kept, checkpoint=mode == "reverse", fed=fed)
@@ -596,10 +596,9 @@ def _call(prepared: _Prepared, theta0: Mapping[str, np.ndarray], factors: Mappin
 
 def _flags(prepared: _Prepared, tally: tuple[np.ndarray, np.ndarray, np.ndarray]) -> tuple[RaisedFlag, ...]:
     counted, first, last = tally
-    meanings = dict(prepared.meanings)
-    return tuple(RaisedFlag(path := f"{test.node}.{test.field}", meanings.get(path, ""), int(counted[i]),
-                            int(first[i]), int(last[i]))
-                 for i, test in enumerate(prepared.tests) if int(counted[i]) > 0)
+    # The tests are the layout's flags in its order (``flag_tests``), so each one's path is the run's for that flag.
+    return tuple(RaisedFlag(*prepared.meanings[i], int(counted[i]), int(first[i]), int(last[i]))
+                 for i in range(len(prepared.tests)) if int(counted[i]) > 0)
 
 
 def _extrapolations(point: Point) -> tuple[str, ...]:

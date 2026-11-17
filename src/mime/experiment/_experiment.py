@@ -1157,8 +1157,9 @@ def run_layout(plans: PlanSet, graph: GraphManager | None = None) -> Layout:
         cls = plan.registered.cls
         if plan.joined:
             continue  # its group's plan builds its node, and lays out the flags its node raises
+        # A controller's own flags are held as its node's flag_<name> (controller_flags lays them out).
         flags += [FlagLayout(plan.owner, cls.label(), plan.node_name(flag.node), flag.field, flag.meaning)
-                  for flag in plan.raised_flags()]
+                  for flag in plan.raised_flags() if not issubclass(cls, Controller)]
         speed = speed_limit_flag(plans, plan)
         if speed is not None:
             flags.append(speed)
@@ -1175,10 +1176,32 @@ def run_layout(plans: PlanSet, graph: GraphManager | None = None) -> Layout:
     flags += port_flags(plans)
     if graph is not None:
         observations += port_traffic(plans, graph, observations)
+        flags += controller_flags(plans, graph)
     from mime.env._host import run_precision
 
     return Layout(plans.settings.experiment, plans.dt, tuple(observations), tuple(flags), plans.profile.stamp(),
                   run_precision())
+
+
+def controller_flags(plans: PlanSet, graph: GraphManager) -> list[FlagLayout]:
+    """The controller's flags (``mime.nodes.control._flags``), each on the node that holds it: the controller's own
+    inside the compiled step, its flag holder (``<controller>.flags``) as a callback. None where it declares none."""
+    from mime.nodes.control import HOLDER, PREFIX, ControllerNode
+
+    controller = plans.controller
+    if controller is None:
+        return []
+    found: list[FlagLayout] = []
+    for name in (controller.owner, f"{controller.owner}.{HOLDER}"):
+        if name not in graph.node_names:
+            continue
+        node = graph.get_node(name)
+        if isinstance(node, ControllerNode):
+            found += [FlagLayout(controller.owner, controller.registered.cls.label(), name, f"{PREFIX}{flag.field}",
+                                 flag.meaning, name=flag.field, warns=flag.warns,
+                                 shown=controller.owner if name != controller.owner else None)
+                      for flag in node.declared_flags]
+    return found
 
 
 def port_traffic(plans: PlanSet, graph: GraphManager, observations: Sequence[ObservationLayout]) -> \
@@ -1774,7 +1797,8 @@ class BuiltExperiment:
     def _warn_raised(self, result: RunResult) -> None:
         """A warning for each flag that warns (``Flag.warns``) and the run raised, with its count and where."""
         warns = {f"{plan.node_name(flag.node)}.{flag.field}" for plan in self._plans.entries
-                 for flag in plan.raised_flags() if flag.warns and not plan.joined}
+                 for flag in plan.raised_flags()
+                 if flag.warns and not plan.joined and not issubclass(plan.registered.cls, Controller)}
         warns |= {flag.path for flag in self.layout.flags if flag.warns}
         for read in result.flags:
             if read.path in warns and read.was_raised:

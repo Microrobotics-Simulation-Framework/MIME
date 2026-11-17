@@ -27,10 +27,10 @@ from mime.build._builders import (
     RestrictedBuilder,
 )
 from mime.build._checks import ledger_wiring_refusals, node_lines, post_build_checks, refuse_by_author, solving_lines
-from mime.build._control import Mode
+from mime.build._control import ControllerPlan, Mode
 from mime.build._declared_lags import net_of_declared_lags
 from mime.build._derived import DerivedGraph, derive
-from mime.build._in_graph import controller_nodes, in_graph_order, order_refusals
+from mime.build._in_graph import controller_nodes, flag_holder, in_graph_order, order_refusals
 from mime.build._lags import EdgeLag, classify, cross_check, unplanned_refusals
 from mime.build._maddening import (
     add_coupling_group,
@@ -55,13 +55,15 @@ from mime.build._refusals import (
 from mime.core.multibody import ElementGroup
 from mime.build._report import BuildReport, GroupLine, NodeLine, ReportedWarning, graph_config
 from mime.build._stages import stage_nodes
-from mime.nodes.control import COMMAND_STAGE
+from mime.nodes.control import COMMAND_STAGE, HOLDER, declared_flags
 from mime.registry import (
     BuildContext,
     ControlLaw,
+    Controller,
     Drive,
     Dynamics,
     FieldProvider,
+    Flag,
     Interaction,
     Observation,
 )
@@ -108,10 +110,15 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
               models: tuple[str, ...] | None = None,
               computed: Mapping[str, tuple[str, ...]] | None = None, energy: tuple[str, ...] = (),
               unmetered: Mapping[str, str] | None = None, solving: tuple[str, ...] = (),
-              believed: tuple[str, ...] | None = None, slewed: tuple[str, ...] = ()) -> BuildReport:
+              believed: tuple[str, ...] | None = None, slewed: tuple[str, ...] = (), paths: tuple[str, ...] = (),
+              flags: tuple[Flag, ...] = ()) -> BuildReport:
     owners = {name: plan for plan in plans.entries for name in plan.node_names()}
+    holder = f"{plans.controller.owner}.{HOLDER}" if plans.controller is not None else None
     lines = [NodeLine(position, name, owners[name].owner, owners[name].section.name.lower(), owners[name].describe(),
                       owners[name].divider_of(name), plans.dt * owners[name].divider_of(name)) if name in owners else
+             NodeLine(position, name, cast(ControllerPlan, plans.controller).owner, "controller",
+                      "the controller's flags, as its callback raised them at its last tick", 1, plans.dt)
+             if name == holder else
              NodeLine(position, name, name, "ports", stage_description(name), 1, plans.dt)
              for position, name in enumerate(order, 1)]
     return BuildReport(
@@ -126,7 +133,8 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         plans.scene_text(), plans.orientation, materials=plans.materials, descriptions=description_lines(plans),
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
         controller=(*plans.controller.lines(plans.dt), *loop_lines(plans), *model_lines(plans, models),
-                    *believed_lines(plans, believed), *slew_lines(slewed))
+                    *believed_lines(plans, believed), *slew_lines(slewed), *allocation_lines(paths),
+                    *flag_lines(flags, plans.controller.owner))
         if plans.controller is not None else (),
         calibrations=calibration_lines(plans),
         masses=plans.masses, profile=plans.profile, watches=plans.watches, replaced=plans.replaced, removed=plans.removed,
@@ -210,6 +218,24 @@ def slew_lines(slewed: tuple[str, ...]) -> tuple[str, ...]:
             "a delivery the slew limited):", *slewed)
 
 
+def allocation_lines(paths: tuple[str, ...]) -> tuple[str, ...]:
+    """Each allocation the law made (``ctx.allocator``), its path and why: chosen when the law was made, from the
+    model's declaration and the commands' count alone."""
+    if not paths:
+        return ()
+    return ("  allocations (ctx.allocator), each path chosen from the model's declaration and the commands' count:",
+            *paths)
+
+
+def flag_lines(flags: tuple[Flag, ...], owner: str) -> tuple[str, ...]:
+    """The flags the controller ``owner`` declares (its class's and its law's), each raised by its step and counted by
+    the run, by the path the run reads it at in either mode."""
+    if not flags:
+        return ()
+    return ("  flags, each raised by its step and counted by the run as a law's:",
+            *(f"    {owner}.{flag.field}{' (warns)' if flag.warns else ''}: {flag.meaning}" for flag in flags))
+
+
 def calibration_lines(plans: PlanSet) -> tuple[str, ...]:
     """Each calibration a planned entry reads, as its type reads it, by entry."""
     found: list[str] = []
@@ -285,7 +311,7 @@ def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -
     not hold in its state as declared: a declaration a run's result could not read."""
     cls = plan.registered.cls
     held: list[tuple[str, str, str, tuple[int, ...] | None]] = [
-        ("flag", flag.node, flag.field, None) for flag in plan.raised_flags()]
+        ("flag", flag.node, flag.field, None) for flag in plan.raised_flags() if not issubclass(cls, Controller)]
     if issubclass(cls, Observation):
         held += [("output", output.node, output.field, cast(Observation, plan.entry).output_shape(output))
                  for output in cls.outputs]
@@ -465,14 +491,16 @@ def _host_callback_refusals(graph: GraphManager, plans: PlanSet) -> list[Refusal
     return refusals
 
 
-def derived_inputs(plans: PlanSet) -> list[tuple[str, str]]:
+def derived_inputs(plans: PlanSet, holder: SimulationNode | None = None) -> list[tuple[str, str]]:
     """Every external input of the graph, derived from the writes of a controller called between compiled chunks: the
-    node input of each command it writes, in place of that command's drive. Nothing else declares one; a controller
-    inside the compiled step feeds its commands by edges."""
+    node input of each command it writes, in place of that command's drive, and each read of its flag holder
+    (``holder``, where it declares flags). Nothing else declares one; a controller inside the compiled step feeds its
+    commands by edges."""
     controller = plans.controller
     if controller is None or controller.mode is not Mode.CALLBACK:
         return []
-    return [(write.node, write.field) for write in controller.writes]
+    flags = [] if holder is None else [(holder.name, field) for field in sorted(holder.boundary_input_spec())]
+    return [(write.node, write.field) for write in controller.writes] + flags
 
 
 @dataclass(frozen=True)
@@ -529,6 +557,10 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
         order += [name for name in plans.stage_names() if name not in order]
     in_graph: list[SimulationNode] = []
     controller_edges: list[EdgeDecl] = []
+    holder = flag_holder(plans.controller, law, plans.dt) if plans.controller is not None else None
+    if holder is not None:
+        built[holder.name] = holder
+        order.insert(0, holder.name)
     if plans.controller is not None and plans.controller.mode is Mode.GRAPH:
         if law is None:
             raise ValueError("a controller inside the compiled step is built from its law: pass construct its law")
@@ -594,7 +626,7 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
     for group in sorted(groups, key=lambda members: position[members[0]]):
         held = next(g for g in plans.groups if set(g.nodes) == set(group))
         add_coupling_group(graph, group, max_iterations=held.max_iterations, tolerance=held.tolerance)
-    for node, field in derived_inputs(plans):
+    for node, field in derived_inputs(plans, holder):
         add_external_input(graph, node, field)
     return Assembled(graph, tuple(order), tuple(tuple(group) for group in groups), tuple(lags), physics_lags, owners,
                      energy, flags)
@@ -637,4 +669,7 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
     return graph, report_of(plans, order, [], external, reported, derived.physics_hash, lags, models,
                             merged(node_lines(graph, plans), held.flags), energy,
                             held.energy.unmetered if held.energy is not None else None, solving_lines(graph),
-                            tuple(getattr(law, "believed", ())), tuple(getattr(law, "slewed", ()))), derived
+                            tuple(getattr(law, "believed", ())), tuple(getattr(law, "slewed", ())),
+                            tuple(getattr(law, "paths", ())),
+                            declared_flags(plans.controller.registered.cls, getattr(law, "flags", ()))
+                            if plans.controller is not None else ()), derived

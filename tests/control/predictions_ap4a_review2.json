@@ -1,0 +1,201 @@
+{
+ "written": "2026-11-16, committed before the second probe ran (the commit that adds this file is the timestamp): the iterative allocation's fix round after the refuting review, second probe (the NaN fix, the float32 derivative's restated claim, the long arms split)",
+ "phase": "apparatus lane AP4a, the review's fix round, second probe; the first probe's predictions and outcomes are tests/control/predictions_ap4a_review.json, run 43937818199 (diagnostic runs 43959720879 and 43962583548)",
+ "labels": "the fix round's agent (Sonnet), from the first probe's outcomes (its plants, its AMD failures and the diagnostic traces) and laptop (Intel) runs of the fixed code; the AMD verification of the NaN fix is a prediction here, never measured before this probe",
+ "seen_before": [
+  "the first probe (run 43937818199 at 9e5a472): every plant caught every run; the float32 follower's test failed on 20 of 30 clean runs on AMD EPYC 9V74 and 9V45 (seed 25: the bend NaN at iteration 1, accepted because NaN > x is false, so every trial NaN) and on EPYC 7763 (seed 657325: the Newton step NaN in the local phase, which left the start as the best point, stationarity 0.03); Intel Xeon 8370C and the laptop passed; four arms did not finish (det_silent, det_unpolished, det_unpolished_follower: no rate file at their timeouts; tests_ctrl at 3600 s, 78 %)",
+  "the derivative's test failed once clean (seed 122, EPYC 9V74), reproduced on the laptop at draw seed 73172, effort 1.0: converged and resolved, error 6.6e-3 of float64's largest entry, 9.4 times the test's fitted line (the condition times M + 3K units), which was fitted on 56 draws; the coordinator's decision (2026-11-16): the resolution is an indicator, not a bound; the claim is that the derivative is flagged resolved or unresolved, and where resolved its error is measured",
+  "the effort sweep (56 draws, laptop, float32): 36 converged and resolved, their error over float64's largest entry median 8e-4, 99th percentile 0.03, maximum 0.04; at effort 20 (the follower's own) every draw unresolved",
+  "laptop: the new test of a NaN step passes, fails with the plant nan_step (steepest descent removed), fails when the `long` rewrite is reverted",
+  "the second probe's outcomes (run 43973260724, recorded before this gate): the float32 follower test's plant rank_by_square was caught 10/10 on an Intel Xeon 8370C but 8/10 on AMD EPYC 9V45 and 7/10 on 9V74, because the squared matrix's eigenvalue is rounding noise whose sign differs by processor (the first probe's 30/30 was on processors where the test also failed clean from the NaN: not a discriminating result); gate 13 is the replacement control"
+ ],
+ "operating_point": {
+  "dtype": [
+   "float64",
+   "float32"
+  ],
+  "platform": "CPU; GitHub runners, whatever processors they land on (lscpu kept per arm; the AMD ones are the point); the cost arm on one CPU with one BLAS and XLA thread",
+  "sizes_and_parameters": "as the first probe's (tolerance 1e-10 / 1e-5; RANK 10; RESOLVED 0.1, declared; ACCELERATION 0.75); the NaN plants' solve: Rosenbrock in 6 commands, box +-5, the solve of every system whose right-hand side is over 5 replaced by NaN",
+  "seeds_and_draws": "the derivative's distribution: 252 draws, seed from numpy's generator at 1000 + i (uniform in [0, 2**32)), effort log-uniform in [0.05, 20] rad, the target 0.2 to 2 mm from the flange (the test's own draws), plus the two explicit examples (seed 26 at effort 20, seed 73172 at effort 1); the follower's test at Hypothesis' own seeds with its examples 25 and 657325; plant runs at seed bases 100 onwards (new) and 200 onwards (earlier)"
+ },
+ "gate_7_nan_step": {
+  "claim": "a non-finite Newton step or bend does not end the solve: the steepest descent stands in, the bend is left out; the solve of systems whose far-point right-hand sides solve to NaN still reaches Rosenbrock's valley",
+  "kind": "bounds",
+  "case": "tests/control/test_iterative_allocation.py::test_a_step_whose_solve_is_not_a_number_does_not_end_the_solve",
+  "prediction": {
+   "value": "every clean run passes; nan_step caught 30/30",
+   "band": [
+    30,
+    30
+   ],
+   "unit": "planted runs caught of 30",
+   "basis": "measured-before (laptop: 4 of 4 planted runs in both dtypes; the plant removes the fallback from every draw, which is fixed: no Hypothesis draws, 8 starts)",
+   "why": "without the fallback the first iteration's NaN step fails the line search whatever the draws"
+  },
+  "control": {
+   "plant": "nan_step: the fallback and the NaN-bend exclusion removed",
+   "environment_variable": "ITERATIVE_PLANT",
+   "expected_rate": "30/30",
+   "runs": 30,
+   "clean_expected": "0/30"
+  },
+  "cannot_discriminate_if": "a start of the eight needs no right-hand side over 5 (then it meets no NaN); the test needs one of the eight to, which is measured locally",
+  "if_wrong": "a missed run means the plant is not planted in the program the test traces (the step's trace cache: node-step-trace-cache)"
+ },
+ "gate_8_amd_follower": {
+  "claim": "with the fix, seeds 25 and 657325 converge in float32 on every processor the arms land on, AMD EPYC 9V74, 9V45 and 7763 included, and the float32 follower's test (examples 25 and 657325) passes clean on every arm",
+  "kind": "bounds",
+  "case": "tests/control/test_iterative_allocation.py::test_float32_converges_at_the_followers_problem_where_float64_does, arms fix_a to fix_h (diag2.py prints RESULT for each seed)",
+  "prediction": {
+   "value": "16 of 16 seed results converged and 8 of 8 clean test runs pass, with at least one AMD arm among the eight",
+   "band": [
+    0,
+    0
+   ],
+   "unit": "clean failures over the eight arms",
+   "basis": "guess for AMD (the diagnosis names the NaN, but the fix has run on Intel only; another cause on AMD is possible); measured-before for the NaN's role: the traces of runs 43959720879 and 43962583548",
+   "why": "on 9V74 the bend is NaN at iteration 1 and on 7763 the Newton step is NaN in the local phase; both are now replaced (steepest descent, bend left out)"
+  },
+  "control": {
+   "plant": "none for the arm itself (its control is the first probe: 20 of 30 clean failures on AMD before the fix, the same test)",
+   "environment_variable": "none",
+   "expected_rate": "n/a",
+   "runs": 8,
+   "clean_expected": "0/8"
+  },
+  "cannot_discriminate_if": "no arm lands on an AMD processor (lscpu is read for every arm; then the verification is not made and the arms are launched again); or the Intel processors alone fail",
+  "if_wrong": "a failure on AMD whose trace shows a stop that is not a NaN means a second cause: it is traced (probe/diag2.py prints each seed's iterations) before anything is changed"
+ },
+ "gate_9_derivative_distribution": {
+  "claim": "the float32 derivative is flagged resolved or unresolved, and where resolved its error over float64's largest entry is measured: over 252 draws the median, 99th percentile and maximum of the error among the converged and resolved draws are reported, and no resolved draw is past the declared line RESOLVED (0.1)",
+  "kind": "estimates",
+  "case": "probe/deriv_dist.py, arms dist_a to dist_e",
+  "prediction": {
+   "value": "resolved share 55 to 75 % of draws; among them median 1e-3 (band 2e-4 to 5e-3), 99th percentile 0.03 (band 0.01 to 0.09), maximum 0.05 (band 0.02 to 0.2); draws unresolved at effort 20 every time",
+   "band": [
+    0.02,
+    0.2
+   ],
+   "unit": "the maximum's share of float64's largest entry",
+   "basis": "measured-before (the effort sweep's 36 resolved draws: median 8e-4, 99th percentile 0.03, maximum 0.04; the one drawn example 6.6e-3) and guess for the heavy tail",
+   "why": "the indicator is the condition times M + 3K units; the commands' own float32 error (2e-6 rad) moves the derivative beyond the LU's rounding by a factor that has a heavy tail"
+  },
+  "cannot_discriminate_if": "fewer than about 100 draws are resolved (then the 99th percentile is one draw): the draws are then repeated at the efforts where it resolves",
+  "if_wrong": "a resolved draw past 0.1 is a finding about the declared line, reported, not hidden: the test's line stays declared, it is not inflated, and the claim says 'flagged resolved' with the measured maximum"
+ },
+ "gate_10_derivative_test_clean": {
+  "claim": "the derivative's test, restated as the flag's correctness against the declared line, passes clean, at the Hypothesis seed 122 that failed (EPYC 9V74) and others, and its plant unflagged is caught every run",
+  "kind": "bounds",
+  "case": "tests/control/test_iterative_allocation.py::test_float32s_derivative_at_the_followers_problem_is_flagged_unresolved_where_it_is_off_the_declared_line, arms deriv_clean_a to d (clean, seeds 122 to 125) and det_unflagged_a to e (planted, 6 each)",
+  "prediction": {
+   "value": "clean 0 of 4 failures; unflagged caught 30/30",
+   "band": [
+    30,
+    30
+   ],
+   "unit": "planted runs caught of 30",
+   "basis": "measured-before (30/30 in the first probe; the explicit example at effort 20, seed 26, is run first and fails the plant whatever the draws)",
+   "why": "the plant calls every derivative resolved, and seed 26's is 17 times its largest entry off"
+  },
+  "control": {
+   "plant": "unflagged: every derivative called resolved",
+   "environment_variable": "ITERATIVE_PLANT",
+   "expected_rate": "30/30",
+   "runs": 30,
+   "clean_expected": "0/30"
+  },
+  "if_wrong": "a clean failure is a resolved draw past 0.1 of the largest entry: the same finding as gate 9's, classified by the five causes before anything changes"
+ },
+ "gate_11_earlier_plants": {
+  "claim": "every earlier plant is still caught every run on the head (the NaN fix changes the solve's steps, not what these plants break), and the arms that did not finish now do",
+  "kind": "bounds",
+  "case": "as the first probe's gates 1 to 5 (null, wrist, follow32 rank_by_square, column unfloored, Rosenbrock unaccepted, bend_sign, early, unpolished, loose, gauss_newton, bounds, unpolished follower, silent, unresolved-flag silent), the long arms split: det_unpolished_a to d (5 each), det_unpol_follower_a to e (1 each), det_silent_a and b (5 each), tests_ctrl_a to c by file",
+  "prediction": {
+   "value": "every planted run caught; no clean run flagged; every arm finishes inside its timeout",
+   "band": [
+    0,
+    0
+   ],
+   "unit": "planted runs missed, clean runs flagged, arms timed out",
+   "basis": "measured-before (the first probe; the split arms' timeouts are 1.5 to 2.5 times their arithmetic: unknown per-run times for the controller files, the first probe gave none)",
+   "why": "as the first probe's"
+  },
+  "control": {
+   "plant": "as named",
+   "environment_variable": "ITERATIVE_PLANT",
+   "expected_rate": "every run",
+   "runs": 5,
+   "clean_expected": "0/5"
+  },
+  "cannot_discriminate_if": "an arm times out: a timed-out run is inconclusive and fails every_run"
+ },
+ "gate_12_touched_files": {
+  "claim": "the touched test files pass on a runner, with durations; the controller group's three file arms each finish",
+  "kind": "bounds",
+  "case": "tests_alloc, tests_ctrl_a, tests_ctrl_b, tests_ctrl_c",
+  "prediction": {
+   "value": "all pass; tests_alloc about 35 min (25 passed in 2080 s on EPYC 9V74 before the new test), the controller test file about 60 to 90 min",
+   "band": [
+    0,
+    0
+   ],
+   "unit": "failed tests",
+   "basis": "measured-before (the first probe's tests_alloc durations; the controller files' times are a guess: the first probe's group exceeded 3600 s at 78 %)",
+   "why": "the controller file compiles the follower in both modes and dtypes"
+  }
+ },
+ "survey": {
+  "claim": "the bend's survey on the head (the accepted variant only) and the rank after (null vector and wrist)",
+  "kind": "estimates",
+  "prediction": "as the first probe's outcomes for the accepted variant (Rosenbrock-6 1/300 f64 and f32, Rosenbrock-12 2/200, follower 1-5 cm f32 one unconverged where seed 25 failed on AMD, now 0); the NaN fix changes only the points whose solve was NaN; rank_after: null vector 0/200 converged both dtypes, wrist 0/6",
+  "basis": "measured-before (first probe) with the NaN fix expected to remove its f32 follower unconverged on AMD"
+ },
+ "costs": {
+  "prediction": "the first probe's: the coil sphere's iterative allocation 1.4 times its exact one's, the follower 10.7 times ArmTracking 0.1.0's (EPYC 9V45); the fallback adds a where and a select on the step: under 2 % on either",
+  "measured_at": "run 43937818199 on the head before the NaN fix"
+ },
+ "bits": {
+  "cases": "as the first probe's",
+  "prediction": "every array np.array_equal (11 of 11) and the one-ulp controls differ (4 of 4)",
+  "controls": {
+   "one_ulp": "as the first probe's"
+  }
+ },
+ "outcomes": {
+  "recorded": "after run 43973260724 (second probe, probe/ap4a-review2 at 4f667c1d, 65 arms, AMD EPYC 9V74/9V45/7763 and Intel Xeon 6973P-C/8573C/8370C) and run 43987763930 (probe/ap4a-review3 at 0595a213, the rank_line plant)",
+  "gate_7_nan_step": "nan_step caught 30/30 (15 on EPYC 9V74, 15 on 7763), clean 0/30: as predicted",
+  "gate_8_amd_follower": "as predicted: seeds 25 and 657325 converged on 8 of 8 arms (9V74 x5, 9V45 x1, 7763 x2), 16 of 16, in 10 and 12 iterations; the follower test passed clean on 8 of 8",
+  "gate_9_derivative_distribution": "254 draws (252 drawn and the two explicit examples): 138 resolved (54 %, predicted 55 to 75 %), their error over float64's largest entry median 3.2e-4 (band 2e-4 to 5e-3, inside), 99th percentile 0.018 (band 0.01 to 0.09, inside), maximum 0.019 (band 0.02 to 0.2: just under the band's low edge; the prediction's maximum of 0.05 was too high), none past 0.1; 116 unresolved, 60 of them past 0.1 (max 29.6); the error over the indicator among the resolved: median 0.087, 99th percentile 0.44, maximum 16 (seed 73172, effort 1)",
+  "gate_10_derivative_test_clean": "as predicted: clean 4 of 4 passed (hypothesis seeds 122 to 125, on Intel 6973P-C, 8573C and AMD 7763 x2), unflagged caught 30/30, clean 0/30",
+  "gate_11_earlier_plants": "every planted run caught except one control: null 30/30, wrist 30/30, column 30/30, unaccepted 30/30, bend_sign 30/30, early 20/20, unpolished 20/20, loose 20/20, gauss_newton 20/20, bounds 20/20, unpolished follower 5/5, silent 10/10, unresolved-flag silent 30/30; clean 0 on all. NOT as predicted: follow32 rank_by_square 25/30 (10/10 Intel 8370C, 8/10 AMD 9V45, 7/10 9V74): the first probe's 30/30 was no evidence (the test also failed clean on AMD from the NaN); rank_by_square at the follower is rounding noise whose sign differs by processor. All arms finished inside their timeouts",
+  "gate_12_touched_files": "all passed: tests_alloc 28 in 1771 s (predicted about 2100 s: lower), tests_ctrl_a 16 in 2187 s (predicted 3600 to 5400 s for the group: the file alone), the other controller files 206 in 419 s, test_exact_allocation with test_port_axes 53 in 571 s",
+  "gate_13_rank_line": "as predicted: rank_line caught 30/30 on six arms (EPYC 9V74 x4, 7763, Intel Xeon 8573C), clean 0/30",
+  "survey": "the accepted variant on the head equals the first probe's except the float32 follower at 1-5 cm: 0 unconverged (was 1, the NaN); rank_after: null vector 0/200 converged in both dtypes, wrist 0/6 in both",
+  "costs": "EPYC 9V74: iterative coil sphere 1.39 times its exact path, follower 9.5 times ArmTracking 0.1.0 (first probe, 9V45: 1.40, 10.7)",
+  "bits": "11 of 11 array_equal, the one-ulp controls 4 of 4 differ"
+ },
+ "gate_13_rank_line": {
+  "claim": "the float32 follower's convergence test has a control that fails every run on every processor: the rank line 1000 times higher (rank_line) reads the follower's least singular value, 8 to 40 times the line as built, as not resolved, so the float32 solve reads unconverged at every draw",
+  "kind": "bounds",
+  "case": "tests/control/test_iterative_allocation.py::test_float32_converges_at_the_followers_problem_where_float64_does, arms rankline_a to rankline_f",
+  "prediction": {
+   "value": "rank_line caught 30/30 planted runs (every run, on Intel and AMD alike); clean 0/30",
+   "band": [
+    30,
+    30
+   ],
+   "unit": "planted runs caught of 30",
+   "basis": "measured-before (laptop: both explicit examples, seeds 25 and 657325, fail under the plant: stationarity 8e-6 under the tolerance, 10 iterations, unconverged); the singular value's margin (8 to 40 times the line) is a measurement on the review's draws",
+   "why": "the plant moves the line, not rounding: at 1000 times the line the least singular value (at most 40 times the built line) is 25 to 125 times under it, whatever the processor's rounding; the effort 20 tangent is unresolved in float32, so the other half of converged's clause does not rescue it"
+  },
+  "control": {
+   "plant": "rank_line: RANK = 1e4 (built: 10)",
+   "environment_variable": "ITERATIVE_PLANT",
+   "expected_rate": "30/30",
+   "runs": 30,
+   "clean_expected": "0/30"
+  },
+  "cannot_discriminate_if": "the float64 solve also reads unconverged (the test then passes whatever float32 does: `not wide.converged or narrow.converged`); the line at 1e4 times 10 eps of float64 is 1e-11 of its largest singular value, under the float64 follower's least (1e-4), measured",
+  "if_wrong": "a miss means a draw where the float32 tangent is resolved (so converged holds through that clause): the plant is raised again or the draw's effort lowered"
+ }
+}
