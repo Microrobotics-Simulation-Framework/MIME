@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast, override
 import jax
 import numpy as np
 
+from mime.core._precision import in_float64
 from mime.core import as_run_array, jnp, switch
 from mime.core.multibody import ROOT, ClosedChainRefused, DescriptionReading, DescriptionRefused, \
     DescriptionWarning, InvalidDescription, JointKind, MultibodyTree, Payload, Transmission, articulate, compose, \
@@ -372,7 +373,7 @@ class Arm(ChainSegment):
             return Segment(tree.frame_names, description=reading.classification, problems=armed.problems)
         classification = reading.using(armed.used) if armed is not None else reading.classification
         held = with_armatures(tree, armed.values) if armed is not None else tree
-        with cast(Any, jax).enable_x64(True):
+        with in_float64():
             frames = np.asarray(forward_kinematics(tree, jnp.asarray(initial, dtype=jnp.float64)), dtype=np.float64)
             turning = np.asarray(frame_motions(tree, jnp.asarray(initial, dtype=jnp.float64),
                                                jnp.asarray(rates, dtype=jnp.float64))[1], dtype=np.float64)

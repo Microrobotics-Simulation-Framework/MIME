@@ -59,6 +59,7 @@ from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.build._steps import auto_step, whole_runs_either_side, whole_steps
 from mime.build._watch import WATCHED_FAMILY, ContainmentPlan, UnwatchedContainment, Watched, WatchPlan
 from mime.core import VELOCITY_RULES, jnp, shape_named
+from mime.core._precision import PRECISIONS, apply_precision, unstated_precision
 from mime.build._kicks import SpinnerKicks, kick_lines
 from mime.build._masses import plan_masses
 from mime.fields._solved import ExchangeFrame
@@ -1267,6 +1268,7 @@ class _Planner:
 
     def plan_settings(self) -> None:
         name = self.settings.experiment
+        self.plan_precision()
         profile, refused = profile_of(self.settings.profile)
         if refused is not None:
             self.refuse(refused[0], RefusalClass.USER, refused[1], refused[2])
@@ -1310,6 +1312,18 @@ class _Planner:
         self.dt = value
         self.plan_duration(value)
         self.check_seed()
+
+    def plan_precision(self) -> None:
+        """The run's precision, as stated or the default, applied for the rest of the build and the runs after it
+        (``mime.core._precision``); one not stated in a process that builds as JAX's flag says applies none."""
+        stated = self.settings.precision
+        if stated is not None and stated not in PRECISIONS:
+            self.refuse("run.precision", RefusalClass.USER,
+                        f"precision={stated!r} is not one MIME runs in: 'float32' or 'float64'",
+                        "pass precision='float64' (the default, exact) or precision='float32' (the cheap option, "
+                        "declared): Experiment(..., precision='float32')")
+            return
+        apply_precision(stated if stated is not None else unstated_precision())
 
     def check_seed(self) -> None:
         if not isinstance(self.settings.seed, int) or isinstance(self.settings.seed, bool):

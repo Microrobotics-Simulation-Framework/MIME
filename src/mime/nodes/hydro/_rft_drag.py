@@ -43,6 +43,7 @@ from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
+from mime.core._precision import in_float64
 from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, \
     node_input, quaternion, typed_view
 from mime.core.solves import dense_solve
@@ -466,7 +467,7 @@ class RFTDragNode(MimeNode):
         pose = None if start is None else start.get("pose")
         if pose is None:
             return []
-        with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
+        with in_float64(), cast(Any, jax).ensure_compile_time_eval():
             found, accepted = self.resistance_at(self._built_leaves(), jnp.asarray(pose, dtype=jnp.float64))
             least_array, floor = self.judged(found, jnp.float64)
             least = float(least_array)
@@ -512,7 +513,7 @@ class RFTDragNode(MimeNode):
 
     def measured_as_built(self) -> tuple[bool, float]:
         """:meth:`measured_here` at the leaves as built, in float64: what the build report says of the body."""
-        with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
+        with in_float64(), cast(Any, jax).ensure_compile_time_eval():
             measured, gap = self.measured_here(self._built_leaves())
             return bool(measured), float(gap)
 
@@ -528,7 +529,7 @@ class RFTDragNode(MimeNode):
         pose = None if start is None else start.get("pose")
         if pose is None:
             return None
-        with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
+        with in_float64(), cast(Any, jax).ensure_compile_time_eval():
             return float(self.wall_gap(self._built_leaves(), jnp.asarray(pose, dtype=jnp.float64)))
 
     def _settings_text(self) -> str:

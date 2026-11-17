@@ -44,6 +44,7 @@ import jax
 import numpy as np
 from jax import Array
 
+from mime.core._precision import in_float64
 from mime.core import jnp, quaternion, shape_named
 from mime.core.solves import dense_solve
 from mime.nodes.body._contact import START_APART, Hull, Pair, Wall, pair_contacts, spacing_of, start_count
@@ -135,7 +136,7 @@ _least_radii: dict[tuple[Any, ...], float] = {}
 
 
 def _least_radius(kind: Geometry, settings: Mapping[str, Any], spacing: float, patches: Sequence[str]) -> float:
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         sampling = kind.sampling(settings, spacing, tuple(patches))
         parameters = {name: (jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple)) else value)
                       for name, value in settings.items()}

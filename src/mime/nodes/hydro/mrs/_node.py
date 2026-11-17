@@ -17,6 +17,7 @@ from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
+from mime.core._precision import in_float64
 from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, Units, as_run_array, differentiated, jit, \
     jnp, node_fields, node_input, quaternion, run_constants_given, typed_view
 from mime.nodes.hydro.mrs._quadrature import (
@@ -745,7 +746,7 @@ class MRSDragNode(MimeNode):
         constants = self.constants()
         region = cast(Any, wall.region)
         plain = self._kind_parameters(constants)
-        with cast(Any, jax).enable_x64(True):
+        with in_float64():
             settings = {name: (jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple)) else value)
                         for name, value in plain.items()}
             points = np.asarray(self._sampling.samples(self._kind, settings).points, dtype=np.float64)
@@ -1087,7 +1088,7 @@ class MRSDragNode(MimeNode):
         resistance in free space, the free part's matrix with a wall), and what the build judges of the free part's
         resistance (:class:`Built`). Evaluated where it is first asked for, a step's trace included, and never traced
         (``ensure_compile_time_eval``): it is made from constants."""
-        with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
+        with in_float64(), cast(Any, jax).ensure_compile_time_eval():
             theta = {key: jnp.asarray(value, dtype=jnp.float64) for key, value in self._built_theta().items()}
             body = self.body(theta)
             matrix = separated_matrix(body.force, body.points, body.weights, self.chunks, body.eps_squared)
@@ -1370,7 +1371,7 @@ class MRSDragNode(MimeNode):
         if not wall.regularised:
             return (f"the wall's image ({wall.name}): singular, its own, with no blob in it (the drag's blob is not "
                     f"passed into it), its near-wall behaviour and validity line its own")
-        with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
+        with in_float64(), cast(Any, jax).ensure_compile_time_eval():
             theta = {key: jnp.asarray(value, dtype=jnp.float64) for key, value in self._built_theta().items()}
             eps = math.sqrt(float(self.body(theta).eps_squared))
         return (f"the wall's image ({wall.name}): regularised, the drag's blob, eps = {eps:.4g} m (the free part's: "

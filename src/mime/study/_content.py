@@ -104,11 +104,12 @@ def source_hashes(builts: Iterable[BuiltExperiment] = ()) -> dict[str, str]:
 def versions() -> dict[str, str]:
     """The versions the numbers depend on besides the files hashed: MIME's, those of :data:`VERSIONED`, and the precision
     in force."""
-    import jax
+    import numpy as np
 
     from mime import __version__
+    from mime.core._node import run_dtype
 
-    held = {"mime": __version__, "x64": str(bool(jax.config.jax_enable_x64))}
+    held = {"mime": __version__, "x64": str(bool(run_dtype() == np.float64))}
     for name in VERSIONED:
         try:
             held[name] = importlib.metadata.version(name)

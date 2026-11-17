@@ -98,6 +98,7 @@ from mime.core import (
     switch,
     typed_view,
 )
+from mime.core._precision import eye
 from mime.assets import Asset
 from mime.surrogates import SURROGATES, Evaluator
 from mime.surrogates._cholesky_mlp import CholeskyMLP
@@ -291,7 +292,7 @@ class SurrogateDragNode(MimeNode):
         that no root is taken. A report, as ``clamp_fired`` is: no edge reads it and no derivative passes through it."""
         dtype = orientation.dtype
         cosine = jnp.dot(quaternion.rotation_matrix(orientation)[:, 0], axis)
-        return (cosine ** 2 < jnp.cos(limit) ** 2).astype(dtype)
+        return (cosine ** 2 < jnp.cos(jnp.asarray(limit, dtype=dtype)) ** 2).astype(dtype)
 
     def beyond_the_bore(self, p: Mapping[str, Any], orientation: Array, axis: Array) -> Array:
         """1 where the body, taken as the cylinder of its length and outer radius, no longer fits the tube's bore:
@@ -318,8 +319,8 @@ class SurrogateDragNode(MimeNode):
             return jnp.ones((), dtype=dtype)
         axis = jnp.asarray(p["vessel_axis"], dtype=dtype)
         along = jnp.dot(quaternion.rotation_matrix(orientation)[:, 0], axis)
-        return switch.where(along >= -END_TIE, 1.0, -1.0, owner="drag.end", resolution=lambda: switch.rounding(1.0),
-                            indicator=lambda: along + END_TIE).astype(dtype)
+        return switch.where(along >= -END_TIE, jnp.asarray(1.0, dtype=dtype), jnp.asarray(-1.0, dtype=dtype),
+                            owner="drag.end", resolution=lambda: switch.rounding(1.0), indicator=lambda: along + END_TIE)
 
     def about_the_centre(self, p: Mapping[str, Any], canonical: Array) -> Array:
         """The non-dimensional ``canonical`` resistance moved from the end ``zeta = 0`` to the centre, ``L / 2``
@@ -332,7 +333,7 @@ class SurrogateDragNode(MimeNode):
         zero = jnp.zeros((), dtype=dtype)
         cross = jnp.stack([jnp.stack([zero, -half, zero]), jnp.stack([half, zero, zero]),
                            jnp.stack([zero, zero, zero])])
-        move = jnp.eye(6, dtype=dtype).at[:3, 3:].set(cross)
+        move = eye(6, dtype).at[:3, 3:].set(cross)
         return move.T @ canonical @ move
 
     @override

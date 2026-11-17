@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, cast
 
 import jax
+import numpy as np
 
 from mime.assets import Asset, AssetRef, Manifest, reference
 from mime.assets._adapters import with_adapters
@@ -24,6 +25,7 @@ from mime.build import LATENCY_RULE, BuildRefused, ControllerPlan, Declaration, 
 from mime.build._derived import HASH_RECIPE, DerivedGraph, sha256_of
 from mime.build._plan import EntryPlan
 from mime.build._stage import stage_manifests
+from mime.core._node import run_dtype
 from mime.env._host import (
     blas_threads,
     cpu_record,
@@ -116,7 +118,7 @@ def environment() -> EnvironmentRecord:
         "python": platform.python_version(),
         "platform": f"{sys.platform}-{platform.machine()}",
         "device": jax.default_backend(),
-        "x64": bool(config.jax_enable_x64),
+        "x64": bool(run_dtype() == np.float64),  # the declared precision is float64 (JAX's flag is on in both)
         "prng": f"{config.jax_default_prng_impl} (jax_threefry_partitionable={config.jax_threefry_partitionable})",
         "gpu": cast(GpuRecordDoc | None, gpu_record()),
         "cpu": cast(CpuRecordDoc, cpu_record()),

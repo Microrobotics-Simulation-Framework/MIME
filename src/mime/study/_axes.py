@@ -487,6 +487,7 @@ def declared(settings: RunSettings, declarations: Sequence[Declaration], values:
                     "study.precision", RefusalClass.USER, f"precision is 'float32' or 'float64', not {value!r}",
                     "write the precisions as strings: `grid({PRECISION: [\"float32\", \"float64\"]})`")])
             x64 = value == "float64"
+            settings = dataclasses.replace(settings, precision=value)
         elif axis.kind is AxisKind.VALUE:
             given = cast(object, getattr(value, "reason", None))
             declaration = ValueDeclaration(axis.path, value,

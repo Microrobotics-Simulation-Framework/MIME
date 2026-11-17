@@ -12,7 +12,7 @@ from typing import Annotated, Any, cast, override
 
 import numpy as np
 
-from mime.core import AXIS_ULPS, jnp, switch
+from mime.core import AXIS_ULPS, jnp, run_dtype, switch
 from mime.gradients import GradientStatus
 from mime.registry import PHYSICAL, SurfaceFeature
 from mime.registry import (
@@ -707,7 +707,8 @@ class Sphere(Solid):
                          np.outer(cosine, np.ones(around))], axis=-1).reshape(-1, 3)
         radius = parameters["radius"]
         areas = np.outer(weight, np.full(around, 2.0 * math.pi / around)).ravel()
-        return Samples(radius * jnp.asarray(unit), jnp.asarray(unit), radius ** 2 * jnp.asarray(areas))
+        unit, areas = jnp.asarray(unit, dtype=run_dtype()), jnp.asarray(areas, dtype=run_dtype())
+        return Samples(radius * unit, unit, radius ** 2 * areas)
 
     @override
     def area(self, settings: Mapping[str, Magnitude], patch: str) -> float:

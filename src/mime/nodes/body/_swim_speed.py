@@ -108,7 +108,8 @@ class SwimSpeedNode(MimeNode):
 
         distance = held["distance"] + switch.where(counted, speed * dt, 0.0, owner="swim.window", resolution=rounded,
                                                    indicator=after_by)
-        observed = held["observed"] + switch.where(counted, dt, 0.0, owner="swim.window", resolution=rounded,
+        observed = held["observed"] + switch.where(counted, jnp.asarray(dt, dtype=twist.dtype), 0.0,
+                                                   owner="swim.window", resolution=rounded,
                                                    indicator=after_by)
         some = observed > dt / 2
         mean = switch.where(some, distance / switch.domain_guard(some, observed, 1.0), 0.0, owner="swim.mean",

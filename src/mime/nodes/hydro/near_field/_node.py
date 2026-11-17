@@ -15,6 +15,7 @@ from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
+from mime.core._precision import in_float64
 from mime.core import MimeNode, NodeFields, ParamSpec, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_input, \
     run_constants_given, run_dtype
 from mime.core._node import FLOOR_LIMITED, STAGNATED, rechecked
@@ -507,7 +508,7 @@ class JointDragNode(MimeNode):
         """Each member's free part, ``3N x 3N`` at unit viscosity in its frame, made once from the node's constants in
         float64 whatever the run's precision, never traced."""
         found: list[np.ndarray] = []
-        with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
+        with in_float64(), cast(Any, jax).ensure_compile_time_eval():
             for member in self._members:
                 theta = {key: jnp.asarray(value, dtype=jnp.float64) for key, value in member.built_theta().items()}
                 found.append(np.asarray(member.self_interaction(theta), dtype=np.float64))

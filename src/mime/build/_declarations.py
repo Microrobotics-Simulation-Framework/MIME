@@ -24,7 +24,8 @@ class RunSettings:
     ``based_on`` the saved experiment it was made from, as its document records it (``None``: made from none);
     ``blocks`` the blocks it uses, by the use's name, as its document records them (``None``: none); ``assets`` the
     asset records those blocks bring (``mime.assets.AssetRef``), which its builds pin and its lock then records where an
-    entry reads one. The build reads nothing of ``based_on`` or ``blocks``; the saved form does."""
+    entry reads one. The build reads nothing of ``based_on`` or ``blocks``; the saved form does. ``precision`` is what the
+    run computes in, ``"float32"`` or ``"float64"`` (``None``: not stated, which builds in float64)."""
 
     experiment: Any
     scene: Any
@@ -38,6 +39,7 @@ class RunSettings:
     based_on: Any = None
     blocks: Any = None
     assets: Any = ()
+    precision: Any = None
 
 
 @dataclass(frozen=True)

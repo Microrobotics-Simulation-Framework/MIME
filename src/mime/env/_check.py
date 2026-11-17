@@ -31,6 +31,7 @@ from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
 
 from mime._lock_json import read_lock
+from mime.core._precision import apply_precision, unstated_precision
 from mime.build import BuildRefused, BuildReport, Refusal, RefusalClass
 from mime.build._refusals import SUBJECT_NAME, Subject
 from mime.build._maddening import devices as devices_of_jax
@@ -533,10 +534,14 @@ def lab_pins_of(lab: str | os.PathLike[str]) -> list[Pin]:
 
 
 def apply_lock_precision(folder: str | Path) -> bool:
-    """Set JAX's float64 mode to what ``folder``'s lock records, and return it: a run of a saved experiment computes in
-    the precision it was saved in."""
+    """Apply the precision ``folder``'s lock records, and return whether it is float64: a run of a saved experiment
+    computes in the precision it was saved in (``Experiment.load`` declares it), with JAX's 64-bit types enabled. In a
+    process that builds as JAX's flag says (``mime.core._precision.unstated_precision``), the flag is set to it."""
     x64 = lock_x64(folder)
-    cast(Any, jax.config).update("jax_enable_x64", x64)
+    if unstated_precision() is None:
+        cast(Any, jax.config).update("jax_enable_x64", x64)
+    else:
+        apply_precision("float64" if x64 else "float32")
     return x64
 
 
@@ -655,7 +660,7 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
         raise EnvRefused(refusals, pin_rows=[row for row in rows if not row.agrees])
     config = cast(Any, jax.config)
     if x64 is not None:
-        config.update("jax_enable_x64", x64)
+        config.update("jax_enable_x64", x64 if unstated_precision() is None else True)
     if folder is not None or requested is not None:
         config.update("jax_default_matmul_precision", recorded)
     cache = str(use_xla_cache(xla_cache)) if xla_cache is not None else None

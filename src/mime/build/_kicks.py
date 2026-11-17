@@ -24,12 +24,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
-import jax
 import numpy as np
 from numpy.typing import NDArray
 
+from mime.core._precision import in_float64
 from mime.core import jnp
 from mime.core.multibody import MultibodyTree, forward_kinematics, frame_angular_jacobians, mass_matrix
 from mime.core.multibody._tree import rotation_matrix
@@ -96,7 +96,7 @@ def joint_kicks(model: MultibodyTree, joints: Sequence[float], frame: str, axis:
     """Each revolute joint's kick from a rotor of ``inertia`` about ``axis`` (in the frame ``frame``), the tree
     ``model`` at the joint positions ``joints``, in float64."""
     articulation = model.articulation
-    with cast(Any, jax).enable_x64(True):
+    with in_float64():
         q = jnp.asarray(joints, dtype=jnp.float64)
         held = np.asarray(mass_matrix(model, q), dtype=np.float64)
         index = articulation.frame_index(frame)

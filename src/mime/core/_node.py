@@ -17,6 +17,7 @@ from maddening.core.node import BoundaryInputSpec, SimulationNode
 from maddening.core.params import ParamSpec as MaddeningParamSpec
 
 from mime.core._labels import read_label
+from mime.core._precision import Precision, declared_precision, node_precision, precision_dtype
 from mime.core._symbols import Symbol
 
 if TYPE_CHECKING:
@@ -29,8 +30,9 @@ jit: Any = cast(Any, jax).jit
 
 
 def run_dtype() -> Any:
-    """The floating dtype of the run: float64 under ``jax_enable_x64``, float32 otherwise."""
-    return jnp.zeros(()).dtype
+    """The floating dtype of the run: its declared precision's (``mime.core._precision``), or, where no build declared
+    one, float64 under ``jax_enable_x64`` and float32 otherwise."""
+    return precision_dtype()
 
 
 def as_run_array(value: Any) -> Any:
@@ -271,9 +273,28 @@ class MimeNode(SimulationNode):
         if ledger and type(self).LEDGER_TERMS is None:
             raise TypeError(f"{type(self).__name__} writes no step identity (LEDGER_TERMS), so the ledger cannot "
                             f"meter it")
+        #: The precision in force when the node was made, which its step and its initial state are traced in.
+        self.precision: Precision | None = declared_precision()
         held: Any = super()
-        held.__init__(name, timestep, **params,
-                      **({"ledger": tuple(str(d) for d in cast(Sequence[object], ledger))} if ledger else {}))
+        with node_precision(self.precision):
+            held.__init__(name, timestep, **params,
+                          **({"ledger": tuple(str(d) for d in cast(Sequence[object], ledger))} if ledger else {}))
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        for name in ("initial_state", "params_pytree"):
+            own = cls.__dict__.get(name)
+            if callable(own) and not getattr(own, "_in_node_precision", False):
+                setattr(cls, name, _in_node_precision(cast(Callable[..., Any], own)))
+
+    @override
+    def params_pytree(self) -> dict[str, Any]:
+        """MADDENING's leaves, made in the node's precision (a Python float takes JAX's canonical dtype there, float64
+        with 64-bit types enabled), and in a float32 run each float64 leaf narrowed to float32, as JAX narrows it
+        without 64-bit types: the step's constants are in the run's precision."""
+        with node_precision(self.precision):
+            held: Any = super()
+            return _leaves_in(self.precision, cast(dict[str, Any], held.params_pytree()))
 
     @property
     def metered(self) -> bool:
@@ -380,16 +401,85 @@ class MimeNode(SimulationNode):
     @override
     def update(self, state: dict[str, Array], boundary_inputs: Mapping[str, Array], dt: float, *,
                params: Mapping[str, Any] | None = None) -> dict[str, Array]:
-        return self._compiled(self._given(params), dict(state), dict(boundary_inputs), dt)
+        with node_precision(self.precision):
+            return _held_dtypes(self._compiled(self._given(params), dict(state), dict(boundary_inputs),
+                                               _step_in(self.precision, dt)), state)
 
     def fresh_update(self, state: dict[str, Array], boundary_inputs: Mapping[str, Array], dt: float, *,
                      params: Mapping[str, Any] | None = None) -> dict[str, Array]:
         """``update`` with its step traced afresh at every call, never taken from the compiled step's cache: what
         reads a switch context (``mime.core.switch``) traces through it, since a context is read while the step is
         traced, and the compiled step was traced once."""
-        return self.advance(self._given(params), dict(state), dict(boundary_inputs), dt)
+        with node_precision(self.precision):
+            return _held_dtypes(self.advance(self._given(params), dict(state), dict(boundary_inputs),
+                                             _step_in(self.precision, dt)), state)
 
     def advance(self, p: Mapping[str, Any], state: dict[str, Array], boundary_inputs: Mapping[str, Array],
                 dt: float) -> dict[str, Array]:
         """The step: the new state from ``p`` (the numeric constants), the state, the inputs and the timestep."""
         raise NotImplementedError
+
+
+def _in_node_precision(initial_state: Callable[..., Any]) -> Callable[..., Any]:
+    """A node's ``initial_state`` or ``params_pytree`` made in the node's own precision, whoever calls it
+    (``graph.reset_state()``, a compile), the leaves of the second in it."""
+
+    def made(self: MimeNode, *args: Any, **kwargs: Any) -> Any:
+        precision = getattr(self, "precision", None)
+        with node_precision(precision):
+            held = initial_state(self, *args, **kwargs)
+        return _leaves_in(precision, held) if initial_state.__name__ == "params_pytree" else held
+
+    setattr(made, "_in_node_precision", True)
+    made.__name__, made.__qualname__, made.__doc__ = initial_state.__name__, initial_state.__qualname__, \
+        initial_state.__doc__
+    return made
+
+
+def _step_in(precision: Precision | None, dt: Any) -> Any:
+    """The timestep a node's step takes: in a float32 run, a float32 scalar, as JAX takes a Python float without 64-bit
+    types (with them it is a float64 one, and ``dt / 2`` is computed in float64); as given otherwise."""
+    return jnp.asarray(dt, dtype=np.float32) if precision == "float32" else dt
+
+
+def _leaves_in(precision: Precision | None, tree: Any) -> Any:
+    """``tree`` with each float64 leaf narrowed to float32 where ``precision`` is float32; as it is otherwise."""
+    if precision != "float32":
+        return tree
+
+    def narrowed(leaf: Any) -> Any:
+        return leaf.astype(np.float32) if getattr(leaf, "dtype", None) == np.float64 else leaf
+
+    return jax.tree_util.tree_map(narrowed, tree)
+
+
+#: Whether a node's step returns its state as traced, not narrowed back to the dtypes it came in
+#: (:func:`steps_as_traced`): what the dtype audit reads.
+_AS_TRACED: ContextVar[bool] = ContextVar("mime_steps_as_traced", default=False)
+
+
+@contextmanager
+def steps_as_traced() -> Generator[None]:
+    """For the block, each node's step returns the state as its step traced it: a field it widened stays wide."""
+    token = _AS_TRACED.set(True)
+    try:
+        yield
+    finally:
+        _AS_TRACED.reset(token)
+
+
+def _held_dtypes(ended: dict[str, Array], state: Mapping[str, Array]) -> dict[str, Array]:
+    """The step's new state with each floating field in the dtype it came in: a float32 field a step widened (a
+    float64 constant in a float32 run) is narrowed back, so that the run's state keeps its precision. A field that kept
+    its dtype is returned as it is, with no operation added; the dtype audit (``mime.testing.dtype_audit``) reports the
+    widening."""
+    if _AS_TRACED.get():
+        return ended
+    held = dict(ended)
+    for name, value in ended.items():
+        given = state.get(name)
+        if given is None or not hasattr(value, "dtype") or not hasattr(given, "dtype") or value.dtype == given.dtype:
+            continue
+        if jnp.issubdtype(value.dtype, jnp.floating) and jnp.issubdtype(given.dtype, jnp.floating):
+            held[name] = value.astype(given.dtype)
+    return held
