@@ -100,6 +100,8 @@ def planted(names: tuple[str, ...]) -> Iterator[None]:
                 patch.setattr(module, "_POLISHING_STEPS", 0)
             elif PLANT in ("rank_by_square", "unflagged"):
                 patch.setattr(module, "_verdict", {"rank_by_square": _rank_by_square, "unflagged": _unflagged}[PLANT])
+            elif PLANT == "rank_line":
+                patch.setattr(module, "RANK", 1e4)
             elif PLANT == "unfloored":
                 patch.setattr(module, "_CURVATURE", dict.fromkeys(module._CURVATURE, 0.0))
             elif PLANT == "unaccepted":
@@ -703,10 +705,16 @@ def test_float32_converges_at_the_followers_problem_where_float64_does(seed):
     """A0's follower's problem (a weak effort, the target 1 to 5 cm from the flange): where float64 converges, so does
     float32. Its rows' least singular value is 1e-4 of the largest, which float32 resolves; its normal matrix's least
     eigenvalue, 2.4e-8 of the largest, is below float32's rounding, and read from it (``rank_by_square``) 11 of 200
-    such solves said they had not converged with their stationarity under the tolerance."""
+    such solves said they had not converged with their stationarity under the tolerance.
+
+    The controls: ``rank_line`` (the rank line 1000 times higher, past the float32 follower's least singular value, which
+    is 8 to 40 times the line as built) fails every draw on every processor. ``rank_by_square`` (the squared matrix's
+    eigenvalue, whose sign is rounding noise) fails it on the processor that rounds it past the floor: every one of 30 runs
+    on an Intel Xeon, 8 of 10 and 7 of 10 on AMD EPYC 9V45 and 9V74 (run 43973260724), so it is no control that fails every
+    run here; the null vector's and the wrist's tests carry that plant every run."""
     target, joints = follower_draw(seed, (1e-2, 5e-2))
     zero = np.zeros(9)
-    plant = PLANT if PLANT == "rank_by_square" else ""
+    plant = PLANT if PLANT in ("rank_by_square", "rank_line") else ""
     wide = follower_call_in("float64", "solve", zero, target, joints, plant=plant)
     narrow = follower_call_in("float32", "solve", zero, target, joints, plant=plant)
     assert not bool(wide.converged) or bool(narrow.converged), (float(narrow.stationarity), int(narrow.iterations))

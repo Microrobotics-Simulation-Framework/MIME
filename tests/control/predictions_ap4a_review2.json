@@ -6,7 +6,8 @@
   "the first probe (run 43937818199 at 9e5a472): every plant caught every run; the float32 follower's test failed on 20 of 30 clean runs on AMD EPYC 9V74 and 9V45 (seed 25: the bend NaN at iteration 1, accepted because NaN > x is false, so every trial NaN) and on EPYC 7763 (seed 657325: the Newton step NaN in the local phase, which left the start as the best point, stationarity 0.03); Intel Xeon 8370C and the laptop passed; four arms did not finish (det_silent, det_unpolished, det_unpolished_follower: no rate file at their timeouts; tests_ctrl at 3600 s, 78 %)",
   "the derivative's test failed once clean (seed 122, EPYC 9V74), reproduced on the laptop at draw seed 73172, effort 1.0: converged and resolved, error 6.6e-3 of float64's largest entry, 9.4 times the test's fitted line (the condition times M + 3K units), which was fitted on 56 draws; the coordinator's decision (2026-11-16): the resolution is an indicator, not a bound; the claim is that the derivative is flagged resolved or unresolved, and where resolved its error is measured",
   "the effort sweep (56 draws, laptop, float32): 36 converged and resolved, their error over float64's largest entry median 8e-4, 99th percentile 0.03, maximum 0.04; at effort 20 (the follower's own) every draw unresolved",
-  "laptop: the new test of a NaN step passes, fails with the plant nan_step (steepest descent removed), fails when the `long` rewrite is reverted"
+  "laptop: the new test of a NaN step passes, fails with the plant nan_step (steepest descent removed), fails when the `long` rewrite is reverted",
+  "the second probe's outcomes (run 43973260724, recorded before this gate): the float32 follower test's plant rank_by_square was caught 10/10 on an Intel Xeon 8370C but 8/10 on AMD EPYC 9V45 and 7/10 on 9V74, because the squared matrix's eigenvalue is rounding noise whose sign differs by processor (the first probe's 30/30 was on processors where the test also failed clean from the NaN: not a discriminating result); gate 13 is the replacement control"
  ],
  "operating_point": {
   "dtype": [
@@ -160,5 +161,29 @@
    "one_ulp": "as the first probe's"
   }
  },
- "outcomes": null
+ "outcomes": null,
+ "gate_13_rank_line": {
+  "claim": "the float32 follower's convergence test has a control that fails every run on every processor: the rank line 1000 times higher (rank_line) reads the follower's least singular value, 8 to 40 times the line as built, as not resolved, so the float32 solve reads unconverged at every draw",
+  "kind": "bounds",
+  "case": "tests/control/test_iterative_allocation.py::test_float32_converges_at_the_followers_problem_where_float64_does, arms rankline_a to rankline_f",
+  "prediction": {
+   "value": "rank_line caught 30/30 planted runs (every run, on Intel and AMD alike); clean 0/30",
+   "band": [
+    30,
+    30
+   ],
+   "unit": "planted runs caught of 30",
+   "basis": "measured-before (laptop: both explicit examples, seeds 25 and 657325, fail under the plant: stationarity 8e-6 under the tolerance, 10 iterations, unconverged); the singular value's margin (8 to 40 times the line) is a measurement on the review's draws",
+   "why": "the plant moves the line, not rounding: at 1000 times the line the least singular value (at most 40 times the built line) is 25 to 125 times under it, whatever the processor's rounding; the effort 20 tangent is unresolved in float32, so the other half of converged's clause does not rescue it"
+  },
+  "control": {
+   "plant": "rank_line: RANK = 1e4 (built: 10)",
+   "environment_variable": "ITERATIVE_PLANT",
+   "expected_rate": "30/30",
+   "runs": 30,
+   "clean_expected": "0/30"
+  },
+  "cannot_discriminate_if": "the float64 solve also reads unconverged (the test then passes whatever float32 does: `not wide.converged or narrow.converged`); the line at 1e4 times 10 eps of float64 is 1e-11 of its largest singular value, under the float64 follower's least (1e-4), measured",
+  "if_wrong": "a miss means a draw where the float32 tangent is resolved (so converged holds through that clause): the plant is raised again or the draw's effort lowered"
+ }
 }
