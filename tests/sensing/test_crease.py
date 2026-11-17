@@ -150,23 +150,55 @@ def exact_share(terms, lines) -> float:
 
 
 def allowance(terms, lines) -> float:
-    """What the composition's own floor lets its share differ from the exact area by, on these lines: where two lines
-    are parallel to within ``UNION_FLOOR`` (or antiparallel) and lie within it of each other, its divisions take their
-    slope as the floor, so a share's rounding grows by ``1 / UNION_FLOOR`` and the rule that coinciding lines keep half of
-    a chord each misplaces at most the sliver between them (its width, their separation and the angle between them, a
-    chord's length long), once in each subset of the terms that holds both. Zero on every other draw, so that a draw
-    with no such pair is held to the clipped area's own rounding."""
+    """What the composition's own floor and conditioning let its share differ from the exact area by, on these lines.
+    Three effects, each from the code's own rule, each summed over the subsets of the terms that hold the elements
+    involved (every such subset's polygon carries it), and zero on a draw with none of them, so that a draw with none is
+    held to the clipped area's own rounding.
+
+    - **Two lines parallel to within ``UNION_FLOOR`` (or antiparallel) and within it of each other**: the divisions take
+      their slope as the floor, and the rule that coinciding lines keep half a chord each misplaces at most the sliver
+      between them (its width, their separation and the angle between them, a chord long).
+    - **A line parallel to a cell's side to within ``UNION_FLOOR``, within twice it of the side**: the side's share is
+      decided by the floor (``_kept``'s ``beyond`` shift) while the line's chord is kept whole, so the side's weight in the
+      area (a quarter) is misplaced by up to its share's error: a ramp ``separation / UNION_FLOOR`` of it across the
+      band (measured: 0.25 * separation / UNION_FLOOR, from a line 1e-7 outside the side, to the 0.125 the share
+      saturates at), plus the sliver the tilt leaves (at most half the tilt).
+    - **Conditioning**: where two lines (or a line and a side) cross inside the cell at an angle ``theta``, the crossing is
+      located to ``eps / max(theta, UNION_FLOOR)`` of a chord, and each polygon carrying them to that much area. Measured
+      on 2300 constructed draws, in both pairings at ``theta`` from 1e-6 to 3e-2, the error never passed 0.033 of this;
+      it is taken whole, a margin of 30. Past the floor the division is by the true angle, so this grows as the angle
+      falls to the floor and no further, where the floor's own rules above take over. It is applied only within the
+      measured range (``theta`` up to 2^-5): above it a draw is held to the clipped area's own rounding, which on
+      generic draws reaches 7e-16.
+
+    Not covered: three or more lines all within the floor of one another (the first rule's pairing misplaces more than
+    a sliver where a third line crosses their chords: 1e-4 on a constructed triple, a configuration the strategy below
+    does not reach in 6e4 draws)."""
     import itertools
 
-    total = 0.0
     eps = float(np.finfo(np.float64).eps)
+    floor = coverage.UNION_FLOOR
+
+    def holding(elements) -> int:
+        return sum(1 for count in range(1, len(terms) + 1) for subset in itertools.combinations(terms, count)
+                   if set(elements) <= {k for term in subset for k in term})
+
+    def crossing(angle, separation) -> float:
+        return eps / max(angle, floor) if angle <= 2.0 ** -5 and separation <= 2.0 * angle + floor else 0.0
+
+    total = 0.0
     for (i, (di, ui, vi)), (j, (dj, uj, vj)) in itertools.combinations(enumerate(lines), 2):
         cross = abs(ui * vj - vi * uj)
         separation = abs(di - dj) if ui * uj + vi * vj > 0 else abs(di + dj)
-        if cross <= coverage.UNION_FLOOR * math.sqrt(2.0) and separation < coverage.UNION_FLOOR:
-            holding = sum(1 for count in range(1, len(terms) + 1) for subset in itertools.combinations(terms, count)
-                          if {i, j} <= {k for term in subset for k in term})
-            total += holding * (math.sqrt(2.0) * (separation + cross) + 64 * eps / coverage.UNION_FLOOR)
+        floored = cross <= floor * math.sqrt(2.0) and separation < floor
+        total += holding((i, j)) * (crossing(cross, separation) + (
+            math.sqrt(2.0) * (separation + cross) + 64 * eps / floor if floored else 0.0))
+    for i, (distance, nu, nv) in enumerate(lines):
+        for (mu, mv), (eu, ev) in coverage._SIDES:
+            slope, middle = abs(nu * eu + nv * ev), abs(-distance - nu * mu - nv * mv)
+            floored = slope <= floor and middle < 2.0 * floor
+            total += holding((i,)) * (crossing(slope, middle) + (
+                min(0.25, 0.25 * middle / floor) + 0.5 * slope if floored else 0.0))
     return total
 
 
@@ -184,6 +216,10 @@ def capped_terms():
 @given(distances=st.lists(st.floats(-1.2, 1.2), min_size=8, max_size=8),
        angles=st.lists(st.floats(0.0, 2.0 * math.pi), min_size=8, max_size=8))
 @example(distances=[0.0, 0.0, 0.0, 0.0, 0.0, 2e-09, 0.0, 0.0], angles=[0.0] * 8)
+@example(distances=[0.0, 0.125, 0.0, 0.0, 0.25, 0.375, 0.5, 1.0], angles=[0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 5e-10, 0.0])
+@example(distances=[0.0, 0.125, 0.0, 0.0, 0.25, 0.375, 0.5, 1.0],
+         angles=[0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 5.960464477539063e-08, 0.0])
+@example(distances=[0.0, 0.125, 0.0, 0.0, 0.25, 0.375, 0.5 + 5e-07, 1.0], angles=[0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0])
 def test_the_composed_share_is_the_exact_area_of_its_polygons(float64, distances, angles):
     terms = capped_terms()
     lines = [(d, math.cos(a), math.sin(a)) for d, a in zip(distances, angles, strict=True)]
