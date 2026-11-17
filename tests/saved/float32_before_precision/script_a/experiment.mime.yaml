@@ -1,0 +1,182 @@
+schema: mime.document/15
+mime: 0.3.0.dev1
+experiment: script_a
+profile: exploratory
+run:
+  dt:
+    value: 0.0005
+    unit: s
+  seed: 0
+scene:
+  up: [0.0, 0.0, 1.0]
+  units: m
+  references: []
+sources: {}
+conditions: {}
+things:
+  field:
+    kind: apparatus
+    prim: /World/field
+    fields:
+      magnetic:
+        name: uniform_rotating
+        version: 0.2.0
+        settings:
+          rotation_axis: tube.axis
+          initial_direction: [0.0, 1.0, 0.0]
+    commands:
+      amplitude:
+        name: drive.constant
+        version: 0.1.0
+        settings:
+          value:
+            value: 0.0012
+            unit: T
+      frequency:
+        name: drive.constant
+        version: 0.1.0
+        settings:
+          value:
+            value: 10.0
+            unit: Hz
+  tube:
+    kind: structure
+    prim: /World/tube
+    geometry:
+      name: tube
+      version: 0.1.0
+      settings:
+        axis: [1.0, 0.0, 0.0]
+        inner_radius:
+          value: 0.003175
+          unit: m
+        wall:
+          value: 0.0016
+          unit: m
+        length:
+          value: 0.1
+          unit: m
+  umr:
+    kind: body
+    prim: /World/umr
+    dynamics:
+      motion:
+        name: rigid_inertial
+        version: 0.4.0
+    initial:
+      position:
+        value: [0.01, 0.0, -0.001]
+        unit: m
+      orientation: [1.0, 0.0, 0.0, 0.0]
+      velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: m/s
+      angular_velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: Hz
+    parts:
+      shell:
+        solid:
+          name: screw
+          version: 0.3.0
+          settings:
+            radius:
+              value: 0.0015600000000000002
+              unit: m
+            length:
+              value: 0.00747
+              unit: m
+            wavenumber:
+              value: 2.33
+              unit: '1'
+            modulation:
+              value: 0.33
+              unit: '1'
+            starts: 2
+  water:
+    kind: medium
+    prim: /World/water
+    fills: tube.lumen
+interactions:
+- id: contact:umr
+  name: contact
+  version: 0.1.0
+  binds:
+    body: umr
+    surface: tube.inner_surface
+  settings:
+    rung: projection
+    margin:
+      value: 0.0001
+      unit: m
+- id: drag:umr
+  name: drag
+  version: 0.4.0
+  binds:
+    body: umr
+    medium: water
+  settings:
+    rung: surrogate
+    weights:
+      asset: dejongh_mlp_v2
+      sha256: ac1fca5c109fa3e2f27520cbd0ee1c0ce5e85ac31a0b1e93e7b8085c68f0a345
+    lubrication:
+      group: lubrication
+      settings:
+        epsilon:
+          value: 0.00015
+          unit: m
+- id: gravity:umr
+  name: gravity
+  version: 0.1.0
+  binds:
+    body: umr
+    medium: water
+- id: magnetic.torque:umr
+  name: magnetic.torque
+  version: 0.2.0
+  binds:
+    body: umr
+    field: field.magnetic
+observations:
+- id: swim_speed:umr
+  name: swim_speed
+  version: 0.1.0
+  binds:
+    body: umr
+  settings:
+    along: tube.axis
+declared:
+  umr.buoyant_volume:
+    value: 6.022068099805108e-08
+    unit: m^3
+    reason: A's reference provenance (phase 0, MIME-port041 at 6485516)
+  umr.centre_of_buoyancy:
+    value: [0.0, 0.0, 0.0]
+    unit: m
+    reason: the reference's body has one density, so its centre of buoyancy is its centre of mass
+  umr.inertia:
+    value: [1.0331989974018431e-10, 1.0331989974018431e-10, 1.0331989974018431e-10]
+    unit: kg m^2
+    reason: A's reference provenance (phase 0, MIME-port041 at 6485516)
+  umr.magnetic_moment:
+    value: [0.0, 0.00168, 0.0]
+    unit: A m^2
+    reason: A's reference provenance (phase 0, MIME-port041 at 6485516)
+  umr.mass:
+    value: 8.491116020725203e-05
+    unit: kg
+    reason: A's reference provenance (phase 0, MIME-port041 at 6485516)
+  water.density:
+    value: 1000.0
+    unit: kg/m^3
+    reason: A's reference provenance (phase 0, MIME-port041 at 6485516)
+  water.viscosity:
+    value: 0.001
+    unit: Pa s
+    reason: A's reference provenance (phase 0, MIME-port041 at 6485516)
+materials: {}
+controller: null
+gravity:
+  value: 9.81
+  unit: m/s^2

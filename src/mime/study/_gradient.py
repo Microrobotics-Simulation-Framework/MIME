@@ -40,7 +40,7 @@ from mime.build._maddening import META, FlagTest, differentiated_run, full_state
 from mime.build._refusals import ArgumentRefused
 from mime.control._run import ChunkedRun
 from mime.gradients import ACKNOWLEDGED_ONLY, GradientStatus, composed, unacknowledged
-from mime.core import MimeNode
+from mime.core import MimeNode, run_dtype
 from mime.core._node import CAP_LIMITED, FLOOR_LIMITED, NOT_FINITE, STAGNATED, rechecked_nodes
 from mime.nodes.flow.fvm._solve import DEFAULT_CAP, RECHECK_CAP_FACTOR, STALL_RESTARTS
 from mime.nodes.control import ControllerNode, DelayNode
@@ -772,7 +772,7 @@ def _group(plan: StudyPlan, group: Group, indices: Sequence[int], built: BuiltEx
             ", ".join(f"{owner!r}: '<why a derivative that stops or is unchecked there is what you need>'"
                       for owner in refused) + "}), or take the derivative in a path that avoids it",
             why="a cut or unverified path is refused unless acknowledged (mime.gradients)")])
-    real = np.float64 if _jnp.zeros(()).dtype == np.float64 else np.float32
+    real = np.float64 if run_dtype() == np.float64 else np.float32
     found: list[tuple[int, MemberGradient, dict[str, GradientStatus]]] = []
     batched = group.batched and not callback
     runs: list[tuple[list[int], Any]] = []
@@ -877,7 +877,7 @@ def _recheck(graph: Any, again: Callable[[], _Prepared], reports: Sequence[tuple
     found: list[Recheck | None] = []
     how = f"the cap lifted to the larger of {RECHECK_CAP_FACTOR} times itself and {DEFAULT_CAP}, the stall restarts " \
           f"raised by {STALL_RESTARTS}, at the solve's own tolerance"
-    dtype = str(_jnp.zeros(()).dtype)
+    dtype = str(run_dtype())
     for held, other, own, (taken, refused) in zip(results, repeated, reports, plans, strict=True):
         if not taken:
             found.append(_unmade(held, refused))

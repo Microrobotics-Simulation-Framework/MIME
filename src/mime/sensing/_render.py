@@ -241,10 +241,9 @@ def _box_coverage(subject: Subject, p: Mapping[str, Any], o: Any, d: Any, du: An
     return share
 
 
-def _corners(camera: Pinhole, start: tuple[Any, Any] | None, size: tuple[int, int]) -> tuple[Any, Any]:
-    """The undistorted normalised coordinates of the pixels' corners: of the whole image, or of a window starting at
-    ``start`` (its first pixel's ``(v, u)``) of ``size`` pixels."""
-    dtype = jnp.result_type(camera.fx, float)
+def _corners(camera: Pinhole, start: tuple[Any, Any] | None, size: tuple[int, int], dtype: Any) -> tuple[Any, Any]:
+    """The undistorted normalised coordinates of the pixels' corners, in the run's ``dtype``: of the whole image, or of
+    a window starting at ``start`` (its first pixel's ``(v, u)``) of ``size`` pixels."""
     rows, columns = size
     v, u = jnp.meshgrid(jnp.arange(rows + 1, dtype=dtype) - 0.5, jnp.arange(columns + 1, dtype=dtype) - 0.5,
                         indexing="ij")
@@ -271,7 +270,7 @@ def _seen(subject: Subject, rays: Rays, rotation: Any, origin: Any, dtype: Any, 
     if subject.coverage == "disc":
         camera_rotation = _rotation(pose.orientation, dtype)
         centre = camera_rotation.T @ (origin - jnp.asarray(pose.position, dtype=dtype))
-        corners_x, corners_y = _corners(camera, start, rays.beyond.shape)
+        corners_x, corners_y = _corners(camera, start, rays.beyond.shape, dtype)
 
         def exact() -> Any:
             return coverage.disc(corners_x, corners_y, centre, p["radius"])

@@ -1294,11 +1294,13 @@ class MRSDragNode(MimeNode):
         handover = HANDOVER_SPACINGS * spacing
         with cast(Any, jax).ensure_compile_time_eval():
             wall = self._wall()
-            points = self._sampling.samples(self._kind, self._kind_parameters(leaves)).points
+            pose = as_run_array(start["pose"])
+            # in the run's dtype, as the step takes them (a float32 run's samples are made from Python floats, float64)
+            points = self._sampling.samples(self._kind, self._kind_parameters(leaves)).points.astype(pose.dtype)
             constants = {name: leaves.get(f"{WALL}{name}", self.constants()[f"{WALL}{name}"])
                          for name in wall.parameters}
             found = handed_over(cast(Search, self._search), self._kind, self._kind_parameters(leaves), points,
-                                as_run_array(start["pose"]), wall, constants, leaves, leaves["viscosity"], form)
+                                pose, wall, constants, leaves, leaves["viscosity"], form)
             size = float(np.max(np.linalg.norm(np.asarray(points, dtype=np.float64), axis=-1)))
             radius = 1.0 / max(float(found.contact.k1), CURVATURE_FLOOR / size)
             cutoff, gap = float(found.cutoff), float(found.contact.gap)

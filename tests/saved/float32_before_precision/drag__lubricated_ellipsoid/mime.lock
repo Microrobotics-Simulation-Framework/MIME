@@ -1,0 +1,648 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {}
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [
+    {
+     "source_field": "pose",
+     "source_node": "ball",
+     "source_units": "m; 1",
+     "target_field": "pose",
+     "target_node": "drag:ball",
+     "target_units": "m; 1"
+    },
+    {
+     "additive": true,
+     "source_field": "background_load",
+     "source_node": "drag:ball",
+     "source_units": "N; N m",
+     "target_field": "background_load",
+     "target_node": "ball",
+     "target_units": "N; N m"
+    },
+    {
+     "additive": true,
+     "source_field": "resistance",
+     "source_node": "drag:ball",
+     "source_units": "N s/m; N s; N m s",
+     "target_field": "resistance",
+     "target_node": "ball",
+     "target_units": "N s/m; N s; N m s"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "drag:ball",
+     "params": {
+      "blob": 0.25,
+      "counts": [
+       [
+        162,
+        331
+       ]
+      ],
+      "force_spacing": 0.00016,
+      "handover_spacing": 0.00016,
+      "kind": "ellipsoid",
+      "kind_version": "0.1.0",
+      "lubrication": true,
+      "near_contact_form": "film",
+      "part_centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "part_rotation": [
+       1.0,
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "patches": [
+       "surface"
+      ],
+      "quadrature_counts": [
+       [
+        162,
+        331
+       ]
+      ],
+      "quadrature_owners": {
+       "dtype": "int32",
+       "sha256": "b12a35325dea319e12eed75c6d2d3e85b4936d2b052fd08d93d55789bb2ae36f",
+       "shape": [
+        53622
+       ]
+      },
+      "roughness_body": 1e-09,
+      "roughness_wall": 1e-09,
+      "sampling_chosen": {
+       "dtype": "int32",
+       "sha256": "1b1f8321d3e266ba44dc2891810bbbb9000659e0487cf5a167fb199f985738d8",
+       "shape": [
+        882
+       ]
+      },
+      "sampling_members": {
+       "dtype": "int32",
+       "sha256": "0abafcaf6fcf1a0cb53f2e6080850d6307e28117d182f364335f4a837da916e0",
+       "shape": [
+        882,
+        1010
+       ]
+      },
+      "shape_semi_axes": [
+       0.0011,
+       0.001,
+       0.00095
+      ],
+      "viscosity": 0.001,
+      "wall_kind": "plane",
+      "wall_kind_version": "0.1.0",
+      "wall_normal": [
+       0.0,
+       0.0,
+       1.0
+      ],
+      "wall_offset": 0.0
+     },
+     "timestep": 0.001,
+     "type": "MRSDragNode"
+    },
+    {
+     "name": "ball",
+     "params": {
+      "extent": 0.0,
+      "inertia": [
+       1e-11,
+       0.0,
+       0.0,
+       0.0,
+       1e-11,
+       0.0,
+       0.0,
+       0.0,
+       1e-11
+      ],
+      "initial_pose": [
+       0.0,
+       0.0,
+       0.003,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_twist": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "margin": 0.0,
+      "mass": 1e-05,
+      "surface_shape": "",
+      "velocity_rule": ""
+     },
+     "timestep": 0.001,
+     "type": "RigidInertialTensorNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "ball": {},
+    "drag:ball": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "dynamics",
+   "name": "rigid_inertial",
+   "version": "0.4.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "geometry",
+   "name": "plane",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "interaction",
+   "name": "drag",
+   "version": "0.5.0"
+  }
+ ],
+ "environment": {
+  "blas_threads": 1,
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev1",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.12.15",
+  "runner": {},
+  "runner_info": {},
+  "usable_cpus": 24,
+  "usd_core": "26.11",
+  "x64": false,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:6a0b1cce619c6f30f84b2fd144ab1b5c26bcfa5365bdd05f24934b1a90556d34",
+  "document": "sha256:da593ff3caf61ef08808e8f855f35ddbdc19ef7978b53c5fd9a6c5b3d0fed7a4",
+  "input": "sha256:76cf61dca86beb427ba84e3a9108cfcce9b993f3673f14aad7125a6d3e8a8a9b",
+  "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 0.0,
+  "file": "reference.npz",
+  "resolution": {
+   "ball.pose": {
+    "1": 0.0,
+    "m": 2.3283064365386963e-10
+   },
+   "ball.twist": {
+    "m/s": 0.0,
+    "rad/s": 0.0
+   },
+   "drag:ball.asymmetric": {
+    "1": 0.0
+   },
+   "drag:ball.asymmetry": {
+    "1": 1.373291524942033e-08
+   },
+   "drag:ball.background_load": {
+    "N": 0.0,
+    "N m": 0.0
+   },
+   "drag:ball.contact_coupling": {
+    "N s": 0.0
+   },
+   "drag:ball.contact_cutoff": {
+    "m": 1.1102230246251565e-16
+   },
+   "drag:ball.contact_gap": {
+    "m": 2.3283064365386963e-10
+   },
+   "drag:ball.contact_increment": {
+    "N m s": 0.0,
+    "N s": 0.0,
+    "N s/m": 0.0
+   },
+   "drag:ball.film_annulus": {
+    "1": 0.0
+   },
+   "drag:ball.film_residual": {
+    "1": 0.0
+   },
+   "drag:ball.film_unsolved": {
+    "1": 0.0
+   },
+   "drag:ball.handover_far_side": {
+    "1": 0.0
+   },
+   "drag:ball.handover_tube_ratio": {
+    "1": 0.0
+   },
+   "drag:ball.handover_window": {
+    "1": 0.0
+   },
+   "drag:ball.indefinite": {
+    "1": 0.0
+   },
+   "drag:ball.least_eigenvalue": {
+    "1": 5.960464477539063e-08
+   },
+   "drag:ball.near_wall": {
+    "1": 0.0
+   },
+   "drag:ball.resistance": {
+    "N m s": 1.5612511283791264e-17,
+    "N s": 3.7643499428696714e-16,
+    "N s/m": 9.094947017729282e-12
+   },
+   "drag:ball.steps": {
+    "1": 0.0
+   },
+   "drag:ball.stopped_at": {
+    "1": 0.0
+   },
+   "drag:ball.stopped_gap": {
+    "m": 0.0
+   },
+   "drag:ball.stopped_least": {
+    "1": 0.0
+   },
+   "drag:ball.stopped_pose": {
+    "1": 0.0,
+    "m": 0.0
+   },
+   "drag:ball.wall_gap": {
+    "m": 0.0
+   },
+   "drag:ball.wall_gap_spacings": {
+    "1": 9.5367431640625e-07
+   }
+  },
+  "resolution_factor": 30.0,
+  "rtol": 1e-05,
+  "sha256": "sha256:d6bff305f47e74afd70024da462eeda8fc4e6503b7e7e46320711f27a2ddc761",
+  "steps": 2
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "ball": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "angular_velocity": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "orientation": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position": [
+      0.0,
+      0.0,
+      0.003
+     ],
+     "velocity": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "kind": "dynamics",
+    "name": "rigid_inertial",
+    "nodes": [
+     "ball"
+    ],
+    "settings": {
+     "rate": null
+    },
+    "version": "0.4.0"
+   },
+   "drag:ball": {
+    "binds": {
+     "body": "ball",
+     "medium": "water"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "drag",
+    "nodes": [
+     "drag:ball"
+    ],
+    "settings": {
+     "blob": 0.25,
+     "coefficients": null,
+     "feature_cells": null,
+     "kernel_width": null,
+     "lubrication": null,
+     "near_contact": true,
+     "near_field": null,
+     "one_way": null,
+     "patches": null,
+     "quadrature_refinement": 8,
+     "rung": "mrs",
+     "sampling": null,
+     "self_history": null,
+     "spacing": {
+      "unit": "m",
+      "value": 0.00016
+     },
+     "wall_kind": "plane",
+     "wall_refinement": null,
+     "weights": null
+    },
+    "version": "0.5.0"
+   }
+  },
+  "fills": {
+   "water": "floor.half_space"
+  },
+  "geometry": {
+   "floor": {
+    "name": "plane",
+    "settings": {
+     "normal": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "offset": {
+      "unit": "m",
+      "value": 0.0
+     }
+    },
+    "version": "0.1.0"
+   }
+  },
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {
+    "ball": {
+     "shell": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "inertia_per_mass": [
+       [
+        3.805e-07,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        4.2250000000000003e-07,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        4.42e-07
+       ]
+      ],
+      "inside": null,
+      "magnet": false,
+      "material": null,
+      "rotation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ],
+      "solid": {
+       "name": "ellipsoid",
+       "settings": {
+        "semi_axes": {
+         "unit": "m",
+         "value": [
+          0.0011,
+          0.001,
+          0.00095
+         ]
+        }
+       },
+       "version": "0.1.0"
+      },
+      "volume": 4.377285764001778e-09
+     }
+    }
+   },
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "drag:ball",
+   "ball"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {
+    "drag:ball.quadrature_refinement": {
+     "entry": "drag 0.5.0",
+     "kind": "numerical",
+     "value": 8
+    },
+    "floor.offset": {
+     "entry": "plane 0.1.0",
+     "kind": "convention",
+     "value": {
+      "unit": "m",
+      "value": 0.0
+     }
+    }
+   },
+   "listed": [],
+   "pending": [
+    {
+     "codes": [
+      "default_numerical"
+     ],
+     "target": "drag:ball.quadrature_refinement"
+    }
+   ],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": [
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_numerical"
+     ],
+     "target": "drag:ball.quadrature_refinement"
+    }
+   ]
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.001,
+   "experiment": "lubricated_ellipsoid",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -0.0
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {},
+   "meters_per_unit": 1.0,
+   "prims": {
+    "ball": "/World/ball",
+    "floor": "/World/floor",
+    "water": "/World/water"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {},
+  "things": {
+   "ball": "body",
+   "floor": "structure",
+   "water": "medium"
+  },
+  "values": {
+   "ball.inertia": {
+    "details": [],
+    "read_by": [
+     "ball"
+    ],
+    "reason": "a millimetre body's order",
+    "source": "declared in the experiment, in place of the value its parts would give (none: body ball's mass and inertia are derived from its parts, and 'shell' has no density)",
+    "unit": "kg m^2",
+    "value": [
+     1e-11,
+     1e-11,
+     1e-11
+    ]
+   },
+   "ball.mass": {
+    "details": [],
+    "read_by": [
+     "ball"
+    ],
+    "reason": "a millimetre body's order",
+    "source": "declared in the experiment, in place of the value its parts would give (none: body ball's mass and inertia are derived from its parts, and 'shell' has no density)",
+    "unit": "kg",
+    "value": 1e-05
+   },
+   "ball.roughness": {
+    "details": [],
+    "read_by": [
+     "drag:ball"
+    ],
+    "reason": "the gate's declared roughness",
+    "source": "declared in the experiment",
+    "unit": "m",
+    "value": 1e-09
+   },
+   "floor.roughness": {
+    "details": [],
+    "read_by": [
+     "drag:ball"
+    ],
+    "reason": "the gate's declared roughness",
+    "source": "declared in the experiment",
+    "unit": "m",
+    "value": 1e-09
+   },
+   "water.viscosity": {
+    "details": [],
+    "read_by": [
+     "drag:ball"
+    ],
+    "reason": "water",
+    "source": "declared in the experiment",
+    "unit": "Pa s",
+    "value": 0.001
+   }
+  },
+  "vocabulary": {
+   "mime": "0.3.0.dev1"
+  }
+ },
+ "schema": "mime.lock/15",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "19cbbd5ffc17c2c143d39e909d0a7b1ec6f97c073a2b74e1634b01a56d4e366a",
+  "writer": 2
+ }
+}

@@ -73,10 +73,13 @@ travels with a shared experiment, and an internal server signed by the instituti
 The tutorials in this guide need no fetched asset: the drag surrogate's weights and the material records they use ship with
 MIME. [Tutorial A](tutorial_a.md#before-you-run-it) says which part of a tube experiment needs the table.
 
-## Precision follows the dtype of the run
+## Precision is declared by the experiment
 
-**A run computes in the dtype JAX gives it, float32 by default or float64 under `JAX_ENABLE_X64=1`, and a float32 run holds
-only behind declared guards.** MIME's coupled rigs (script A, A0, the hull contact) run and are gated in both dtypes. An
+**A run computes in the precision its experiment declares, `Experiment(..., precision="float32")` or `"float64"`, float64
+when it states none, and a float32 run holds only behind declared guards.** A build enables JAX's 64-bit types whatever the
+precision (from `plan()` or `build()`, for the rest of the process): `JAX_ENABLE_X64` no longer chooses a run's precision,
+and a value computed with `jax.numpy` before the build is float32, which a float64 run refuses (`run.precision-lossy`): pass
+Python or NumPy floats. A saved experiment's lock records its precision, and a load builds in it. MIME's coupled rigs (script A, A0, the hull contact) run and are gated in both dtypes. An
 earlier note said that some coupled rigs need float64; it came from one NaN in the earlier line whose cause was never
 recorded, and it is withdrawn.
 

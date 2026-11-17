@@ -26,6 +26,7 @@ import numpy as np
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._checks import stopped_refusals
 from mime.build._control import Mode
+from mime.core import run_dtype
 from mime.build._maddening import META, fisher_information, full_state, parameter_specs, state_put_back
 from mime.build._refusals import ArgumentRefused
 from mime.build._watch import WatchPlan
@@ -217,7 +218,7 @@ class _Fit:
         from the run, and the watched twists with their derivative (for the margins' prediction)."""
         with precision(self.leader.declared.x64):
             theta0, factors = stacked_members([point], [0], self.writes, self.settings, self.declarations,
-                                       np.float64 if _jnp.zeros(()).dtype == np.float64 else np.float32)
+                                       np.float64 if run_dtype() == np.float64 else np.float32)
             theta0 = {path: held[0] for path, held in theta0.items()}
             factors = {key_: held[0] for key_, held in factors.items()}
             state = {node: {name: value[0] for name, value in fields.items()}
@@ -327,7 +328,7 @@ def fit(experiment: Experiment, residual: Callable[[Any], Any], start: Mapping[o
             "declares, or widen the range")])
     fim, insensitive = _fisher(run, theta)
     with precision(run.leader.declared.x64):  # the run's own dtype, which a process default can set
-        x64 = bool(_jnp.zeros(()).dtype == np.float64)
+        x64 = bool(run_dtype() == np.float64)
     stop = tolerance if tolerance is not None else default_tolerance(x64)
     return _descend(run, axes, theta, boxes, iterations, stop, fim, insensitive)
 

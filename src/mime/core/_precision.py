@@ -20,6 +20,8 @@ import numpy as np
 
 #: ``jax.numpy`` through ``Any``: jaxlib ships no stubs, so a strict checker reads its constructors as partly unknown.
 _jnp: Any = jax.numpy
+#: ``jax.tree_util`` through ``Any``, for the same reason.
+_tree: Any = jax.tree_util
 
 Precision = Literal["float32", "float64"]
 PRECISIONS: tuple[Precision, ...] = ("float32", "float64")
@@ -30,17 +32,19 @@ DEFAULT_PRECISION: Precision = "float64"
 _applied: list[Precision | None] = [None]
 #: The precision of the node whose step or initial state is being traced, over the build's (``MimeNode``).
 _NODE: ContextVar[Precision | None] = ContextVar("mime_node_precision", default=None)
-#: A TEST-ONLY MIGRATION BRIDGE, removed in precision's P5, and no user's setting. Set to ``1``, an experiment that
-#: states no precision is built as JAX's flag says, and the flag is left as it is: how MIME built before precision was
-#: declared. ``tests/conftest.py`` sets it for the suite (and the processes its tests start) until its tests declare
-#: their precision.
+#: A TEST-ONLY MIGRATION BRIDGE, removed in precision's P5, and no user's setting. Set to ``1`` inside a pytest session
+#: (pytest sets ``PYTEST_VERSION`` for it, and the processes its tests start inherit both), an experiment that states no
+#: precision is built as JAX's flag says, and the flag is left as it is: how MIME built before precision was declared.
+#: ``tests/conftest.py`` sets it for the suite until its tests declare their precision. Outside a pytest session it is
+#: not read: a user's process always builds an unstated precision in float64.
 FROM_JAX_FLAG = "MIME_PRECISION_FROM_JAX_FLAG"
 
 
 def unstated_precision() -> Precision | None:
     """What an experiment that states no precision is built in: :data:`DEFAULT_PRECISION`, or ``None`` where JAX's flag
-    decides (:data:`FROM_JAX_FLAG`)."""
-    return None if os.environ.get(FROM_JAX_FLAG) == "1" else DEFAULT_PRECISION
+    decides (:data:`FROM_JAX_FLAG`, in a pytest session only)."""
+    bridged = os.environ.get(FROM_JAX_FLAG) == "1" and "PYTEST_VERSION" in os.environ
+    return None if bridged else DEFAULT_PRECISION
 
 
 def declared_precision() -> Precision | None:
@@ -53,6 +57,19 @@ def apply_precision(precision: Precision | None) -> None:
     if precision is not None:
         cast(Any, jax.config).update("jax_enable_x64", True)
     _applied[0] = precision
+
+
+@contextmanager
+def applied(precision: Precision) -> Generator[None]:
+    """For the block, ``precision`` the run's, with JAX's 64-bit types enabled (D2's mode: a float32 block is declared
+    float32, not JAX's flag turned off); the precision applied before it, and JAX's flag, after it."""
+    held = _applied[0]
+    with cast(Any, jax).enable_x64(True):
+        _applied[0] = precision
+        try:
+            yield
+        finally:
+            _applied[0] = held
 
 
 @contextmanager
@@ -81,6 +98,78 @@ def precision_dtype() -> np.dtype[Any]:
     return np.dtype(np.float64 if cast(Any, jax.config).jax_enable_x64 else np.float32)
 
 
+#: A 64-bit JAX dtype and the 32-bit one JAX makes in its place without 64-bit types.
+_NARROWER = {np.dtype(np.float64): np.dtype(np.float32), np.dtype(np.complex128): np.dtype(np.complex64)}
+
+
+def narrowed(tree: Any) -> Any:
+    """``tree`` in a declared float32 run as JAX made it before precision was declared (64-bit types disabled): each
+    float64 or complex128 JAX array narrowed to the 32-bit one, so that a node's constants, and the derived graph a save
+    records, are the ones a float32 run always had. As it is in a float64 run, or where none is declared; Python numbers
+    and NumPy arrays pass as they are (a node makes its constants from them in its own precision)."""
+    if declared_precision() != "float32":
+        return tree
+    def narrow(leaf: Any) -> Any:
+        return leaf.astype(_NARROWER[leaf.dtype]) if isinstance(leaf, jax.Array) and leaf.dtype in _NARROWER else leaf
+
+    return _tree.tree_map(narrow, tree)
+
+
+#: What a float64 run does with a JAX array narrower than float64 handed to a node (:func:`declared_values`), the one
+#: switch for it: ``"refuse"`` (``run.precision-lossy``) or ``"widen"`` (to float64, with a :class:`LossyValueWarning`).
+#: The default follows the maintainer's answer (precision P1); changing it is this line.
+NARROW_IN_FLOAT64: Literal["refuse", "widen"] = "refuse"
+
+
+class LossyValueWarning(UserWarning):
+    """A JAX array narrower than float64 widened into a float64 run: computed in float32, it entered rounded."""
+
+
+def _narrower_than_float64(leaf: Any) -> bool:
+    return isinstance(leaf, jax.Array) and bool(jax.numpy.issubdtype(leaf.dtype, jax.numpy.inexact)) and \
+        leaf.dtype.itemsize < (16 if jax.numpy.issubdtype(leaf.dtype, jax.numpy.complexfloating) else 8)
+
+
+def declared_values(tree: Any, owner: str) -> Any:
+    """``tree``, the arguments a node is made from, in the run's declared precision: the build's boundary for them.
+    In a float32 run it is :func:`narrowed`. In a float64 run a float32 (or narrower) JAX array was computed in float32,
+    JAX's default before a build enables 64-bit types, and widening it does not bring back what was rounded away: as
+    :data:`NARROW_IN_FLOAT64` says, it is refused (``run.precision-lossy``) or widened with a warning naming it.
+    Python numbers and NumPy arrays pass as they are (float64 is exact in both precisions)."""
+    if declared_precision() != "float64":
+        return narrowed(tree)
+    lossy = [(str(_tree.keystr(path)), str(leaf.dtype)) for path, leaf in _tree.tree_leaves_with_path(tree)
+             if _narrower_than_float64(leaf)]
+    if not lossy:
+        return tree
+    named = ", ".join(f"{path or 'the value'} ({dtype})" for path, dtype in lossy[:5])
+    if NARROW_IN_FLOAT64 == "widen":
+        import warnings
+
+        warnings.warn(LossyValueWarning(
+            f"{owner} is handed a JAX array narrower than float64 in a float64 run: {named}, widened to float64. It was "
+            f"computed in float32 (JAX's default before a build enables 64-bit types), so it enters the run rounded: "
+            f"pass a Python float or a NumPy float64 array, or compute it after the build"), stacklevel=3)
+
+        def widen(leaf: Any) -> Any:
+            if not _narrower_than_float64(leaf):
+                return leaf
+            return leaf.astype(np.complex128 if jax.numpy.issubdtype(leaf.dtype, jax.numpy.complexfloating)
+                               else np.float64)
+
+        return _tree.tree_map(widen, tree)
+    from mime._refusals import BuildRefused, Refusal, RefusalClass
+
+    raise BuildRefused([Refusal(
+        "run.precision-lossy", RefusalClass.USER,
+        f"{owner} is handed a JAX array narrower than float64 in a float64 run: {named}. It was computed in "
+        f"float32, JAX's default before a build enables 64-bit types, so it would enter the run rounded",
+        "pass a Python float or a NumPy float64 array (the build makes it float64), or compute it with "
+        "jax.numpy after the build has enabled 64-bit types; or declare the run float32: "
+        "Experiment(..., precision='float32')",
+        why="widening a float32 value to float64 does not bring back the digits float32 rounded away")])
+
+
 def eye(n: int, dtype: Any) -> Any:
     """The ``n x n`` identity in ``dtype``, a constant: ``jax.numpy.eye`` builds it from an ``iota`` in JAX's default
     integer, int64 with 64-bit types enabled, inside a float32 run's step."""
@@ -100,5 +189,8 @@ def diagonal(matrix: Any) -> Any:
     return matrix[index, index]
 
 
-__all__ = ["DEFAULT_PRECISION", "FROM_JAX_FLAG", "PRECISIONS", "Precision", "apply_precision", "declared_precision", "diagonal",
+__all__ = ["DEFAULT_PRECISION", "FROM_JAX_FLAG", "NARROW_IN_FLOAT64", "PRECISIONS", "LossyValueWarning", "Precision",
+           "applied", "apply_precision",
+           "declared_precision",
+           "declared_values", "diagonal", "narrowed",
            "diagonal_matrix", "eye", "in_float64", "node_precision", "precision_dtype", "unstated_precision"]

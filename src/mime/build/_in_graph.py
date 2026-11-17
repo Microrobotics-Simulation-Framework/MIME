@@ -41,7 +41,8 @@ from mime.build._lags import EdgeLag, Lag, scheduled
 from mime.build._maddening import initial_fields, inputs, live_inputs, make_jaxpr, make_jaxpr_with_shapes
 from mime.build._probes import host_callbacks
 from mime.build._refusals import MIME_DEFECT, Explained, Refusal, RefusalClass, entry_defect
-from mime.core import jnp
+from mime.core import jnp, run_dtype
+from mime.core._precision import narrowed
 from mime.nodes.control import ControllerNode, DelayNode, Step
 from mime.nodes.control._controller import BELIEVED_NAME
 
@@ -233,7 +234,8 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float, built: Mapping[s
     reads = {read.label: jnp.asarray(initial_fields(built[read.node])[read.field]) for read in plan.reads}
     dtypes = {write.label: inputs(built[write.node])[write.field].dtype for write in plan.writes}
     held = {label: jnp.asarray(value, dtype=dtypes[label]) for label, value in law.held.items()}
-    start = {key: jnp.asarray(value) for key, value in law.state.items()}
+    # the law's start in the run's precision: a float32 run's as JAX made it before 64-bit types were enabled
+    start = narrowed({key: jnp.asarray(value) for key, value in law.state.items()})
     step = inlined(law.step)
     label = plan.registered.cls.label()
     given = {name: jnp.zeros_like(value) for name, value in reads.items()}
@@ -279,7 +281,7 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float, built: Mapping[s
                 f"`ctx.vector(...)`, in `law(ctx)`; or vary another axis",
                 why="a setting an axis names becomes a leaf the traced step reads, so the law must read it there")]
         names = sorted(in_step)
-        leaves = {name: np.asarray(leaf_values[name], dtype=np.asarray(jnp.zeros(())).dtype) for name in names}
+        leaves = {name: np.asarray(leaf_values[name], dtype=run_dtype()) for name in names}
         shapes = {name: leaf_values[name] for name in names}
 
         def node_remake(settings: Mapping[str, Any]) -> Any:

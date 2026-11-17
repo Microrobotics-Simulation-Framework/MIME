@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Self, cast, override
 
 import numpy as np
 
-from mime.core import run_dtype, shape_named, switch
+from mime.core import jnp, run_dtype, shape_named, switch
 from mime.assets import Asset
 from mime.assets._asset import named_problem
 from mime.gradients import GradientStatus
@@ -244,7 +244,10 @@ def uniform_tube(region: Region | None, medium: str) -> UniformTube | Problem:
                                          f"radius: the surrogate reads both from the tube the medium fills",
                        f"write Medium({medium!r}, fills=tube.lumen) for a structure with a Tube geometry")
     shape = shape_named(region.shape)
-    axis, point = shape.axis(region.parameters), shape.axis_point(region.parameters)
+    # in the run's dtype, as a run's nodes read them: a float32 run's tube is a float32 one
+    parameters = {name: jnp.asarray(value, dtype=run_dtype()) if isinstance(value, (float, tuple)) else value
+                  for name, value in region.parameters.items()}
+    axis, point = shape.axis(parameters), shape.axis_point(parameters)
     if axis is None or point is None:
         return Problem("drag.no-axis", f"medium {medium!r} fills {region.path}, a {region.shape} region with no axis: "
                                        f"the surrogate needs a tube's axis and radius",
@@ -255,7 +258,7 @@ def uniform_tube(region: Region | None, medium: str) -> UniformTube | Problem:
                                        f"parameters are not a circular tube's {VESSEL_PARAMETERS}: the surrogate "
                                        "needs a tube's axis and "
                                        "radius", "fill a tube's lumen: Medium(..., fills=tube.lumen)")
-    radius = -float(shape.signed_distance(region.parameters, point))
+    radius = -float(shape.signed_distance(parameters, point))
     if not (math.isfinite(radius) and radius > 0.0):
         return Problem("drag.no-axis", f"medium {medium!r} fills {region.path}, whose axis lies outside it (signed "
                                        f"distance {-radius!r} m on the "

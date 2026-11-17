@@ -1,0 +1,731 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {}
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [
+    {
+     "source_field": "frame_poses",
+     "source_node": "stage.gantry",
+     "source_units": "m; 1",
+     "target_field": "mount_poses",
+     "target_node": "stage.magnetic",
+     "target_units": "m; 1"
+    },
+    {
+     "source_field": "pose",
+     "source_node": "umr",
+     "source_units": "m; 1",
+     "target_field": "points_magnetic_force_umr",
+     "target_node": "stage.magnetic",
+     "target_units": "m; 1"
+    },
+    {
+     "source_field": "gradient_magnetic_force_umr",
+     "source_node": "stage.magnetic",
+     "source_units": "T/m",
+     "target_field": "gradient",
+     "target_node": "magnetic.force:umr",
+     "target_units": "T/m"
+    },
+    {
+     "source_field": "pose",
+     "source_node": "umr",
+     "source_units": "m; 1",
+     "target_field": "pose",
+     "target_node": "magnetic.force:umr",
+     "target_units": "m; 1"
+    },
+    {
+     "additive": true,
+     "source_field": "wrench",
+     "source_node": "magnetic.force:umr",
+     "source_units": "N; N m",
+     "target_field": "applied_wrench",
+     "target_node": "umr",
+     "target_units": "N; N m"
+    },
+    {
+     "source_field": "value",
+     "source_node": "drive:stage.gantry.position",
+     "source_units": "m",
+     "target_field": "position",
+     "target_node": "stage.gantry",
+     "target_units": "m"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "stage.magnetic",
+     "params": {
+      "initial_mount_pose": [
+       0.0,
+       0.0,
+       0.1,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "magnet_radius": 0.020155644370746375,
+      "moment": [
+       0.0,
+       0.0,
+       18.89
+      ],
+      "mount_count": 2,
+      "mount_index": 1,
+      "offset_slots": [
+       "magnetic_force_umr"
+      ],
+      "offsets": [
+       0.0005,
+       0.0,
+       0.0
+      ],
+      "placement": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "slots": [
+       "magnetic_force_umr"
+      ]
+     },
+     "timestep": 0.001,
+     "type": "PointDipoleNode"
+    },
+    {
+     "name": "magnetic.force:umr",
+     "params": {
+      "magnet_centre": [
+       0.0005,
+       0.0,
+       0.0
+      ],
+      "moment": [
+       0.0,
+       0.0017,
+       0.0004
+      ]
+     },
+     "timestep": 0.001,
+     "type": "MagneticForceNode"
+    },
+    {
+     "name": "umr",
+     "params": {
+      "extent": 0.0020748000000000003,
+      "inertia": [
+       1e-10,
+       0.0,
+       0.0,
+       0.0,
+       1.2e-10,
+       0.0,
+       0.0,
+       0.0,
+       8e-11
+      ],
+      "initial_pose": [
+       0.0,
+       0.0,
+       -0.001,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_twist": [
+       0.0,
+       0.0,
+       -0.001,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "margin": 0.0001,
+      "mass": 8.5e-05,
+      "surface_axis": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "surface_centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "surface_radius": 0.003175,
+      "surface_shape": "cylinder",
+      "velocity_rule": "remove_outward"
+     },
+     "timestep": 0.001,
+     "type": "RigidInertialTensorNode"
+    },
+    {
+     "name": "stage.gantry",
+     "params": {
+      "initial_position": 0.0,
+      "placement": [
+       0.0,
+       0.0,
+       0.1,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "travel": [
+       1.0,
+       0.0,
+       0.0
+      ]
+     },
+     "timestep": 0.001,
+     "type": "GantryNode"
+    },
+    {
+     "name": "drive:stage.gantry.position",
+     "params": {
+      "value": 0.02
+     },
+     "timestep": 0.001,
+     "type": "ConstantNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "drive:stage.gantry.position": {},
+    "magnetic.force:umr": {},
+    "stage.gantry": {},
+    "stage.magnetic": {},
+    "umr": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "drive",
+   "name": "drive.constant",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-lab-fixture",
+   "distribution_version": "0.1.0",
+   "kind": "dynamics",
+   "name": "labx.gantry",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "dynamics",
+   "name": "rigid_inertial",
+   "version": "0.4.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "field provider",
+   "name": "point_dipole",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "geometry",
+   "name": "tube",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "interaction",
+   "name": "contact",
+   "version": "0.5.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "interaction",
+   "name": "magnetic.force",
+   "version": "0.2.0"
+  }
+ ],
+ "environment": {
+  "blas_threads": 1,
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev1",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.12.15",
+  "runner": {},
+  "runner_info": {},
+  "usable_cpus": 24,
+  "usd_core": "26.11",
+  "x64": false,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:63195d07a290965a72980944a5def33438f627e1387088bbd9da89c74e042895",
+  "document": "sha256:2760ca14daba14bc999a83ce2f953db84e4c5b20b490a9af4eddbf41fd02d143",
+  "input": "sha256:6b73249604f789e01cc2dd4f6b393e3ad4115b50f745bfbafcd0e57d4c4fd7e7",
+  "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 0.0,
+  "file": "reference.npz",
+  "resolution": {
+   "drive:stage.gantry.position.value": {
+    "the command's own": 1.862645149230957e-09
+   },
+   "magnetic.force:umr.wrench": {
+    "N": 1.4551915228366852e-11,
+    "N m": 7.105427357601002e-15
+   },
+   "stage.gantry.frame_poses": {
+    "1": 1.1920928955078125e-07,
+    "m": 7.450580596923828e-09
+   },
+   "stage.magnetic.centre": {
+    "m": 7.450580596923828e-09
+   },
+   "stage.magnetic.flux_density_magnetic_force_umr": {
+    "T": 4.656612873077393e-10
+   },
+   "stage.magnetic.gradient_magnetic_force_umr": {
+    "T/m": 2.2351741790771484e-08
+   },
+   "stage.magnetic.orientation": {
+    "1": 2.384185791015625e-07
+   },
+   "umr.pose": {
+    "1": 1.1641532182693481e-10,
+    "m": 1.1641532182693481e-10
+   },
+   "umr.twist": {
+    "m/s": 4.656612873077393e-10,
+    "rad/s": 1.1920928955078125e-07
+   }
+  },
+  "resolution_factor": 30.0,
+  "rtol": 1e-05,
+  "sha256": "sha256:16c41c39c59b81c70492082428bee6eaf91bfa7d38b5f18667026d31415631a3",
+  "steps": 2
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "contact:umr": {
+    "binds": {
+     "body": "umr",
+     "surface": "tube.inner_surface"
+    },
+    "differentiability": "piecewise_jump",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "contact",
+    "nodes": [],
+    "settings": {
+     "margin": {
+      "unit": "m",
+      "value": 0.0001
+     },
+     "rule": "remove_outward",
+     "rung": "projection",
+     "spacing": null
+    },
+    "version": "0.5.0"
+   },
+   "drive:stage.gantry.position": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "drive",
+    "name": "drive.constant",
+    "nodes": [
+     "drive:stage.gantry.position"
+    ],
+    "settings": {
+     "value": {
+      "unit": "m",
+      "value": 0.02
+     }
+    },
+    "version": "0.1.0"
+   },
+   "magnetic.force:umr": {
+    "binds": {
+     "body": "umr",
+     "field": "stage.magnetic"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "magnetic.force",
+    "nodes": [
+     "magnetic.force:umr"
+    ],
+    "settings": {},
+    "version": "0.2.0"
+   },
+   "stage.gantry": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "dynamics",
+    "name": "labx.gantry",
+    "nodes": [
+     "stage.gantry"
+    ],
+    "settings": {
+     "at": {
+      "unit": "m",
+      "value": [
+       0.0,
+       0.0,
+       0.1
+      ]
+     },
+     "mount": null,
+     "orientation": null,
+     "rate": null,
+     "travel": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    "version": "0.1.0"
+   },
+   "stage.magnetic": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "field provider",
+    "name": "point_dipole",
+    "nodes": [
+     "stage.magnetic"
+    ],
+    "settings": {
+     "part": "magnet"
+    },
+    "version": "0.1.0"
+   },
+   "umr": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "angular_velocity": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "orientation": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position": [
+      0.0,
+      0.0,
+      -0.001
+     ],
+     "velocity": [
+      0.0,
+      0.0,
+      -0.001
+     ]
+    },
+    "kind": "dynamics",
+    "name": "rigid_inertial",
+    "nodes": [
+     "umr"
+    ],
+    "settings": {
+     "rate": null
+    },
+    "version": "0.4.0"
+   }
+  },
+  "fills": {},
+  "geometry": {
+   "tube": {
+    "name": "tube",
+    "settings": {
+     "axis": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "centre": {
+      "unit": "m",
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "inner_radius": {
+      "unit": "m",
+      "value": 0.003175
+     },
+     "length": {
+      "unit": "m",
+      "value": 0.1
+     },
+     "wall": {
+      "unit": "m",
+      "value": 0.0016
+     }
+    },
+    "version": "0.1.0"
+   }
+  },
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {},
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "stage.magnetic",
+   "magnetic.force:umr",
+   "umr",
+   "stage.gantry",
+   "drive:stage.gantry.position"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {
+    "contact:umr.rule": {
+     "entry": "contact 0.5.0",
+     "kind": "convention",
+     "value": "remove_outward"
+    },
+    "stage.gantry.travel": {
+     "entry": "labx.gantry 0.1.0",
+     "kind": "convention",
+     "value": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    "tube.centre": {
+     "entry": "tube 0.1.0",
+     "kind": "convention",
+     "value": {
+      "unit": "m",
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   },
+   "listed": [],
+   "pending": [],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": []
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.001,
+   "experiment": "gantry_magnet",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -9.80665
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {
+    "stage": {
+     "magnet": {
+      "in_body": [
+       0.0,
+       0.0,
+       1.0
+      ],
+      "in_part": [
+       0.0,
+       0.0,
+       1.0
+      ],
+      "model": "permanent_magnet",
+      "part": "/World/stage/magnet",
+      "source": "declared in the experiment"
+     }
+    }
+   },
+   "meters_per_unit": 1.0,
+   "prims": {
+    "stage": "/World/stage",
+    "tube": "/World/tube",
+    "umr": "/World/umr"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {
+   "stage.magnetic": [
+    {
+     "interfaces": [
+      "field.magnetic.gradient"
+     ],
+     "name": "magnetic_force_umr",
+     "reader": "magnetic.force:umr"
+    }
+   ]
+  },
+  "things": {
+   "stage": "apparatus",
+   "tube": "structure",
+   "umr": "body"
+  },
+  "values": {
+   "stage.magnetic_moment": {
+    "details": [],
+    "read_by": [
+     "stage.magnetic"
+    ],
+    "reason": "de Jongh's rotor magnet, on a stage",
+    "source": "declared in the experiment (its magnitude), along the magnet magnet's direction, from declared in the experiment",
+    "unit": "A m^2",
+    "value": [
+     0.0,
+     0.0,
+     18.89
+    ]
+   },
+   "umr.extent": {
+    "details": [],
+    "read_by": [
+     "contact:umr"
+    ],
+    "reason": "script A's body",
+    "source": "declared in the experiment",
+    "unit": "m",
+    "value": 0.0020748000000000003
+   },
+   "umr.inertia": {
+    "details": [],
+    "read_by": [
+     "umr"
+    ],
+    "reason": "a millimetre body, round numbers of its order",
+    "source": "declared in the experiment",
+    "unit": "kg m^2",
+    "value": [
+     1e-10,
+     1.2e-10,
+     8e-11
+    ]
+   },
+   "umr.magnet_centre": {
+    "details": [],
+    "read_by": [
+     "magnetic.force:umr"
+    ],
+    "reason": "its magnet at its centre of mass",
+    "source": "declared in the experiment",
+    "unit": "m",
+    "value": [
+     0.0005,
+     0.0,
+     0.0
+    ]
+   },
+   "umr.magnetic_moment": {
+    "details": [],
+    "read_by": [
+     "magnetic.force:umr"
+    ],
+    "reason": "a millimetre body's magnet, its order",
+    "source": "declared in the experiment",
+    "unit": "A m^2",
+    "value": [
+     0.0,
+     0.0017,
+     0.0004
+    ]
+   },
+   "umr.mass": {
+    "details": [],
+    "read_by": [
+     "umr"
+    ],
+    "reason": "a millimetre body, round numbers of its order",
+    "source": "declared in the experiment",
+    "unit": "kg",
+    "value": 8.5e-05
+   }
+  },
+  "vocabulary": {
+   "labx": "0.1.0",
+   "mime": "0.3.0.dev1"
+  }
+ },
+ "schema": "mime.lock/15",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "c75992bf0bda4d762ad6189ae5babc1e47371a804260d10e38eb47d673deed2c",
+  "writer": 2
+ }
+}

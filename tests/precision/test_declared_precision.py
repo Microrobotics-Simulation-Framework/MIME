@@ -122,3 +122,36 @@ def test_a_saved_experiment_loads_in_the_precision_its_lock_records(monkeypatch,
     assert loaded.record.environment["x64"] is (precision == "float64")
     loaded.run(s(2 * loaded.plans.dt))
     assert state_dtypes(loaded) == {precision}
+
+
+def test_a_controller_whose_start_takes_jax_s_flag_for_its_dtype_builds_in_float32():
+    """Its start is float64 under 64-bit types (``jnp.zeros(()).dtype``), its step returns the run's float32: refused
+    ``controller.untraceable`` before the start was narrowed, as JAX narrowed it before precision was declared."""
+    from allocation_cases import allocating_sphere
+
+    experiment = allocating_sphere()
+    experiment._settings = dataclasses.replace(experiment._settings, precision="float32")  # noqa: SLF001
+    built = experiment.build()
+    built.run(s(2 * built.plans.dt))
+    assert state_dtypes(built) == {"float32"}
+
+
+def test_a_wide_operation_in_a_plugin_s_node_is_credited_to_its_own_file(monkeypatch):
+    """A node file outside MIME (a plugin's; here this file) is the origin the audit names for the plant, not MIME's
+    ``MimeNode`` wrapper that called it (where it was credited before: the first frame with ``/mime/`` in its path).
+    The nodes after it widen at their own lines, which the audit names too. The plant is deterministic, so one run is
+    its rate."""
+    import mime.nodes.body._gravity as gravity
+
+    held = gravity.GravityNode.advance
+
+    def planted(self: Any, p: Any, state: Any, boundary_inputs: Any, dt: Any) -> Any:
+        out = dict(held(self, p, state, boundary_inputs, dt))
+        out["wrench"] = out["wrench"] + jnp.zeros(out["wrench"].shape)  # PLANTED: dtype-less, float64
+        return out
+
+    monkeypatch.setattr(gravity.GravityNode, "advance", planted)
+    built = example("script_a", "float32").build()
+    origins = {line for (_, dtypes, line) in audit_graph("script_a", built.graph, built.held_inputs()).origins
+               if "float64" in dtypes}
+    assert any(line.split(":")[0].endswith(Path(__file__).name) for line in origins), origins

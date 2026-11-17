@@ -2,8 +2,8 @@
 
 A float32 run holds float32 and int32 values. Each equation of a traced step (and of every program it holds: a ``jit``,
 a ``cond`` branch, a loop's body) whose output is float64, int64, uint64 or complex128 is **wide**; a wide equation with
-no wide input is an **origin**, where the widening starts (a promotion, a new constant), named by the first MIME or
-MADDENING line of its traceback. A state field whose dtype a step changes is **drifted**: the node's step returned it
+no wide input is an **origin**, where the widening starts (a promotion, a new constant), named by the innermost line
+of its traceback outside JAX and the numerical libraries: MIME's, MADDENING's, or a plugin's own node file. A state field whose dtype a step changes is **drifted**: the node's step returned it
 wider than it came in (``MimeNode.update`` narrows it back; the audit reads the step's own output, before that).
 
 Report-only until float64 islands exist (precision's P2): nothing here fails a run.
@@ -11,6 +11,8 @@ Report-only until float64 islands exist (precision's P2): nothing here fails a r
 
 from __future__ import annotations
 
+import os
+import sysconfig
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
@@ -61,15 +63,26 @@ class Audit:
         return "\n".join(lines)
 
 
+#: The libraries an equation's frames pass through below the code that wrote it, and Python's own.
+_LIBRARIES = tuple(f"{os.sep}{name}{os.sep}" for name in ("jax", "jaxlib", "jaxtyping", "numpy", "opt_einsum", "equinox",
+                                                           "typeguard", "typing_extensions"))
+_PYTHON = sysconfig.get_paths()["stdlib"]
+
+
 def _line(eqn: Any) -> str:
+    """The line that wrote the equation: its innermost frame outside JAX, the numerical libraries and Python's own, in
+    any package (MIME's, MADDENING's, a plugin's node file, a test's)."""
     traceback = eqn.source_info.traceback
     if traceback is None:
         return "?"
     for frame in traceback.frames:
         name = str(frame.file_name)
-        if ("/mime/" in name or "/maddening/" in name) and "/jax/" not in name:
-            short = name.split("site-packages/")[-1].split("/src/")[-1]
-            return f"{short}:{frame.line_num}"
+        if name.startswith((_PYTHON, "<")) or any(library in name for library in _LIBRARIES) or name == __file__:
+            continue
+        short = name.split("site-packages/")[-1].split("/src/")[-1]
+        if os.path.isabs(short) and not os.path.relpath(short).startswith(".."):
+            short = os.path.relpath(short)
+        return f"{short}:{frame.line_num}"
     return "?"
 
 

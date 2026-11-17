@@ -1,0 +1,735 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [
+    {
+     "source_field": "pose",
+     "source_node": "ball",
+     "source_units": "m; 1",
+     "target_field": "pose_ball",
+     "target_node": "camera:",
+     "target_units": "m; 1"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "camera:",
+     "params": {
+      "bodies": [
+       "ball"
+      ],
+      "cx": 15.5,
+      "cy": 11.5,
+      "fx": 150.0,
+      "fy": 150.0,
+      "initial_mount_pose": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_poses": [
+       -4.9999999999999996e-05,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "k1": -0.05,
+      "k2": 0.0,
+      "k3": 0.0,
+      "mount_count": 0,
+      "mount_index": -1,
+      "p1": 0.0,
+      "p2": 0.0,
+      "period": 2,
+      "placement": [
+       0.0,
+       -0.001,
+       0.0,
+       0.7071067811865476,
+       -0.7071067811865476,
+       0.0,
+       0.0
+      ],
+      "scene_numbers": [
+       1000.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       1.9999999999999998e-05,
+       3000.0,
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       5.9999999999999995e-05,
+       0.00047999999999999996,
+       9.999999999999999e-06
+      ],
+      "seed": 2426906274,
+      "spec": "{\"body_subjects\": {\"ball\": [\"ball\"]}, \"height\": 24, \"response\": {\"bits\": 12, \"full_scale\": 1000.0, \"gain\": 1.0, \"offset\": 0.0, \"psf\": 0.0, \"read_noise\": 0.0, \"shot_noise\": true}, \"source\": \"declared\", \"subjects\": [{\"attenuation\": null, \"coverage\": \"disc\", \"kind\": \"sphere\", \"moving\": true, \"name\": \"ball\", \"pose\": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]], \"region\": \"solid\", \"settings\": {\"centre\": [0.0, 0.0, 0.0], \"radius\": 1.9999999999999998e-05}, \"window\": null}, {\"attenuation\": 3000.0, \"coverage\": \"box_edge\", \"kind\": \"tube\", \"moving\": false, \"name\": \"tube\", \"pose\": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]], \"region\": \"wall\", \"settings\": {\"axis\": [1.0, 0.0, 0.0], \"centre\": [0.0, 0.0, 0.0], \"inner_radius\": 5.9999999999999995e-05, \"length\": 0.00047999999999999996, \"wall\": 9.999999999999999e-06}, \"window\": null}], \"width\": 32}",
+      "sub_frames": 2
+     },
+     "timestep": 0.001,
+     "type": "CameraNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "camera:": {}
+   }
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [
+    {
+     "additive": true,
+     "source_field": "wrench",
+     "source_node": "gravity:ball",
+     "source_units": "N; N m",
+     "target_field": "applied_wrench",
+     "target_node": "ball",
+     "target_units": "N; N m"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "gravity:ball",
+     "params": {
+      "buoyant_volume": 3.351032163829111e-14,
+      "centre_of_buoyancy": null,
+      "fluid_density": 1000.0,
+      "gravity": [
+       -0.0,
+       -0.0,
+       -9.80665
+      ],
+      "mass": 3.686135380212022e-11
+     },
+     "timestep": 0.001,
+     "type": "GravityNode"
+    },
+    {
+     "name": "ball",
+     "params": {
+      "extent": 0.0,
+      "inertia": [
+       5.897816608339234e-21,
+       0.0,
+       0.0,
+       0.0,
+       5.897816608339234e-21,
+       0.0,
+       0.0,
+       0.0,
+       5.897816608339234e-21
+      ],
+      "initial_pose": [
+       -4.9999999999999996e-05,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_twist": [
+       0.002,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "margin": 0.0,
+      "mass": 3.686135380212022e-11,
+      "surface_shape": "",
+      "velocity_rule": ""
+     },
+     "timestep": 0.001,
+     "type": "RigidInertialTensorNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "ball": {},
+    "gravity:ball": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "dynamics",
+   "name": "rigid_inertial",
+   "version": "0.4.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "geometry",
+   "name": "tube",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "interaction",
+   "name": "gravity",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "observation",
+   "name": "camera",
+   "version": "0.1.0"
+  }
+ ],
+ "environment": {
+  "blas_threads": 1,
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev1",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.12.15",
+  "runner": {},
+  "runner_info": {},
+  "usable_cpus": 24,
+  "usd_core": "26.11",
+  "x64": false,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:f7c73482fa9ef05875bb2aaae0122787a8b1627543cd32fce4bd9a1d73d53d93",
+  "document": "sha256:2e9977f0fee1efb88951d4837dd9762850d3cfbdf9a35b185fcbc91acaa0e674",
+  "input": "sha256:d16040c90e91c0b92abd51fbad08b3e579c6adc66e9e85df0b9543b4c025a1ca",
+  "observations": "sha256:ef464fc6cf9f66440d60ddc013e1fb4f4fb2d614206e9bfa30ea182eba2fcea9",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 0.0,
+  "file": "reference.npz",
+  "resolution": {
+   "ball.pose": {
+    "1": 0.0,
+    "m": 3.637978807091713e-12
+   },
+   "ball.twist": {
+    "m/s": 1.862645149230957e-09,
+    "rad/s": 0.0
+   },
+   "camera:.behind": {
+    "1": 0.0
+   },
+   "camera:.beyond_distortion": {
+    "1": 0.0
+   },
+   "camera:.expected": {
+    "1": 0.001220703125
+   },
+   "camera:.ghosting": {
+    "1": 0.0
+   },
+   "camera:.image": {
+    "1": 0.0
+   },
+   "camera:.outside_parent": {
+    "1": 0.0
+   },
+   "camera:.ring": {
+    "1": 1.1920928955078125e-07,
+    "m": 3.637978807091713e-12
+   },
+   "camera:.saturated": {
+    "1": 0.0
+   },
+   "camera:.small_silhouette": {
+    "1": 0.0
+   },
+   "camera:.thin_cap": {
+    "1": 0.0
+   },
+   "camera:.window_overflow": {
+    "1": 0.0
+   },
+   "gravity:ball.wrench": {
+    "N": 3.122502256758253e-17,
+    "N m": 0.0
+   }
+  },
+  "resolution_factor": 30.0,
+  "rtol": 1e-05,
+  "sha256": "sha256:d54d8468d8fd6a421393bcca2f692dd1c55d82595c96a3d740aa02f39132f7ac",
+  "steps": 2
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "ball": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "angular_velocity": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "orientation": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position": [
+      -4.9999999999999996e-05,
+      0.0,
+      0.0
+     ],
+     "velocity": [
+      0.002,
+      0.0,
+      0.0
+     ]
+    },
+    "kind": "dynamics",
+    "name": "rigid_inertial",
+    "nodes": [
+     "ball"
+    ],
+    "settings": {
+     "rate": null
+    },
+    "version": "0.4.0"
+   },
+   "camera:": {
+    "binds": {},
+    "differentiability": "piecewise_jump",
+    "every": 1,
+    "initial": {},
+    "kind": "observation",
+    "name": "camera",
+    "nodes": [
+     "camera:"
+    ],
+    "settings": {
+     "absorbers": [
+      [
+       "tube",
+       3000.0
+      ]
+     ],
+     "detector": {
+      "group": "detector",
+      "settings": {
+       "cx": 15.5,
+       "cy": 11.5,
+       "fx": 150.0,
+       "fy": 150.0,
+       "height": 24,
+       "k1": -0.05,
+       "width": 32
+      }
+     },
+     "frame_period": {
+      "unit": "s",
+      "value": 0.002
+     },
+     "hide": [],
+     "mount": {
+      "group": "camera_world",
+      "settings": {
+       "orientation": [
+        0.7071067811865476,
+        -0.7071067811865476,
+        0.0,
+        0.0
+       ],
+       "position": {
+        "unit": "m",
+        "value": [
+         0.0,
+         -0.001,
+         0.0
+        ]
+       }
+      }
+     },
+     "rate": null,
+     "sensor": null,
+     "sub_frames": 2
+    },
+    "version": "0.1.0"
+   },
+   "gravity:ball": {
+    "binds": {
+     "body": "ball",
+     "medium": "water"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "gravity",
+    "nodes": [
+     "gravity:ball"
+    ],
+    "settings": {},
+    "version": "0.1.0"
+   }
+  },
+  "fills": {
+   "water": "tube.lumen"
+  },
+  "geometry": {
+   "tube": {
+    "name": "tube",
+    "settings": {
+     "axis": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "centre": {
+      "unit": "m",
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "inner_radius": {
+      "unit": "m",
+      "value": 5.9999999999999995e-05
+     },
+     "length": {
+      "unit": "m",
+      "value": 0.00047999999999999996
+     },
+     "wall": {
+      "unit": "m",
+      "value": 9.999999999999999e-06
+     }
+    },
+    "version": "0.1.0"
+   }
+  },
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {
+    "ball": {
+     "steel": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "inertia_per_mass": [
+       [
+        1.5999999999999996e-10,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.5999999999999996e-10,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.5999999999999996e-10
+       ]
+      ],
+      "inside": null,
+      "magnet": false,
+      "material": null,
+      "rotation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ],
+      "solid": {
+       "name": "sphere",
+       "settings": {
+        "radius": {
+         "unit": "m",
+         "value": 1.9999999999999998e-05
+        }
+       },
+       "version": "0.2.0"
+      },
+      "volume": 3.351032163829111e-14
+     }
+    }
+   },
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "gravity:ball",
+   "ball",
+   "camera:"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {
+    "camera:.detector.k2": {
+     "entry": "camera 0.1.0",
+     "kind": "convention",
+     "value": 0.0
+    },
+    "camera:.detector.k3": {
+     "entry": "camera 0.1.0",
+     "kind": "convention",
+     "value": 0.0
+    },
+    "camera:.detector.p1": {
+     "entry": "camera 0.1.0",
+     "kind": "convention",
+     "value": 0.0
+    },
+    "camera:.detector.p2": {
+     "entry": "camera 0.1.0",
+     "kind": "convention",
+     "value": 0.0
+    },
+    "camera:.detector.source": {
+     "entry": "camera 0.1.0",
+     "kind": "convention",
+     "value": "declared"
+    },
+    "camera:.hide": {
+     "entry": "camera 0.1.0",
+     "kind": "convention",
+     "value": []
+    },
+    "gravity": {
+     "entry": null,
+     "kind": "convention",
+     "value": {
+      "unit": "m/s^2",
+      "value": 9.80665
+     }
+    },
+    "tube.centre": {
+     "entry": "tube 0.1.0",
+     "kind": "convention",
+     "value": {
+      "unit": "m",
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   },
+   "listed": [],
+   "pending": [],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": []
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.001,
+   "experiment": "camera_scene",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -9.80665
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {},
+   "meters_per_unit": 1.0,
+   "prims": {
+    "ball": "/World/ball",
+    "tube": "/World/tube",
+    "water": "/World/water"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {},
+  "things": {
+   "ball": "body",
+   "tube": "structure",
+   "water": "medium"
+  },
+  "values": {
+   "ball.buoyant_volume": {
+    "details": [
+     "steel: 3.35103e-14 m^3 (sphere 0.2.0) at (0, 0, 0) m"
+    ],
+    "read_by": [
+     "gravity:ball"
+    ],
+    "reason": "from steel (sphere 0.2.0)",
+    "source": "derived from its parts",
+    "unit": "m^3",
+    "value": 3.351032163829111e-14
+   },
+   "ball.centre_of_buoyancy": {
+    "details": [
+     "steel: 3.35103e-14 m^3 (sphere 0.2.0) at (0, 0, 0) m"
+    ],
+    "read_by": [
+     "gravity:ball"
+    ],
+    "reason": "from steel (sphere 0.2.0)",
+    "source": "derived from its parts",
+    "unit": "m",
+    "value": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "ball.inertia": {
+    "details": [
+     "steel: sphere 0.2.0 of 3.68614e-11 kg about its centroid (0, 0, 0) m, by the parallel-axis theorem",
+     "ball.parts.steel.density = 1100.0 kg/m^3, declared in the experiment (its own line)"
+    ],
+    "read_by": [
+     "ball"
+    ],
+    "reason": "from steel (sphere 0.2.0)",
+    "source": "derived from its parts",
+    "unit": "kg m^2",
+    "value": [
+     5.897816608339234e-21,
+     0.0,
+     0.0,
+     0.0,
+     5.897816608339234e-21,
+     0.0,
+     0.0,
+     0.0,
+     5.897816608339234e-21
+    ]
+   },
+   "ball.mass": {
+    "details": [
+     "steel: 1100 kg/m^3 x 3.35103e-14 m^3 = 3.68614e-11 kg",
+     "ball.parts.steel.density = 1100.0 kg/m^3, declared in the experiment (its own line)"
+    ],
+    "read_by": [
+     "ball",
+     "gravity:ball"
+    ],
+    "reason": "from steel (sphere 0.2.0)",
+    "source": "derived from its parts",
+    "unit": "kg",
+    "value": 3.686135380212022e-11
+   },
+   "ball.parts.steel.density": {
+    "details": [],
+    "read_by": [
+     "ball's part resolver"
+    ],
+    "reason": "a polystyrene bead",
+    "source": "declared in the experiment",
+    "unit": "kg/m^3",
+    "value": 1100.0
+   },
+   "water.density": {
+    "details": [],
+    "read_by": [
+     "gravity:ball"
+    ],
+    "reason": "water near 20 C",
+    "source": "declared in the experiment",
+    "unit": "kg/m^3",
+    "value": 1000.0
+   }
+  },
+  "vocabulary": {
+   "mime": "0.3.0.dev1"
+  }
+ },
+ "schema": "mime.lock/15",
+ "seeds": {
+  "camera:": {
+   "noise": 2426906274
+  }
+ },
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "2ceda8201d16d40467b38c63d08f10e913c822388df679a5b7bd6ed61b0217ce",
+  "writer": 2
+ }
+}

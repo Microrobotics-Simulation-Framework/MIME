@@ -17,7 +17,8 @@ from maddening.core.node import BoundaryInputSpec, SimulationNode
 from maddening.core.params import ParamSpec as MaddeningParamSpec
 
 from mime.core._labels import read_label
-from mime.core._precision import Precision, declared_precision, node_precision, precision_dtype
+from mime.core._precision import Precision, declared_precision, declared_values, narrowed, node_precision, \
+    precision_dtype
 from mime.core._symbols import Symbol
 
 if TYPE_CHECKING:
@@ -258,6 +259,10 @@ class MimeNode(SimulationNode):
     #: The names of the node's own scheme's numerical terms in its step identity, in the order its records keep them;
     #: ``None`` for a node that writes no step identity, which the ledger cannot meter.
     LEDGER_TERMS: ClassVar[tuple[str, ...] | None] = None
+    #: Whether the node's constructor refuses a JAX array narrower than float64 among its arguments in a float64 run
+    #: (``run.precision-lossy``, ``mime.core._precision.declared_values``): a value computed before the build. A node
+    #: whose arguments are made by MIME at build time in a dtype of their own (a controller's start) takes them as given.
+    REFUSES_NARROW_ARGUMENTS: ClassVar[bool] = True
     #: The ratios of the node's metered step that flag known bugs (``mime.core.ledger.LedgerFlag``), each with its
     #: line and the planted bugs that prove it: read by ``mime.testing``'s ledger harness, never by the step.
     LEDGER_FLAGS: ClassVar[tuple[LedgerFlag, ...]] = ()
@@ -277,6 +282,8 @@ class MimeNode(SimulationNode):
         self.precision: Precision | None = declared_precision()
         held: Any = super()
         with node_precision(self.precision):
+            params = declared_values(params, f"node {name!r}") if type(self).REFUSES_NARROW_ARGUMENTS else \
+                narrowed(params)
             held.__init__(name, timestep, **params,
                           **({"ledger": tuple(str(d) for d in cast(Sequence[object], ledger))} if ledger else {}))
 

@@ -1112,6 +1112,7 @@ jobs:
         env:
           JAX_ENABLE_X64: "1"
         run: |
+          set -o pipefail  # the script's exit, not tee's: the job stays report-only through continue-on-error
           mkdir -p "$RUNNER_TEMP/report"
           uv run --no-sync python scripts/precision_audit.py --json "$RUNNER_TEMP/report/dtype-audit.json" | tee "$RUNNER_TEMP/report/dtype-audit.txt"
           sed -n '/== SUMMARY ==/,$p' "$RUNNER_TEMP/report/dtype-audit.txt" >> "$GITHUB_STEP_SUMMARY"

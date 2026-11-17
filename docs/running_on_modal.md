@@ -61,7 +61,8 @@ same environment ([Deterministic mode](#deterministic-mode), below).
 a failed run is not paid for again unasked; `--timeout` (default 7200 s) bounds each function.
 
 **A GPU run needs a lock saved at the highest matmul precision**, as float32 physics is corrupted by reduced-precision
-(TF32) matmuls: save the experiment with `JAX_DEFAULT_MATMUL_PRECISION=highest` (and `JAX_ENABLE_X64=1` for float64).
+(TF32) matmuls: save the experiment with `JAX_DEFAULT_MATMUL_PRECISION=highest` (its precision, float32 or float64, is the one the
+experiment declares and the lock records).
 `mime modal --gpu` refuses a lock that records anything else (`env.precision`), before anything is written, and so
 does `mime env check` on the GPU; a CPU run applies whatever the lock records.
 

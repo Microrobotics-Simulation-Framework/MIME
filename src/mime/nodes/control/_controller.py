@@ -94,6 +94,10 @@ class ControllerNode(MimeNode):
     (``initial_state``) and the writes it holds before its first (``initial_writes``), which the derived hash
     covers."""
 
+    #: Its start and writes are its law's, made at build time in a dtype of the law's own (the arm tracking keeps float32
+    #: in a float64 run): taken as given, narrowed in a float32 run.
+    REFUSES_NARROW_ARGUMENTS = False
+
     def __init__(self, name: str, timestep: float, *, step: Step, controller: str, reads: Mapping[str, ReadSpec],
                  initial_state: Mapping[str, Any], initial_writes: Mapping[str, Any],
                  settings: Mapping[str, Any] | None = None,

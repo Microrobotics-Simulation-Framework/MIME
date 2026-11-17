@@ -1,0 +1,143 @@
+schema: mime.document/15
+mime: 0.3.0.dev1
+experiment: gantry_magnet
+profile: exploratory
+run:
+  dt:
+    value: 0.001
+    unit: s
+  seed: 0
+scene:
+  up: [0.0, 0.0, 1.0]
+  units: m
+  references: []
+sources: {}
+conditions: {}
+things:
+  stage:
+    kind: apparatus
+    prim: /World/stage
+    fields:
+      magnetic:
+        name: point_dipole
+        version: 0.1.0
+        settings:
+          part: magnet
+    chain:
+    - segment: gantry
+      name: labx.gantry
+      version: 0.1.0
+      settings:
+        at:
+          value: [0.0, 0.0, 0.1]
+          unit: m
+    magnets:
+      magnet:
+        model: permanent_magnet
+        direction: [0.0, 0.0, 1.0]
+    parts:
+      magnet:
+        solid:
+          name: cylinder
+          version: 0.1.0
+          settings:
+            radius:
+              value: 0.0175
+              unit: m
+            length:
+              value: 0.02
+              unit: m
+            axis: [1.0, 0.0, 0.0]
+        mount: gantry.carriage
+    commands:
+      gantry.position:
+        name: drive.constant
+        version: 0.1.0
+        settings:
+          value:
+            value: 0.02
+            unit: m
+  tube:
+    kind: structure
+    prim: /World/tube
+    geometry:
+      name: tube
+      version: 0.1.0
+      settings:
+        axis: [1.0, 0.0, 0.0]
+        inner_radius:
+          value: 0.003175
+          unit: m
+        wall:
+          value: 0.0016
+          unit: m
+        length:
+          value: 0.1
+          unit: m
+  umr:
+    kind: body
+    prim: /World/umr
+    dynamics:
+      motion:
+        name: rigid_inertial
+        version: 0.4.0
+    initial:
+      position:
+        value: [0.0, 0.0, -0.001]
+        unit: m
+      orientation: [1.0, 0.0, 0.0, 0.0]
+      velocity:
+        value: [0.0, 0.0, -0.001]
+        unit: m/s
+      angular_velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: Hz
+interactions:
+- id: contact:umr
+  name: contact
+  version: 0.5.0
+  binds:
+    body: umr
+    surface: tube.inner_surface
+  settings:
+    rung: projection
+    margin:
+      value: 0.0001
+      unit: m
+- id: magnetic.force:umr
+  name: magnetic.force
+  version: 0.2.0
+  binds:
+    body: umr
+    field: stage.magnetic
+observations: []
+declared:
+  stage.magnetic_moment:
+    value: 18.89
+    unit: A m^2
+    reason: de Jongh's rotor magnet, on a stage
+  umr.extent:
+    value: 0.0020748000000000003
+    unit: m
+    reason: script A's body
+  umr.inertia:
+    value: [1.0e-10, 1.2e-10, 8.0e-11]
+    unit: kg m^2
+    reason: a millimetre body, round numbers of its order
+  umr.magnet_centre:
+    value: [0.0005, 0.0, 0.0]
+    unit: m
+    reason: its magnet at its centre of mass
+  umr.magnetic_moment:
+    value: [0.0, 0.0017, 0.0004]
+    unit: A m^2
+    reason: a millimetre body's magnet, its order
+  umr.mass:
+    value: 8.5e-05
+    unit: kg
+    reason: a millimetre body, round numbers of its order
+materials: {}
+controller: null
+gravity:
+  value: 9.80665
+  unit: m/s^2
