@@ -143,7 +143,7 @@ diagram inside the page, and you move around it:
 - **drag** to pan, **scroll the wheel or pinch** to zoom toward the pointer;
 - the buttons **+**, **−**, **Fit** (the whole graph in the frame), **1:1** (one graph pixel to one screen pixel) and **Full
   screen**; the keys arrows, `+`, `-`, `0` (fit) and `1` (1:1) when the frame has the focus;
-- the frame is **720 pixels high** (the 3-D view's), a field of the object `display()` returns (`page.height`), and not worked
+- the frame is **720 pixels high** (the 3-D view's), a field of the object the graph's `display()` and `mime.viz.web_page()` return (`page.height`), and not worked
   out from the graph, whose size in pixels is known only after the browser has laid it out.
 
 A graph that fits the frame at a readable size (75% or more) opens fitted. A larger one opens at 75% from its top left corner,
@@ -155,7 +155,7 @@ page loaded.
 
 | | the 3-D view | the graph |
 |---|---|---|
-| what a notebook shows | `mime.viz.display(target, *, offline=False, caption=None, ...)` returns a `WebPage` | `diagram.display(*, offline=False, caption=None)` returns a `GraphPage` (or just return the diagram from a cell) |
+| what a notebook shows | `mime.viz.display(target, *, offline=False, caption=None, ...)` shows it (in a notebook or IPython, anywhere in a cell); `mime.viz.web_page(...)` returns a `WebPage` | `diagram.display(*, offline=False, caption=None)` returns a `GraphPage` (or just return the diagram from a cell) |
 | `offline=True` | inlines the viewer: the page draws with no network | inlines Mermaid: the same |
 | the page's file | `page.save(path)` writes the page as shown; `mime.viz.web(target, out=None, *, cdn=False)` | `page.save(path)` the same; `diagram.save(path=None, *, cdn=False, caption=None)` |
 | default file name | `<experiment>.html` | `<experiment>.graph.html`: never the 3-D page's, so the two beside each other do not overwrite |

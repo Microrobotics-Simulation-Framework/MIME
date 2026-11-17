@@ -109,6 +109,9 @@ things, a value or a source at the same path, a second controller or licence) is
     its outputs follows it by the id; the one warning lists them. If the new one cannot serve what names it (a setting
     the source gives that the new law lacks, an output the controller reads that the new observation lacks), that
     declaration's own check refuses it at the build and names it.
+  - *A declaration taken from `Experiment.based_on` or provided by a block (`exp.use`)*, replaced in a script or a
+    notebook, is recorded in `plan().replaced` and **not warned**: changing it is what those are for. A cell run again
+    with other content (the declaration is the user's own by then) still warns.
   - *The replacement leaves a record the warning does not.* A warnings filter (`warnings.simplefilter("ignore")`, a
     common first cell) removes the warning, so each replacement is also recorded on the experiment with what followed
     it: `plan().replaced` and the build report (`built.report.text()`, under "replaced in this session") list them,
@@ -155,7 +158,7 @@ predates the replacement of the apparatus 'field'`.
   (`run.stale`; build the experiment again, then run that build). A script that changes its experiment after a build has
   done it on purpose (to run both, say), so there the call goes ahead and a warning says what changed.
 - **Where it shows.** `built.stale` and the first lines of `built.report.text()`; a result's `stale`, `repr` and
-  `text()`; a view's `stale` and its page, whether made by `RunWritten.view` or `viz.display` of a run folder `run_to`
+  `text()`; a view's `stale` and its page, whether made by `RunWritten.view`, `viz.web_page` or `viz.display` of a run folder `run_to`
   wrote in this process, or of a file inside it (`viz.web` writes the same line into the page's notes). A run folder read
   back from disk, one written by `mime run` and a copy of a folder have no session to compare with, and are shown with
   no mark, which is not a statement that they are current. A result sent back from a worker process (pickled) says

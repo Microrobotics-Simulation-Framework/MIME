@@ -33,11 +33,11 @@ from mime.viz._visuals import (
     view,
     visuals_dir,
 )
-from mime.viz._web import WebPage, display, page, web
+from mime.viz._web import WebPage, display, page, web, web_page
 
 __all__ = ["CONVERTER", "CONVERTER_VERSION", "INDEX_FORMAT", "LOCK_VISUALS", "RECORDING_FILE", "RECORDING_FORMAT",
            "RUN_STAGE", "SHAREABLE_TIERS", "Baked", "Decimated", "GltfResult", "Mesh", "Overlay", "RecordingSettings",
            "StageSamples", "TriangleBudget", "WebPage", "bake", "baked_key", "baked_layers", "crate_version", "decimate",
            "display", "fetch", "gltf", "lock_manifests", "manifests_for", "mesh_distance", "open_stage", "overlay",
            "page", "read_stl", "recording_layer", "refuse_unshareable", "unshareable", "view", "visuals_dir",
-           "web", "write_mesh", "write_recording"]
+           "web", "web_page", "write_mesh", "write_recording"]

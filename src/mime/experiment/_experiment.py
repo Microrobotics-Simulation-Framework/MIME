@@ -649,8 +649,8 @@ class Experiment:
         kept once.
 
         Its declarations join the experiment's. A declaration made after it on something the block provides
-        (``exp.declare("probe.mass", ...)``) replaces the block's, in a script as in a notebook, with a warning, and is
-        recorded among the use's ``overrides``. The saved document records each use under ``blocks``: the block's id,
+        (``exp.declare("probe.mass", ...)``) replaces the block's, in a script as in a notebook, with no warning, and is
+        recorded among the use's ``overrides`` and in ``plan().replaced``. The saved document records each use under ``blocks``: the block's id,
         version and content hash, its tier and licence, how its sockets were bound, what it provides and what was
         declared over it. A block whose licence is open or conditional is **copied**: its declarations are in the
         document, so a load never needs the block, and its licence joins the document's own (a non-commercial block
@@ -1141,10 +1141,10 @@ class RunWritten:
     origin: Origin | None = None
 
     def view(self, *, offline: bool = False, caption: str | None = None) -> WebPage:
-        """The run's view as a notebook shows it: ``mime.viz.display`` of its folder."""
-        from mime.viz import display
+        """The run's view as a notebook shows it: ``mime.viz.web_page`` of its folder."""
+        from mime.viz import web_page
 
-        return display(self.record_file.parent, offline=offline, caption=caption)  # the folder's origin is found there
+        return web_page(self.record_file.parent, offline=offline, caption=caption)  # the folder's origin is found there
 
 
 def run_layout(plans: PlanSet, graph: GraphManager | None = None) -> Layout:

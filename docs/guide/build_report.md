@@ -190,7 +190,7 @@ other one, change the experiment's declaration and save it again ([assets in dep
 Each declaration made in this session that replaced an earlier one, with what followed it: in a notebook or IPython, a
 thing (an apparatus, body, medium or structure), a law, an observation or a value declared again and changed replaces the
 earlier one, and the warning that says so can be removed by a warnings filter, so the experiment keeps it here, in the
-order the replacements were made (`plan().replaced` holds the same lines). A thing's note names every law, observation,
+order the replacements were made (`plan().replaced` holds the same lines). A declaration taken from `Experiment.based_on` or provided by a block (`exp.use`) and replaced, in a script too, is recorded here and not warned: changing what it holds is what those are for. A thing's note names every law, observation,
 value and other thing that holds its name and now finds the new one, and says when a declared value of the thing still
 applies and overrides what the new declaration brings. It is empty in a script and for an experiment loaded from a folder.
 The saved experiment holds the final declarations only ([reading errors](../reading_errors.md#a-declaration-made-twice)).

@@ -361,7 +361,7 @@ def ran_and_edited(folder: Path, edit: str) -> dict[str, Any]:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         exec(compile(run, "<the run cell>", "exec"), namespace)
-        namespace["page_before"] = namespace["viz"].display("robot_run")
+        namespace["page_before"] = namespace["viz"].web_page("robot_run")
         if edit == "field":
             namespace["field_strength"] = 2.4
             exec(compile(cell_holding(setup, "experiment.add_apparatus("), "<the field cell, run again>", "exec"),
@@ -395,7 +395,7 @@ def stale_problems(folder: Path, place: str) -> list[str]:
             problems.append("the first run's result, displayed, does not say it is stale")
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            page = namespace["viz"].display("robot_run")
+            page = namespace["viz"].web_page("robot_run")
         shown = [str(note.message) for note in caught if str(note.message).startswith("this view predates")]
         if not (len(shown) == 1 and what in shown[0] and page.stale is not None and "STALE" in page._repr_html_()):
             problems.append(f"the view does not say it is stale: {shown}")
@@ -421,7 +421,7 @@ def stale_problems(folder: Path, place: str) -> list[str]:
         fresh = namespace["run"]
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            page = namespace["viz"].display("robot_run_fresh")
+            page = namespace["viz"].web_page("robot_run_fresh")
         if fresh.result.stale is not None or "STALE" in repr(fresh.result) or page.stale is not None \
                 or [n for n in caught if "predates" in str(n.message)]:
             problems.append("a fresh build, its result and its view are stale")

@@ -699,6 +699,7 @@ value.unknown-part            user
 value.unknown-thing           user
 verify.nothing-saved          user
 visuals.convert               environment
+visuals.display-outside-ipython user
 visuals.no-stage              user
 visuals.not-shareable         user
 visuals.unknown-body          user

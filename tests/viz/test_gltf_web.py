@@ -1,11 +1,20 @@
-"""The view as one web page (``mime.viz.page``) and as a notebook's output (``mime.viz.display``):
+"""The view as one web page (``mime.viz.page``), as the object a notebook shows (``mime.viz.web_page``) and as what
+a notebook is told to show (``mime.viz.display``):
 
 - the page holds the GLB as a data URI, byte for byte, and the viewer either inlined, its bytes the pinned file's
   (sha256 below, and the sha384 that jsDelivr's copy is held to), or from jsDelivr with that integrity;
 - the offline page holds no ``http(s)`` URL but in its credit line, and the jsDelivr page none but the viewer's and the
   credit's (the control: a URL planted outside the credit is found);
-- ``display`` returns the page inside an ``<iframe srcdoc>`` that unescapes to it, from jsDelivr unless ``offline``,
+- ``web_page`` returns the page inside an ``<iframe srcdoc>`` that unescapes to it, from jsDelivr unless ``offline``,
   and warns above a million bytes (the control: the ball's own page, far smaller, does not);
+- ``display`` shows the page itself, wherever in a cell it is called (in an ``if``, a loop, a function), exactly once
+  when it is also a cell's last line, and returns ``None``; outside IPython it is refused
+  (``visuals.display-outside-ipython``). IPython is not a test dependency, so the notebook is simulated where MIME meets
+  it, as ``tests/cli/test_notebook_display.py`` does: ``get_ipython`` in the builtins and a stand-in for
+  ``IPython.display.display`` that records a ``display_data`` bundle (``text/plain`` and ``text/html``, from the
+  object's ``_repr_html_``) as IPython does, and a cell run as IPython runs one (its statements, then its last
+  expression shown unless ``None``). The control is the old behaviour, the call that returns the page: inside an
+  ``if`` it shows nothing;
 - the camera may come within a millionth of the scene's diagonal, the wheel zooming by a factor toward the pointer,
   so a body far smaller than its scene can be approached (the control: a scene with no extent keeps the viewer's);
 - a page is never written into a saved or a run folder (``visuals.web-out``).
@@ -16,7 +25,11 @@ test (CI has no WebGL)."""
 import base64
 import hashlib
 import html
+import ast
+import builtins
 import re
+import sys
+import types
 import warnings
 
 import pytest
@@ -24,7 +37,7 @@ from gltf_cases import ball, recorded, with_pose
 
 import mime.viz._web as web_module
 from mime.build import ArgumentRefused
-from mime.viz import display, gltf, page, web
+from mime.viz import display, gltf, page, web, web_page
 from mime.viz._web import CLOSEST, CREDIT, VIEWER_CDN, VIEWER_SRI, closest_radius, viewer_bytes
 
 #: The inlined viewer: model-viewer 4.3.1's dist/model-viewer.min.js, 1,068,903 bytes (jsDelivr's, unpkg's and the npm
@@ -88,24 +101,24 @@ def test_the_page_says_the_caption_the_size_and_the_slowing(run):
     assert f"shown {result.slow:,.4g} times slower" in text
 
 
-def test_display_is_the_page_in_an_iframe_from_jsdelivr_unless_offline(run):
-    shown = display(run)
+def test_web_page_is_the_page_in_an_iframe_from_jsdelivr_unless_offline(run):
+    shown = web_page(run)
     (srcdoc,) = re.findall(r'srcdoc="([^"]*)"', shown._repr_html_())
     assert html.unescape(srcdoc) == shown.html == page(shown.result, cdn=True)
     with pytest.warns(UserWarning, match="leave the viewer to jsDelivr"):
-        assert "text/javascript;base64" in display(run, offline=True).html
+        assert "text/javascript;base64" in web_page(run, offline=True).html
 
 
-def test_display_warns_above_a_million_bytes(run, monkeypatch):
+def test_web_page_warns_above_a_million_bytes(run, monkeypatch):
     result = gltf(run)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        display(run)  # the control: the ball's page is far smaller
+        web_page(run)  # the control: the ball's page is far smaller
     monkeypatch.setattr(web_module, "gltf", lambda target, slow=None, **_: type(result)(
         **{**result.__dict__, "glb": result.glb + b"\0" * 900_000}))
     with pytest.warns(UserWarning, match="every display saves it") as caught:
-        display(run)
-    assert [w.filename for w in caught] == [__file__], "at the script's line, not display's"
+        web_page(run)
+    assert [w.filename for w in caught] == [__file__], "at the script's line, not web_page's"
 
 
 #: What Jupyter holds of a cell's value beside its HTML is its ``text/plain``, ``repr``: one line, not the page.
@@ -113,7 +126,7 @@ PLAIN_TEXT_BYTES = 300
 
 
 def test_the_plain_text_of_a_web_page_is_one_short_line_saying_what_it_is_and_how_to_open_it(run, monkeypatch):
-    shown = display(run)
+    shown = web_page(run)
     plain = repr(shown)
     assert len(plain.encode("utf-8")) <= PLAIN_TEXT_BYTES and "\n" not in plain
     assert shown.result.name in plain and f"{len(shown.html.encode('utf-8')) / 1e3:.0f} kB" in plain
@@ -125,7 +138,7 @@ def test_the_plain_text_of_a_web_page_is_one_short_line_saying_what_it_is_and_ho
 
 
 def test_control_the_dataclass_repr_it_replaces_held_the_whole_page(run):
-    shown = display(run)
+    shown = web_page(run)
     generated = type(shown).__dataclass_fields__  # the fields the generated repr would print
     assert "html" in generated
     plain = f"WebPage(html={shown.html!r}, result=..., height={shown.height})"
@@ -177,3 +190,91 @@ def test_a_handle_under_the_view_folds_the_notes_down_to_the_controls(run):
     order = [text.index(marker) for marker in ("<model-viewer ", 'id="grip"', 'class="controls"', 'id="notes"')]
     assert order == sorted(order)  # the view, the handle, the controls, then the notes the handle folds
     assert 'role="separator"' in text and "notesHeight(0)" in text and '"dblclick"' in text
+
+
+# -- ``display`` shows, wherever it is called ----------------------------------------------------------------------------
+
+
+class Cells:
+    """A notebook as MIME meets it: the outputs of ``display_data`` that IPython's ``display`` would send, and cells run
+    as IPython runs them."""
+
+    def __init__(self) -> None:
+        self.outputs: list[dict[str, str]] = []
+        self.namespace: dict[str, object] = {}
+
+    def show(self, shown: object) -> None:
+        """``IPython.display.display(shown)``: the bundle of the formats the object has."""
+        bundle = {"text/plain": repr(shown)}
+        if hasattr(shown, "_repr_html_"):
+            bundle["text/html"] = shown._repr_html_()
+        self.outputs.append(bundle)
+
+    def run(self, source: str) -> None:
+        """A cell: its statements run, then its last expression shown by ``display`` when it is not ``None`` (the
+        cell's ``Out``)."""
+        tree = ast.parse(source)
+        last = tree.body.pop() if tree.body and isinstance(tree.body[-1], ast.Expr) else None
+        exec(compile(tree, "<cell>", "exec"), self.namespace)
+        if last is not None:
+            value = eval(compile(ast.Expression(last.value), "<cell>", "eval"), self.namespace)
+            if value is not None:
+                self.show(value)
+
+
+@pytest.fixture
+def notebook(monkeypatch) -> Cells:
+    cells = Cells()
+    monkeypatch.setattr(builtins, "get_ipython", lambda: object(), raising=False)
+    ipython, shown = types.ModuleType("IPython"), types.ModuleType("IPython.display")
+    shown.display = cells.show  # pyright: ignore[reportAttributeAccessIssue]
+    ipython.display = shown  # pyright: ignore[reportAttributeAccessIssue]
+    monkeypatch.setitem(sys.modules, "IPython", ipython)
+    monkeypatch.setitem(sys.modules, "IPython.display", shown)
+    return cells
+
+
+def html_outputs(cells: Cells) -> list[str]:
+    return [bundle["text/html"] for bundle in cells.outputs if "text/html" in bundle]
+
+
+def test_display_inside_an_if_shows_the_view_as_display_data_with_html(run, notebook):
+    notebook.namespace.update(display=display, folder=str(run), wanted=True)
+    notebook.run("if wanted:\n    display(folder)\n")
+    (shown,) = html_outputs(notebook)
+    assert shown.startswith("<iframe srcdoc=") and web_page(run)._repr_html_() == shown, "the page the view is"
+    assert len(notebook.outputs) == 1 and "WebPage" in notebook.outputs[0]["text/plain"]
+
+
+def test_display_in_a_loop_and_a_function_shows_each_call(run, notebook):
+    notebook.namespace.update(display=display, folder=str(run))
+    notebook.run("def show(caption):\n    display(folder, caption=caption)\nfor caption in ('one', 'two'):\n    show(caption)\n")
+    shown = html_outputs(notebook)
+    assert len(shown) == 2 and "one" in html.unescape(shown[0]) and "two" in html.unescape(shown[1])
+
+
+def test_control_the_call_that_returns_the_page_shows_nothing_inside_an_if(run, notebook):
+    """What ``display`` did before: it returned the page, so inside an ``if`` the cell shows nothing and raises
+    nothing. The harness sees that, which is what makes the passing tests above evidence."""
+    notebook.namespace.update(web_page=web_page, folder=str(run), wanted=True)
+    notebook.run("if wanted:\n    web_page(folder)\n")
+    assert notebook.outputs == []
+    notebook.run("web_page(folder)")
+    assert len(html_outputs(notebook)) == 1, "as the cell's last line it is shown, by the cell's rule"
+
+
+def test_display_as_a_cells_last_line_shows_exactly_once(run, notebook):
+    notebook.namespace.update(display=display, folder=str(run))
+    notebook.run("display(folder)")
+    assert len(notebook.outputs) == 1 and len(html_outputs(notebook)) == 1
+    assert display(run) is None
+
+
+def test_display_outside_ipython_is_refused_before_the_page_is_made(run, monkeypatch):
+    monkeypatch.delattr(builtins, "get_ipython", raising=False)
+    monkeypatch.setattr(web_module, "web_page", lambda *_, **__: pytest.fail("the page was made"))
+    with pytest.raises(ArgumentRefused) as refused:
+        display(run)
+    (refusal,) = refused.value.refusals
+    assert refusal.code == "visuals.display-outside-ipython"
+    assert "mime.viz.web_page(" in refusal.action and f"mime visuals web {run}" in refusal.action

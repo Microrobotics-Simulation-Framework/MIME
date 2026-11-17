@@ -155,17 +155,21 @@ def test_the_record_edited_by_hand_after_its_lock_was_written_is_refused(parent:
 # --- editing -----------------------------------------------------------------------------------------------------------
 
 
-def test_a_declaration_taken_from_the_parent_made_again_replaces_it_in_a_script_with_a_note(parent: Path):
+def test_a_declaration_taken_from_the_parent_made_again_replaces_it_in_a_script_with_a_note_and_no_warning(parent: Path):
+    """Changing what a based-on experiment took is what the API is for: the note is recorded (``replaced``, which
+    ``plan()`` shows), and no ``UserWarning`` repeats it."""
     child = Experiment.based_on(parent, name="edited")
-    with pytest.warns(UserWarning) as caught:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
         stiffer(child)
         child.add_body(Body("probe", dynamics=ToyBody(mass=kg(2.6)), initial=State(
             position=m((0.0, 0.0, 0.0)), velocity=m_per_s((0.0, 0.0, 0.0)))))
-    notes = [str(each.message) for each in caught]
+    assert [str(each.message) for each in caught] == []
+    notes = child.plan().replaced
     assert all("it replaces the one this experiment took from 'full_toy', which it is based on" in note
                for note in notes) and len(notes) == 2
     assert "toy.spring:probe" in notes[1], "the body's note names the laws that follow it to the new one"
-    assert child.plan().replaced == tuple(notes), "recorded, as a notebook's replacements are"
+    assert child.build().report.replaced == notes, "and the build report shows them"
     settings = {entry["id"]: entry.get("settings", {}) for entry in child.document()["interactions"]}
     assert settings["toy.spring:probe"]["k"]["value"] == 3.4
     assert child.document()["things"]["probe"]["dynamics"]["motion"]["settings"]["mass"]["value"] == 2.6
@@ -189,11 +193,15 @@ def test_in_a_notebook_both_a_taken_declaration_and_one_made_after_are_replaced(
 
     monkeypatch.setattr(builtins, "get_ipython", lambda: None, raising=False)
     child = Experiment.based_on(parent, name="edited")
-    with pytest.warns(UserWarning) as caught:
-        stiffer(child)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        stiffer(child)  # taken from the parent: recorded, not warned
+    with pytest.warns(UserWarning) as caught:  # the one made after it, run again with other content: the unexpected case
         child.attach(ToySpring(k=N(5.1) / m(1.0)), body="probe")
-    first, second = (str(each.message) for each in caught)
+    (second,) = (str(each.message) for each in caught)
+    (first, recorded) = child.plan().replaced
     assert "took from 'full_toy'" in first and "in a notebook or IPython the last one run wins" in second
+    assert recorded == second, "both are recorded, one was warned"
     settings = {entry["id"]: entry.get("settings", {}) for entry in child.document()["interactions"]}
     assert settings["toy.spring:probe"]["k"]["value"] == 5.1
     child.build()
@@ -215,7 +223,8 @@ def test_a_loaded_experiment_edited_in_a_notebook_is_refused_by_its_lock_pointin
     assert refusal.code == "load.input-hash" and "edited after it was loaded" in refusal.message
     assert f'Experiment.based_on({str(parent)!r}, name="<a new name>")' in refusal.action
     child = Experiment.based_on(parent, name="stiffer_toy")
-    with pytest.warns(UserWarning):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         stiffer(child)
     assert child.build().load_report is None
 
@@ -507,8 +516,10 @@ def test_a0_based_on_with_a_stronger_field_saves_loads_and_rebuilds_against_its_
     a0().save(saved)
     with untouched(saved):
         child = Experiment.based_on(saved, name="a0_stronger_field")
-        with pytest.warns(UserWarning, match="took from 'script_a0'"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
             child.declare("rpm.magnetic_moment", A_m2(25.0), reason="a stronger rotor magnet, 25 A m^2")
+        assert "took from 'script_a0'" in child.plan().replaced[0]
         child.build().save(tmp_path / "stronger")
         loaded = Experiment.load(tmp_path / "stronger")
     assert loaded.load_report is not None and "input hash: reproduced exactly" in loaded.load_report.text()

@@ -13,13 +13,15 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
+import importlib
 import json
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
-from typing import override
+from typing import Any, cast, override
 
 from mime._lineage import Origin, origin_of_folder
+from mime._notebook import in_notebook
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.errors._frames import warn_at_script
 from mime.things._handles import did_you_mean
@@ -561,8 +563,9 @@ def _sized(text: str) -> str:
 
 @dataclass(frozen=True)
 class WebPage:
-    """A view as a notebook shows it: the page in an ``<iframe srcdoc>``. A cell whose last expression it is shows it;
-    :meth:`save` writes the page as a file. Its ``repr`` is one line, not the page."""
+    """A view as a notebook shows it: the page in an ``<iframe srcdoc>``, made by :func:`web_page`. A cell whose last
+    expression it is shows it, and ``viz.display`` shows one made at once, anywhere in a cell; :meth:`save` writes the
+    page as a file. Its ``repr`` is one line, not the page."""
 
     html: str
     result: GltfResult
@@ -609,17 +612,21 @@ def _stale_caption(origin: Origin | None, caption: str | None) -> str | None:
     return f"STALE: {stale}. {caption}" if caption else f"STALE: {stale}"
 
 
-def display(target: str | Path, *, offline: bool = False, caption: str | None = None, slow: float | None = None,
-            scale_bar: bool = True, legend: bool = True, apparatus_shapes: bool = True, focus: str | None = None,
-            follow: str | None = None) -> WebPage:
-    """``target`` (a stage or recording file, a run folder or a saved folder) as a notebook output: the view's page,
-    the viewer from jsDelivr (``offline=True`` inlines it, 1.4 MB more), ``caption`` above its notes. Warns above
-    ``OUTPUT_WARNING_BYTES``, which a notebook saves into its file with every display.
+def web_page(target: str | Path, *, offline: bool = False, caption: str | None = None, slow: float | None = None,
+             scale_bar: bool = True, legend: bool = True, apparatus_shapes: bool = True, focus: str | None = None,
+             follow: str | None = None) -> WebPage:
+    """``target`` (a stage or recording file, a run folder or a saved folder) as a :class:`WebPage`, the object a
+    notebook shows: the view's page, the viewer from jsDelivr (``offline=True`` inlines it, 1.4 MB more), ``caption``
+    above its notes. Warns above ``OUTPUT_WARNING_BYTES``, which a notebook saves into its file with every display.
 
     Four things in the view are switched here, each in the page's notes: ``scale_bar`` and ``legend`` (on by default:
     they cost the page a few hundred bytes and answer "how big?" and "what is this arrow?"); ``apparatus_shapes`` (on:
     the motor and magnet of an apparatus, drawn for the view alone); ``focus`` and ``follow`` (off until a body is
-    named: ``focus="umr"`` frames it at the start, ``follow="umr"`` keeps the camera on it through the recording)."""
+    named: ``focus="umr"`` frames it at the start, ``follow="umr"`` keeps the camera on it through the recording).
+
+    This makes the page and returns it, and shows nothing: :func:`display` shows it in a notebook, and a cell whose last
+    expression this is shows it too. Use it where the object is wanted (``.save(path)``, ``.html``, ``.stale``), or in a
+    script, where no notebook shows anything."""
     result = gltf(target, slow=slow, apparatus_shapes=apparatus_shapes)
     origin = origin_of_folder(target)
     held = page(result, cdn=not offline, caption=_stale_caption(origin, caption), scale_bar=scale_bar, legend=legend,
@@ -632,6 +639,26 @@ def display(target: str | Path, *, offline: bool = False, caption: str | None = 
             f"{'leave the viewer to jsDelivr (offline=False), ' if offline else ''}or write a page instead "
             f"(mime visuals web {target})", UserWarning)
     return WebPage(held, result, origin=origin)
+
+
+def display(target: str | Path, *, offline: bool = False, caption: str | None = None, slow: float | None = None,
+            scale_bar: bool = True, legend: bool = True, apparatus_shapes: bool = True, focus: str | None = None,
+            follow: str | None = None) -> None:
+    """Show the view of ``target`` in a notebook or IPython, as IPython's own ``display(x)`` shows ``x``: here, in a loop,
+    an ``if`` or a function, and returns ``None``, so a cell that ends with it shows the view once. The arguments are
+    :func:`web_page`'s, which returns the :class:`WebPage` instead and shows nothing. Where no IPython is running
+    (a script, ``python -c``) there is nothing to show it in, and it is refused (``visuals.display-outside-ipython``)
+    before the page is made."""
+    if not in_notebook():
+        raise ArgumentRefused([Refusal(
+            "visuals.display-outside-ipython", RefusalClass.USER,
+            f"mime.viz.display shows a view in a notebook or IPython, and none is running: it would show nothing "
+            f"here ({target})",
+            f"get the page as an object with mime.viz.web_page({str(target)!r}) and save it (.save('view.html')), or "
+            f"write it with: mime visuals web {target}")])
+    shown = web_page(target, offline=offline, caption=caption, slow=slow, scale_bar=scale_bar, legend=legend,
+                     apparatus_shapes=apparatus_shapes, focus=focus, follow=follow)
+    cast(Any, importlib.import_module("IPython.display")).display(shown)
 
 
 def held_by(path: Path) -> Path | None:
@@ -648,7 +675,7 @@ def web(target: str | Path, out: str | Path | None = None, *, cdn: bool = False,
         apparatus_shapes: bool = True, focus: str | None = None, follow: str | None = None) -> tuple[Path, GltfResult]:
     """Write the view of ``target`` as one page, ``out`` (``<name>.html`` in the working folder by default), the
     viewer inlined unless ``cdn``; and its GLB alone where ``glb`` names a file. A view is never written into a saved
-    or a run folder (``visuals.web-out``). The switches are :func:`display`'s, and so is the mark: a page of a run this
+    or a run folder (``visuals.web-out``). The switches are :func:`web_page`'s, and so is the mark: a page of a run this
     process wrote, before a replacement or a removal, says STALE in its notes."""
     result = gltf(target, slow=slow, apparatus_shapes=apparatus_shapes)
     caption = _stale_caption(origin_of_folder(target), caption)
@@ -669,4 +696,4 @@ def web(target: str | Path, out: str | Path | None = None, *, cdn: bool = False,
 
 
 __all__ = ["BAR_PIXELS", "CLOSEST", "CREDIT", "FOCUS_FACTOR", "OUTPUT_WARNING_BYTES", "VIEWER_CDN", "VIEWER_FILE", "VIEWER_SHA256", "VIEWER_SRI",
-           "VIEWER_VERSION", "WebPage", "closest_radius", "display", "held_by", "page", "viewer_bytes", "web"]
+           "VIEWER_VERSION", "WebPage", "closest_radius", "display", "held_by", "page", "viewer_bytes", "web", "web_page"]
