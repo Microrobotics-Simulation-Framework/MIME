@@ -15,6 +15,13 @@ which gives its own:
   edge of length at most ``sqrt(3) h``, its second derivative at most ``1 / (r - sqrt(3) h)`` there), and its volume
   converges on the capsule's at second order.
 
+- **the overrides**: each normal or sign function a shape gives of its own agrees with the derived one at drawn points
+  off its medial sets (``mime.testing.override_problems``), for every shape MIME registers, and a plugin's wrong one is
+  caught on every run;
+- **a derived default an override can reach**: a kind overriding one region's sign function or its drawing calls
+  ``super()`` for the rest;
+- **collection**: importing the toy's test files registers no kind (the registry walk reads a fresh process's registry).
+
 **Controls**, each by ``SHAPE_PLANT``: ``normal`` turns the derived normal by a milliradian about a fixed axis (a
 direction error, which no scale on the distance can show), and must fail the normal and the contact tests on every run;
 ``sign`` (the camera's, ``tests/sensing/test_toy_shape_camera.py``) offsets the derived sign function."""
@@ -33,13 +40,14 @@ from hypothesis import strategies as st
 
 import mime.core._geometry as geometry
 from mime.core import CAPSULE, shape_named, shape_switches
-from mime.core.shapes import Shape, register_shape
+from mime.registry import EntryKind, lookup
+from mime.core.shapes import Shape, SignValue, register_shape
 from mime.nodes.body import RigidInertialMidpointNode
 from mime.sensing._sampled import made_kind
+from mime.testing import contour_line
 from mime.testing._kind_conformance import _mesh_volume, drawing_checks, drawing_problems
-from mime.testing.toys import register_toy_capsule
-
-ToyCapsule = register_toy_capsule()
+from mime.testing import SHAPE_CASES, override_problems, shape_probes
+from mime.testing.toys import registered_toy_capsule
 
 PLANT = os.environ.get("SHAPE_PLANT", "")
 #: The toy capsule's parameters: tilted, off the origin, at a micro-robot's scale.
@@ -48,6 +56,14 @@ PARAMETERS = {"centre": (1e-4, -2e-4, 3e-4), "axis": (0.3, -0.5, 0.8), "radius":
 NORMAL_ULPS = 64
 #: The plant: a milliradian about this axis.
 TURN, TURN_AXIS = 1e-3, np.asarray((1.0, 2.0, 3.0)) / math.sqrt(14.0)
+
+
+@pytest.fixture(scope="module")
+def toy_kind():
+    """The toy kind, registered for this module's tests only: never at import, so that collecting every file leaves the
+    registry walk's registry as a fresh process has it."""
+    with registered_toy_capsule() as kind:
+        yield kind
 
 
 @pytest.fixture(params=["float32", "float64"])
@@ -234,9 +250,9 @@ def test_a_body_held_inside_the_toy_capsule_moves_as_one_held_inside_mimes(start
 SETTINGS = {"radius": 0.25e-3, "height": 0.8e-3, "axis": (1.0, 0.3, 0.4)}
 
 
-def test_the_toy_kinds_contoured_drawing_lies_within_its_line_of_the_capsule_and_converges():
-    kind = made_kind(ToyCapsule, SETTINGS)
-    assert drawing_checks(kind) == ("closed", "near the surface")
+def test_the_toy_kinds_contoured_drawing_lies_within_its_line_of_the_capsule_and_converges(toy_kind):
+    kind = made_kind(toy_kind, SETTINGS)
+    assert drawing_checks(kind) == ("closed", "near the surface", "volume")
     assert drawing_problems(kind, SETTINGS, 32) == []
     region = kind.region_parameters("solid", SETTINGS)
     radius, errors = SETTINGS["radius"], []
@@ -246,7 +262,141 @@ def test_the_toy_kinds_contoured_drawing_lies_within_its_line_of_the_capsule_and
         points = np.asarray(drawing.points)
         off = np.asarray(jax.vmap(lambda x: CAPSULE.signed_distance(region, x))(jnp.asarray(points)))
         cell = 2.0 * kind.enclosing_radius(SETTINGS) / cells
-        assert float(np.max(np.abs(off))) <= 3.0 * cell * cell / (8.0 * (radius - math.sqrt(3.0) * cell))
+        assert float(np.max(np.abs(off))) <= contour_line(cell, radius)
         volume = _mesh_volume(points, np.asarray(drawing.face_vertex_counts), np.asarray(drawing.face_vertex_indices))
         errors.append(abs(volume - kind.volume(SETTINGS)) / kind.volume(SETTINGS))
     assert errors[1] <= errors[0] / 3.0 and errors[2] <= errors[1] / 3.0
+
+
+# -- the overrides --------------------------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def x64():
+    """The shape suite's own arrangement: x64 on, a float32 probe's arrays cast to float32 (a shape's structure, a tube
+    tree's segment indices, is made once and does not change with the flag)."""
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    yield
+    jax.config.update("jax_enable_x64", held)
+
+
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+@pytest.mark.parametrize("name", sorted(SHAPE_CASES))
+def test_each_normal_and_sign_function_a_mime_shape_gives_of_its_own_agrees_with_the_derivation(name, dtype, x64):
+    """For each shape MIME registers, at drawn points off its switch sets (``off``), in both dtypes: its own outward
+    normal is the unit gradient of its signed distance, and its own sign function has the distance's sign and the slope
+    of its value's gradient, to ``OVERRIDE_ULPS`` units in the last place of the shape's own sensitivity."""
+    case = SHAPE_CASES[name]
+
+    @settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+    @given(probe=shape_probes(case, kinds=("off",), dtypes=(dtype,)))
+    def holds(probe):
+        assert override_problems(probe.shape, probe.parameters, probe.point[None], probe.size, probe.dtype) == []
+
+    holds()
+
+
+class Ball:
+    """A plugin's shape (not a ``Shape``): its distance, and, as drawn, its own normal and sign function."""
+
+    parameter_names = ("radius",)
+    takes_many = False
+    turn = 0.0
+    shift = 0.0
+    scale = 1.0
+
+    def signed_distance(self, parameters, point):
+        return jnp.sqrt(jnp.sum(point * point) + 1e-30) - parameters["radius"]
+
+    def outward_normal(self, parameters, point):
+        unit = point / jnp.sqrt(jnp.sum(point * point) + 1e-30)
+        turned = unit + self.turn * jnp.cross(jnp.asarray((1.0, 2.0, 3.0)) / math.sqrt(14.0), unit)
+        return turned / jnp.sqrt(jnp.sum(turned * turned))
+
+    def sign_function(self, parameters, point):
+        value = self.scale * (jnp.sqrt(sum(c * c for c in point) + 1e-30) - parameters["radius"]) + self.shift
+        return SignValue(value, jnp.ones_like(value))
+
+
+class TurnedBall(Ball):
+    turn = 1e-3
+
+
+class ShiftedBall(Ball):
+    shift = -0.3 * 1e-4
+
+
+class SteepBall(Ball):
+    scale = 2.0
+
+
+OVERRIDE_POINTS = np.asarray([(1.1e-4, 0.0, 0.0), (0.0, -1.05e-4, 0.0), (0.0, 0.2e-4, 1.2e-4), (-0.7e-4, 0.6e-4, 0.5e-4),
+                              (1.0e-4 * 0.8, 1.0e-4 * 0.6 * 1.12, 0.0), (0.3e-4, -0.4e-4, -1.15e-4)])
+for _name, _shape in (("ball", Ball()), ("turned", TurnedBall()), ("shifted", ShiftedBall()), ("steep", SteepBall())):
+    register_shape(f"test_overrides.{_name}", _shape)
+
+
+def test_a_plugin_shape_whose_own_normal_and_sign_function_are_right_agrees_with_the_derivation(dtype):
+    assert override_problems("test_overrides.ball", {"radius": 1e-4}, OVERRIDE_POINTS, 1e-4, dtype) == []
+
+
+@pytest.mark.parametrize(("name", "what"), [("turned", "outward normal"), ("shifted", "other side"),
+                                            ("steep", "slope")])
+def test_control_a_plugin_shape_whose_own_normal_or_sign_function_disagrees_is_caught_at_every_point(name, what,
+                                                                                                  dtype):
+    """A normal turned a milliradian, a sign function shifted past the surface (its value 0.3 of the radius short), and
+    one whose slope is two against a value whose gradient has length two, all at the same fixed points: the first at
+    each point, the second at the points within the shift of the surface, the third at each. Nothing is drawn, so
+    nothing varies."""
+    found = override_problems(f"test_overrides.{name}", {"radius": 1e-4}, OVERRIDE_POINTS, 1e-4, dtype)
+    print(f"\n{name} {dtype}: {len(found)} problems, e.g. {found[:1]}")
+    points = {"outward normal": len(OVERRIDE_POINTS), "slope": len(OVERRIDE_POINTS)}.get(what)
+    if points is not None:
+        assert len(found) == points
+    else:
+        assert found and all("other side" in problem for problem in found)
+    if name == "steep":  # the value's gradient is twice the slope it declares
+        assert all("slope" in problem for problem in found)
+
+
+# -- a derived default an override can reach ------------------------------------------------------------------------------
+
+
+def test_a_kind_overriding_one_regions_sign_function_or_its_drawing_derives_the_rest_by_super(toy_kind):
+    """The derivation is the base class's: a subclass that overrides a method calls ``super()`` for the regions it
+    leaves, and gets what a kind that overrides nothing gets."""
+    import dataclasses
+
+    @dataclasses.dataclass(frozen=True, kw_only=True)
+    class Pair(toy_kind):
+        name = "test.pair"
+        regions = ("solid", "far")
+        region_shapes = {"solid": "toy.capsule", "far": "toy.capsule"}
+
+        def region_parameters(self, region, settings):
+            held = super().region_parameters("solid", settings)
+            return {**held, "centre": (0.0, 0.0, 0.1e-3)} if region == "far" else held
+
+        def sign_function(self, parameters, region, point):
+            if region == "far":
+                return super().sign_function(parameters, "solid", point)
+            return super().sign_function(parameters, region, point)
+
+        def drawing(self, settings, segments):
+            return super().drawing(settings, segments)
+
+    kind, plain = made_kind(Pair, SETTINGS), made_kind(toy_kind, SETTINGS)
+    here = {"radius": SETTINGS["radius"], "height": SETTINGS["height"], "axis": SETTINGS["axis"]}
+    point = (0.1e-3, 0.2e-3, 0.3e-3)
+    own = kind.sign_function(here, "solid", point)
+    assert np.array_equal(np.asarray(own.value), np.asarray(plain.sign_function(here, "solid", point).value))
+    drawn = kind.drawing(SETTINGS, 16)
+    assert "drawing" in drawn.representation and len(drawn.points) > 0
+    class Unshaped(toy_kind):
+        region_shapes = {"solid": "no.such.shape"}
+
+    for call in (lambda: made_kind(Unshaped, SETTINGS).drawing(SETTINGS, 16),
+                 lambda: made_kind(Unshaped, SETTINGS).sign_function(here, "solid", point)):
+        with pytest.raises(NotImplementedError):
+            call()

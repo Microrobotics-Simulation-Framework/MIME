@@ -2,7 +2,9 @@
 
 The oracle is the kind: for each registered geometry kind, whether a class of its own (between it and ``Geometry``, and
 for a solid's mass properties between it and ``Solid``) defines the method, read from the class dictionaries, and
-whether its ``native`` is set. That is not ``mime.registry.implements``, which the export and so the page use; the
+whether its ``native`` is set; and for a sign function and a drawing, which a solid derives from its regions' shapes
+where it gives none (a solid whose every region is a registered shape, and for the drawing, which places nothing),
+whether the kind is such a solid. That is not ``mime.registry.implements``, which the export and so the page use; the
 page is rendered from the export's record in this process and each row's last cell is read back.
 
 The controls: the table with its yes and no swapped in the generator (the page's source, edited and run), a record
@@ -17,6 +19,7 @@ import pytest
 from mime.docs import _entry_page
 from mime.docs._context import Context
 from mime.docs._export import entry_record, load_namespaces
+from mime.core import shape_names
 from mime.registry import CAPABILITIES, EntryKind, Geometry, Solid, registered
 
 EMPTY = Context((), {}, {}, {})
@@ -34,6 +37,16 @@ def defined_by_the_kind(cls: type[Geometry], name: str) -> bool:
         if method in vars(klass):
             return getattr(klass, method) is not None if name == "native" else True
     return False
+
+
+def derived_by_the_kind(cls: type[Geometry], name: str) -> bool:
+    """Whether ``cls`` is a solid whose regions are all registered shapes (and for the drawing, places nothing), so
+    that its ``name`` (a sign function or a drawing) comes from them, written here from that rule and not from the
+    registry's."""
+    if name not in ("sign_function", "drawing") or not issubclass(cls, Solid) or not cls.regions:
+        return False
+    shaped = all(cls.region_shapes.get(region) in shape_names() for region in cls.regions)
+    return shaped and (name != "drawing" or not cls.placement)
 
 
 def capability_cells(text: str) -> dict[str, str]:
@@ -58,7 +71,7 @@ def wrong_rows(kinds) -> list[str]:
         if set(cells) != set(CAPABILITIES):
             found.append(f"{name}: rows {sorted(cells)}, not {sorted(CAPABILITIES)}")
         for capability in CAPABILITIES:
-            expected = "yes" if defined_by_the_kind(cls, capability) else "no"
+            expected = "yes" if defined_by_the_kind(cls, capability) or derived_by_the_kind(cls, capability) else "no"
             if cells.get(capability) != expected:
                 found.append(f"{name}: {capability} is {cells.get(capability)!r}, and the kind {expected!r}")
     return found

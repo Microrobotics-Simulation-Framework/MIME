@@ -5,23 +5,25 @@ would write it, with no MIME helper: a capsule's (the distance from its segment 
 floored at one unit in the last place of the radius squared so that its derivative is finite on the segment, and its
 clamp to the segment through ``mime.core.switch`` (``toy.capsule.end``). Its outward normal and its camera sign
 function are the derived ones, and its normal's switch, ``toy.capsule.kink``, is declared when it is registered. The
-kind ``ToyCapsule`` (``toy.capsule``, registered by :func:`register_toy_capsule`, which its tests call) gives no drawing, no sign function and no closed form: its display mesh is
-contoured and the camera images it by the sampled route on its derived sign function.
+kind ``ToyCapsule`` (``toy.capsule``, registered by :func:`registered_toy_capsule` while a test runs) gives no drawing, no sign function and no
+closed form: its display mesh is contoured and the camera images it by the sampled route on its derived sign function.
 
 Each derived form has an analytic reference, MIME's capsule: ``mime.core.CAPSULE``'s closed-form distance and normal,
 route 1's closed-form image of the ``capsule`` kind, and the capsule's own volume and surface
-(``tests/shapes/test_toy_shape.py``)."""
+(``tests/unit/test_shape_protocol.py``)."""
 
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Generator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Annotated, Any, cast, override
 
 from mime.core import jnp, switch
 from mime.core.shapes import Parameters, Point, Shape, register_shape
 from mime.gradients import GradientStatus
+from mime.registry._registry import unregister
 from mime.registry import (
     PHYSICAL,
     Direction,
@@ -129,12 +131,19 @@ class ToyCapsule(Solid):
                 "height": settings["height"]}
 
 
-def register_toy_capsule() -> type[ToyCapsule]:
-    """Register the toy kind, once: a test registers it on its own, so the registry walk (which lists the entries a
-    fresh process registers) asks no round-trip case of it."""
-    if lookup(EntryKind.GEOMETRY, ToyCapsule.name, ToyCapsule.version) is None:
+@contextmanager
+def registered_toy_capsule() -> Generator[type[ToyCapsule]]:
+    """The toy kind registered while the context is open and unregistered after, so that no other test's registry walk
+    (which asks every registered kind a round-trip case, and this one has none) meets it, however the files are
+    collected. A test registers it in a fixture, never at import."""
+    held = lookup(EntryKind.GEOMETRY, ToyCapsule.name, ToyCapsule.version)
+    if held is None:
         register_geometry(ToyCapsule)
-    return ToyCapsule
+    try:
+        yield ToyCapsule
+    finally:
+        if held is None:
+            unregister(ToyCapsule)
 
 
-__all__ = ["TOY_CAPSULE_END", "TOY_CAPSULE_END_OWNER", "TOY_CAPSULE_NAME", "TOY_CAPSULE_SHAPE", "ToyCapsule", "ToyCapsuleShape", "register_toy_capsule"]
+__all__ = ["TOY_CAPSULE_END", "TOY_CAPSULE_END_OWNER", "TOY_CAPSULE_NAME", "TOY_CAPSULE_SHAPE", "ToyCapsule", "ToyCapsuleShape", "registered_toy_capsule"]

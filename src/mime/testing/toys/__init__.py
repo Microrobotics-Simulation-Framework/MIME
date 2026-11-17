@@ -59,7 +59,7 @@ from mime.testing.toys._shape import (
     TOY_CAPSULE_SHAPE,
     ToyCapsule,
     ToyCapsuleShape,
-    register_toy_capsule,
+    registered_toy_capsule,
 )
 from mime.testing.toys._surface import ToyIndentedSheet
 
@@ -113,5 +113,5 @@ __all__ = [
     "resistance_rig",
     "sheet",
     "toy_experiment",
-    "register_toy_capsule",
+    "registered_toy_capsule",
 ]

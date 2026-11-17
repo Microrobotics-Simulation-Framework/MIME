@@ -24,10 +24,18 @@ def code(error: pytest.ExceptionInfo[ArgumentRefused]) -> set[str]:
 
 
 @pytest.mark.parametrize(("kind", "refused"), [("box", "camera.crease-unmeasured"),
-                                               ("screw", "camera.crease-unmeasured"), ("labx.bead", "camera.no-route")])
+                                               ("screw", "camera.crease-unmeasured"), ("labx.shapeless", "camera.no-route")])
 def test_a_kind_with_no_route_is_refused_with_its_reason(kind, refused, monkeypatch):
     """A creased kind with no crease measure (the box, the screw) and a kind with neither a closed form nor a sign
-    function (a lab's unregistered one) are refused by name, each with its reason."""
+    function (a lab's solid whose region is no registered shape) are refused by name, each with its reason."""
+    from mime.scene import Sphere
+
+    class Shapeless(Sphere):
+        region_shapes = {"solid": "labx.no_such_shape"}
+
+    real = subjects_module.sampled_route.kind_named
+    monkeypatch.setattr(subjects_module.sampled_route, "kind_named",
+                        lambda name: Shapeless if name == "labx.shapeless" else real(name))
     if planted("screw-form"):
         monkeypatch.setitem(subjects_module._closed_forms, "screw", subjects_module._closed_forms["sphere"])
     with pytest.raises(ArgumentRefused) as error:
@@ -35,6 +43,15 @@ def test_a_kind_with_no_route_is_refused_with_its_reason(kind, refused, monkeypa
     assert code(error) == {refused}
     message = str(error.value)
     assert kind in message and ("crease" in message or "sign function" in message)
+
+
+def test_a_lab_kind_whose_regions_are_registered_shapes_takes_the_sampled_route():
+    """The refusal this replaces (``labx.bead``: no closed form, no sign function) is gone with its premise: a solid whose
+    every region is a registered shape derives its sign function from the shape's distance, so the camera images the
+    lab's bead (a plugin's solid with only a distance) by the sampled route. A kind whose region is no shape is still
+    refused (the test above)."""
+    assert subjects_module.route_of("labx.bead") == "sampled"
+    Subject("bead", "labx.bead", {"radius": 1e-3})
 
 
 def test_a_creased_kind_takes_the_sampled_route_with_its_crease_measure_and_is_refused_without(monkeypatch):

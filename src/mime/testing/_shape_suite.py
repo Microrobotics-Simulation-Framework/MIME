@@ -79,7 +79,7 @@ import numpy as np
 from hypothesis import strategies as st
 
 from mime.core import jnp, nearest_point, quaternion, shape_named, shape_names, switch
-from mime.core._geometry import AXIS_ULPS, shape_package
+from mime.core._geometry import AXIS_ULPS, derived_normal, derives, shape_package
 
 type Parameters = dict[str, Any]
 type Placement = Callable[[Parameters, float, np.ndarray], np.ndarray]
@@ -299,6 +299,79 @@ def convexity_problem(shape: str, parameters: Parameters, first: np.ndarray, sec
         return None
     return (f"{shape}: its signed distance at the midpoint of {first.tolist()} and {second.tolist()} is {at:.17g} m, "
             f"above their mean {mean:.17g} m by {at - mean:.3g} m: a region declared convex is not")
+
+
+#: How far a shape's own normal, or its sign function's slope, may stand from the derived one, in units in the last
+#: place (of the dtype both are computed in) of ``1 + |p| s``: ``|p|`` the point's scale (its largest coordinate plus the
+#: shape's size) and ``s`` the Jacobian's norm of the shape's own normal in the point, since a point rounded at its scale
+#: turns a normal by ``s`` times that, and the unit length's own rounding is the one. Both are a few operations from the
+#: coordinates, as the screw's normal check's are (``NORMAL_ROUNDING_ULPS``).
+OVERRIDE_ULPS = 64.0
+
+
+def override_problems(shape: str, parameters: Parameters, points: np.ndarray, size: float,
+                      dtype: str = "float64") -> list[str]:
+    """Every way a capability ``shape`` gives of its own (an override of what is derived from its signed distance)
+    disagrees with the derivation, at ``points`` (``(n, 3)``) off the shape's medial sets, where the derivation is
+    defined: its ``outward_normal`` differs from :func:`mime.core._geometry.derived_normal`, the distance's unit
+    gradient, by more than ``OVERRIDE_ULPS`` of the line above; its ``sign_function`` has a sign the distance's does not
+    where the distance is farther from zero than the points' rounding (``OVERRIDE_ULPS`` units in the last place of their
+    scale), or a slope other than the length of its own value's gradient by that line. A capability the shape derives
+    is the reference, and is not checked against itself. ``[]`` for a shape that overrides neither."""
+    held = shape_named(shape)
+    numeric, whole = _split(parameters, jnp.dtype(dtype))
+    eps = float(jnp.finfo(dtype).eps)
+    found: list[str] = []
+    if jnp.asarray(0.0, dtype=dtype).dtype != jnp.dtype(dtype):
+        raise ValueError(f"{dtype} is not the run's dtype here (x64 is {'on' if jax.config.jax_enable_x64 else 'off'}): "
+                         f"the rounding line would be another dtype's")
+    own_normal, own_sign = not derives(held, "outward_normal"), not derives(held, "sign_function")
+    for place in np.asarray(points, dtype=np.float64).reshape(-1, 3):
+        scale = float(np.max(np.abs(place))) + size
+        got = _override_values(shape, whole, own_normal, own_sign, numeric, jnp.asarray(place, dtype=dtype))
+        sensitivity = float(np.linalg.norm(np.asarray(got["jacobian"], dtype=np.float64), ord=2))
+        line = OVERRIDE_ULPS * eps * (1.0 + scale * sensitivity)
+        if own_normal:
+            own, reference = (np.asarray(got[k], dtype=np.float64) for k in ("own", "reference"))
+            apart = float(np.max(np.abs(own - reference)))
+            if not apart <= line:
+                found.append(f"{shape}: its own outward normal {own.tolist()} at {place.tolist()} differs from the "
+                             f"signed distance's unit gradient {reference.tolist()} by {apart:.3g}, beyond {line:.3g}")
+        if own_sign:
+            value, slope, distance = (float(got[k]) for k in ("value", "slope", "distance"))
+            if abs(distance) > OVERRIDE_ULPS * eps * scale and (value < 0.0) != (distance < 0.0):
+                found.append(f"{shape}: its own sign function is {value:.3g} at {place.tolist()}, where its signed "
+                             f"distance is {distance:.3g} m: the other side of its surface")
+            length = float(np.linalg.norm(np.asarray(got["gradient"], dtype=np.float64)))
+            if not abs(slope - length) <= line:
+                found.append(f"{shape}: its own sign function's slope is {slope:.6g} at {place.tolist()}, where its "
+                             f"value's gradient has length {length:.6g}")
+    return found
+
+
+@partial(_jit, static_argnames=("shape", "whole", "normal", "sign"))
+def _override_values(shape: str, whole: tuple[tuple[str, Any], ...], normal: bool, sign: bool, numeric: dict[str, Any],
+                     point: Any) -> dict[str, Any]:
+    """What :func:`override_problems` compares at one point, traced once per shape and dtype: the shape's own normal
+    and the derived one (``normal``), its sign function's value and slope, the distance and the gradient of the value
+    (``sign``), and the Jacobian of the shape's normal in the point, the line's sensitivity."""
+    held, at = shape_named(shape), {**numeric, **dict(whole)}
+
+    def normal_at(q: Any) -> Any:
+        return held.outward_normal(at, q)
+
+    def value_at(q: Any) -> Any:
+        return held.sign_function(at, (q[0], q[1], q[2])).value
+
+    out: dict[str, Any] = {"jacobian": _jacfwd(normal_at)(point)}
+    if normal:
+        out["own"] = held.outward_normal(at, point)
+        out["reference"] = derived_normal(held, at, point, owner=held.kink_owner)
+    if sign:
+        given = held.sign_function(at, (point[0], point[1], point[2]))
+        out["value"], out["slope"], out["distance"] = given.value, given.slope, held.signed_distance(at, point)
+        out["gradient"] = _jacfwd(value_at)(point)
+    return out
 
 
 def capability(shape: Any, name: str) -> Callable[[Parameters, Any], Any]:
@@ -759,7 +832,7 @@ register_shape_case(ShapeCase(
 ))
 
 
-__all__ = ["CONVEXITY_BAND_EVALUATIONS", "CONVEXITY_ULPS", "DIFFERENCE_FLOOR_ULPS", "NOISE_FACTOR", "PLANTED_TANGENT", "PROBE_CLASSES",
+__all__ = ["CONVEXITY_BAND_EVALUATIONS", "CONVEXITY_ULPS", "DIFFERENCE_FLOOR_ULPS", "NOISE_FACTOR", "OVERRIDE_ULPS", "PLANTED_TANGENT", "PROBE_CLASSES",
            "ROUNDING_SHIFT_ULPS", "SHAPE_CASES", "SHAPE_TOLERANCE", "ShapeCase", "ShapeCheck", "ShapeProbe", "SwitchSet",
-           "capability", "check_shape", "convexity_probes", "convexity_problem", "moved_rate", "register_shape_case",
+           "capability", "check_shape", "convexity_probes", "convexity_problem", "moved_rate", "override_problems", "register_shape_case",
            "screw_focus", "shape_probes", "switch_distances", "uncased_shapes"]

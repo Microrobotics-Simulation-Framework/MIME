@@ -361,19 +361,42 @@ def _has_shapes(kind: Geometry) -> bool:
 
 def drawing_checks(kind: Geometry) -> tuple[str, ...]:
     """What :func:`drawing_problems` checks of ``kind``'s drawing: ``closed`` always; ``on the surface``, ``volume`` and
-    ``area`` where the kind has shapes, closed forms or a surface here to hold them to; and for a drawing contoured from
-    its shapes' distance (``Geometry.drawing``'s derived form), ``near the surface``: each vertex within a contour cell's
-    diagonal of it, the bound a distance's one-Lipschitz interpolation along a cell's edge gives."""
+    ``area`` where the kind has shapes, closed forms or a surface here to hold them to. For a drawing contoured from
+    its shapes' distance (``Geometry.drawing``'s derived form, whose vertices lie off the surface by the contour's
+    interpolation, not by rounding) ``near the surface`` takes the place of ``on the surface``: each vertex within the
+    second-order bound of a contour's interpolation along a cell's edge (:func:`contour_line`); its volume and area are
+    held to the kind's closed forms exactly as every other kind's are, at second order."""
     checks = ["closed"]
-    if derivable(type(kind), "drawing"):
-        return ("closed", "near the surface")
-    if _has_shapes(kind) or kind.name in _SURFACES:
+    derived = derivable(type(kind), "drawing")
+    if derived:
+        checks.append("near the surface")
+    elif _has_shapes(kind) or kind.name in _SURFACES:
         checks.append("on the surface")
-    if isinstance(kind, Solid) or kind.name in _SURFACES:
+    if (isinstance(kind, Solid) and (not derived or implements(kind, "mass_properties"))) or kind.name in _SURFACES:
         checks.append("volume")
     if (implements(kind, "area") and bool(kind.patches)) or kind.name in _SURFACES:
         checks.append("area")
     return tuple(checks)
+
+
+def contour_line(cell: float, feature: float) -> float:
+    """How far a contoured drawing's vertex lies off the surface at most: a vertex is a linear interpolation of an exact
+    signed distance along a cell's edge, at most ``sqrt(3)`` cells long (a cube's diagonal), whose second derivative is
+    at most ``1 / (feature - sqrt(3) cell)`` there (the surface's smallest radius of curvature is at least ``feature``,
+    the kind's smallest length), so the interpolation errs by at most ``3 cell^2 / (8 (feature - sqrt(3) cell))``.
+    Infinite where the cell's diagonal is not below ``feature``: the contour does not resolve the kind."""
+    reach = math.sqrt(3.0) * cell
+    return 3.0 * cell * cell / (8.0 * (feature - reach)) if feature > reach else math.inf
+
+
+def _smallest_length(kind: Geometry, settings: Mapping[str, Magnitude]) -> float:
+    """The kind's smallest length setting (``mime.sensing``'s structural stand-in for its smallest feature), read from
+    the registration of the class nearest ``kind`` in its bases that has one."""
+    from mime.registry import registration_of
+    from mime.sensing._sampled import smallest_length
+
+    held = next((cls for cls in type(kind).__mro__ if registration_of(cls) is not None), type(kind))
+    return smallest_length(cast(Any, held), settings)
 
 
 def _converges(label: str, name: str, closed: float, values: tuple[float, float, float], segments: int,
@@ -453,10 +476,15 @@ def drawing_problems(kind: Geometry, settings: Mapping[str, Magnitude], segments
                                       kind.region_parameters(region, settings), points)
             boundary = np.maximum(boundary, distance)
         cell = 2.0 * cast(Solid, kind).enclosing_radius(settings) / segments
+        feature = _smallest_length(kind, settings)
+        size = float(np.max(np.linalg.norm(points, axis=1)))
+        line = contour_line(cell, feature) + KIND_ROUNDING_ULPS * _EPSILON * size
         off = float(np.max(np.abs(boundary)))
-        if not off <= math.sqrt(3.0) * cell:
-            found.append(f"{label}: its contoured drawing's vertices lie up to {off:.3g} m off its surface, beyond a "
-                         f"cell's diagonal ({math.sqrt(3.0) * cell:.3g} m)")
+        if not off <= line:
+            found.append(f"{label}: its contoured drawing's vertices lie up to {off:.3g} m off its surface, beyond the "
+                         f"contour's bound {line:.3g} m (cell {cell:.3g} m, smallest length {feature:.3g} m)"
+                         + ("; at this many segments a cell's diagonal is not below its smallest length, so the contour "
+                            "does not resolve it" if feature <= math.sqrt(3.0) * cell else ""))
     if "volume" in checks or "area" in checks:
         drawn = {at: kind.drawing(settings, at) for at in (segments // 2, 2 * segments)}
         drawn[segments] = drawing
@@ -643,5 +671,5 @@ def drawing_kinds(kinds: list[type[Geometry]]) -> list[type[Geometry]]:
 
 
 __all__ = ["CREASE_RIM_ULPS", "KIND_ROUNDING_ULPS", "NORMAL_ROUNDING_ULPS", "SIGN_SLOPE_ULPS", "VOLUME_CONVERGENCE",
-           "crease_measure_problems", "drawing_checks", "drawing_kinds", "drawing_problems", "kind_problems",
+           "contour_line", "crease_measure_problems", "drawing_checks", "drawing_kinds", "drawing_problems", "kind_problems",
            "sampling_kinds", "sign_function_problems"]

@@ -28,7 +28,8 @@ from screw_grid import FL9, HELIX_SETTINGS
 
 from mime.core import SCREW, jnp
 from mime.docs._export import load_namespaces
-from mime.registry import Drawing, EntryKind, Samples, implements
+from mime.registry import Drawing, EntryKind, Samples, implements, lookup
+import mime.registry._entries as entries
 from mime.registry._entries import derivable
 from mime.registry import registered as registered_entries
 from mime.scene import DRAWING_SEGMENTS, Box, Ellipsoid, Screw, Tube
@@ -85,6 +86,13 @@ def registered():
 def test_every_registered_entry_and_every_kind_of_thing_has_a_round_trip_case(registered):
     missing = uncovered(CASES, registered)
     assert not missing, "no round-trip case uses: " + "; ".join(missing) + ". Add one to tests/saved/cases.py."
+
+
+def test_collecting_the_toy_kinds_test_files_leaves_it_out_of_the_registry():
+    """CI collects every file in every job, and the walk asks every registered kind a round-trip case: the toy kind
+    (``mime.testing.toys.registered_toy_capsule``) is registered by a fixture while its tests run, never at import, so
+    that by the time this test runs (every file collected, its own module's fixtures closed) no kind is here."""
+    assert lookup(EntryKind.GEOMETRY, "toy.capsule", "0.1.0") is None
 
 
 def test_removing_the_only_case_for_an_entry_fails_the_walk(registered):
@@ -284,9 +292,17 @@ def test_control_the_cap_sampled_without_its_twist_fails_at_every_count_of_start
 
 # -- the drawing check -----------------------------------------------------------------------------------------------
 
-def test_every_kind_that_draws_itself_passes_the_drawing_check_at_the_writers_resolution(declared_kinds):
+def installed_geometries(registered) -> list[type]:
+    """The geometry kinds the walk's fresh process registers: one a test registers on its own (``entryassets.bead``, a
+    marked lab bead) is no installed entry, as the registry walk reads them."""
+    installed = {(kind, name, version) for kind, name, version in registered}
+    return [record.cls for record in registered_entries(EntryKind.GEOMETRY)
+            if (record.kind.value, record.name, record.version) in installed]
+
+
+def test_every_kind_that_draws_itself_passes_the_drawing_check_at_the_writers_resolution(declared_kinds, registered):
     load_namespaces()
-    drawing = drawing_kinds([record.cls for record in registered_entries(EntryKind.GEOMETRY)])
+    drawing = drawing_kinds(installed_geometries(registered))
     assert {Tube, Screw, Box, Ellipsoid} <= set(drawing), "the walk would pass over a kind"
     unchecked = [cls.label() for cls in drawing if cls not in declared_kinds]
     assert unchecked == [], f"no round-trip case declares {unchecked}, so the drawing check checks nothing of them"
@@ -299,22 +315,20 @@ def test_every_kind_that_draws_itself_passes_the_drawing_check_at_the_writers_re
                            for cls in sorted(drawing, key=lambda c: c.name)))
 
 
-def test_every_kind_that_draws_itself_is_held_to_its_surface_its_volume_and_its_area(declared_kinds):
+def test_every_kind_that_draws_itself_is_held_to_its_surface_its_volume_and_its_area(declared_kinds, registered):
     """The drawing check says what it checks of each kind, and a kind drawn with nothing to hold its vertices, volume
     and area to is a kind the check passes without seeing: it fails here, until the harness has its surface. A kind
-    whose drawing is derived (contoured from its regions' shapes: ``derivable``) is held to the distance it is
-    contoured from, each vertex within a cell of it (``near the surface``), and is closed; its volume and surface are
-    held where a shape of the kind has its closed form to judge them by (the extensibility test's toy capsule against
-    MIME's, ``tests/unit/test_shape_protocol.py``), not here: this walk has no closed form for a derived kind (the
-    box's, the older sphere's, the lab bead's)."""
+    whose drawing is derived (contoured from its regions' shapes: ``derivable``) is held as every other is, to its
+    closed-form volume and area at second order, and to its surface within the contour's second-order bound
+    (``near the surface``) in place of rounding (``on the surface``): a contour's vertices are interpolated, not on it."""
     load_namespaces()
-    drawing = drawing_kinds([record.cls for record in registered_entries(EntryKind.GEOMETRY)])
+    drawing = drawing_kinds(installed_geometries(registered))
     short = {cls.label(): set(DERIVED_CHECK if derivable(cls, "drawing") else FULL_CHECK)
              - set(drawing_checks(declared_kinds[cls][0][0])) for cls in drawing}
     assert {label: left for label, left in short.items() if left} == {}
     derived = [cls for cls in drawing if derivable(cls, "drawing")]
     assert derived, "the walk would pass over a kind whose drawing is derived"
-    assert all(drawing_checks(declared_kinds[cls][0][0]) == DERIVED_CHECK for cls in derived)
+    assert all(set(drawing_checks(declared_kinds[cls][0][0])) == set(DERIVED_CHECK) for cls in derived)
 
 
 @pytest.mark.parametrize(("starts", "modulation", "nu"), HELIX_SETTINGS)
@@ -324,7 +338,7 @@ def test_the_helix_passes_the_drawing_check_at_every_setting_it_accepts(starts, 
 
 
 FULL_CHECK = ("closed", "on the surface", "volume", "area")
-DERIVED_CHECK = ("closed", "near the surface")
+DERIVED_CHECK = ("closed", "near the surface", "volume", "area")
 
 #: Settings of the kinds with no two equal edges, semi-axes or lengths in them, as the declared ones have (a cube, a
 #: sphere): a planted permutation of the axes is a different drawing only where they differ.
@@ -413,6 +427,59 @@ def test_control_a_drawing_planted_wrong_fails_the_drawing_check_for_every_kind(
     problems = planted_problems(declared_kinds, cls, defect)
     print(f"\n{cls.label()} {defect}: {problems}")
     assert problems
+
+
+def derived_kinds(declared_kinds):
+    """The declared kinds whose drawing is derived (a contour of their shapes' distance), each with a declaration."""
+    load_namespaces()
+    found = [(cls, *declared_kinds[cls][0]) for cls in declared_kinds if derivable(cls, "drawing")]
+    assert found, "the walk would pass over a kind whose drawing is derived"
+    return found
+
+
+def plant_into_contour(monkeypatch, defect, scale):
+    """Plant ``defect`` into the contour a derived drawing is made of (``Geometry.drawing`` calls it), so that the kind
+    is unchanged, its drawing derived still, and held to the checks a derived drawing is held to: a subclass that
+    overrides ``drawing`` is not a derived kind."""
+    held = entries.contour
+
+    def planted_contour(distance, low, high, cells):
+        points, triangles, cell = held(distance, low, high, cells)
+        drawn = planted(Drawing(tuple(map(tuple, points.tolist())), (3,) * len(triangles),
+                                tuple(triangles.ravel().tolist()), ""), defect, scale)
+        return np.asarray(drawn.points), np.asarray(drawn.face_vertex_indices, dtype=np.int64).reshape(-1, 3), cell
+
+    monkeypatch.setattr(entries, "contour", planted_contour)
+
+
+#: Each defect of the picture a sphere shows: ``permuted`` is no defect of one (its axes are alike), and is left out.
+DERIVED_PLANTS = [("scaled", 1e-4), ("scaled", 0.04), ("grown", 0.0), ("stretched", 0.0), ("turned_face", 0.0),
+                  ("missing_face", 0.0)]
+
+
+#: The plants' resolution: half the writer's (its drawings at 16, 32 and 64 cells), the contour's own error four times
+#: the writer's, and each plant above it; the unplanted arm is the walk's own, at the writer's.
+PLANT_SEGMENTS = DRAWING_SEGMENTS // 2
+
+
+@pytest.mark.parametrize(("defect", "scale"), DERIVED_PLANTS, ids=lambda held: str(held))
+def test_control_a_derived_drawing_planted_wrong_fails_the_drawing_check_for_every_derived_kind(
+        monkeypatch, declared_kinds, defect, scale):
+    """Each defect planted into a derived drawing's contour fails the check, on every run (nothing is drawn, so nothing
+    varies), for each of the kinds whose drawing is derived: scaled by a part in 10^4 (the volume's and the area's to
+    find: the contour's vertices lie off the surface by 4e-7 of its radius, above that) or by four percent (the vertices'
+    to find, which a cell's diagonal, 150 times the contour's own error, passed), grown by half, stretched along z, a
+    face turned over, a face missing."""
+    for cls, kind, settings in derived_kinds(declared_kinds):
+        with monkeypatch.context() as patch:
+            plant_into_contour(patch, defect, scale)
+            problems = drawing_problems(kind, settings, PLANT_SEGMENTS)
+        print(f"\n{cls.label()} {defect} {scale}: {problems}")
+        assert problems
+        if (defect, scale) == ("scaled", 1e-4):
+            assert any("drawing's volume" in p for p in problems) and any("drawing's area" in p for p in problems)
+        if (defect, scale) == ("scaled", 0.04):
+            assert any("off its surface, beyond the contour's bound" in p for p in problems)
 
 
 def test_control_a_scale_beneath_the_vertices_check_is_still_caught_by_the_volume_and_area(declared_kinds):

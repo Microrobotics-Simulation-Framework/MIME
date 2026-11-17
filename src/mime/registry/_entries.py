@@ -1771,10 +1771,12 @@ class Geometry(Entry):
         each curved direction, every vertex on the surface.
 
         **Derived** for a solid whose every region is a registered shape and which places nothing (its own frame the
-        frame its settings are in): its body's signed distance (the greatest of its regions') contoured on a grid of
-        ``segments`` cells across its enclosing ball (:func:`mime.core._contour.contour`), a closed mesh whose vertices
-        lie within about a cell of its surface, not on it, and whose ``representation`` says it is a drawing."""
-        if not derivable(type(self), "drawing"):
+        frame its settings are in): its body's signed distance (the greatest of its regions') contoured by marching
+        tetrahedra on a grid of ``segments`` cells across its enclosing ball, a closed mesh whose vertices lie within
+        a second-order bound of its surface (not on it) and whose ``representation`` says it is a drawing. A kind that
+        overrides this method reaches the derivation by ``super().drawing(...)``.
+        """
+        if not from_shapes(type(self), "drawing"):
             raise NotImplementedError
         solid = cast(Solid, self)
         reach = float(solid.enclosing_radius(settings))
@@ -1884,8 +1886,10 @@ class Geometry(Entry):
 
         **Derived** for a solid whose every region is a registered shape: the region's shape's own sign function
         (``mime.core.Shape.sign_function``: its closed form, or its signed distance) at the region's parameters, which
-        :meth:`region_parameters` then maps from settings that may be traced arrays."""
-        if not derivable(type(self), "sign_function"):
+        :meth:`region_parameters` then maps from settings that may be traced arrays. A kind that overrides this method
+        for some regions reaches the derivation for the others by ``super().sign_function(...)``.
+        """
+        if not from_shapes(type(self), "sign_function"):
             raise NotImplementedError
         return shape_named(self.region_shapes[region]).sign_function(self.region_parameters(region, parameters), point)
 
@@ -1923,15 +1927,21 @@ def implements(kind: type[Geometry] | Geometry, capability: str) -> bool:
 DERIVED_CAPABILITIES = ("sign_function", "drawing")
 
 
-def derivable(kind: type[Geometry], capability: str) -> bool:
-    """Whether ``kind`` derives ``capability`` (one of :data:`DERIVED_CAPABILITIES`) from its regions' shapes: a solid
-    whose every region is a registered shape, and, for its drawing, which places nothing (its drawing's frame is its
-    settings')."""
-    if capability not in DERIVED_CAPABILITIES or getattr(kind, capability) is not getattr(Geometry, capability):
+def from_shapes(kind: type[Geometry], capability: str) -> bool:
+    """Whether ``kind``'s regions give ``capability`` (one of :data:`DERIVED_CAPABILITIES`) by derivation: a solid whose
+    every region is a registered shape, and, for its drawing, which places nothing (its drawing's frame is its
+    settings'). What :meth:`Geometry.drawing` and :meth:`Geometry.sign_function` derive from, whether or not the kind
+    overrides them, so that an override may call ``super()`` for the regions it leaves to the derivation."""
+    if capability not in DERIVED_CAPABILITIES:
         return False
     shaped = issubclass(kind, Solid) and bool(kind.regions) and all(
         kind.region_shapes.get(region) in shape_names() for region in kind.regions)
     return shaped and (capability != "drawing" or not kind.placement)
+
+
+def derivable(kind: type[Geometry], capability: str) -> bool:
+    """Whether ``kind`` takes ``capability`` from the derivation (:func:`from_shapes`): it gives none of its own."""
+    return getattr(kind, capability) is getattr(Geometry, capability) and from_shapes(kind, capability)
 
 
 def declared_switches(cls: type[Entry]) -> tuple[switch.Declaration, ...]:

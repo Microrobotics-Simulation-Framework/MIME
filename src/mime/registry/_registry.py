@@ -951,6 +951,14 @@ def lookup(kind: EntryKind, name: str, version: str) -> Registered | None:
     return _by_key.get((kind, name, version))
 
 
+def unregister(cls: type) -> None:
+    """Take ``cls`` out of the registry (a no-op if it is not in it): for a test-kit entry a test registers while it
+    runs, so that no other test's registry walk meets it. Not exported by ``mime.registry``."""
+    record = _by_class.pop(cls, None)
+    if record is not None:
+        del _by_key[(record.kind, record.name, record.version)]
+
+
 def versions_of(kind: EntryKind, name: str) -> list[str]:
     return sorted((v for (k, n, v) in _by_key if k is kind and n == name), key=version_order)
 
