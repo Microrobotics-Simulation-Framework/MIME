@@ -54,6 +54,7 @@ from mime.testing.toys._nodes import (
     ToySpringNode,
     sheet,
 )
+from mime.testing.toys._shape import TOY_CAPSULE_END, TOY_CAPSULE_SHAPE, ToyCapsule, ToyCapsuleShape
 from mime.testing.toys._surface import ToyIndentedSheet
 
 __all__ = [
@@ -68,6 +69,8 @@ __all__ = [
     "PROBE_START",
     "PUSH",
     "TORQUE",
+    "TOY_CAPSULE_END",
+    "TOY_CAPSULE_SHAPE",
     "TOY_FAMILY",
     "BODY_VELOCITY",
     "VERSION",
@@ -75,6 +78,8 @@ __all__ = [
     "ToyAnchoredBodyNode",
     "ToyBody",
     "ToyBodyNode",
+    "ToyCapsule",
+    "ToyCapsuleShape",
     "ToyCouple",
     "ToyDrag",
     "ToyDragNode",

@@ -30,7 +30,8 @@ from script_a import VOLUME, fl9, script_a
 import mime.interactions.hydrodynamic as hydrodynamic
 from mime import Body, Experiment, Medium, State, Structure, asset
 from mime.build import BuildRefused
-from mime.core import SCREW, Cylinder, jnp
+from mime.core import SCREW, jnp
+from mime.core.shapes import CylinderShape
 from mime.core._shapes import _exact_product as exact_product
 from mime.core._shapes import _exact_sum as exact_sum
 from mime.assets import asset as data_asset
@@ -466,7 +467,7 @@ def test_the_de_jongh_surrogate_refuses_a_helix_turned_in_the_body(tmp_path):
     bound_helix(turned_shell(tmp_path / "unturned.usda", 0.0)).plan()
 
 
-class Tapered(Cylinder):
+class Tapered(CylinderShape):
     """A shape with an axis and a parameter a circular tube does not have: a lab's, say."""
 
     parameter_names = ("centre", "axis", "radius", "taper")
@@ -477,7 +478,7 @@ def test_the_drag_refuses_a_tube_whose_shape_has_an_axis_but_not_a_circular_tube
     circular tube's: a shape with an axis and other parameters is refused when planned. Its control: the cylinder's
     own parameters pass."""
     parameters = {"centre": (0.0, 0.0, 0.0), "axis": (1.0, 0.0, 0.0), "radius": 3.175e-3, "taper": 0.0}
-    monkeypatch.setattr(hydrodynamic, "shape_named", lambda name: Tapered() if name == "tapered" else Cylinder())
+    monkeypatch.setattr(hydrodynamic, "shape_named", lambda name: Tapered() if name == "tapered" else CylinderShape())
     found = hydrodynamic.uniform_tube(Region("tube.lumen", "tapered", parameters), "water")
     assert isinstance(found, Problem) and found.code == "drag.no-axis" and "not a circular tube's" in found.message
     tube = hydrodynamic.uniform_tube(Region("tube.lumen", "cylinder", parameters), "water")

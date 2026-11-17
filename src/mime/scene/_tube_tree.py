@@ -53,6 +53,7 @@ import jax
 import numpy as np
 
 from mime.core import jnp, register_shape
+from mime.core.shapes import Shape
 from mime.gradients import GradientStatus
 from mime.registry import PHYSICAL, Centreline, CentrelineFrame, CentrelineSegment, Geometry, GradientRecord, \
     Junction, convention, register_geometry
@@ -121,7 +122,7 @@ class WallFeatures:
     fused: tuple[tuple[int, int], ...] = ()
 
 
-class TubeTreeShape:
+class TubeTreeShape(Shape):
     """The lumen of a tube tree as a registered shape (``tube_tree``): its union's exact signed distance and outward
     normal (``ExactUnion``, every point's candidates run) at an array of points, its parameters the tree's in SI, its
     ``segments`` among them its structure (two indices a segment, integers, or numbers a region's parameters hold),
@@ -137,11 +138,13 @@ class TubeTreeShape:
         flat = [int(round(float(i))) for i in np.asarray(parameters["segments"], dtype=np.float64).reshape(-1)]
         return _structural_lumen(tuple((flat[k], flat[k + 1]) for k in range(0, len(flat), 2)))
 
+    @override
     def signed_distance(self, parameters: Mapping[str, Any], point: Any) -> Any:
         held = jnp.asarray(point)
         found = self.union(parameters).evaluate(parameters, held.reshape(-1, 3), None)
         return found.distance.reshape(held.shape[:-1])
 
+    @override
     def outward_normal(self, parameters: Mapping[str, Any], point: Any) -> Any:
         held = jnp.asarray(point)
         union = self.union(parameters)
@@ -150,12 +153,6 @@ class TubeTreeShape:
             return jnp.sum(union.evaluate(parameters, at, None).distance)
 
         return cast(Any, jax).grad(total)(held.reshape(-1, 3)).reshape(held.shape)
-
-    def axis(self, parameters: Mapping[str, Any]) -> Any:
-        return None
-
-    def axis_point(self, parameters: Mapping[str, Any]) -> Any:
-        return None
 
 
 @register_geometry

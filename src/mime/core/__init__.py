@@ -1,18 +1,14 @@
-"""The base node class, quaternion helpers, the shapes nodes evaluate, typed node state, the symbol table a node's
+"""The base node class, quaternion helpers, the shapes nodes evaluate (by registered name; their classes and the
+protocol a lab's shape follows are in ``mime.core.shapes``), typed node state, the symbol table a node's
 equations are joined to its code by, and the switch functions a step evaluates every non-smooth operation through:
-what every node imports. Its subpackages: ``multibody``, the rigid-body library, and ``tables``, the table
-evaluator."""
+what every node imports. Its subpackages: ``multibody``, the rigid-body library, ``tables``, the table evaluator, and
+``shapes``."""
 
 from mime.core import _quaternion as quaternion
 from mime.core import switch
 from mime.core._geometry import (
     AXIS_ULPS,
-    CYLINDER,
-    CYLINDER_SWITCHES,
-    HALF_SPACE,
     VELOCITY_RULES,
-    Cylinder,
-    HalfSpace,
     Shape,
     VelocityRule,
     register_shape,
@@ -24,16 +20,15 @@ from mime.core._geometry import (
 from mime.core._shapes import (
     CAPSULE,
     CAPSULE_SWITCHES,
+    CYLINDER,
+    CYLINDER_SWITCHES,
+    HALF_SPACE,
     SCREW,
     SCREW_SWITCHES,
     SLAB,
     SLAB_SWITCHES,
     SPHERE,
     SPHERE_SWITCHES,
-    Capsule,
-    Screw,
-    Slab,
-    Sphere,
     nearest_point,
 )
 from mime.core._field_kinds import FieldKind, HeldForces, HeldPoints, Units, field_kinds, paired_forces, typed_units
@@ -72,20 +67,14 @@ __all__ = [
     "SPHERE",
     "SPHERE_SWITCHES",
     "VELOCITY_RULES",
-    "Capsule",
-    "Cylinder",
     "HALF_SPACE",
-    "HalfSpace",
     "FieldKind",
     "HeldForces",
     "HeldPoints",
     "MimeNode",
     "NUDGED_SIZE",
     "NodeFields",
-    "Screw",
     "Shape",
-    "Slab",
-    "Sphere",
     "Symbol",
     "SymbolKind",
     "Units",

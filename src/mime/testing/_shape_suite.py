@@ -79,6 +79,7 @@ import numpy as np
 from hypothesis import strategies as st
 
 from mime.core import jnp, nearest_point, quaternion, shape_named, shape_names, switch
+from mime.core.shapes import shape_package
 from mime.core._geometry import AXIS_ULPS
 
 type Parameters = dict[str, Any]
@@ -164,12 +165,13 @@ def register_shape_case(case: ShapeCase) -> ShapeCase:
 
 def uncased_shapes(package: str = "mime") -> list[str]:
     """Each shape registered from ``package`` with no case, and each owner such a shape declares that its case neither
-    places nor says why it cannot. A shape of another package (a lab's, a test's) is its package's to case."""
+    places nor says why it cannot. A shape of another package (a lab's, a test's) is its package's to case, and so is a
+    namespaced one (the toys' ``toy.capsule``, held to its analytic reference by its own tests)."""
     from mime.core import shape_switches
 
     found: list[str] = []
     for name in shape_names():
-        if type(shape_named(name)).__module__.split(".")[0] != package:
+        if shape_package(name) != package or "." in name:
             continue
         case = SHAPE_CASES.get(name)
         if case is None:

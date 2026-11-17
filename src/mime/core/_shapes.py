@@ -1,5 +1,6 @@
-"""The shapes of the solid geometry kinds: a ball, a capsule, a slab and de Jongh's screw, each a :class:`Shape` with
-its switches declared beside it.
+"""MIME's shapes in closed form: the unbounded cylinder, the half-space, a ball, a capsule, a slab and de Jongh's screw,
+each a :class:`Shape` with its switches declared beside it, and its analytic forms (its normal, and the camera's sign
+function where its distance has a closed form) given as the overrides of the forms a shape derives from its distance.
 
 Every shape's medial set (the centre, the segment, the mid-plane, the screw's seam) is where the nearest point of its
 boundary is not unique: there the distance has a kink and the normal no limit. A point within ``AXIS_ULPS`` units in
@@ -11,7 +12,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any, cast, override
 
 import jax
 from jax import Array
@@ -19,7 +20,8 @@ from jaxtyping import Float
 
 from mime.core import _quaternion as quaternion
 from mime.core import switch
-from mime.core._geometry import AXIS_ULPS, Parameters, Point, register_shape
+from mime.core import _sign_forms as forms
+from mime.core._geometry import AXIS_ULPS, Parameters, Point, Shape, SignValue, register_shape
 from mime.core._node import jnp
 
 #: ``jax.jvp`` and ``jax.lax``, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
@@ -54,7 +56,134 @@ def _unit_axis(parameters: Parameters, dtype: Any) -> Array:
     return axis / switch.nonzero_norm(axis)
 
 
-class Sphere:
+def _unit(v: Any, *, owner: str) -> Array:
+    """``v`` scaled to unit length; zero for a zero vector, where its length is the caller's switch ``owner``."""
+    length = switch.norm(v, owner=owner, resolution=0.0, indicator=lambda: jnp.sqrt(jnp.sum(v * v)))
+    return v / switch.where(length > 0, length, 1.0, owner=owner, resolution=0.0, indicator=length)
+
+
+
+class CylinderShape(Shape):
+    """The inside of an unbounded circular cylinder: ``centre`` (a point on its axis), ``axis`` (its direction,
+    normalised here), ``radius``. Its outward normal is the radial direction, which is not defined on the axis. A point
+    within ``AXIS_ULPS`` units in the last place of the radius of the axis is on it, whatever the axis's direction:
+    there the signed distance is minus the radius (its derivative zero, but minus one in the radius), and the normal is
+    zero, with the derivative of the offset from the axis (in the point, the projection across the axis). It takes an
+    array of points as well as one (``takes_many``), each evaluated as it would be alone."""
+
+    parameter_names: tuple[str, ...] = ("centre", "axis", "radius")
+    takes_many = True
+    convex = True
+
+    @staticmethod
+    def _radial(parameters: Parameters, point: Point) -> tuple[Array, Array, Array]:
+        """The point's offset from the axis, its length (zero on the axis), and whether the point is off the axis;
+        for an array of points, each one's."""
+        axis = _unit(jnp.asarray(parameters["axis"]), owner="cylinder.axis_norm")
+        offset = point - jnp.asarray(parameters["centre"])
+        radial = offset - jnp.matmul(offset, axis)[..., None] * axis
+        squared = jnp.sum(radial * radial, axis=-1)
+        resolution = AXIS_ULPS * float(jnp.finfo(radial.dtype).eps) * parameters["radius"]
+        off = squared > resolution ** 2
+        length = switch.where(off, jnp.sqrt(switch.domain_guard(off, squared, 1.0)), 0.0, owner="cylinder.axis",
+                              resolution=resolution, indicator=lambda: jnp.sqrt(squared))
+        return radial, length, off
+
+    @override
+    def signed_distance(self, parameters: Parameters, point: Point) -> Float[Array, ""]:  # noqa: F722 - a jaxtyping shape
+        return self._radial(parameters, point)[1] - parameters["radius"]
+
+    @override
+    def outward_normal(self, parameters: Parameters, point: Point) -> Point:
+        radial, length, off = self._radial(parameters, point)
+        return switch.where(off[..., None], radial / switch.domain_guard(off, length, 1.0)[..., None],
+                            radial - lax.stop_gradient(radial), owner="cylinder.axis",
+                            resolution=lambda: AXIS_ULPS * float(jnp.finfo(radial.dtype).eps) * parameters["radius"],
+                            indicator=lambda: jnp.sqrt(jnp.sum(radial * radial, axis=-1)))
+
+    def curvature(self, parameters: Parameters, point: Point) -> Array:
+        """The outward normal's derivative in the point: ``(P - n n^T) / r``, ``P`` the projection across the axis,
+        ``n`` the normal and ``r`` the point's distance from the axis; zero on the axis, where the normal is."""
+        radial, length, off = self._radial(parameters, point)
+        axis = _unit(jnp.asarray(parameters["axis"]), owner="cylinder.axis_norm")
+        held = switch.domain_guard(off, length, 1.0)[..., None, None]
+        normal = radial / held[..., 0]
+        across = jnp.eye(3, dtype=radial.dtype) - axis[:, None] * axis[None, :]
+        bend = (across - normal[..., :, None] * normal[..., None, :]) / held
+        return switch.where(off[..., None, None], bend, jnp.zeros_like(bend), owner="cylinder.axis",
+                            resolution=lambda: AXIS_ULPS * float(jnp.finfo(radial.dtype).eps) * parameters["radius"],
+                            indicator=lambda: jnp.sqrt(jnp.sum(radial * radial, axis=-1)))
+
+    @override
+    def sign_function(self, parameters: Parameters, point: tuple[Any, Any, Any]) -> SignValue:
+        """Its signed distance from its axis, its length floored on the axis (``mime.core._sign_forms``)."""
+        at = forms.offset(point, parameters["centre"])
+        axis = forms.unit(parameters["axis"])
+        value = forms.across(at, axis, forms.along(at, axis), parameters["radius"]) - parameters["radius"]
+        return SignValue(value, jnp.ones_like(value))
+
+    @override
+    def axis(self, parameters: Parameters) -> Point | None:
+        return _unit(jnp.asarray(parameters["axis"]), owner="cylinder.axis_norm")
+
+    @override
+    def axis_point(self, parameters: Parameters) -> Point | None:
+        return jnp.asarray(parameters["centre"])
+
+
+#: The cylinder's switches: the axis, where the distance has a cone and the normal no limit, and the length of the
+#: axis it is given, which it scales to unit length.
+CYLINDER_SWITCHES = (
+    switch.Declaration(
+        owner="cylinder.axis",
+        indicator="the point's distance from the axis, m; on the axis within AXIS_ULPS units in the last place of the "
+                  "radius (a band)",
+        orders={"distance": 0, "normal": -1, "curvature": -1},
+        route="none: on the axis the distance is a cone and the normal has no limit, so neither has a derivative to "
+              "compute; within the band the distance is minus the radius and the normal and its derivative zero, the "
+              "normal with the offset's derivative"),
+    switch.Declaration(
+        owner="cylinder.axis_norm",
+        indicator="the length of the axis as given (a direction, any length)",
+        orders={"distance": -1, "normal": -1, "curvature": -1},
+        route="none needed: an axis of zero length is no direction, and the plan refuses one, so the switch is never "
+              "live"),
+)
+CYLINDER = register_shape("cylinder", CylinderShape(), switches=CYLINDER_SWITCHES)
+
+
+class HalfSpaceShape(Shape):
+    """The side of a plane its normal points into, ``x . n >= offset``: ``normal`` (its direction, normalised here; the
+    plan refuses a zero one) and ``offset`` (the plane's signed distance from the origin along its normal). Its signed
+    distance is ``offset - x . n``, linear in the point, so it has no medial set and no switch: its outward normal is
+    ``-n`` everywhere and its curvature zero. It takes an array of points as well as one (``takes_many``), and its
+    region is convex."""
+
+    parameter_names: tuple[str, ...] = ("normal", "offset")
+    takes_many = True
+    convex = True
+
+    @staticmethod
+    def _normal(parameters: Parameters, dtype: Any) -> Array:
+        normal = jnp.asarray(parameters["normal"], dtype=dtype)
+        return normal / switch.nonzero_norm(normal)
+
+    @override
+    def signed_distance(self, parameters: Parameters, point: Point) -> Float[Array, ""]:  # noqa: F722 - a jaxtyping shape
+        return parameters["offset"] - jnp.sum(point * self._normal(parameters, point.dtype), axis=-1)
+
+    @override
+    def outward_normal(self, parameters: Parameters, point: Point) -> Point:
+        return jnp.broadcast_to(-self._normal(parameters, point.dtype), point.shape)
+
+    def curvature(self, parameters: Parameters, point: Point) -> Array:
+        """The outward normal's derivative in the point: zero, the plane being flat."""
+        return jnp.zeros((*point.shape, 3), dtype=point.dtype)
+
+HALF_SPACE = register_shape("half_space", HalfSpaceShape())
+
+
+class SphereShape(Shape):
     """A ball: ``centre`` and ``radius``. Its normal is radial, with no limit at the centre."""
 
     parameter_names: tuple[str, ...] = ("centre", "radius")
@@ -65,21 +194,24 @@ class Sphere:
         length, off = _off_the_set(offset, resolution, owner="sphere.centre")
         return offset, length, off, resolution
 
+    @override
     def signed_distance(self, parameters: Parameters, point: Point) -> Float[Array, ""]:  # noqa: F722 - a jaxtyping shape
         return self._offset(parameters, point)[1] - parameters["radius"]
 
+    @override
     def outward_normal(self, parameters: Parameters, point: Point) -> Point:
         offset, length, off, resolution = self._offset(parameters, point)
         return _direction(offset, length, off, resolution, owner="sphere.centre")
 
-    def axis(self, parameters: Parameters) -> Point | None:
-        return None
+    @override
+    def sign_function(self, parameters: Parameters, point: tuple[Any, Any, Any]) -> SignValue:
+        """Its signed distance, the distance from its centre (floored there) less its radius."""
+        value = forms.length(*forms.offset(point, parameters["centre"]), scale=parameters["radius"]) - \
+            parameters["radius"]
+        return SignValue(value, jnp.ones_like(value))
 
-    def axis_point(self, parameters: Parameters) -> Point | None:
-        return None
 
-
-class Capsule:
+class CapsuleShape(Shape):
     """A capsule: a cylinder of ``radius`` and ``height`` (between the centres of its caps, as USD's ``Capsule``
     counts it) along ``axis`` through ``centre``, capped by two hemispheres. Its distance is the distance from its
     segment less the radius: across the planes through the segment's ends only the curvature changes, and on the
@@ -99,21 +231,25 @@ class Capsule:
         length, off = _off_the_set(radial, resolution, owner="capsule.segment")
         return radial, length, off, resolution
 
+    @override
     def signed_distance(self, parameters: Parameters, point: Point) -> Float[Array, ""]:  # noqa: F722 - a jaxtyping shape
         return self._offset(parameters, point)[1] - parameters["radius"]
 
+    @override
     def outward_normal(self, parameters: Parameters, point: Point) -> Point:
         radial, length, off, resolution = self._offset(parameters, point)
         return _direction(radial, length, off, resolution, owner="capsule.segment")
 
-    def axis(self, parameters: Parameters) -> Point | None:
-        return None
+    @override
+    def sign_function(self, parameters: Parameters, point: tuple[Any, Any, Any]) -> SignValue:
+        """Its signed distance, the distance from its segment (floored there) less its radius."""
+        radius = parameters["radius"]
+        value = forms.segment(forms.offset(point, parameters["centre"]), forms.unit(parameters["axis"]),
+                              parameters["height"] / 2.0, radius) - radius
+        return SignValue(value, jnp.ones_like(value))
 
-    def axis_point(self, parameters: Parameters) -> Point | None:
-        return None
 
-
-class Slab:
+class SlabShape(Shape):
     """The region between two parallel planes: ``centre`` midway between them, ``axis`` normal to them and
     ``half_thickness`` from the centre to each. Its normal is the axis on one side of the mid-plane and its opposite on
     the other, with no limit on the mid-plane."""
@@ -127,18 +263,21 @@ class Slab:
         length, off = _off_the_set(offset, resolution, owner="slab.mid")
         return offset, length, off, resolution
 
+    @override
     def signed_distance(self, parameters: Parameters, point: Point) -> Float[Array, ""]:  # noqa: F722 - a jaxtyping shape
         return self._offset(parameters, point)[1] - parameters["half_thickness"]
 
+    @override
     def outward_normal(self, parameters: Parameters, point: Point) -> Point:
         offset, length, off, resolution = self._offset(parameters, point)
         return _direction(offset, length, off, resolution, owner="slab.mid")
 
-    def axis(self, parameters: Parameters) -> Point | None:
-        return None
-
-    def axis_point(self, parameters: Parameters) -> Point | None:
-        return None
+    @override
+    def sign_function(self, parameters: Parameters, point: tuple[Any, Any, Any]) -> SignValue:
+        """Its signed distance from its mid-plane."""
+        value = forms.slab(forms.offset(point, parameters["centre"]), forms.unit(parameters["axis"]),
+                           parameters["half_thickness"])
+        return SignValue(value, jnp.ones_like(value))
 
 
 #: The screw's root find: Newton steps on the squared distance (in the reference radius squared) from each start,
@@ -188,7 +327,7 @@ def _exact_sum(a: Array, b: Array) -> tuple[Array, Array]:
     return total, (a - (total - back)) + (b - back)
 
 
-class Screw:
+class ScrewShape(Shape):
     """The inside of a screw surface (after de Jongh et al. 2025, Eq. 1), unbounded along its axis: a cross-section
     ``rho(theta) = R (1 + modulation sin(starts theta))`` turned along the axis by ``wavenumber / R`` radians per
     metre. ``orientation`` (a unit quaternion) turns the screw's frame onto the world's, the axis its x; ``centre`` is
@@ -420,10 +559,12 @@ class Screw:
         return jnp.stack([jnp.zeros_like(u), u, v]), surface, normal / switch.nonzero_norm(normal), \
             thread / switch.nonzero_norm(thread), back
 
+    @override
     def signed_distance(self, parameters: Parameters, point: Point) -> Float[Array, ""]:  # noqa: F722 - a jaxtyping shape
         at, surface, normal, _, _ = self._nearest(parameters, point)
         return jnp.dot(at - surface, normal) * parameters["radius"]
 
+    @override
     def outward_normal(self, parameters: Parameters, point: Point) -> Point:
         _, _, normal, _, back = self._nearest(parameters, point)
         return back @ normal
@@ -432,12 +573,6 @@ class Screw:
         """The thread's direction at the nearest surface point: along the surface at constant angle, towards +x."""
         _, _, _, thread, back = self._nearest(parameters, point)
         return back @ thread
-
-    def axis(self, parameters: Parameters) -> Point | None:
-        return None
-
-    def axis_point(self, parameters: Parameters) -> Point | None:
-        return None
 
 
 def _medial(owner: str, what: str) -> switch.Declaration:
@@ -492,10 +627,10 @@ SCREW_SWITCHES = (
                    "digits, a noise and no order)"),
 )
 
-SPHERE = register_shape("sphere", Sphere(), switches=SPHERE_SWITCHES)
-CAPSULE = register_shape("capsule", Capsule(), switches=CAPSULE_SWITCHES)
-SLAB = register_shape("slab", Slab(), switches=SLAB_SWITCHES)
-SCREW = Screw()
+SPHERE = register_shape("sphere", SphereShape(), switches=SPHERE_SWITCHES)
+CAPSULE = register_shape("capsule", CapsuleShape(), switches=CAPSULE_SWITCHES)
+SLAB = register_shape("slab", SlabShape(), switches=SLAB_SWITCHES)
+SCREW = ScrewShape()
 register_shape("screw", SCREW, switches=SCREW_SWITCHES)
 
 
@@ -506,6 +641,7 @@ def nearest_point(shape: Any, parameters: Parameters, point: Point) -> Point:
 
 
 __all__ = [
-    "CAPSULE", "CAPSULE_SWITCHES", "SCREW", "SCREW_SWITCHES", "SLAB", "SLAB_SWITCHES", "SPHERE", "SPHERE_SWITCHES",
-    "Capsule", "Screw", "Slab", "Sphere", "nearest_point",
+    "CAPSULE", "CAPSULE_SWITCHES", "CYLINDER", "CYLINDER_SWITCHES", "HALF_SPACE", "SCREW", "SCREW_SWITCHES", "SLAB",
+    "SLAB_SWITCHES", "SPHERE", "SPHERE_SWITCHES", "CapsuleShape", "CylinderShape", "HalfSpaceShape", "ScrewShape",
+    "SlabShape", "SphereShape", "nearest_point",
 ]

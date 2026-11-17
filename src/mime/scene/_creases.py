@@ -23,7 +23,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from mime.core import switch
-from mime.scene import _signs as signs
+from mime.core import _sign_forms as signs
 
 type Vector = tuple[Any, Any, Any]
 

@@ -42,6 +42,7 @@ import numpy as np
 
 from mime.core import jnp, shape_named
 from mime.registry import Geometry, Solid, implements
+from mime.registry._entries import derivable
 from mime.scene import kind_frame
 from mime.scene._kinds import rotate
 from mime.units import Magnitude
@@ -360,8 +361,12 @@ def _has_shapes(kind: Geometry) -> bool:
 
 def drawing_checks(kind: Geometry) -> tuple[str, ...]:
     """What :func:`drawing_problems` checks of ``kind``'s drawing: ``closed`` always; ``on the surface``, ``volume`` and
-    ``area`` where the kind has shapes, closed forms or a surface here to hold them to."""
+    ``area`` where the kind has shapes, closed forms or a surface here to hold them to; and for a drawing contoured from
+    its shapes' distance (``Geometry.drawing``'s derived form), ``near the surface``: each vertex within a contour cell's
+    diagonal of it, the bound a distance's one-Lipschitz interpolation along a cell's edge gives."""
     checks = ["closed"]
+    if derivable(type(kind), "drawing"):
+        return ("closed", "near the surface")
     if _has_shapes(kind) or kind.name in _SURFACES:
         checks.append("on the surface")
     if isinstance(kind, Solid) or kind.name in _SURFACES:
@@ -441,6 +446,17 @@ def drawing_problems(kind: Geometry, settings: Mapping[str, Magnitude], segments
             worst = int(np.argmax(np.abs(boundary)))
             found.append(f"{label}: its drawing's vertices lie up to {off:.3g} m off its surface (vertex {worst}, at "
                          f"{placed[worst].tolist()})")
+    if "near the surface" in checks:
+        boundary = np.full(len(points), -np.inf)
+        for region in kind.regions:
+            distance, *_ = _at_samples(shape_named(kind.region_shapes[region]),
+                                      kind.region_parameters(region, settings), points)
+            boundary = np.maximum(boundary, distance)
+        cell = 2.0 * cast(Solid, kind).enclosing_radius(settings) / segments
+        off = float(np.max(np.abs(boundary)))
+        if not off <= math.sqrt(3.0) * cell:
+            found.append(f"{label}: its contoured drawing's vertices lie up to {off:.3g} m off its surface, beyond a "
+                         f"cell's diagonal ({math.sqrt(3.0) * cell:.3g} m)")
     if "volume" in checks or "area" in checks:
         drawn = {at: kind.drawing(settings, at) for at in (segments // 2, 2 * segments)}
         drawn[segments] = drawing

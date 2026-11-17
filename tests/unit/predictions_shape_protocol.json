@@ -1,0 +1,21 @@
+{
+ "about": "DUPLICATES PR A, one Shape protocol: predictions committed before the probe (probe/shapes-bits) runs. Bits base (release tip) against head, one CPU, one thread, by .github/probe/bit_compare.py; controls by .github/probe/detection_rate.py.",
+ "bits": {
+  "route1_and_5a_programs": "the compiled texts of scripts/camera_route2/hlo.py's twelve programs equal (route 1 touches no shape; 5a's helix and ellipsoid keep their own sign functions, whose helpers only moved module)",
+  "creased_images": "creased32 and creased64: every view's transmission and flags equal; forward_count equal or larger only by the subtraction of the regions' zero centre (the cylinder's sign function now reached through its regions' shapes, CylinderShape and SlabShape, at the kind's region parameters)",
+  "swap_route2": "the sphere's and the capsule's route-2 frames equal; their compiled texts may differ by the zero centre's subtraction",
+  "node_shapes": "every registered shape's distance, normal and curvature equal, and their compiled texts equal (no formula changed, only the classes' names and base)",
+  "contact": "the cylinder-held rigid body's poses, twists and step text equal",
+  "controls": "each program repeated equal; every input one ulp up differs in every value array"
+ },
+ "plants": {
+  "normal": "the derived normal turned a milliradian: the contact test (float32, start0) caught 10/10, clean 0/10; the normal test caught 10/10, clean 0/10",
+  "sign": "the derived sign function offset a tenth of a pixel's footprint: the camera test caught 10/10 (each dtype), clean 0/10"
+ },
+ "cost": {
+  "camera_frame": "the toy capsule's frame (derived sign function: its distance, a clamp and a floored length) within 1.5 times the count of MIME's capsule on the same route",
+  "derived_normal": "autodiff's normal 2 to 4 times the count of the capsule's closed-form normal",
+  "contact_step": "the toy-held step within 1.5 times the capsule-held one's count (the normal is a small part of the step)",
+  "drawing": "the contoured drawing at 64 cells under 5 s on a runner"
+ }
+}

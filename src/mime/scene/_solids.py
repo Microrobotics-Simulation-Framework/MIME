@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Annotated, Any, override
+from typing import Annotated, Any, cast, override
 
 import numpy as np
 
@@ -36,7 +36,7 @@ from mime.registry import (
     uniform,
 )
 from mime.scene import _creases as creases
-from mime.scene import _signs as signs
+from mime.core import _sign_forms as signs
 from mime.scene._caps import cap_rings, ring_floor
 from mime.scene._centreline import straight
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
@@ -84,8 +84,9 @@ def _end(near: Any, axis: Any) -> Any:
 
 
 def _lengths(settings: Mapping[str, Magnitude], name: str) -> tuple[float, float, float]:
-    value = settings[name]
-    if not isinstance(value, tuple) or len(value) != 3:
+    """A setting of three lengths: a tuple as a script gives it, or an array as a camera's frame holds it."""
+    value = cast(Any, settings[name])
+    if isinstance(value, (int, float)) or getattr(value, "shape", (3,)) != (3,) or len(value) != 3:
         raise TypeError(f"setting {name!r} is three lengths, not {value!r}")
     return value[0], value[1], value[2]
 
@@ -183,16 +184,6 @@ class Cylinder(Solid):
 
         return (entry(0, 0), entry(0, 1), entry(0, 2)), (entry(1, 0), entry(1, 1), entry(1, 2)), \
             (entry(2, 0), entry(2, 1), entry(2, 2))
-
-    @override
-    def sign_function(self, parameters: Mapping[str, Any], region: str, point: tuple[Any, Any, Any]) -> SignValue:
-        """Its regions' signed distances: the ``side``'s from the axis, the ``span``'s from its mid-plane."""
-        axis = signs.unit(parameters["axis"])
-        if region == "side":
-            value = signs.across(point, axis, signs.along(point, axis), parameters["radius"]) - parameters["radius"]
-        else:
-            value = signs.slab(point, axis, parameters["length"] / 2.0)
-        return SignValue(value, jnp.ones_like(value))
 
     @override
     def crease_measure(self, parameters: Mapping[str, Any], o: tuple[Any, Any, Any],
@@ -749,12 +740,6 @@ class Sphere(Solid):
         return _length(settings, "radius")
 
     @override
-    def sign_function(self, parameters: Mapping[str, Any], region: str, point: tuple[Any, Any, Any]) -> SignValue:
-        """Its signed distance, the distance from its centre less its radius."""
-        value = signs.length(*point, scale=parameters["radius"]) - parameters["radius"]
-        return SignValue(value, jnp.ones_like(value))
-
-    @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
         return _length(settings, "radius")
 
@@ -947,13 +932,6 @@ class Capsule(Solid):
             lambda parameters: -(parameters["height"] / 2.0 + parameters["radius"]) * jnp.asarray(axis), axis,
             lambda parameters: parameters["height"] + 2.0 * parameters["radius"],
             filament_radius=lambda parameters: jnp.asarray(parameters["radius"])),))
-
-    @override
-    def sign_function(self, parameters: Mapping[str, Any], region: str, point: tuple[Any, Any, Any]) -> SignValue:
-        """Its signed distance, the distance from its segment less its radius."""
-        radius = parameters["radius"]
-        value = signs.segment(point, signs.unit(parameters["axis"]), parameters["height"] / 2.0, radius) - radius
-        return SignValue(value, jnp.ones_like(value))
 
     @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
