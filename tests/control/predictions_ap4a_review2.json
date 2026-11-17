@@ -161,7 +161,19 @@
    "one_ulp": "as the first probe's"
   }
  },
- "outcomes": null,
+ "outcomes": {
+  "recorded": "after run 43973260724 (second probe, probe/ap4a-review2 at 4f667c1d, 65 arms, AMD EPYC 9V74/9V45/7763 and Intel Xeon 6973P-C/8573C/8370C) and run 43987763930 (probe/ap4a-review3 at 0595a213, the rank_line plant)",
+  "gate_7_nan_step": "nan_step caught 30/30 (15 on EPYC 9V74, 15 on 7763), clean 0/30: as predicted",
+  "gate_8_amd_follower": "as predicted: seeds 25 and 657325 converged on 8 of 8 arms (9V74 x5, 9V45 x1, 7763 x2), 16 of 16, in 10 and 12 iterations; the follower test passed clean on 8 of 8",
+  "gate_9_derivative_distribution": "254 draws (252 drawn and the two explicit examples): 138 resolved (54 %, predicted 55 to 75 %), their error over float64's largest entry median 3.2e-4 (band 2e-4 to 5e-3, inside), 99th percentile 0.018 (band 0.01 to 0.09, inside), maximum 0.019 (band 0.02 to 0.2: just under the band's low edge; the prediction's maximum of 0.05 was too high), none past 0.1; 116 unresolved, 60 of them past 0.1 (max 29.6); the error over the indicator among the resolved: median 0.087, 99th percentile 0.44, maximum 16 (seed 73172, effort 1)",
+  "gate_10_derivative_test_clean": "as predicted: clean 4 of 4 passed (hypothesis seeds 122 to 125, on Intel 6973P-C, 8573C and AMD 7763 x2), unflagged caught 30/30, clean 0/30",
+  "gate_11_earlier_plants": "every planted run caught except one control: null 30/30, wrist 30/30, column 30/30, unaccepted 30/30, bend_sign 30/30, early 20/20, unpolished 20/20, loose 20/20, gauss_newton 20/20, bounds 20/20, unpolished follower 5/5, silent 10/10, unresolved-flag silent 30/30; clean 0 on all. NOT as predicted: follow32 rank_by_square 25/30 (10/10 Intel 8370C, 8/10 AMD 9V45, 7/10 9V74): the first probe's 30/30 was no evidence (the test also failed clean on AMD from the NaN); rank_by_square at the follower is rounding noise whose sign differs by processor. All arms finished inside their timeouts",
+  "gate_12_touched_files": "all passed: tests_alloc 28 in 1771 s (predicted about 2100 s: lower), tests_ctrl_a 16 in 2187 s (predicted 3600 to 5400 s for the group: the file alone), the other controller files 206 in 419 s, test_exact_allocation with test_port_axes 53 in 571 s",
+  "gate_13_rank_line": "as predicted: rank_line caught 30/30 on six arms (EPYC 9V74 x4, 7763, Intel Xeon 8573C), clean 0/30",
+  "survey": "the accepted variant on the head equals the first probe's except the float32 follower at 1-5 cm: 0 unconverged (was 1, the NaN); rank_after: null vector 0/200 converged in both dtypes, wrist 0/6 in both",
+  "costs": "EPYC 9V74: iterative coil sphere 1.39 times its exact path, follower 9.5 times ArmTracking 0.1.0 (first probe, 9V45: 1.40, 10.7)",
+  "bits": "11 of 11 array_equal, the one-ulp controls 4 of 4 differ"
+ },
  "gate_13_rank_line": {
   "claim": "the float32 follower's convergence test has a control that fails every run on every processor: the rank line 1000 times higher (rank_line) reads the follower's least singular value, 8 to 40 times the line as built, as not resolved, so the float32 solve reads unconverged at every draw",
   "kind": "bounds",

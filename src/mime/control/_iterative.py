@@ -93,7 +93,11 @@ which is declared, not fitted. It is no bound because the commands float32 reach
 2e-6 rad move the derivative itself, not only the LU's rounding: a float64 tangent system at the float32 commands was as
 far off, and a drawn example (seed 73172, effort 1) read resolved with an error 9.4 times the first fit's line, a
 constant fitted on 56 heavy-tailed draws. Measured at the follower's problem in float32 (the target 0.2 to 2 mm from the
-flange, efforts 0.05 to 20 rad, draws as the test makes them: DISTRIBUTION). At its own effort (20 rad) the derivative
+flange, efforts 0.05 to 20 rad, draws as the test makes them; 254 draws on GitHub runners, AMD EPYC 9V74, 9V45 and 7763,
+run 43973260724): 138 were called resolved, and their error over float64's largest entry had a median of 3.2e-4, a 99th
+percentile of 0.018 and a largest of 0.019, none past the declared line; 116 were called unresolved, 60 of them with an
+error past the line (up to 30 times the largest entry) and 56 within it. The error over the indicator among the resolved
+had a median of 0.087, a 99th percentile of 0.44 and a largest of 16 (the drawn example, one of 138). At its own effort (20 rad) the derivative
 was 2.3 times its largest entry off (median of 60 draws) while the joints were 2e-6 rad from float64's. Where it is not
 resolved, ``ctx.allocator`` raises the flag ``allocation_derivative_unresolved``, carrying the indicator: a derivative
 through that step is not resolved in the run's dtype (in float32 at the follower's problem, at every step; float64

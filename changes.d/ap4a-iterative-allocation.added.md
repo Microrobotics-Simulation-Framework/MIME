@@ -44,7 +44,9 @@
     and columns equilibrated; forward and reverse mode. **Its resolution**: the derivative is flagged resolved or unresolved, and
     where resolved its error is measured, not bounded: `resolution` is an indicator of its error over its size, not a bound
     on it (the tangent system's condition times `M + 3K` units in the last place), and `resolved` holds where it is at
-    most `RESOLVED` (a tenth, declared; DISTRIBUTION); in float32 at the follower's problem (a weak effort,
+    most `RESOLVED` (a tenth, declared). Measured over 254 draws in float32 at the follower's problem (runners, three AMD EPYC
+    kinds): 138 called resolved, their error over float64's largest entry a median of 3.2e-4, a 99th percentile of 0.018, a largest of
+    0.019; 116 called unresolved, 60 of them past the declared line; in float32 at the follower's problem (a weak effort,
     the tangent's condition 4e6 to 1e8) the derivative was 2.3 times its largest entry off (median of 60 draws) with
     every solve converged, and neither a float64 tangent at the float32 commands (0.4 to 1.4 off) nor a pseudo-inverse
     on the resolved directions (1.1 to 13) resolves it: the solve says so instead. Status: `piecewise_kink` on an affine model
