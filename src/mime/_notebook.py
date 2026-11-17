@@ -11,9 +11,10 @@ says in it name "a notebook or IPython" and not "a notebook" alone."""
 from __future__ import annotations
 
 import builtins
+import importlib
 import re
 from collections.abc import Mapping, Sequence
-from typing import cast
+from typing import Any, cast
 
 #: Where the notebook's rule applies, as MIME's words name it (the test's reach is IPython's, see the module).
 WHERE = "a notebook or IPython"
@@ -27,6 +28,14 @@ RUN_AGAIN = ("run the lines or cells again from the one that makes the experimen
 
 def in_notebook() -> bool:
     return hasattr(builtins, "get_ipython")
+
+
+def show_in_ipython(shown: object) -> None:
+    """Show ``shown`` as IPython's own ``display(shown)`` does, so a call inside an ``if``, a loop or a function shows it
+    (an object a call returns shows only as a cell's last expression). The callers (``mime.viz.display``,
+    ``diagram.display``, ``figure.display``) check :func:`in_notebook` first and refuse outside IPython
+    (``visuals.display-outside-ipython``), before they make what they show."""
+    cast(Any, importlib.import_module("IPython.display")).display(shown)
 
 
 def cell_number(shell: object, filename: str) -> int | None:

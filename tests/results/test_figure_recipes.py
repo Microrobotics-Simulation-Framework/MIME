@@ -4,12 +4,14 @@ with the line that installs it, and the pages following the 3-D view's and the g
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import json
 import warnings
 from pathlib import Path
 
 import pytest
+from notebook_cells import install
 from study_case import FREQUENCIES, SPEED
 
 from mime.build._refusals import ArgumentRefused, BuildRefused
@@ -123,11 +125,11 @@ def test_an_interactive_page_follows_the_other_views_names_and_behaviour(study):
     assert library_tag(True) in cdn
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        shown = recipe.display()
+        shown = recipe.web_page()
     assert isinstance(shown, FigurePage) and PLOTLY_CDN in shown.html and "<iframe srcdoc=" in shown._repr_html_()
     assert "FigurePage" in repr(shown) and shown.height == 720
     with pytest.warns(UserWarning, match="notebook"):
-        recipe.display(offline=True)
+        recipe.web_page(offline=True)
 
 
 def test_the_pinned_plotly_js_is_the_file_the_installed_plotly_ships():
@@ -212,3 +214,24 @@ def test_a_runs_recipe_hashes_its_manifest_its_arrays_and_its_report(tmp_path):
         data.write_bytes(original)
     assert refused == 3
     FigureRecipe.read(folder, "speed")
+
+
+def test_display_inside_an_if_shows_the_figure_as_display_data_with_html_and_outside_ipython_is_refused(
+        study, monkeypatch):
+    recipe = study.figure(MEAN, name="curve")
+    with monkeypatch.context() as outside:
+        outside.delattr(builtins, "get_ipython", raising=False)
+        outside.setattr(type(recipe), "web_page", lambda *_, **__: pytest.fail("the page was made"))
+        with pytest.raises(ArgumentRefused) as refused:
+            recipe.display()
+    (refusal,) = refused.value.refusals
+    assert refusal.code == "visuals.display-outside-ipython" and "figure.web_page()" in refusal.action
+    cells = install(monkeypatch)
+    cells.namespace.update(recipe=recipe, wanted=True)
+    cells.run("if wanted:\n    recipe.display()\n")
+    (shown,) = cells.html
+    assert shown.startswith("<iframe srcdoc=") and "FigurePage" in cells.outputs[0]["text/plain"]
+    cells.outputs.clear()
+    cells.run("if wanted:\n    recipe.web_page()\n")
+    assert cells.outputs == [], "the control: the call that returns the page shows nothing inside an if"
+    assert recipe.display() is None

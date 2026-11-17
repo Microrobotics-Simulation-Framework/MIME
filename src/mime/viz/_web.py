@@ -13,15 +13,14 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
-import importlib
 import json
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, cast, override
+from typing import override
 
 from mime._lineage import Origin, origin_of_folder
-from mime._notebook import in_notebook
+from mime._notebook import in_notebook, show_in_ipython
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.errors._frames import warn_at_script
 from mime.things._handles import did_you_mean
@@ -652,13 +651,12 @@ def display(target: str | Path, *, offline: bool = False, caption: str | None = 
     if not in_notebook():
         raise ArgumentRefused([Refusal(
             "visuals.display-outside-ipython", RefusalClass.USER,
-            f"mime.viz.display shows a view in a notebook or IPython, and none is running: it would show nothing "
+            f"mime.viz.display() shows a view in a notebook or IPython, and none is running: it would show nothing "
             f"here ({target})",
-            f"get the page as an object with mime.viz.web_page({str(target)!r}) and save it (.save('view.html')), or "
-            f"write it with: mime visuals web {target}")])
-    shown = web_page(target, offline=offline, caption=caption, slow=slow, scale_bar=scale_bar, legend=legend,
-                     apparatus_shapes=apparatus_shapes, focus=focus, follow=follow)
-    cast(Any, importlib.import_module("IPython.display")).display(shown)
+            f"get the page as an object with `mime.viz.web_page({str(target)!r})` and save it (`.save('view.html')`), "
+            f"or write it with `mime visuals web {target}`")])
+    show_in_ipython(web_page(target, offline=offline, caption=caption, slow=slow, scale_bar=scale_bar, legend=legend,
+                             apparatus_shapes=apparatus_shapes, focus=focus, follow=follow))
 
 
 def held_by(path: Path) -> Path | None:

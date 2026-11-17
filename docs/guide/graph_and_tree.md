@@ -155,7 +155,7 @@ page loaded.
 
 | | the 3-D view | the graph |
 |---|---|---|
-| what a notebook shows | `mime.viz.display(target, *, offline=False, caption=None, ...)` shows it (in a notebook or IPython, anywhere in a cell); `mime.viz.web_page(...)` returns a `WebPage` | `diagram.display(*, offline=False, caption=None)` returns a `GraphPage` (or just return the diagram from a cell) |
+| what a notebook shows | `mime.viz.display(target, *, offline=False, caption=None, ...)` shows it (in a notebook or IPython, anywhere in a cell); `mime.viz.web_page(...)` returns a `WebPage` | `diagram.display(*, offline=False, caption=None)` shows it (the same); `diagram.web_page(...)` returns a `GraphPage` (or just return the diagram from a cell) |
 | `offline=True` | inlines the viewer: the page draws with no network | inlines Mermaid: the same |
 | the page's file | `page.save(path)` writes the page as shown; `mime.viz.web(target, out=None, *, cdn=False)` | `page.save(path)` the same; `diagram.save(path=None, *, cdn=False, caption=None)` |
 | default file name | `<experiment>.html` | `<experiment>.graph.html`: never the 3-D page's, so the two beside each other do not overwrite |
