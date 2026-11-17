@@ -173,10 +173,12 @@ Also:
   compared with a constant;
 - **`quaternion`**: products, rotation matrices and `exponential`, whose value and derivatives are finite at a zero
   rotation (0.2 divided by `|omega|` and differentiated to NaN at rest);
-- **shapes** (`Shape`, the protocol a geometry kind's surfaces are evaluated with: signed distance, outward normal,
-  the axis where there is one), `Cylinder` (a point within `AXIS_ULPS` units in the last place of its radius of its
-  axis is on it, whatever the axis's direction: the resolution drag's on-axis frame shares), `register_shape` and
-  `shape_named`; and the confinements' velocity rules
+- **shapes** (`mime.core.shapes`, for a lab's plugin: `Shape`, the protocol a geometry kind's surfaces and regions are
+  evaluated with, whose one required method is the exact signed distance; its outward normal, its axis, the camera's
+  sign function and a kind's display mesh are derived from it unless the shape gives its own; MIME's closed forms,
+  `CylinderShape` (a point within `AXIS_ULPS` units in the last place of its radius of its axis is on it, whatever the
+  axis's direction: the resolution drag's on-axis frame shares) and the others below, are those overrides), with the
+  singletons, `register_shape` and `shape_named` in `mime.core`; and the confinements' velocity rules
   (`VELOCITY_RULES`: `remove_outward`). Node metadata (MADDENING's `NodeMeta`) is not carried over from 0.2.
 
 **The symbol table's form**, `Symbol` and `SymbolKind`, and `MimeNode.symbols`.
@@ -191,12 +193,18 @@ flag stay raw, listed); `MimeNode.fresh_update`; a shape's switch table (`shape_
 `unique`, `argwhere`, `lax.sort`, a floor division, a cast to an integer dtype) the switch scan refuses in a step;
 and `without_slope`, the one selection that makes a derivative NaN on purpose (a table's one-point readable range).
 
-**the solids' shapes**, `sphere`, `capsule`, `slab` (between two parallel planes) and `screw`
+**the solids' shapes**, `sphere`, `capsule`, `slab` (between two parallel planes) and `screw` (`SphereShape`,
+`CapsuleShape`, `SlabShape`, `ScrewShape`)
 (de Jongh's screw surface, unbounded along its axis: its distance by a root find whose gradients are stopped, polished,
 then a Newton step with them flowing, not taken on its focal set, where the step is singular), each declaring its
 switches beside it; and `nearest_point`, the point less its signed
 distance along its normal. Within a band about a medial set (a centre, a segment, a mid-plane) the distance is its value
-there and the normal zero, each with the derivative zero in the point; the cylinder keeps its own.
+there and the normal zero, each with the derivative zero in the point; the cylinder keeps its own. **A shape's derived
+normal** is the distance's gradient by autodiff, zero where its length falls below `KINK` (one half: an exact
+distance's gradient has length one off its medial set, and a mean of one-sided gradients, or zero, on it), the switch
+`<name>.kink` declared when the shape is registered; its derivative is the distance's second derivative, which the
+shape's contract keeps finite. A shape registered without subclassing `Shape` keeps its own methods and takes the
+derived forms of those it lacks.
 
 **`multibody`**, the canonical tree (bodies, joints, named frames, loop closures as data), the URDF
 reader sorting every element into read, recognised and not used, or refused, and the rigid-body maths in pure JAX,

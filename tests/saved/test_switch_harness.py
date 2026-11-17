@@ -141,7 +141,8 @@ def graph():
 
 def declarations() -> dict[str, switch.Declaration]:
     load_namespaces()
-    found = {d.owner: d for name in shape_names() for d in shape_switches(name)}
+    # MIME's shapes: a namespaced one is a plugin's or the test kit's (``toy.capsule``), measured by its own tests.
+    found = {d.owner: d for name in shape_names() if "." not in name for d in shape_switches(name)}
     for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "contact", "0.4.0"),
                                 ("interaction", "contact", "0.5.0"),
                                 ("interaction", "drag", "0.3.0"),

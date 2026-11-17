@@ -275,10 +275,20 @@ error is at most a third of what it was, and the error with the second-order ter
 change between neighbouring resolutions). The vertices are resolved to rounding, so a drawing scaled by a part in
 a hundred trillion is found; the volume and area to the fourth-order term they leave, between a millionth and a
 ten-thousandth of the closed form at the writer's resolution (a drawing's permuted axes keep both, and are the
-vertices'). `drawing_checks` says which apply to
-a kind, and the registry walk fails on a drawn kind that lacks any; it runs the check on every kind that draws itself
+vertices'). A drawing contoured from a kind's shapes' distance (`Geometry.drawing`'s derived form) has its vertices
+interpolated and not on the boundary: they are held to its second-order bound (`near the surface`, `contour_line`: the
+interpolation's error along a cell's longest edge, from the cell and the kind's smallest length; infinite where a cell's
+diagonal is not below that length, which the check then names), and its volume and area to the closed forms as above. `drawing_checks` says
+which apply to a kind, and the registry walk fails on a drawn kind that lacks any; it runs the check on every kind that draws itself
 and on the helix at every setting it accepts. A kind with a native form is
 drawn by USD, and the stage tests hold USD's definition of it against the kind.
+
+**the override check**, `override_problems(shape, parameters, points, size, dtype)`: a normal or a sign function a
+shape gives of its own, an override of what is derived from its signed distance, agrees with the derivation: the normal
+with the distance's unit gradient, the sign function with the distance's side and with the slope of its own value's
+gradient, to `OVERRIDE_ULPS` units in the last place of one plus the point's scale times the norm of the normal's Jacobian in the
+point. `tests/unit/test_shape_protocol.py` runs it at drawn points of every shape MIME registers, and a plugin's wrong
+override is caught at every fixed point.
 
 **What the harness does not establish.** MIME's rows run in float64, at points placed outside the float64 bands
 (or inside one on purpose). The float32 bands (the contact band and the tube's axis band, each some units in the

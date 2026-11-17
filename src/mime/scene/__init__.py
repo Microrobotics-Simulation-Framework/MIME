@@ -3,8 +3,9 @@ geometry kinds, the ``mime:`` schema for design data on part prims, and the stag
 of pxr.
 
 A geometry kind is a contract a lab implements: a registered ``mime.registry.Geometry`` naming its regions, surfaces
-and directions, whose surfaces are evaluated by :class:`Shape` (the protocol: signed distance, outward normal, and the
-axis where one exists), registered in ``mime.core``, and whose ``drawing`` is what the stage shows of it."""
+and directions, whose surfaces are evaluated by :class:`Shape` (the protocol: its exact signed distance, the rest
+derived unless it gives its own; ``mime.core.shapes``), registered in ``mime.core``, and whose ``drawing`` is what the
+stage shows of it."""
 
 from mime.core import Shape, register_shape
 from mime.scene._compose import (

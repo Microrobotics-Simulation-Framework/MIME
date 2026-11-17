@@ -273,6 +273,7 @@ src/mime/sensing/README.md  1 2 1 2013  #1  # the slab widening 1 + 2 gamma_3 (g
 src/mime/sensing/README.md  0.1 0.2  #1  # the share of rays at a rotated box's edges the slab lost, a laptop's draws, in percent
 src/mime/sensing/README.md  5b  #1  # the camera lane's piece that brought the crease measures (camera PR 5b), a name
 src/mime/sensing/README.md  1  #1  # route 1, the closed-form route's name
+src/mime/sensing/README.md  1  #2  # route 1, the closed-form route's name (the toy shape held to route 1's capsule)
 src/mime/sensing/README.md  360 1e-11  #1  # the crease line's scan: its poses and its simulation's agreement with the renderer (tests/sensing/crease_line_pr5b.json, predictions_camera_pr5b.json)
 src/mime/sensing/README.md  1.25  #1  # the crease line's declared margin on the scan's largest (scripts/camera_route2/crease_line.py, SAFETY)
 src/mime/sensing/README.md  26 24 40  #1  # single-edge-crease's power on fresh drawn views, caught of drawn, float32 and float64 (probe run 43788351160; predictions_camera_pr5b.json, outcomes.controls_drawn)

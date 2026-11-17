@@ -8,7 +8,7 @@
    float64, at the world's origin and 0.1 to 0.3 m from it; a corner of the filleted loop found from just off its
    plane. **Control** (``MIME_PLANT_UNION=minimum``): the plain minimum, 0.4 to 1.75 cells off in the fluid, fails on
    every draw; each fix of the review's round has its own (``planted``).
-2. **The fillet is the closing, in closed form**: a wedge of two half-spaces (``mime.core.HalfSpace``) and two
+2. **The fillet is the closing, in closed form**: a wedge of two half-spaces (``mime.core.shapes.HalfSpaceShape``) and two
    overlapping balls, filleted, on
    both sides, to rounding; the fillet share's derivative against a central difference. **Control**
    (``MIME_PLANT_FILLET=dropped``): the sharp union against the filleted closed form.
@@ -49,7 +49,8 @@ from union_oracles import (
 )
 
 import mime.scene._union as union_module
-from mime.core import HalfSpace, jnp
+from mime.core import jnp
+from mime.core.shapes import HalfSpaceShape
 from mime.scene import Ball, ExactUnion, TubeTree
 
 #: The band's contract line: the signed distance exact within the band to this many cells.
@@ -205,9 +206,9 @@ class OwnValues:
 
 
 def wedge_union(normals: tuple[np.ndarray, np.ndarray], origin: np.ndarray, fillet_of) -> ExactUnion:
-    """The union of the half-spaces ``n_i . (x - origin) <= 0``: each ``HalfSpace`` takes the side its normal points
+    """The union of the half-spaces ``n_i . (x - origin) <= 0``: each ``HalfSpaceShape`` takes the side its normal points
     into, so its normal is ``-n_i`` and its offset ``-n_i . origin``."""
-    regions = tuple(OwnValues(HalfSpace(), (("normal", lambda p, n=n: -n),
+    regions = tuple(OwnValues(HalfSpaceShape(), (("normal", lambda p, n=n: -n),
                                             ("offset", lambda p, n=n: -float(n @ origin)))) for n in normals)
     return ExactUnion(regions, ((0, 1),), size=lambda p: D, fillet=fillet_of)
 

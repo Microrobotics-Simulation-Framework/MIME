@@ -52,8 +52,8 @@ rung that uses boundary elements; the others are for review.
 3. **One concept, one stem, across layers; one name, one concept:** the scene body, the core shape, the node, its
    state, its registry name and its switch owners share one stem (`Screw`, `SCREW`, `screw`, `screw.seam`), and
    one name never stands for two things in two layers. Where one layer's class would take another layer's whole name for
-   a different thing, the layer's role is its suffix (rule 2): core's `Cylinder` is unbounded and the scene's is a
-   cylinder cut by a slab, so a later change names core's `CylinderShape` and the scene's keeps `Cylinder`. A name met in one script
+   a different thing, the layer's role is its suffix (rule 2): core's `CylinderShape` (`mime.core.shapes`) is unbounded
+   and the scene's `Cylinder` is a cylinder cut by a slab. A name met in one script
    means one thing.
 4. **No qualifier that is always true** in its context (`Robot` in a robotics library; `Solid` where every scene body
    is solid).

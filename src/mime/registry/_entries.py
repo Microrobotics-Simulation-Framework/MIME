@@ -10,7 +10,10 @@ from typing import TYPE_CHECKING, Annotated, Any, ClassVar, NamedTuple, cast, ov
 import numpy as np
 from maddening.core.node import SimulationNode
 
-from mime.core import jnp, shape_named, shape_switches, switch
+from mime.core import jnp, shape_named, shape_names, shape_switches, switch
+from mime.core._contour import contour
+from mime.core._geometry import each_point
+from mime.core.shapes import SignValue
 from mime.registry._centreline import Centreline
 from mime.gradients import RANK, GradientStatus
 from mime.things import ThingKind, TypedPath
@@ -1659,15 +1662,6 @@ class Sampling:
                        None if rounding is None else rounding[chosen])
 
 
-class SignValue(NamedTuple):
-    """A region's cheap sign function at points (:meth:`Geometry.sign_function`): its ``value``, below zero inside the
-    region, zero on its boundary and above zero outside it, and its gradient's length there (``slope``), so that
-    ``value / slope`` is its first-order distance from the boundary, in metres."""
-
-    value: Any
-    slope: Any
-
-
 class CreaseMeasure(NamedTuple):
     """The exact edge functions of a body's creases on rays (:meth:`Geometry.crease_measure`) and how the body's edge
     is made from them.
@@ -1774,8 +1768,32 @@ class Geometry(Entry):
 
     def drawing(self, settings: Mapping[str, Magnitude], segments: int) -> Drawing:
         """The kind tessellated in its own frame at the writer's resolution: ``segments`` facets round a full turn of
-        each curved direction, every vertex on the surface."""
-        raise NotImplementedError
+        each curved direction, every vertex on the surface.
+
+        **Derived** for a solid whose every region is a registered shape and which places nothing (its own frame the
+        frame its settings are in): its body's signed distance (the greatest of its regions') contoured by marching
+        tetrahedra on a grid of ``segments`` cells across its enclosing ball, a closed mesh whose vertices lie within
+        a second-order bound of its surface (not on it) and whose ``representation`` says it is a drawing. A kind that
+        overrides this method reaches the derivation by ``super().drawing(...)``.
+        """
+        if not from_shapes(type(self), "drawing"):
+            raise NotImplementedError
+        solid = cast(Solid, self)
+        reach = float(solid.enclosing_radius(settings))
+        regions = [(shape_named(self.region_shapes[region]), self.region_parameters(region, settings))
+                   for region in self.regions]
+
+        def body(points: np.ndarray) -> np.ndarray:
+            held = jnp.asarray(points)
+            distances = [np.asarray(each_point(shape, shape.signed_distance, parameters, held), dtype=np.float64)
+                         for shape, parameters in regions]
+            return np.max(np.stack(distances), axis=0)
+
+        points, triangles, cell = contour(body, -reach, reach, segments)
+        return Drawing(tuple((float(x), float(y), float(z)) for x, y, z in points), (3,) * len(triangles),
+                       tuple(int(i) for i in triangles.ravel()),
+                       f"its signed distance contoured on a grid of {segments} cells across its enclosing ball (a "
+                       f"cell {cell:.3g} m): a drawing whose vertices lie within about a cell of its surface")
 
     def region_primitive(self, region: str, settings: Mapping[str, Magnitude]) -> RegionPrimitive | NoPrimitive:
         """``region`` as the OpenMaterica primitive whose inside test is exactly the region's, in the kind's own
@@ -1864,8 +1882,16 @@ class Geometry(Entry):
         right sign everywhere farther than ``sign_zone`` from it, continuously differentiable off the region's medial
         set; and its gradient's length (:class:`SignValue`). A JAX function of its ``parameters`` (its settings in SI,
         numbers or traced arrays) and the points, cheap to evaluate: the camera's sampled route marches ``value /
-        slope`` along each ray, a solid's body being the greatest over its regions."""
-        raise NotImplementedError
+        slope`` along each ray, a solid's body being the greatest over its regions.
+
+        **Derived** for a solid whose every region is a registered shape: the region's shape's own sign function
+        (``mime.core.Shape.sign_function``: its closed form, or its signed distance) at the region's parameters, which
+        :meth:`region_parameters` then maps from settings that may be traced arrays. A kind that overrides this method
+        for some regions reaches the derivation for the others by ``super().sign_function(...)``.
+        """
+        if not from_shapes(type(self), "sign_function"):
+            raise NotImplementedError
+        return shape_named(self.region_shapes[region]).sign_function(self.region_parameters(region, parameters), point)
 
     def crease_measure(self, parameters: Mapping[str, Any], o: tuple[Any, Any, Any],
                        d: tuple[Any, Any, Any]) -> CreaseMeasure:
@@ -1894,7 +1920,28 @@ def implements(kind: type[Geometry] | Geometry, capability: str) -> bool:
         return held.native is not None
     if capability == "mass_properties":
         return issubclass(held, Solid) and held.volume is not Solid.volume
-    return getattr(held, capability) is not getattr(Geometry, capability)
+    return getattr(held, capability) is not getattr(Geometry, capability) or derivable(held, capability)
+
+
+#: The capabilities a geometry kind derives from its regions' shapes where it gives none of its own.
+DERIVED_CAPABILITIES = ("sign_function", "drawing")
+
+
+def from_shapes(kind: type[Geometry], capability: str) -> bool:
+    """Whether ``kind``'s regions give ``capability`` (one of :data:`DERIVED_CAPABILITIES`) by derivation: a solid whose
+    every region is a registered shape, and, for its drawing, which places nothing (its drawing's frame is its
+    settings'). What :meth:`Geometry.drawing` and :meth:`Geometry.sign_function` derive from, whether or not the kind
+    overrides them, so that an override may call ``super()`` for the regions it leaves to the derivation."""
+    if capability not in DERIVED_CAPABILITIES:
+        return False
+    shaped = issubclass(kind, Solid) and bool(kind.regions) and all(
+        kind.region_shapes.get(region) in shape_names() for region in kind.regions)
+    return shaped and (capability != "drawing" or not kind.placement)
+
+
+def derivable(kind: type[Geometry], capability: str) -> bool:
+    """Whether ``kind`` takes ``capability`` from the derivation (:func:`from_shapes`): it gives none of its own."""
+    return getattr(kind, capability) is getattr(Geometry, capability) and from_shapes(kind, capability)
 
 
 def declared_switches(cls: type[Entry]) -> tuple[switch.Declaration, ...]:

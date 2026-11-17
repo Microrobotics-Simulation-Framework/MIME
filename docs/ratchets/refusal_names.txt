@@ -53,3 +53,4 @@ wall.roughness  # the name a plan reads the roughness of the wall a medium fills
 water.viscosity          # a typed path in a family's rig: the water's viscosity
 www.doi.org  # a host doi.org answers to, compared with an address's
 mount.position  # a dimensioned setting of the camera's mount group, read in SI by the build
+shape.kink  # the default owner of a derived normal's switch before a shape is registered (its registered name, then .kink, replaces it), not a refusal code

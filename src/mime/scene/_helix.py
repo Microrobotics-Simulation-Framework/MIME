@@ -31,7 +31,7 @@ from mime.registry import (
     register_geometry,
     uniform,
 )
-from mime.scene import _signs as signs
+from mime.core import _sign_forms as signs
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.scene._sampling import quasi_uniform
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity

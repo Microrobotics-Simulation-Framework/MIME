@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from mime.core import shape_names, shape_switches, switch
+from mime.core import shape_named, shape_names, shape_switches, switch
 from mime.docs._export import load_namespaces
 from mime.docs._lists import read_list
 from mime.docs._check import LISTS, Report, list_path, switch_problems
@@ -56,7 +56,9 @@ def declared_objects(records: list[Registered]) -> dict[int, switch.Declaration]
     successor holds, the same objects."""
     declared = {id(held): held for record in records if record.cls.gradient is not None
                 for held in record.cls.gradient.switches}
-    declared |= {id(held): held for name in shape_names() for held in shape_switches(name)}
+    declared |= {id(held): held for name in shape_names()
+                 if not type(shape_named(name)).__module__.startswith("mime.testing")  # the test kit's toy, which no step runs
+                 for held in shape_switches(name)}
     return declared
 
 

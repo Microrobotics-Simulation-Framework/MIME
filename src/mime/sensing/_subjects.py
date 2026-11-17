@@ -193,12 +193,12 @@ def _sampled_refusal(kind: str) -> Refusal | None:
             f"give the kind its crease measure (Geometry.crease_measure), or hide it: hide=(...)",
             why="the first-order march reads a crease's edge wrongly at any sample count (camera truth 1)")
     if found is None or not sampled_route.has_sign(found):
-        reason = f"no closed form is registered for the kind {kind!r} and it declares no cheap sign function"
+        reason = f"no closed form is registered for the kind {kind!r} and it has no cheap sign function"
         return Refusal(
             "camera.no-route", RefusalClass.USER, f"a {kind} cannot be imaged: {reason}",
             "image a kind with a closed form (a sphere, a capsule, a cylinder, a straight tube) or one that declares a "
-            "cheap sign function (Geometry.sign_function: the ellipsoid, the helix), or register the kind's closed form: "
-            "register_closed_form(kind, closed_form)")
+            "cheap sign function (Geometry.sign_function: the ellipsoid, the helix) or derives it, a solid whose every "
+            "region is a registered shape, or register the kind's closed form: register_closed_form(kind, closed_form)")
     return None
 
 

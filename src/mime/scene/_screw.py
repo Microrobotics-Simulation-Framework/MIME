@@ -29,7 +29,7 @@ from mime.registry import (
     register_geometry,
     uniform,
 )
-from mime.scene import _signs as signs
+from mime.core import _sign_forms as signs
 from mime.scene._caps import any_closer, cap_rings, ring_floor, symmetric_total
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.scene._sampling import counted, length_of, magnitude_of, quasi_uniform

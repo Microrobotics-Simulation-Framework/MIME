@@ -13,7 +13,7 @@ from hypothesis import find, given, settings
 from hypothesis import strategies as st
 
 from mime.core import AXIS_ULPS, CYLINDER, Shape, shape_named
-from mime.core import _geometry as geometry
+from mime.core import _shapes as shapes
 from mime.scene import Tube, X
 from mime.units import mm
 
@@ -338,8 +338,8 @@ def test_without_its_resolution_the_cylinder_departs_from_the_record_on_a_tilted
     points = [{"point": centre + 4e-3 * np.asarray(axis) / np.linalg.norm(axis), "centre": centre,
                "axis": np.asarray(axis), "radius": np.asarray(3.175e-3)} for axis in TILTED]
     assert [departures(ON_THE_AXIS, x) for x in points] == [[], []]
-    monkeypatch.setattr(geometry, "AXIS_ULPS", 0)
-    planted = on_the_axis(geometry.Cylinder())
+    monkeypatch.setattr(shapes, "AXIS_ULPS", 0)
+    planted = on_the_axis(shapes.CylinderShape())
     assert all(departures(planted, x) for x in points)
     found = find(tube_and_point_on_its_axis(within=False), lambda x: bool(departures(planted, x)),
                  settings=settings(deadline=None, database=None))

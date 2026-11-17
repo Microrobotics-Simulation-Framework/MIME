@@ -49,7 +49,8 @@ from scipy.optimize import minimize_scalar
 from shape_suite_support import DTYPES, SEPARATE, TYPICAL, examples_pass, planted_tangent_fails, points_side_holds
 
 import mime.testing._shape_suite as suite
-from mime.core import AXIS_ULPS, CYLINDER, SCREW, Cylinder, Screw, jnp, shape_named, switch
+from mime.core import AXIS_ULPS, CYLINDER, SCREW, jnp, shape_named, switch
+from mime.core.shapes import CylinderShape, ScrewShape
 from mime.testing import (
     PLANTED_TANGENT,
     SHAPE_CASES,
@@ -341,7 +342,7 @@ def test_the_cylinders_normal_within_its_axis_band_has_the_projection_across_the
         assert in_band_problem(in_band_jacobian(CYLINDER, axis), axis) is None, axis
 
 
-class ConstantInBand(Cylinder):
+class ConstantInBand(CylinderShape):
     """The control: the cylinder's normal with its in-band branch written as the constant zero."""
 
     def outward_normal(self, parameters, point):
@@ -429,7 +430,7 @@ def test_on_the_screws_focal_set_the_distance_is_exact_with_the_normal_its_deriv
     assert focal_problems(*focal_case(starts, modulation, nu, trough)) == []
 
 
-class AsItWas(Screw):
+class AsItWas(ScrewShape):
     """The control: the screw as it was before its focus was declared and its root polished: the root find's root,
     and one Newton step from it solved with the Hessian wherever the point is."""
 
