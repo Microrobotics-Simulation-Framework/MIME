@@ -26,9 +26,10 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 #: The suite runs MIME's errors in full: every frame and every chained error, so that a failing test's error shows
 #: where it came from. The tests of the short form set it themselves, in the processes they start.
 os.environ["MIME_TRACEBACK"] = "full"
-#: The suite builds an experiment that states no precision as JAX's flag says, and leaves the flag (``mime.core.
-#: _precision.FROM_JAX_FLAG``), in the processes it starts too: its tests choose their dtype by the flag until they
-#: declare it (precision's P5). An experiment that states its precision is built in it, with 64-bit types enabled.
+#: TEST-ONLY MIGRATION BRIDGE (precision's P5 removes it; not a user's setting): the suite builds an experiment that
+#: states no precision as JAX's flag says, and leaves the flag (``mime.core._precision.FROM_JAX_FLAG``), in the
+#: processes it starts too, until its tests declare their precision. An experiment that states its precision is built
+#: in it, with 64-bit types enabled.
 os.environ["MIME_PRECISION_FROM_JAX_FLAG"] = "1"
 
 import pytest  # noqa: E402

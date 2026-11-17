@@ -106,3 +106,19 @@ def test_control_an_int64_iota_in_the_mass_matrix_is_read_wide(monkeypatch):
     monkeypatch.setattr(rigid, "eye", lambda n, dtype: jnp.eye(n, dtype=dtype))
     built = example("script_a", "float32").build()
     assert audit_graph("script_a", built.graph, built.held_inputs()).by_dtype().get("int64", 0) > 0
+
+
+@pytest.mark.parametrize("precision", ["float32", "float64"])
+def test_a_saved_experiment_loads_in_the_precision_its_lock_records(monkeypatch, tmp_path, precision):
+    """The lock's ``x64`` records the declared precision; an old lock's ``x64: false`` is float32, as it was: a load
+    declares what the lock holds (float32 here is exactly the lock a float32-flag run wrote before precision was declared)."""
+    built = example("script_a", precision).build()
+    built.save(tmp_path / "saved", steps=2)
+    assert built.record.environment["x64"] is (precision == "float64")
+    monkeypatch.delenv(FROM_JAX_FLAG)
+    jax.config.update("jax_enable_x64", False)
+    loaded = Experiment.load(tmp_path / "saved").build()
+    assert run_dtype() == np.dtype(precision)
+    assert loaded.record.environment["x64"] is (precision == "float64")
+    loaded.run(s(2 * loaded.plans.dt))
+    assert state_dtypes(loaded) == {precision}

@@ -30,9 +30,10 @@ DEFAULT_PRECISION: Precision = "float64"
 _applied: list[Precision | None] = [None]
 #: The precision of the node whose step or initial state is being traced, over the build's (``MimeNode``).
 _NODE: ContextVar[Precision | None] = ContextVar("mime_node_precision", default=None)
-#: Set to ``1``, an experiment that states no precision is built as JAX's flag says, and the flag is left as it is:
-#: how MIME built before precision was declared. The test suite's setting (``tests/conftest.py``, inherited by the
-#: processes its tests start) until its tests declare their precision; never a user's.
+#: A TEST-ONLY MIGRATION BRIDGE, removed in precision's P5, and no user's setting. Set to ``1``, an experiment that
+#: states no precision is built as JAX's flag says, and the flag is left as it is: how MIME built before precision was
+#: declared. ``tests/conftest.py`` sets it for the suite (and the processes its tests start) until its tests declare
+#: their precision.
 FROM_JAX_FLAG = "MIME_PRECISION_FROM_JAX_FLAG"
 
 
@@ -88,9 +89,9 @@ def eye(n: int, dtype: Any) -> Any:
 
 def diagonal_matrix(values: Any) -> Any:
     """The square matrix with ``values`` (a vector) on its diagonal and zeros elsewhere, as ``jax.numpy.diag`` makes it,
-    with no ``iota``: its mask is a constant."""
-    n = values.shape[0]
-    return _jnp.where(np.eye(n, dtype=bool), values[None, :], _jnp.zeros((), dtype=values.dtype))
+    with no ``iota``: the diagonal's indices are constants, int32."""
+    index = np.arange(values.shape[0], dtype=np.int32)
+    return _jnp.zeros((values.shape[0],) * 2, dtype=values.dtype).at[index, index].set(values)
 
 
 def diagonal(matrix: Any) -> Any:

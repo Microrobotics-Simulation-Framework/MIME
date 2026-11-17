@@ -96,6 +96,11 @@ When you name test files, name each directory's files together (`sorted` does it
 `tests/saved` without its float64 mode. The run is refused, naming the fixture, when that happens
 (`tests/_collection_guard.py`); a run with no path never meets it.
 
+The suite builds an experiment that states no precision as JAX's 64-bit flag says (`tests/conftest.py` sets
+`MIME_PRECISION_FROM_JAX_FLAG=1`, and a fixture restores the flag and the applied precision after each test): a
+test-only migration bridge that precision's P5 removes, once the tests declare their precision. It is no setting of a
+user's; outside the suite an experiment that states no precision is float64.
+
 ## CI: how many shards
 
 CI runs each test lane (`default` on three Pythons, `maddening-main` and `openmaterica-main`) as several shard jobs,
