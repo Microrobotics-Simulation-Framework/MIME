@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -209,19 +210,40 @@ def test_a_document_using_no_block_holds_no_blocks_key_and_no_block_words(tmp_pa
 # --- what the use records ----------------------------------------------------------------------------------------
 
 
-def test_a_declaration_over_a_provided_one_replaces_it_in_a_script_and_is_recorded_as_an_override(tmp_path: Path):
+def test_a_declaration_over_a_provided_one_replaces_it_in_a_script_with_no_warning_and_is_recorded_as_an_override(tmp_path: Path):
     folder = block_copy(tmp_path)
     experiment, water = host()
     probe = experiment.use(folder, medium=water)
     assert probe.probe.name == "probe" and probe.handle("toy.drag:probe") == "toy.drag:probe"
-    with pytest.warns(UserWarning, match=r"it replaces the one block labx.nudged_probe 0.1.0 provides \(the use "
-                                         r"'nudged_probe'\), recorded among the use's overrides"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # a block's value overridden is recorded, not warned
         experiment.declare("probe.mass", kg(2.5), reason="our unit, weighed")
+    (note,) = experiment.plan().replaced
+    assert ("it replaces the one block labx.nudged_probe 0.1.0 provides (the use 'nudged_probe'), recorded among the "
+            "use's overrides") in note
     experiment.remove("toy.spring:probe")
     use = experiment.document()["blocks"]["nudged_probe"]
     assert use["overrides"] == ["probe.mass", "toy.spring:probe"]
     assert "toy.spring:probe" in use["names"]["interactions"]
     assert experiment.document()["declared"]["probe.mass"]["value"] == 2.5
+
+
+def test_a_provided_declaration_replaced_in_a_notebook_is_not_warned_and_the_cell_run_again_with_other_content_is(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The first override of what a block provides is the block's intended use (recorded in ``replaced`` only); the
+    cell run again with another value replaces a declaration the user made, the unexpected case, and warns."""
+    import builtins
+
+    monkeypatch.setattr(builtins, "get_ipython", lambda: None, raising=False)
+    experiment, water = host()
+    experiment.use(block_copy(tmp_path), medium=water)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        experiment.declare("probe.mass", kg(2.5), reason="our unit, weighed")
+    with pytest.warns(UserWarning, match="in a notebook or IPython the last one run wins"):
+        experiment.declare("probe.mass", kg(2.7), reason="weighed again")
+    provided, again = experiment.plan().replaced
+    assert "provides (the use 'nudged_probe')" in provided and "the last one run wins" in again
 
 
 def test_the_same_use_made_again_is_kept_once_and_a_named_use_renames_the_blocks_things_and_ids(tmp_path: Path):

@@ -176,9 +176,12 @@ def test_a_notebook_cell_that_bases_an_experiment_on_a_doi_runs_again(saved_toy:
     documents = []
     with zenodo(rig, {"full_toy.mimebundle": bundle.read_bytes()}):
         for number, label in enumerate(("", ", run again")):
-            with pytest.warns(UserWarning, match="took from 'full_toy'"), \
+            with warnings.catch_warnings(record=True) as caught, \
                     (untouched(work / "full_toy") if number else warnings.catch_warnings()):
+                warnings.simplefilter("always")
                 exec(compile(cell, f"<code cell 1{label}>", "exec"), namespace)
+            assert not [note for note in caught if "took from" in str(note.message)], "recorded, not warned"
+            assert "took from 'full_toy'" in namespace["child"].plan().replaced[0]
             documents.append(namespace["child"].document())
     assert documents[0] == documents[1] and documents[1]["based_on"]["doi"] == DOI
     assert [path.name for path in work.iterdir()] == ["full_toy"]
@@ -463,8 +466,10 @@ def test_the_parents_files_keep_their_terms_and_tiers_and_pack_carries_the_same(
 
 def test_the_licence_taken_from_the_parent_is_replaced_by_one_declared_again(arm_parent: Path, tmp_path: Path):
     child = Experiment.based_on(arm_parent, name="arm_variant")
-    with pytest.warns(UserWarning, match="took from 'arm_like'"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         child.licence("CC0-1.0")
+    assert "took from 'arm_like'" in child.plan().replaced[0]
     child.save(tmp_path / "arm_variant")
     judged = judged_folder(tmp_path / "arm_variant")[0]
     assert judged.licence == "CC0-1.0" and third_party(tmp_path / "arm_variant") == third_party(arm_parent)

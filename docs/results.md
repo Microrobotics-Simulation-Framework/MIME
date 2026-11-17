@@ -363,10 +363,11 @@ sha256, every file the redraw reads: for a study `study.json` and each group's a
 plotly bytes each time; a data file whose sha256 is not the recipe's refuses the redraw by name (`plot.data-changed`). A
 matplotlib pickle is never written. A matplotlib figure is compared by its description, not its pixels.
 
-**As a page.** `figure.display()` (a notebook output: plotly.js from jsDelivr, held to its hash; `offline=True` inlines it)
-and `figure.web()` (a file, `<experiment>.<name>.figure.html` by default, never inside a saved or run folder; `cdn=True`
+**As a page.** `figure.display()` (shows it in a notebook or IPython, wherever in a cell, and returns nothing: plotly.js from
+jsDelivr, held to its hash; `offline=True` inlines it; refused outside IPython, `visuals.display-outside-ipython`),
+`figure.web_page()` (the same arguments, returns the page object) and `figure.web()` (a file, `<experiment>.<name>.figure.html` by default, never inside a saved or run folder; `cdn=True`
 loads plotly.js from jsDelivr instead of inlining it) take the three-dimensional view's and the graph view's names and behaviour: the
-same `offline=` and `cdn=`, the same returned page object with a stale banner and a frame height, a file name that is no
+same `offline=` and `cdn=`, the same page object (`web_page()`) with a stale banner and a frame height, a file name that is no
 other view's.
 
 **A comparison.** `result.compare(reference=0)` puts every other member against the named one (or against any result, another

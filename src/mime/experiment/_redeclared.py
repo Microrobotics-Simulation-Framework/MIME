@@ -27,9 +27,13 @@ name, a law's or an observation's id, a value's or a source's path; the controll
   ``value.duplicate``, ``source.duplicate``, ``controller.more-than-one``, ``terms.licence``), as before.
 - **Not the same, of a declaration taken from a saved experiment** (``Experiment.based_on``) **or provided by a block**
   (``Experiment.use``), in a script or a notebook: it is replaced as a notebook replaces one, with a note that names
-  where it was taken from, since changing what it holds is what an experiment based on another is for, and a block's
-  value overridden is one the user states of their own unit (the use records it among its ``overrides``). A declaration
-  made after it follows the rules above.
+  where it was taken from, recorded in ``replaced`` and **not warned**: changing what it holds is what an experiment
+  based on another is for, and a block's value overridden is one the user states of their own unit (the use records it
+  among its ``overrides``), so a warning at each is noise, and a notebook that prints ``plan().replaced`` would show every
+  note twice. A warning is for the unexpected: a declaration made after it follows the rules above, so a cell run
+  again with other content (a replacement of one the experiment did not take from elsewhere) still warns. The cases
+  that keep both declarations (a name of another kind, a holder of the earlier object itself) warn whatever the origin,
+  since the build will refuse them.
 
 A permission has no key (an experiment holds one for each grant), so only the same one again is kept once, and another
 is another permission."""
@@ -38,6 +42,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Iterator, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -265,11 +270,17 @@ def _replace_thing(held: list[Declaration], earlier: list[int], declaration: Thi
     _replace(held, earlier, declaration, note, replaced)
 
 
+#: Set while a declaration taken from elsewhere is replaced: its note is only recorded, never warned (see the module).
+_RECORDED_ONLY: ContextVar[bool] = ContextVar("recorded_only", default=False)
+
+
 def _replace(held: list[Declaration], earlier: list[int], declaration: Declaration, note: str,
              replaced: list[str]) -> None:
     """``declaration`` takes the first of ``earlier``'s place and the rest go, with ``note`` raised first (a filter that
-    makes it an error leaves ``held`` and ``replaced`` as they were) and then recorded in ``replaced``."""
-    warn_at_script(note, UserWarning)
+    makes it an error leaves ``held`` and ``replaced`` as they were) and then recorded in ``replaced``. A replacement of
+    a declaration taken from elsewhere (``_RECORDED_ONLY``) is recorded and not warned."""
+    if not _RECORDED_ONLY.get():
+        warn_at_script(note, UserWarning)
     held[earlier[0]] = declaration
     for index in reversed(earlier[1:]):
         del held[index]
@@ -302,8 +313,8 @@ def add(held: list[Declaration], declaration: Declaration, replaced: list[str], 
     """Add ``declaration`` to ``held`` by the rule of this module, warning with its note at the script's line, and
     record in ``replaced`` each note of a declaration that replaced an earlier one. ``taken`` are the declarations the
     experiment took from elsewhere (a saved experiment it is based on, a block it uses): one of them declared again,
-    changed, is replaced in a script too. Returns where the declaration it replaced was taken from, where it replaced
-    one that was."""
+    changed, is replaced in a script too, and recorded in ``replaced`` with no warning. Returns where the declaration it
+    replaced was taken from, where it replaced one that was."""
     known = known_as(declaration)
     if known is None:
         held.append(declaration)
@@ -320,14 +331,18 @@ def add(held: list[Declaration], declaration: Declaration, replaced: list[str], 
         return None
     source = sources[0] if inherited else None
     why = source.why if source is not None else f"in {WHERE} the last one run wins, so it replaces the earlier one"
-    if isinstance(declaration, ThingDeclaration):
-        _replace_thing(held, earlier, declaration, known, known.key[1], replaced, why)
+    token = _RECORDED_ONLY.set(source is not None)
+    try:
+        if isinstance(declaration, ThingDeclaration):
+            _replace_thing(held, earlier, declaration, known, known.key[1], replaced, why)
+            return source
+        naming = _naming(held, earlier, known.key[1]) if known.named else []
+        follows = f"; what holds its id now finds the new one: {', '.join(naming)}" if naming else ""
+        _replace(held, earlier, declaration, f"{known.call} declares {known.noun} again, not the same as before: "
+                                             f"{why}{follows}", replaced)
         return source
-    naming = _naming(held, earlier, known.key[1]) if known.named else []
-    follows = f"; what holds its id now finds the new one: {', '.join(naming)}" if naming else ""
-    _replace(held, earlier, declaration, f"{known.call} declares {known.noun} again, not the same as before: "
-                                         f"{why}{follows}", replaced)
-    return source
+    finally:
+        _RECORDED_ONLY.reset(token)
 
 
 __all__ = ["Known", "Taken", "TakenFrom", "add", "called", "holding_the_object_at", "known_as", "named_by", "names_in",

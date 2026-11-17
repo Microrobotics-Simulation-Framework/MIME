@@ -60,8 +60,9 @@ Every refusal comes at once, before anything is added:
   block's things `<name>_<thing>`, which is also how one block is used twice.
 - `block.fragment` and `block.format`: a fragment that is not the document's shapes, or not of this release's form.
 
-A value declared after the use on something the block provides replaces the block's, in a script as in a notebook, with a
-warning. A declaration removed is treated the same. Each is recorded in the use's **overrides**. The saved document records
+A value declared after the use on something the block provides replaces the block's, in a script as in a notebook, with no
+warning (what a block provides is there to be overridden): the note is recorded in `plan().replaced`, which the example
+prints. A declaration removed is treated the same. Each is recorded in the use's **overrides**. The saved document records
 each use under `blocks`: the block's id, version and content hash, its tier and licence, how its sockets were bound, what it
 provides and what was declared over it. The example prints:
 

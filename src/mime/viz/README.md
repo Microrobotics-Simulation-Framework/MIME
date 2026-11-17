@@ -43,8 +43,8 @@
 
 - **A view that may be shared** (`_export.py`, `_web.py`, `_tiers.py`, `_primitives.py`, `_gltf/`): a stage, a recording
   or a folder's as one glTF binary (`gltf`), +Y up, its units scaled to a power of ten metres, a short recording
-  slowed to about eight seconds and framed over its whole motion; and as one web page (`page`, `display` in a notebook,
-  `mime visuals web`) that draws it with Google's `<model-viewer>` 4.3.1, inlined from the copy in `_viewer/` (with the
+  slowed to about eight seconds and framed over its whole motion; and as one web page (`page` is the HTML, `web_page` the object a
+  notebook shows, `display` shows it in a notebook or IPython and is refused elsewhere, `mime visuals web`) that draws it with Google's `<model-viewer>` 4.3.1, inlined from the copy in `_viewer/` (with the
   licence of every part its bundle holds) or from jsDelivr held to its hash. The converter in `_gltf/` is derived from
   usd2gltf 0.3.5 under MIT (its `LICENSE` and `README.md` say what was taken and changed); MIME tessellates USD's
   spheres, cylinders, cubes and capsules (`_primitives.py`). **Such a view holds only the baked meshes whose tier lets
@@ -56,7 +56,7 @@
   (`ARROW_CAP_FRACTION`, the scene without its arrows; an arrow at no body has this alone), in the glTF and the page alone
   and said in the page's notes; the stage and the recording hold its full length.
 
-  The page's **basics** are each a switch, an argument of `display`, `page` and `web` and a flag of `mime visuals web`
+  The page's **basics** are each a switch, an argument of `display`, `web_page`, `page` and `web` and a flag of `mime visuals web`
   (`apparatus_shapes` is `gltf`'s, since it changes the GLB): a scale bar and an arrow legend (`_web.py`; on), focus and
   follow a body (off until a body is named; an unknown name is refused with the nearest, `visuals.unknown-body`), and an
   apparatus's motor and magnets drawn for the view alone (`_apparatus.py`; on). **The shapes are an overlay of the opened

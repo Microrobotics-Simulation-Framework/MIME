@@ -649,8 +649,8 @@ class Experiment:
         kept once.
 
         Its declarations join the experiment's. A declaration made after it on something the block provides
-        (``exp.declare("probe.mass", ...)``) replaces the block's, in a script as in a notebook, with a warning, and is
-        recorded among the use's ``overrides``. The saved document records each use under ``blocks``: the block's id,
+        (``exp.declare("probe.mass", ...)``) replaces the block's, in a script as in a notebook, with no warning, and is
+        recorded among the use's ``overrides`` and in ``plan().replaced``. The saved document records each use under ``blocks``: the block's id,
         version and content hash, its tier and licence, how its sockets were bound, what it provides and what was
         declared over it. A block whose licence is open or conditional is **copied**: its declarations are in the
         document, so a load never needs the block, and its licence joins the document's own (a non-commercial block
@@ -827,8 +827,9 @@ class Experiment:
         its folder is read and never written.
 
         A declaration taken from the saved experiment, made again and changed, replaces the one taken, in a script as
-        in a notebook (``exp.declare("rpm.magnetic_moment", A_m2(25.0), reason=...)``), with a warning that names what
-        follows it, recorded in ``plan().replaced`` as a notebook's replacements are; a declaration made after this
+        in a notebook (``exp.declare("rpm.magnetic_moment", A_m2(25.0), reason=...)``), recorded in ``plan().replaced``
+        with a note that names what follows it and where the declaration was taken from, and not warned (changing what
+        it holds is what ``based_on`` is for); a declaration made after this
         call follows the rule any experiment's does. The run settings (the step, the seed, gravity, the scene, the
         conditions, the profile and the run's length) are the saved experiment's.
 
@@ -1141,10 +1142,10 @@ class RunWritten:
     origin: Origin | None = None
 
     def view(self, *, offline: bool = False, caption: str | None = None) -> WebPage:
-        """The run's view as a notebook shows it: ``mime.viz.display`` of its folder."""
-        from mime.viz import display
+        """The run's view as a notebook shows it: ``mime.viz.web_page`` of its folder."""
+        from mime.viz import web_page
 
-        return display(self.record_file.parent, offline=offline, caption=caption)  # the folder's origin is found there
+        return web_page(self.record_file.parent, offline=offline, caption=caption)  # the folder's origin is found there
 
 
 def run_layout(plans: PlanSet, graph: GraphManager | None = None) -> Layout:

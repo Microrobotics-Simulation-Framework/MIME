@@ -25,6 +25,7 @@ dependence (the build skipping its canonical order, the tree not sorted) and sho
 from __future__ import annotations
 
 import base64
+import builtins
 import copy
 import dataclasses
 import hashlib
@@ -44,6 +45,7 @@ from hypothesis import strategies as st
 
 import mime.experiment._mermaid_page as page_module
 import mime.experiment._tree as tree_module
+from notebook_cells import install
 from views_cases import tutorial_a0, two_bodies, two_body_declarations
 from mime.build import _testing
 from mime.build._refusals import ArgumentRefused
@@ -330,7 +332,7 @@ LEAK = 'flowchart LR\n n0["<img src=http://leak.invalid/p.png>x"]\n'
 
 
 def fragment_of(mermaid: Mermaid, **kwargs) -> str:
-    return mermaid.display(**kwargs)._repr_html_()
+    return mermaid.web_page(**kwargs)._repr_html_()
 
 
 def page_of_frame(fragment: str) -> str:
@@ -592,7 +594,7 @@ def test_display_returns_a_page_object_without_ipython_and_it_is_what_a_cell_sho
     monkeypatch.setitem(sys.modules, "IPython", None)
     monkeypatch.setitem(sys.modules, "IPython.display", None)
     mermaid = built.to_mermaid()
-    shown = mermaid.display()
+    shown = mermaid.web_page()
     assert isinstance(shown, GraphPage) and shown.html == mermaid.page(cdn=True) and shown.height == 720
     assert shown.name == built.report.experiment and shown.origin is mermaid.origin and shown.stale is None
     assert shown._repr_html_() == mermaid._repr_mimebundle_()["text/html"]
@@ -607,7 +609,7 @@ PLAIN_TEXT_BYTES = 300
 
 
 def test_the_plain_text_of_a_page_object_is_one_short_line_saying_what_it_is_and_how_to_open_it(built):
-    shown = built.to_mermaid().display()
+    shown = built.to_mermaid().web_page()
     plain = repr(shown)
     assert len(plain.encode("utf-8")) <= PLAIN_TEXT_BYTES and "\n" not in plain
     assert shown.name in plain and f"{len(shown.html.encode('utf-8')) / 1e3:.0f} kB" in plain and "browser" in plain
@@ -619,7 +621,7 @@ def test_the_plain_text_of_a_page_object_is_one_short_line_saying_what_it_is_and
 
 def test_a_page_objects_save_writes_the_page_as_displayed_and_the_helper_inlines_by_default(built, tmp_path):
     mermaid = built.to_mermaid()
-    shown = mermaid.display()
+    shown = mermaid.web_page()
     written = shown.save(tmp_path / "shown.html")
     assert written == tmp_path / "shown.html" and written.read_text(encoding="utf-8") == shown.html == mermaid.page(cdn=True)
     assert mermaid.save(tmp_path / "graph.html").read_text(encoding="utf-8") == mermaid.page()
@@ -630,7 +632,7 @@ def test_a_page_objects_save_writes_the_page_as_displayed_and_the_helper_inlines
 def test_offline_inlines_the_library_as_in_the_3d_view_and_warns_that_the_output_is_large(built):
     mermaid = built.to_mermaid()
     with pytest.warns(UserWarning, match="MB as a notebook output") as caught:
-        offline = mermaid.display(offline=True)
+        offline = mermaid.web_page(offline=True)
     assert [w.filename for w in caught] == [__file__], "at the script's line, not display's"
     assert "leave the library to jsDelivr (offline=False)" in str(caught[0].message)
     assert offline.html == mermaid.page() and MERMAID_CDN not in offline.html and "text/javascript;base64" in offline.html
@@ -638,7 +640,7 @@ def test_offline_inlines_the_library_as_in_the_3d_view_and_warns_that_the_output
     assert page_of_frame(offline._repr_html_()) == offline.html
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        online = mermaid.display()
+        online = mermaid.web_page()
     assert online.html == mermaid.page(cdn=True) and MERMAID_CDN in online.html
     assert len(online.html.encode("utf-8")) < OUTPUT_WARNING_BYTES, "the control: the default output is far below it"
 
@@ -654,7 +656,7 @@ def test_the_text_alone_is_the_string_and_the_pointer_block_not_a_flag_of_displa
 
 def test_a_caption_is_a_line_above_the_diagram_in_the_page(built):
     mermaid = built.to_mermaid()
-    page = mermaid.display(caption="a <b> caption").html
+    page = mermaid.web_page(caption="a <b> caption").html
     assert "<p>a &lt;b&gt; caption</p>" in page and "<b>" not in page
     assert page.index("a &lt;b&gt; caption") < page.index('id="stage"')
     assert "caption" not in mermaid.page()
@@ -709,7 +711,7 @@ def test_a_graph_built_before_a_removal_says_it_is_stale_wherever_it_is_shown(tm
     assert banner in html.unescape(bundle["text/html"]) and "color: #b3261e" in bundle["text/html"]
     assert "STALE" not in bundle["text/plain"] and bundle["text/plain"] == str(before), "the text stays the str it is"
     with pytest.warns(UserWarning, match="predates the removal") as caught:
-        shown = before.display()
+        shown = before.web_page()
     assert [w.filename for w in caught] == [__file__]
     assert shown.stale == said and f"; STALE, {said}>" in repr(shown) and banner in shown._repr_html_()
     assert banner in html.unescape(IFRAME_SRCDOC.findall(shown._repr_html_())[0]) and shown.html.index("STALE:") < shown.html.index('id="stage"')
@@ -718,7 +720,7 @@ def test_a_graph_built_before_a_removal_says_it_is_stale_wherever_it_is_shown(tm
     assert "STALE: " + said in written.read_text(encoding="utf-8")
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        fresh = after.display()
+        fresh = after.web_page()
         after.save(tmp_path / "fresh.html")
     assert "STALE" not in repr(fresh) and "STALE" not in fresh.html and "STALE" not in fresh._repr_html_()
 
@@ -983,3 +985,44 @@ def test_the_mermaid_and_the_tree_match_their_committed_text(name):
         pytest.fail("rewrote the golden Mermaid and tree; review the diff and rerun without MIME_REGENERATE_GOLDEN")
     for file, text in produced.items():
         assert text == (GOLDEN / file).read_text(), file
+
+
+# --- ``display`` shows, wherever it is called, and returns nothing ------------------------------------------------------
+
+
+def test_display_inside_an_if_shows_the_diagram_as_display_data_with_html(built, monkeypatch):
+    cells = install(monkeypatch)
+    mermaid = built.to_mermaid()
+    cells.namespace.update(diagram=mermaid, wanted=True)
+    cells.run("if wanted:\n    diagram.display()\n")
+    (shown,) = cells.html
+    assert shown == mermaid.web_page()._repr_html_() and shown.startswith("<iframe srcdoc=")
+    cells.run("diagram.display(offline=False)")
+    assert len(cells.html) == 2, "as a cell's last line it shows once more, not twice"
+    assert mermaid.display() is None
+
+
+def test_display_of_a_diagram_after_its_cell_has_returned_still_shows(built, monkeypatch):
+    cells = install(monkeypatch)
+    mermaid = built.to_mermaid()
+    cells.post_execute.append(mermaid.display)
+    assert not hasattr(builtins, "get_ipython")
+    cells.run("pass")
+    assert len(cells.html) == 1
+
+
+def test_control_the_call_that_returns_the_graph_page_shows_nothing_inside_an_if(built, monkeypatch):
+    cells = install(monkeypatch)
+    cells.namespace.update(diagram=built.to_mermaid(), wanted=True)
+    cells.run("if wanted:\n    diagram.web_page()\n")
+    assert cells.outputs == []
+
+
+def test_display_of_a_diagram_outside_ipython_is_refused_before_the_page_is_made(built, monkeypatch):
+    monkeypatch.delattr(builtins, "get_ipython", raising=False)
+    mermaid = built.to_mermaid()
+    monkeypatch.setattr(Mermaid, "web_page", lambda *_, **__: pytest.fail("the page was made"))
+    with pytest.raises(ArgumentRefused) as refused:
+        mermaid.display()
+    (refusal,) = refused.value.refusals
+    assert refusal.code == "visuals.display-outside-ipython" and "diagram.web_page()" in refusal.action

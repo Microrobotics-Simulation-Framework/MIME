@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, override
 
 from mime._lineage import Origin
+from mime._notebook import in_notebook, show_in_ipython
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.errors._frames import warn_at_script
 from mime.experiment import _mermaid_page as view
@@ -172,12 +173,26 @@ class Mermaid(str):
         diagram and nothing may be loaded."""
         return f"```text\n{self}```\n\n*{POINTER}*\n"
 
-    def display(self, *, offline: bool = False, caption: str | None = None) -> GraphPage:
-        """The diagram as a notebook output, as ``mime.viz.display`` gives the 3-D view: a :class:`GraphPage`, shown by a
-        cell whose last expression it is, with Mermaid from jsDelivr (held to its hash). ``offline=True`` inlines the
+    def display(self, *, offline: bool = False, caption: str | None = None) -> None:
+        """Show the diagram in a notebook or IPython, as ``mime.viz.display`` shows the 3-D view and IPython's own
+        ``display(x)`` shows ``x``: wherever in a cell it is called, and it returns ``None``. The arguments are
+        :meth:`web_page`'s, which returns the :class:`GraphPage` instead. Where no IPython is running it is refused
+        (``visuals.display-outside-ipython``)."""
+        if not in_notebook():
+            raise ArgumentRefused([Refusal(
+                "visuals.display-outside-ipython", RefusalClass.USER,
+                "diagram.display() shows the diagram in a notebook or IPython, and none is running: it would show "
+                "nothing here",
+                "get the page as an object with `diagram.web_page()` and save it (`.save('graph.html')`), or write "
+                "it with `diagram.save('graph.html')`")])
+        show_in_ipython(self.web_page(offline=offline, caption=caption))
+
+    def web_page(self, *, offline: bool = False, caption: str | None = None) -> GraphPage:
+        """The diagram as a :class:`GraphPage`, the object a notebook shows (``mime.viz.web_page`` gives the 3-D view's),
+        shown by a cell whose last expression it is, with Mermaid from jsDelivr (held to its hash). ``offline=True`` inlines the
         library instead, so the page draws with no network (3.6 MB more; it warns above ``OUTPUT_WARNING_BYTES``, which
         a notebook saves into its file with every display). ``caption`` is a line above the diagram. The text alone is
-        ``print(diagram)``."""
+        ``print(diagram)``. It shows nothing itself: :meth:`display` does."""
         self._warn_if_stale()
         held = self.page(cdn=not offline, caption=caption)
         size = len(held.encode("utf-8"))

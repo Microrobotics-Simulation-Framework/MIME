@@ -872,13 +872,13 @@ def test_a_result_pickled_in_one_process_and_read_in_another_says_its_staleness_
 def view_marks_problems(place: str, out: Path) -> list[str]:
     """A run folder written in this process, then a change: the folder, a file inside it and a page written by ``web`` carry
     the mark; a copy of the folder, which no session knows, carries none."""
-    from mime.viz import display, web
+    from mime.viz import web, web_page
 
     edit, _ = EDITS[place]
     made = experiment()
     written = made.exp.build().run_to(out / "run", ms(2), stage_every=ms(1))
     assert written.recording is not None
-    shown = display(written.record_file.parent, offline=False)
+    shown = web_page(written.record_file.parent, offline=False)
     problems: list[str] = []
     if shown.stale is not None:
         problems.append("a view of an unchanged run is marked")
@@ -886,7 +886,7 @@ def view_marks_problems(place: str, out: Path) -> list[str]:
     for label, target in (("the folder", written.record_file.parent), ("a file inside it", written.recording)):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            page = display(target, offline=False)
+            page = web_page(target, offline=False)
         if page.stale is None or "STALE" not in page._repr_html_() or "STALE" not in page.html:
             problems.append(f"the view of {label} is not marked")
         if not [note for note in caught if "this view predates" in str(note.message)]:
@@ -902,7 +902,7 @@ def view_marks_problems(place: str, out: Path) -> list[str]:
     shutil.copytree(written.record_file.parent, out / "copy")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        copied = display(out / "copy", offline=False)
+        copied = web_page(out / "copy", offline=False)
     if copied.stale is not None or "STALE" in copied.html or [n for n in caught if "predates" in str(n.message)]:
         problems.append("a copy of the folder, which no session knows, is marked")
     return problems

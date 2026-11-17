@@ -199,14 +199,19 @@ mime visuals web a0_run --follow umr --no-legend # the camera on the body throug
 ```python
 import mime.viz
 
-mime.viz.display("a0_run")                # the last line of a cell: the page, in the cell's output
+mime.viz.display("a0_run")                # shows the page, in the cell's output, wherever in the cell it is called
 mime.viz.display("a0_run", offline=True)  # the viewer inlined too, for a notebook read without a network
 mime.viz.display("a0_run", focus="umr", scale_bar=False)  # the camera framed on the body at the start, no scale bar
+page = mime.viz.web_page("a0_run")        # the page as an object (a WebPage), shown by nothing until you show it
 result = mime.viz.gltf("a0_run")          # the GLB itself (result.glb), with what it holds and leaves out
-written.view()                            # after built.run_to(...): the same as display() of its folder
+written.view()                            # after built.run_to(...): the same as web_page() of its folder
 ```
 
-In a notebook a cell whose last expression is the page shows it. The page's plain-text form, what `print` and a terminal
+`mime.viz.display` shows the view itself, as IPython's `display(x)` shows `x`, so a call inside an `if`, a loop or a
+function shows it too, and it returns nothing (a call as a cell's last line shows the view once). Outside IPython it is
+refused (`visuals.display-outside-ipython`), since nothing there shows it: `mime.viz.web_page(...)` gives the page
+as an object to `.save('view.html')`, and `mime visuals web` writes it. A cell whose last expression is a `WebPage` shows
+it too. The page's plain-text form, what `print` and a terminal
 show, is one line (its name, its size and `.save('view.html')`, which writes a page to open in a browser) rather than the
 page, which in a saved notebook was most of the cell's output.
 
@@ -233,7 +238,7 @@ page, which in a saved notebook was most of the cell's output.
   cap an arrow's length stays proportional to its vector. A capped arrow keeps its direction, the page's notes name each
   one by its prim path with the length it is drawn at and the length it would have, and the stage and the recording hold
   the full length, as they always did. The legend (below) says what each arrow is and the scale and the cap it is drawn at.
-- **The basics, each a switch.** Each is an argument of `mime.viz.display`, of `mime.viz.web` and (all but the last, which
+- **The basics, each a switch.** Each is an argument of `mime.viz.display` and `mime.viz.web_page`, of `mime.viz.web` and (all but the last, which
   is decided where the view is made) of `mime.viz.page`, and a flag of `mime visuals web`, and the page's notes say which
   are on:
 

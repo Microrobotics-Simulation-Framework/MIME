@@ -6,7 +6,6 @@ that it removes, and writes nothing into the block it reads."""
 
 import shutil
 import tempfile
-import warnings
 from pathlib import Path
 
 import yaml
@@ -29,10 +28,8 @@ with tempfile.TemporaryDirectory() as scratch:
     water = experiment.add_medium(Medium("water", flow=ToyRelaxation()))
     nudged = experiment.use(block, medium=water)
     print(f"the block provides {nudged.probe.name!r}, and binds its socket medium to {water.name!r}")
-    with warnings.catch_warnings(record=True) as noted:
-        warnings.simplefilter("always")
-        experiment.declare("probe.mass", kg(2.5), reason="our unit, weighed")
-    print(noted[0].message)
+    experiment.declare("probe.mass", kg(2.5), reason="our unit, weighed")  # no warning: recorded in plan().replaced
+    print(experiment.plan().replaced[0])
     experiment.licence("CC-BY-4.0")
     print(yaml.safe_dump({"blocks": experiment.document()["blocks"]}, sort_keys=False, width=110), end="")
     # endregion use

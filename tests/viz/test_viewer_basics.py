@@ -1,4 +1,4 @@
-"""The browser view's basics, each switched on and off by an argument of ``display``, ``page`` and ``web`` and a flag of
+"""The browser view's basics, each switched on and off by an argument of ``web_page``, ``page`` and ``web`` and a flag of
 ``mime visuals web``: a scale bar, focus on a body and following it, an arrow legend, and A0's motor and magnet drawn
 for the view alone.
 
@@ -51,7 +51,7 @@ from mime.saved import dump_document
 from mime.scene import Scene, Sphere, Z
 from mime.things import Part
 from mime.units import kg_per_m3, m, m_per_s, m_per_s2, mPa_s, ms, rad_per_s, um
-from mime.viz import display, gltf, page, web
+from mime.viz import gltf, page, web, web_page
 from mime.viz._apparatus import APPARATUS_ROOT, PLACEHOLDER_FRACTION
 from mime.viz._export import length_text
 from mime.viz._web import BAR_PIXELS, FOCUS_FACTOR, OUTPUT_WARNING_BYTES
@@ -318,17 +318,17 @@ def test_control_an_apparatus_switch_wired_to_nothing_leaves_the_shapes_in(decla
     assert overlay_nodes(web_module.gltf(declared, apparatus_shapes=False)) != []
 
 
-def test_the_same_switches_are_arguments_of_display_and_web(ball_run, declared, tmp_path):
-    shown = display(ball_run, scale_bar=False, legend=False, focus="ball", follow="ball", apparatus_shapes=False)
+def test_the_same_switches_are_arguments_of_web_page_and_web(ball_run, declared, tmp_path):
+    shown = web_page(ball_run, scale_bar=False, legend=False, focus="ball", follow="ball", apparatus_shapes=False)
     assert shown.html == page(shown.result, cdn=True, scale_bar=False, legend=False, focus="ball", follow="ball")
     written, result = web(declared, tmp_path / "a0.html", scale_bar=False, apparatus_shapes=False)
     assert written.read_text(encoding="utf-8") == page(result, scale_bar=False) and overlay_nodes(result) == []
     assert observable(written.read_text(encoding="utf-8"))["scale-bar"] is False
 
 
-def test_display_and_web_draw_the_shapes_and_the_bar_and_the_legend_by_default(declared, tmp_path):
+def test_web_page_and_web_draw_the_shapes_and_the_bar_and_the_legend_by_default(declared, tmp_path):
     """The defaults are the arguments' own, not the tests' choice: called with none, each is on."""
-    shown = display(declared)
+    shown = web_page(declared)
     written, result = web(declared, tmp_path / "a0.html")
     for result_of, text in ((shown.result, shown.html), (result, written.read_text(encoding="utf-8"))):
         assert overlay_nodes(result_of) == overlay_nodes(gltf(declared)) != [] and result_of.apparatus_shapes is True
@@ -390,7 +390,7 @@ def test_a_body_the_scene_does_not_hold_is_refused_with_the_nearest_name(ball_ru
     assert found.code == "visuals.unknown-body" and f"{argument}='bal'" in found.message
     assert "Did you mean 'ball'?" in found.message and "The candidates are: ball." in found.message
     with pytest.raises(ArgumentRefused, match="visuals.unknown-body"):
-        display(ball_run, **{argument: "balls"})
+        web_page(ball_run, **{argument: "balls"})
 
 
 def test_the_command_refuses_an_unknown_body_and_writes_no_page(ball_run, tmp_path, capsys):
@@ -563,7 +563,7 @@ def test_control_a_track_thinned_to_the_boxs_samples_fails(long_run, monkeypatch
 
 
 def test_the_long_recordings_page_stays_under_the_notebooks_output_limit(long_run):
-    assert len(display(long_run, follow="ball").html.encode("utf-8")) < OUTPUT_WARNING_BYTES
+    assert len(web_page(long_run, follow="ball").html.encode("utf-8")) < OUTPUT_WARNING_BYTES
 
 
 # --- the scale bar -----------------------------------------------------------------------------------------------------------
@@ -860,10 +860,10 @@ def state_of(folder: Path) -> dict[str, tuple]:
 
 
 def view_every_way(target: Path, out: Path) -> list:
-    """``target`` through ``gltf``, ``display`` and ``web``, every switch on and a body followed and framed."""
+    """``target`` through ``gltf``, ``web_page`` and ``web``, every switch on and a body followed and framed."""
     every = {"scale_bar": True, "legend": True, "apparatus_shapes": True}
     shapes = [gltf(target, apparatus_shapes=True).shapes]
-    shown = display(target, follow="umr", focus="umr", **every)
+    shown = web_page(target, follow="umr", focus="umr", **every)
     _, result = web(target, out / f"{target.parent.name}_{target.name}.html", follow="umr", focus="umr", **every)
     return [*shapes, shown.result.shapes, result.shapes]
 
@@ -880,7 +880,7 @@ def targets_of(saved_a0: Path, declared: Path) -> list[Path]:
 
 def test_a0s_saved_folder_run_folder_and_cache_are_byte_for_byte_the_same_after_a_view(saved_a0, declared, cache, a0_built, tmp_path):
     """The headline guarantee: nothing of the shapes is written into a stage, a recording, a folder or the cache. Each of
-    the four ways to name A0 is viewed through ``gltf``, ``display`` and ``web`` with every switch on, and every file and
+    the four ways to name A0 is viewed through ``gltf``, ``web_page`` and ``web`` with every switch on, and every file and
     directory of both folders and of the cache is the same after (its size, its modification time and its hash)."""
     _, built = a0_built
     before = {name: state_of(folder) for name, folder in watched(saved_a0, declared, cache).items()}
@@ -1043,5 +1043,5 @@ def test_the_command_has_a_flag_for_each_switch(declared, tmp_path):
 
 
 def test_a_view_of_a0_with_everything_on_is_under_the_notebooks_output_limit(declared):
-    shown = display(declared, follow="umr", focus="umr")
+    shown = web_page(declared, follow="umr", focus="umr")
     assert len(shown.html.encode("utf-8")) < OUTPUT_WARNING_BYTES

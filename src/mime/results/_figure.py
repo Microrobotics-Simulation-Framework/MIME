@@ -24,6 +24,7 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, cast, override
 
 from mime._lineage import Origin
+from mime._notebook import in_notebook, show_in_ipython
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.errors._frames import warn_at_script
 from mime.results._draw import FigureOptions, draw_matplotlib, draw_plotly, import_optional, plotly_json
@@ -284,10 +285,25 @@ class FigureRecipe:
                            caption=f"STALE: {stale}. {caption}" if stale and caption else (f"STALE: {stale}" if stale else caption),
                            name=self.name or "figure")
 
-    def display(self, *, offline: bool = False, caption: str | None = None) -> FigurePage:
-        """The figure as a notebook output, as ``mime.viz.display`` gives the 3-D view: a :class:`FigurePage` a cell shows
-        when it is its last expression, plotly.js from jsDelivr (held to its hash); ``offline=True`` inlines it, 4.8 MB
-        more. Warns above 1 MB, which a notebook saves into its file with every display."""
+    def display(self, *, offline: bool = False, caption: str | None = None) -> None:
+        """Show the figure in a notebook or IPython, as ``mime.viz.display`` shows the 3-D view and IPython's own
+        ``display(x)`` shows ``x``: wherever in a cell it is called, and it returns ``None``. The arguments are
+        :meth:`web_page`'s, which returns the :class:`FigurePage` instead. Where no IPython is running it is refused
+        (``visuals.display-outside-ipython``)."""
+        if not in_notebook():
+            raise ArgumentRefused([Refusal(
+                "visuals.display-outside-ipython", RefusalClass.USER,
+                "figure.display() shows the figure in a notebook or IPython, and none is running: it would show "
+                "nothing here",
+                "get the page as an object with `figure.web_page()` and save it (`.save('figure.html')`), or write "
+                "it with `figure.web()`")])
+        show_in_ipython(self.web_page(offline=offline, caption=caption))
+
+    def web_page(self, *, offline: bool = False, caption: str | None = None) -> FigurePage:
+        """The figure as a :class:`FigurePage`, the object a notebook shows (``mime.viz.web_page`` gives the 3-D view's): a
+        cell shows it when it is its last expression, plotly.js from jsDelivr (held to its hash); ``offline=True`` inlines
+        it, 4.8 MB more. Warns above 1 MB, which a notebook saves into its file with every display. It shows nothing
+        itself: :meth:`display` does."""
         stale = self._stale()
         if stale is not None:
             warn_at_script(stale, UserWarning)
