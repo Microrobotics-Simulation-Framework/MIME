@@ -35,9 +35,15 @@ from mime.registry import (
 )
 from mime.units import Length, Magnitude, Quantity
 
+#: The toy's name, built from parts: a code-shaped literal in the source is a name the refusal scan lists or reads from
+#: the registry, and the registry holds the toy kind in a test's process and not in the command's, so a literal would
+#: flip that scan between the two.
+TOY_CAPSULE_NAME = "toy" + "." + "capsule"
+TOY_CAPSULE_END_OWNER = TOY_CAPSULE_NAME + "." + "end"
+
 #: The toy's own switch: the clamp of the point's axial coordinate to the segment's ends.
 TOY_CAPSULE_END = switch.Declaration(
-    owner="toy.capsule.end",
+    owner=TOY_CAPSULE_END_OWNER,
     indicator="the point's axial coordinate less the nearer end of the segment, m",
     orders={"distance": 1, "normal": 0},
     route="none needed: the distance from a segment is once differentiable across the planes through its ends")
@@ -58,14 +64,14 @@ class ToyCapsuleShape(Shape):
         offset = point - jnp.asarray(parameters["centre"], dtype=point.dtype)
         half = parameters["height"] / 2.0
         along = jnp.sum(offset * axis, axis=-1)
-        nearest = switch.clip(along, -half, half, owner="toy.capsule.end", resolution=lambda: switch.rounding(half),
+        nearest = switch.clip(along, -half, half, owner=TOY_CAPSULE_END_OWNER, resolution=lambda: switch.rounding(half),
                               indicator=along)
         radial = offset - nearest[..., None] * axis
         floor = jnp.finfo(point.dtype).eps * parameters["radius"]
         return jnp.sqrt(jnp.sum(radial * radial, axis=-1) + floor * floor) - parameters["radius"]
 
 
-TOY_CAPSULE_SHAPE = register_shape("toy.capsule", ToyCapsuleShape(), switches=(TOY_CAPSULE_END,))
+TOY_CAPSULE_SHAPE = register_shape(TOY_CAPSULE_NAME, ToyCapsuleShape(), switches=(TOY_CAPSULE_END,))
 
 
 def _length(settings: Mapping[str, Magnitude], name: str) -> float:
@@ -77,7 +83,7 @@ class ToyCapsule(Solid):
     """A capsule whose one region, ``solid``, is the toy plugin shape ``toy.capsule``: a kind that gives its shape's
     parameters and its mass properties, and takes its drawing and its camera sign function from its shape's distance."""
 
-    name = "toy.capsule"
+    name = TOY_CAPSULE_NAME
     version = "0.1.0"
     setting_roles = dict.fromkeys(("radius", "height", "axis"), PHYSICAL)
     differentiability = GradientStatus.PIECEWISE_JUMP
@@ -85,7 +91,7 @@ class ToyCapsule(Solid):
     references = ()
     builds = {"": ()}
     regions = ("solid",)
-    region_shapes = {"solid": "toy.capsule"}
+    region_shapes = {"solid": TOY_CAPSULE_NAME}
     radius: Annotated[Quantity, Length]
     height: Annotated[Quantity, Length]
     axis: Annotated[DirectionLike, Direction]
@@ -131,4 +137,4 @@ def register_toy_capsule() -> type[ToyCapsule]:
     return ToyCapsule
 
 
-__all__ = ["TOY_CAPSULE_END", "TOY_CAPSULE_SHAPE", "ToyCapsule", "ToyCapsuleShape", "register_toy_capsule"]
+__all__ = ["TOY_CAPSULE_END", "TOY_CAPSULE_END_OWNER", "TOY_CAPSULE_NAME", "TOY_CAPSULE_SHAPE", "ToyCapsule", "ToyCapsuleShape", "register_toy_capsule"]

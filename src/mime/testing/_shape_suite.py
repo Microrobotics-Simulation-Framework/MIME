@@ -79,8 +79,7 @@ import numpy as np
 from hypothesis import strategies as st
 
 from mime.core import jnp, nearest_point, quaternion, shape_named, shape_names, switch
-from mime.core.shapes import shape_package
-from mime.core._geometry import AXIS_ULPS
+from mime.core._geometry import AXIS_ULPS, shape_package
 
 type Parameters = dict[str, Any]
 type Placement = Callable[[Parameters, float, np.ndarray], np.ndarray]

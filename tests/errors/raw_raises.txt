@@ -24,7 +24,9 @@ build/_regions.py::HandedRegion.manifest_region ValueError 1  # OpenMaterica's r
 cli/__init__.py::_credentials AssertionError 1  # invariant: argparse requires the service first
 cli/__main__.py::<module> SystemExit 1  # the command's exit code
 control/_arm_tracking.py::ArmTracking.read ValueError 2  # caught where it is raised and refused with its code (the controller's law, an entry.defect naming it)
+core/_geometry.py::_Adopted.__getattr__ AttributeError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 core/_geometry.py::register_shape ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+core/_geometry.py::register_shape TypeError 1  # registration: a lab's registration at import, outside every public call
 core/_geometry.py::shape_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 core/_labels.py::_installed RuntimeError 1  # construction: a label made before `mime.units` was imported, which `import mime` never allows (it imports units first); fails closed instead of passing a label unread
 core/_node.py::MimeNode.__init__ TypeError 2  # a node's constructor given a ledger it cannot take (not a sequence of strings, or a node that writes no step identity), which only the build gives and only to a metered receiver: reached, it is error.uncoded
@@ -274,3 +276,4 @@ dynamics/apparatus/_arm.py::Arm.forward_model ValueError 1  # invariant: MIME's 
 registry/_calibration.py::register_calibration_type ValueError 1  # construction: a script registering a calibration type under a name and version taken already with another reader, raised where the script calls it, outside every public call of an experiment
 registry/_forward.py::ForwardModel.affine ValueError 1  # a call's argument, made by a law or a script: commands the model is not affine in; ctx.allocator refuses them first with its code (allocation.model), so this is reached only by calling the model's affine form directly
 registry/_forward.py::ForwardModel.bound KeyError 1  # a call's argument, made by a law or a script: a parameter the model does not have, named with the ones it has; ctx.believed binds only the model's own parameters, so this is reached only by calling bound directly
+testing/toys/_shape.py::ToyCapsule.region_parameters KeyError 1  # invariant: the toy kind's own region lookup, a test fixture outside a script's public call

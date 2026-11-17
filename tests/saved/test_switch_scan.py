@@ -87,9 +87,9 @@ def test_the_tree_passes_the_scan_with_its_list_and_its_owners(scan, records, st
 CENSUS = {
     (1, 2): ("core/_quaternion.py", "normalized"),
     (3, 4, 5): ("core/_quaternion.py", "exponential"),
-    (6,): ("core/_geometry.py", "_unit"),
-    (7, 8): ("core/_geometry.py", "Cylinder._radial"),
-    (9, 10): ("core/_geometry.py", "Cylinder.outward_normal"),
+    (6,): ("core/_shapes.py", "_unit"),
+    (7, 8): ("core/_shapes.py", "CylinderShape._radial"),
+    (9, 10): ("core/_shapes.py", "CylinderShape.outward_normal"),
     (11,): ("core/_geometry.py", "remove_outward"),
     (19, 20, 21, 22, 23, 24): ("nodes/body/_rigid_inertial.py", "RigidInertialNode.held"),
     (25, 26): ("nodes/body/_rigid_inertial.py", "RigidInertialNode._confined"),

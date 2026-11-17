@@ -11,7 +11,9 @@ import numpy as np
 from maddening.core.node import SimulationNode
 
 from mime.core import jnp, shape_named, shape_names, shape_switches, switch
-from mime.core.shapes import SignValue, contour, each_point
+from mime.core._contour import contour
+from mime.core._geometry import each_point
+from mime.core.shapes import SignValue
 from mime.registry._centreline import Centreline
 from mime.gradients import RANK, GradientStatus
 from mime.things import ThingKind, TypedPath
@@ -1770,7 +1772,7 @@ class Geometry(Entry):
 
         **Derived** for a solid whose every region is a registered shape and which places nothing (its own frame the
         frame its settings are in): its body's signed distance (the greatest of its regions') contoured on a grid of
-        ``segments`` cells across its enclosing ball (:func:`mime.core.shapes.contour`), a closed mesh whose vertices
+        ``segments`` cells across its enclosing ball (:func:`mime.core._contour.contour`), a closed mesh whose vertices
         lie within about a cell of its surface, not on it, and whose ``representation`` says it is a drawing."""
         if not derivable(type(self), "drawing"):
             raise NotImplementedError

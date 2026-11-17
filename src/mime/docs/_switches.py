@@ -62,8 +62,8 @@ from jax.extend.core import Jaxpr, JaxprEqn
 from maddening.core.node import SimulationNode
 
 from mime.build._maddening import make_jaxpr
-from mime.core import MimeNode, shape_names, shape_switches
-from mime.core.shapes import shape_package
+from mime.core import MimeNode, shape_named, shape_names, shape_switches
+from mime.core._geometry import shape_package
 from mime.core.switch import SWITCH_FUNCTIONS, Declaration
 from mime.docs._lists import RatchetList
 from mime.gradients import GradientStatus
@@ -1007,6 +1007,8 @@ def declarations(records: Sequence[Registered]) -> list[tuple[Declarer, Declarat
             found.append((declarer, declared))
             versions.append(version)
     for name in shape_names():
+        if type(shape_named(name)).__module__.startswith("mime.testing"):
+            continue  # a toy of the test kit (the extensibility test's subject), which no node's step runs
         package = shape_package(name)
         found += [(Declarer(f"shape {name}", package), declared) for declared in shape_switches(name)]
     found += [(Declarer(PORT_STAGE, "mime"), declared) for declared in STAGE_SWITCHES]

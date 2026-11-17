@@ -29,6 +29,7 @@ from screw_grid import FL9, HELIX_SETTINGS
 from mime.core import SCREW, jnp
 from mime.docs._export import load_namespaces
 from mime.registry import Drawing, EntryKind, Samples, implements
+from mime.registry._entries import derivable
 from mime.registry import registered as registered_entries
 from mime.scene import DRAWING_SEGMENTS, Box, Ellipsoid, Screw, Tube
 from mime.scene._screw import STARTS
@@ -300,11 +301,20 @@ def test_every_kind_that_draws_itself_passes_the_drawing_check_at_the_writers_re
 
 def test_every_kind_that_draws_itself_is_held_to_its_surface_its_volume_and_its_area(declared_kinds):
     """The drawing check says what it checks of each kind, and a kind drawn with nothing to hold its vertices, volume
-    and area to is a kind the check passes without seeing: it fails here, until the harness has its surface."""
+    and area to is a kind the check passes without seeing: it fails here, until the harness has its surface. A kind
+    whose drawing is derived (contoured from its regions' shapes: ``derivable``) is held to the distance it is
+    contoured from, each vertex within a cell of it (``near the surface``), and is closed; its volume and surface are
+    held where a shape of the kind has its closed form to judge them by (the extensibility test's toy capsule against
+    MIME's, ``tests/unit/test_shape_protocol.py``), not here: this walk has no closed form for a derived kind (the
+    box's, the older sphere's, the lab bead's)."""
     load_namespaces()
     drawing = drawing_kinds([record.cls for record in registered_entries(EntryKind.GEOMETRY)])
-    short = {cls.label(): set(FULL_CHECK) - set(drawing_checks(declared_kinds[cls][0][0])) for cls in drawing}
+    short = {cls.label(): set(DERIVED_CHECK if derivable(cls, "drawing") else FULL_CHECK)
+             - set(drawing_checks(declared_kinds[cls][0][0])) for cls in drawing}
     assert {label: left for label, left in short.items() if left} == {}
+    derived = [cls for cls in drawing if derivable(cls, "drawing")]
+    assert derived, "the walk would pass over a kind whose drawing is derived"
+    assert all(drawing_checks(declared_kinds[cls][0][0]) == DERIVED_CHECK for cls in derived)
 
 
 @pytest.mark.parametrize(("starts", "modulation", "nu"), HELIX_SETTINGS)
@@ -314,6 +324,7 @@ def test_the_helix_passes_the_drawing_check_at_every_setting_it_accepts(starts, 
 
 
 FULL_CHECK = ("closed", "on the surface", "volume", "area")
+DERIVED_CHECK = ("closed", "near the surface")
 
 #: Settings of the kinds with no two equal edges, semi-axes or lengths in them, as the declared ones have (a cube, a
 #: sphere): a planted permutation of the axes is a different drawing only where they differ.
