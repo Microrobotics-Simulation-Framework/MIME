@@ -36,7 +36,7 @@ jobs:
   dispatch:
     name: dispatch CI on the release branches
     runs-on: ubuntu-latest
-    # A full matrix is 63 jobs against the organisation's 60 at once: the wait is up to 300 minutes, and its limit is above.
+    # A full matrix is 64 jobs against the organisation's 60 at once: the wait is up to 300 minutes, and its limit is above.
     timeout-minutes: 330
     steps:
       - name: Dispatch ci.yml on each active release branch

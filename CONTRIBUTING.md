@@ -195,7 +195,7 @@ The steps that read the branch (the docs check's `--base`, the confidentiality s
 
 ## CI: the `ready` label
 
-A run of the whole matrix is 63 jobs against the organisation's 60 at once, so two pull requests in CI queue each other,
+A run of the whole matrix is 64 jobs against the organisation's 60 at once, so two pull requests in CI queue each other,
 and an agent pushes two to four times a round. So `ci.yml` has two modes. The **full** matrix runs on a push to a branch
 (the development branch's post-merge run included), on a manual run, and on a pull request that carries the label **`ready`**
 (for a pull request, 27 jobs, or more when its diff starts the lanes of "CI: which lanes a pull request runs"). A pull

@@ -292,7 +292,14 @@ def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -
     found: list[str] = []
     for what, local, field, shape in held:
         node = built.get(plan.node_name(local))
-        state = initial_fields(node) if node is not None else {}
+        try:
+            state = initial_fields(node) if node is not None else {}
+        except Exception as error:  # noqa: BLE001 - the entry's node failed to make its first state: the entry's defect
+            from mime.errors._translate import raised_at
+
+            found.append(Explained(f"the initial state of its node {plan.node_name(local)!r} raised {described(error)}",
+                                   where=raised_at(error)))
+            continue
         if field not in state:
             found.append(f"it declares the {what} {field!r} of its node {plan.node_name(local)!r}, which holds no "
                          f"such state field ({', '.join(sorted(state)) or 'none'})")

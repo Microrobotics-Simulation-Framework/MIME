@@ -270,7 +270,4 @@ def test_a_damaged_cache_entry_costs_a_warning_and_never_a_run_or_a_digest(saved
         assert all("UserWarning" in line for line in output.splitlines() if "Error" in line)  # at most a warning
     assert digest(tmp_path / "off") == digest(tmp_path / "out-half") == digest(tmp_path / "out-empty")
     text, _ = control.communicate(timeout=600)
-    # The read of a damaged entry raised, as told to: JAX's own decompression error is what the run failed with, whichever
-    # of MIME's first eager operations (an entry's build, a node's initial state) read the entry first and so which code
-    # the error is given.
-    assert control.returncode != 0 and b"Error -5 while decompressing data" in text
+    assert control.returncode != 0 and b"entry.defect" in text  # the read of a damaged entry raised, as told to
