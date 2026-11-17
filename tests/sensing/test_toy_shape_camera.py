@@ -21,11 +21,12 @@ import pytest
 from camera_cases import across
 
 import mime.core._geometry as geometry
-import mime.testing.toys  # noqa: F401 - registers the toy kind and its shape
+from mime.testing.toys import register_toy_capsule
 from mime.core.shapes import SignValue
 from mime.sensing import Appearance, Subject, render
 from mime.sensing._subjects import route_of
 
+register_toy_capsule()
 PLANT = os.environ.get("SHAPE_PLANT", "")
 #: G18's swap lines (``tests/sensing/test_sampled.py``): route 2 against route 1 on a body whose sign function is its
 #: exact distance, per pixel and in the silhouette's motion.

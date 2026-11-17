@@ -131,8 +131,11 @@ stages:
   The route to exact is the follow-up **"creased image accuracy"** (approved, next): the ripple's source found, each
   sub-ray's least refined where the side's profile is a V (a gathered Newton refinement, which removes the sliver, after
   which these lines tighten), and the crease line, G18, G17 and the switch scan's lines re-derived once.
-- **The kinds' sign functions** (`mime.scene._signs`, `Geometry.sign_function`): the sphere, capsule, cylinder (side and
-  span) and slab their exact signed distances; the ellipsoid its radius in units of its semi-axes, less one, with its gradient's length;
+- **The kinds' sign functions** (`Geometry.sign_function`): a solid whose regions are shapes derives it from them, each
+  region's shape's own (`mime.core.Shape.sign_function`): MIME's sphere, capsule, cylinder (side) and slab give their
+  exact signed distances in closed form (`mime.core._sign_forms`), and a shape with only a distance gives that distance,
+  slope one, so the sampled route images it (the toy plugin shape `toy.capsule`, held to route 1's capsule,
+  `tests/sensing/test_toy_shape_camera.py`). The ellipsoid its radius in units of its semi-axes, less one, with its gradient's length;
   the screw's thread its radius less its modulated cross-section's, with its gradient's length in closed form; the helix the distance from its centreline's
   arc less the filament's radius, its nearest angle found by Newton's steps and held (`helix.end.*` at the arc's ends).
   Each is held by `mime.testing.sign_function_problems` (its region's sign at drawn points, its gradient's length).

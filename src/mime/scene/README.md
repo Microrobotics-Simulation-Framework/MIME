@@ -42,8 +42,9 @@ and centre; regions `lumen` and `wall`, the surface `inner_surface` (facing the 
 cylinder, so a contact with it bounds a body radially and its ends bound nothing), and the direction `axis`, each a
 typed path from the structure's handle. A geometry kind is a contract a lab implements: a registered
 `mime.registry.Geometry` naming its regions, surfaces and directions, its surfaces and some of its regions
-(`region_shapes`) evaluated by a `Shape` (the protocol: signed distance, outward normal, the axis and a point on it)
-registered in `mime.core`. `X`, `Y` and `Z` are signed axes (`+X`, `-Z`).
+(`region_shapes`) evaluated by a `Shape` (the protocol, `mime.core.shapes`: its exact signed distance, and the rest
+derived from it unless it gives its own) registered in `mime.core`. A solid whose every region is a shape derives its
+camera sign function and, where it places nothing, its drawing (contoured, marked as a drawing) from them. `X`, `Y` and `Z` are signed axes (`+X`, `-Z`).
 
 Also:
 

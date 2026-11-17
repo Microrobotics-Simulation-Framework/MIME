@@ -5,7 +5,7 @@ would write it, with no MIME helper: a capsule's (the distance from its segment 
 floored at one unit in the last place of the radius squared so that its derivative is finite on the segment, and its
 clamp to the segment through ``mime.core.switch`` (``toy.capsule.end``). Its outward normal and its camera sign
 function are the derived ones, and its normal's switch, ``toy.capsule.kink``, is declared when it is registered. The
-kind ``ToyCapsule`` (``toy.capsule``) gives no drawing, no sign function and no closed form: its display mesh is
+kind ``ToyCapsule`` (``toy.capsule``, registered by :func:`register_toy_capsule`, which its tests call) gives no drawing, no sign function and no closed form: its display mesh is
 contoured and the camera images it by the sampled route on its derived sign function.
 
 Each derived form has an analytic reference, MIME's capsule: ``mime.core.CAPSULE``'s closed-form distance and normal,
@@ -22,7 +22,17 @@ from typing import Annotated, Any, cast, override
 from mime.core import jnp, switch
 from mime.core.shapes import Parameters, Point, Shape, register_shape
 from mime.gradients import GradientStatus
-from mime.registry import PHYSICAL, Direction, DirectionLike, GradientRecord, Solid, Tensor, register_geometry
+from mime.registry import (
+    PHYSICAL,
+    Direction,
+    DirectionLike,
+    EntryKind,
+    GradientRecord,
+    Solid,
+    Tensor,
+    lookup,
+    register_geometry,
+)
 from mime.units import Length, Magnitude, Quantity
 
 #: The toy's own switch: the clamp of the point's axial coordinate to the segment's ends.
@@ -62,7 +72,6 @@ def _length(settings: Mapping[str, Magnitude], name: str) -> float:
     return cast(float, settings[name])
 
 
-@register_geometry
 @dataclass(frozen=True, kw_only=True)
 class ToyCapsule(Solid):
     """A capsule whose one region, ``solid``, is the toy plugin shape ``toy.capsule``: a kind that gives its shape's
@@ -114,4 +123,12 @@ class ToyCapsule(Solid):
                 "height": settings["height"]}
 
 
-__all__ = ["TOY_CAPSULE_END", "TOY_CAPSULE_SHAPE", "ToyCapsule", "ToyCapsuleShape"]
+def register_toy_capsule() -> type[ToyCapsule]:
+    """Register the toy kind, once: a test registers it on its own, so the registry walk (which lists the entries a
+    fresh process registers) asks no round-trip case of it."""
+    if lookup(EntryKind.GEOMETRY, ToyCapsule.name, ToyCapsule.version) is None:
+        register_geometry(ToyCapsule)
+    return ToyCapsule
+
+
+__all__ = ["TOY_CAPSULE_END", "TOY_CAPSULE_SHAPE", "ToyCapsule", "ToyCapsuleShape", "register_toy_capsule"]

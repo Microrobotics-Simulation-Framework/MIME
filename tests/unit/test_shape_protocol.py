@@ -37,7 +37,9 @@ from mime.core.shapes import Shape, register_shape
 from mime.nodes.body import RigidInertialMidpointNode
 from mime.sensing._sampled import made_kind
 from mime.testing._kind_conformance import _mesh_volume, drawing_checks, drawing_problems
-from mime.testing.toys import ToyCapsule
+from mime.testing.toys import register_toy_capsule
+
+ToyCapsule = register_toy_capsule()
 
 PLANT = os.environ.get("SHAPE_PLANT", "")
 #: The toy capsule's parameters: tilted, off the origin, at a micro-robot's scale.

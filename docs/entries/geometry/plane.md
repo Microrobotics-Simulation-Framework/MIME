@@ -6,7 +6,7 @@ describes: "0.1.0"
 An unbounded plane wall as a structure: the plane `x . n = offset`, `normal` its direction (towards the medium) and
 `offset` its signed distance from the world's origin along it, the plane through the origin unless placed. It names two
 regions, the `half_space` its normal points into and the `wall`, the other side; only the `half_space` has a shape, the
-half-space (`mime.core.HalfSpace`). A medium fills it: `Medium("water", fills=floor.half_space)`.
+half-space (`mime.core.shapes.HalfSpaceShape`). A medium fills it: `Medium("water", fills=floor.half_space)`.
 
 What a consumer reads of it, by what it is for:
 - **A medium** filling the `half_space` sees an unbounded plane wall.
