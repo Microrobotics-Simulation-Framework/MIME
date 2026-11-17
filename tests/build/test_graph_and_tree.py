@@ -1002,6 +1002,15 @@ def test_display_inside_an_if_shows_the_diagram_as_display_data_with_html(built,
     assert mermaid.display() is None
 
 
+def test_display_of_a_diagram_after_its_cell_has_returned_still_shows(built, monkeypatch):
+    cells = install(monkeypatch)
+    mermaid = built.to_mermaid()
+    cells.post_execute.append(mermaid.display)
+    assert not hasattr(builtins, "get_ipython")
+    cells.run("pass")
+    assert len(cells.html) == 1
+
+
 def test_control_the_call_that_returns_the_graph_page_shows_nothing_inside_an_if(built, monkeypatch):
     cells = install(monkeypatch)
     cells.namespace.update(diagram=built.to_mermaid(), wanted=True)

@@ -1,6 +1,7 @@
 """Whether MIME runs inside IPython: a notebook (Jupyter, Colab) or IPython's own terminal, where a cell can be run
-again. IPython puts ``get_ipython`` among the builtins while it runs code; a script, ``python -c`` and Python's own
-prompt never have it. The run's live display asks this for its default, and a declaration made a second time asks it
+again. IPython puts ``get_ipython`` among the builtins while it runs code, and ``IPython.get_ipython()`` returns the
+running shell at any time (also after a cell has returned); a script, ``python -c`` and Python's own prompt have
+neither. The run's live display asks this for its default, and a declaration made a second time asks it
 for its rule (``mime.experiment``): one test, here, for both.
 
 The test's reach is IPython's, not the notebook's alone: it is also true for a script run by ``ipython script.py`` or
@@ -13,6 +14,7 @@ from __future__ import annotations
 import builtins
 import importlib
 import re
+import sys
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
@@ -27,7 +29,14 @@ RUN_AGAIN = ("run the lines or cells again from the one that makes the experimen
 
 
 def in_notebook() -> bool:
-    return hasattr(builtins, "get_ipython")
+    """Whether an IPython shell is running in this process. The builtin ``get_ipython`` answers while a cell runs; the
+    shell instance answers at any time, so a display called after its cell has returned (a thread, a ``post_execute``
+    hook, a widget callback) is still in IPython. ``IPython`` is asked only where it is already imported (a process
+    that never imported it has no shell, and this does not import it). IPython's terminal shell counts, as it did."""
+    if hasattr(builtins, "get_ipython"):
+        return True
+    shell = getattr(sys.modules.get("IPython"), "get_ipython", None)
+    return shell is not None and shell() is not None
 
 
 def show_in_ipython(shown: object) -> None:

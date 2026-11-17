@@ -216,6 +216,15 @@ def test_a_runs_recipe_hashes_its_manifest_its_arrays_and_its_report(tmp_path):
     FigureRecipe.read(folder, "speed")
 
 
+def test_display_of_a_figure_after_its_cell_has_returned_still_shows(study, monkeypatch):
+    recipe = study.figure(MEAN, name="curve")
+    cells = install(monkeypatch)
+    cells.post_execute.append(recipe.display)
+    assert not hasattr(builtins, "get_ipython")
+    cells.run("pass")
+    assert len(cells.html) == 1
+
+
 def test_display_inside_an_if_shows_the_figure_as_display_data_with_html_and_outside_ipython_is_refused(
         study, monkeypatch):
     recipe = study.figure(MEAN, name="curve")

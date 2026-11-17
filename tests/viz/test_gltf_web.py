@@ -24,9 +24,10 @@ test (CI has no WebGL)."""
 
 import base64
 import hashlib
-import html
 import builtins
+import html
 import re
+import threading
 import warnings
 
 import pytest
@@ -232,6 +233,22 @@ def test_display_as_a_cells_last_line_shows_exactly_once(run, notebook):
     notebook.run("display(folder)")
     assert len(notebook.outputs) == 1 and len(html_outputs(notebook)) == 1
     assert display(run) is None
+
+
+def test_display_after_its_cell_has_returned_still_shows_from_a_thread_and_from_a_post_execute_hook(run, notebook):
+    """IPython puts ``get_ipython`` among the builtins only while a cell runs, so a display called later (a thread the
+    cell started, a ``post_execute`` hook, a widget callback) finds the shell by ``IPython.get_ipython()`` instead.
+    The control, in the same test: the harness has no builtin then, so a test of the builtin alone would refuse."""
+    notebook.namespace.update(display=display, folder=str(run), threading=threading, go=threading.Event())
+    notebook.run("shown = threading.Thread(target=lambda: (go.wait(5), display(folder)))\nshown.start()")
+    assert not hasattr(builtins, "get_ipython"), "the cell has returned: the builtin is gone, as in IPython"
+    assert notebook.outputs == []
+    notebook.namespace["go"].set()
+    notebook.namespace["shown"].join(10)
+    assert len(html_outputs(notebook)) == 1
+    notebook.post_execute.append(lambda: display(run, caption="hook"))
+    notebook.run("pass")
+    assert len(html_outputs(notebook)) == 2 and "hook" in html.unescape(html_outputs(notebook)[1])
 
 
 def test_display_outside_ipython_is_refused_before_the_page_is_made(run, monkeypatch):

@@ -827,8 +827,9 @@ class Experiment:
         its folder is read and never written.
 
         A declaration taken from the saved experiment, made again and changed, replaces the one taken, in a script as
-        in a notebook (``exp.declare("rpm.magnetic_moment", A_m2(25.0), reason=...)``), with a warning that names what
-        follows it, recorded in ``plan().replaced`` as a notebook's replacements are; a declaration made after this
+        in a notebook (``exp.declare("rpm.magnetic_moment", A_m2(25.0), reason=...)``), recorded in ``plan().replaced``
+        with a note that names what follows it and where the declaration was taken from, and not warned (changing what
+        it holds is what ``based_on`` is for); a declaration made after this
         call follows the rule any experiment's does. The run settings (the step, the seed, gravity, the scene, the
         conditions, the profile and the run's length) are the saved experiment's.
 

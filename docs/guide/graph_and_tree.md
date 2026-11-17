@@ -143,7 +143,7 @@ diagram inside the page, and you move around it:
 - **drag** to pan, **scroll the wheel or pinch** to zoom toward the pointer;
 - the buttons **+**, **−**, **Fit** (the whole graph in the frame), **1:1** (one graph pixel to one screen pixel) and **Full
   screen**; the keys arrows, `+`, `-`, `0` (fit) and `1` (1:1) when the frame has the focus;
-- the frame is **720 pixels high** (the 3-D view's), a field of the object the graph's `display()` and `mime.viz.web_page()` return (`page.height`), and not worked
+- the frame is **720 pixels high** (the 3-D view's), a field of the page object the graph's `web_page()` and `mime.viz.web_page()` return (`page.height`; `display()` shows the page and returns `None`), and not worked
   out from the graph, whose size in pixels is known only after the browser has laid it out.
 
 A graph that fits the frame at a readable size (75% or more) opens fitted. A larger one opens at 75% from its top left corner,
