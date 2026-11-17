@@ -1086,10 +1086,12 @@ jobs:
 
   # The dtype audit's report (precision's P1, scripts/precision_audit.py): the wide operations in each configuration's float32
   # step with 64-bit types enabled. Report-only: the job prints and uploads the report and never fails the run
-  # (`continue-on-error`, and the script exits 0 whatever it finds); it is no required check. Precision's P2 makes it strict.
+  # (`continue-on-error`, and the script exits 0 whatever it finds); it is no required check, and a reduced run (a pull
+  # request without `ready`) does not start it. Precision's P2 makes it strict.
   dtype-audit:
     name: dtype audit (report only)
-    if: github.event_name != 'schedule'
+    needs: shards
+    if: ${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 40

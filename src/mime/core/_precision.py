@@ -10,10 +10,10 @@ one (a node made on its own, outside an experiment), the run's dtype is JAX's fl
 from __future__ import annotations
 
 import os
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Literal, cast
+from typing import Any, Literal, NoReturn, cast
 
 import jax
 import numpy as np
@@ -121,6 +121,17 @@ def narrowed(tree: Any) -> Any:
 NARROW_IN_FLOAT64: Literal["refuse", "widen"] = "refuse"
 
 
+_lossy_refuser: Callable[[str, str], NoReturn] | None = None
+
+
+def install_lossy_refuser(refuser: Callable[[str, str], NoReturn]) -> None:
+    """Called once by ``mime._refusals``: ``refuser(owner, named)`` raises the coded refusal ``run.precision-lossy``.
+    ``mime.core`` imports nothing above itself (``tests/test_import_boundaries.py``), and the refusal's class is
+    ``mime._refusals``'s, so it registers itself here, as ``mime.units`` does for labels (``mime.core._labels``)."""
+    global _lossy_refuser
+    _lossy_refuser = refuser
+
+
 class LossyValueWarning(UserWarning):
     """A JAX array narrower than float64 widened into a float64 run: computed in float32, it entered rounded."""
 
@@ -158,16 +169,10 @@ def declared_values(tree: Any, owner: str) -> Any:
                                else np.float64)
 
         return _tree.tree_map(widen, tree)
-    from mime._refusals import BuildRefused, Refusal, RefusalClass
-
-    raise BuildRefused([Refusal(
-        "run.precision-lossy", RefusalClass.USER,
-        f"{owner} is handed a JAX array narrower than float64 in a float64 run: {named}. It was computed in "
-        f"float32, JAX's default before a build enables 64-bit types, so it would enter the run rounded",
-        "pass a Python float or a NumPy float64 array (the build makes it float64), or compute it with "
-        "jax.numpy after the build has enabled 64-bit types; or declare the run float32: "
-        "Experiment(..., precision='float32')",
-        why="widening a float32 value to float64 does not bring back the digits float32 rounded away")])
+    if _lossy_refuser is None:
+        raise RuntimeError(f"{owner} is handed a JAX array narrower than float64 in a float64 run: {named}; import mime "
+                           f"first, so the refusal (run.precision-lossy) is installed")
+    _lossy_refuser(owner, named)
 
 
 def eye(n: int, dtype: Any) -> Any:
@@ -192,5 +197,5 @@ def diagonal(matrix: Any) -> Any:
 __all__ = ["DEFAULT_PRECISION", "FROM_JAX_FLAG", "NARROW_IN_FLOAT64", "PRECISIONS", "LossyValueWarning", "Precision",
            "applied", "apply_precision",
            "declared_precision",
-           "declared_values", "diagonal", "narrowed",
+           "declared_values", "diagonal", "install_lossy_refuser", "narrowed",
            "diagonal_matrix", "eye", "in_float64", "node_precision", "precision_dtype", "unstated_precision"]

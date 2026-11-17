@@ -146,7 +146,7 @@ motion), and a rotor's worst case across its axis and its kick on the joints of 
 
 The floating-point precision the build was made in, `float32` or `float64`: the one the experiment declares,
 `Experiment(..., precision="float32")`, or float64 where it states none (JAX's `JAX_ENABLE_X64` flag does not choose it; a build
-enables 64-bit types in both). A result states it too, and a run folder's `outputs.json` records it (`precision`). If a number
+enables JAX's double-width types in both). A result states it too, and a run folder's `outputs.json` records it (`precision`). If a number
 depends on the precision, run both and compare; a saved experiment's lock records the precision it was saved in, which a load and
 `mime run` build in.
 
