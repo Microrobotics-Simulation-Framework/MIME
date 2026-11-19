@@ -1,0 +1,31 @@
+# W2F: each arm's largest program. Graph arms: CORE spike 2's proxy (one explicit stage and a Jacobi CG on a bodiless
+# revolved tube of at least the arm's largest mesh's cells; it leaves out pyamg's hierarchy and the mesher, which spike 2
+# measured above it). MAC arms: two steps of MIME's resolved-body node on the arm's largest box.
+a_gT: --raw estimate_case:step_case --path probe/w2f --arg cells=6416 --arg sectors=16
+a_gS: --raw estimate_case:step_case --path probe/w2f --arg cells=47232 --arg sectors=16
+a_gM260: --raw estimate_case:step_case --path probe/w2f --arg cells=112240 --arg sectors=16
+a_gM650: --raw estimate_case:step_case --path probe/w2f --arg cells=112240 --arg sectors=16
+a_gL260: --raw estimate_case:step_case --path probe/w2f --arg cells=237048 --arg sectors=24
+a_gL650: --raw estimate_case:step_case --path probe/w2f --arg cells=237048 --arg sectors=24
+a_m16: --raw estimate_case:mac_case --path probe/w2f --arg cells=24
+a_m32: --raw estimate_case:mac_case --path probe/w2f --arg cells=32
+a_m48_260: --raw estimate_case:mac_case --path probe/w2f --arg cells=48
+a_m48_650: --raw estimate_case:mac_case --path probe/w2f --arg cells=48
+a_m64_260: --raw estimate_case:mac_case --path probe/w2f --arg cells=64
+a_m64_650: --raw estimate_case:mac_case --path probe/w2f --arg cells=64
+c_gT: --raw estimate_case:step_case --path probe/w2f --arg cells=5168 --arg sectors=16
+c_gS: --raw estimate_case:step_case --path probe/w2f --arg cells=47232 --arg sectors=16
+c_gSp: --raw estimate_case:step_case --path probe/w2f --arg cells=47232 --arg sectors=16
+c_gM: --raw estimate_case:step_case --path probe/w2f --arg cells=112240 --arg sectors=16
+c_gD: --raw estimate_case:step_case --path probe/w2f --arg cells=38352 --arg sectors=16
+c_m16: --raw estimate_case:mac_case --path probe/w2f --arg cells=24
+c_m32: --raw estimate_case:mac_case --path probe/w2f --arg cells=32
+c_m32p: --raw estimate_case:mac_case --path probe/w2f --arg cells=32
+c_m48: --raw estimate_case:mac_case --path probe/w2f --arg cells=48
+c_m64: --raw estimate_case:mac_case --path probe/w2f --arg cells=64
+b_gT: --raw estimate_case:step_case --path probe/w2f --arg cells=9856 --arg sectors=16
+b_gS100: --raw estimate_case:step_case --path probe/w2f --arg cells=94592 --arg sectors=16
+b_gS100p: --raw estimate_case:step_case --path probe/w2f --arg cells=94592 --arg sectors=16
+b_gS50: --raw estimate_case:step_case --path probe/w2f --arg cells=94592 --arg sectors=16
+b_gS1: --raw estimate_case:step_case --path probe/w2f --arg cells=94592 --arg sectors=16
+b_gM100: --raw estimate_case:step_case --path probe/w2f --arg cells=225200 --arg sectors=24

@@ -1,0 +1,58 @@
+{
+ "written": "2026-11-19 14:26 CET, committed before any arm ran (smoke arms included)",
+ "phase": "CORE wave 2, spike F (prefix w2f): which of spike 2's two forces is right, and a published benchmark",
+ "labels": "the spike agent's priors",
+ "seen_before": [
+  "spike 2's report and its data: MAC over graph 1.14 to 1.18 at Re_D 260 (t 5 to 20 ms) and 1.32 at 650 (5 to 10 ms), one resolution each (graph mesh S, 47k cells, h a/8 at the body; MAC D/h 32, 6.4 cells a radius)",
+  "spike 2's long run on its 5k mesh at the fixed Re_D 650 drive: the lumen's mean velocity falls from 0.61 to 0.31 m/s and the force by 3 times over 0.25 s; at 5 to 20 ms it falls 2 to 14 %",
+  "the published references I could read (all via the open review arXiv:1202.1400): at lambda 0.4, Re 100, Kehlenbeck and Di Felice with Cheng give X = F / (6 pi mu a V) = 7.78; Wham et al.'s fit as the review quotes it gives 4.75, under its own unbounded limit; Haberman and Sayre give 3.58 at Re -> 0",
+  "mesh facts built locally (mesher only): cells and stable steps of T, S, M, SL, DT, D, BT, BS, BM"
+ ],
+ "operating_point": {
+  "dtype": ["float64"],
+  "platform": "GitHub runners (4 vCPU), CPU; Modal only for a rung the runners cannot reach, after a T4 pilot",
+  "sizes_and_parameters": "R 1.75 mm, a 0.4 R (lambda 0.4), nu 3.3e-6, rho 1060. Arm A: spike 2's periodic tube 8 R, fixed Poiseuille body force at Re_D 260 / 650, Poiseuille start, forces at t 5 to 20 ms; graph T 5k / S 47k / M 112k / SL 237k, MAC D/h 16 / 24 / 32 / 48 / 64. Arm C: the same tube with the flux held at Re_D 260 by a PI-set body force, to 0.25 s (MAC 64 to 0.2 s); spheroid DT / D on the graph only. Arm B: the settling sphere in its own frame (wall moving at V, fringe forcing plug flow upstream), tube 16 R, Re = V d / nu 1, 50, 100; graph BT 10k / BS 95k / BM 225k.",
+  "seeds_and_draws": "none"
+ },
+ "gate_A_graph_ladder": {
+  "claim": "Arm A: the graph's force at t 10 ms, Re_D 260: |S - SL| / SL",
+  "kind": "estimates",
+  "prediction": {"value": 0.05, "band": [0.01, 0.12], "unit": "relative", "basis": "guess: boundary layer sqrt(nu t) 0.18 mm is 2 cells of S at the body"}
+ },
+ "gate_A_mac_ladder": {
+  "claim": "Arm A: the MAC's force at t 10 ms, Re_D 260: (D/h 32 - D/h 64) / D/h 64",
+  "kind": "estimates",
+  "prediction": {"value": 0.08, "band": [0.02, 0.2], "unit": "relative, sign positive (the MAC falls as it refines)", "basis": "guess: the band is 2 cells, the boundary layer 1.7 cells at D/h 32"}
+ },
+ "gate_A_which": {
+  "claim": "Arm A: the finest MAC (D/h 64) over the finest graph (SL) at t 10 ms, Re_D 260 / 650",
+  "kind": "estimates",
+  "prediction": {"value": [1.04, 1.08], "band": [[0.95, 1.12], [0.95, 1.2]], "unit": "ratio", "basis": "guess; P(the MAC ladder moves toward the graph's) 0.7, P(the graph ladder moves toward the MAC's by over half the gap) 0.15"}
+ },
+ "gate_C_developed": {
+  "claim": "Arm C: developed force at Re_D 260 held flux, MAC D/h 32 over graph S, and the finest of each",
+  "kind": "estimates",
+  "prediction": {"value": [1.06, 1.02], "band": [[0.95, 1.2], [0.95, 1.08]], "unit": "ratio", "basis": "guess"}
+ },
+ "gate_B_benchmark": {
+  "claim": "Arm B: the graph's X at Re 100 over Kehlenbeck-Di Felice's 7.78 (BS, then BM), and at Re 1 over Haberman-Sayre's 3.58 (BS)",
+  "kind": "bounds against a published fit whose own accuracy I have not read",
+  "prediction": {"value": [0.97, 0.99, 1.0], "band": [[0.85, 1.1], [0.9, 1.08], [0.96, 1.04]], "unit": "ratio", "basis": "guess; P(within 5 % of K-D at the finest rung) 0.6; P(Wham's fit as quoted within 10 %) 0.05"}
+ },
+ "gate_B_ladder": {
+  "claim": "Arm B: X at Re 100 on BT / BS / BM relative to BM",
+  "kind": "estimates",
+  "prediction": {"value": [0.88, 0.98, 1.0], "band": [[0.75, 1.05], [0.93, 1.03], [1.0, 1.0]], "unit": "ratio", "basis": "guess"}
+ },
+ "gate_plant_viscosity": {
+  "claim": "viscosity x 1.05: the shift of the settling X at Re 100 (BS) and of the developed force (MAC 32, graph S, T)",
+  "kind": "estimates",
+  "prediction": {"value": [0.029, 0.03], "band": [[0.015, 0.045], [0.01, 0.05]], "unit": "relative", "basis": "derived for the settling arm from K-D's slope (dlnX/dlnRe 0.43): 1.05 x (1 - 0.43 x 0.048); the benchmark's band cannot see it, the clean run can; guess for the developed force"}
+ },
+ "gate_time": {
+  "claim": "runner seconds a step: graph S 47k, M 112k, BS 95k; MAC D/h 32, 48, 64",
+  "kind": "estimates",
+  "prediction": {"value": [0.042, 0.1, 0.085, 0.13, 0.43, 1.0], "band": [[0.02, 0.08], [0.05, 0.2], [0.04, 0.16], [0.08, 0.2], [0.25, 0.7], [0.6, 1.8]], "unit": "s", "basis": "spike 2's 42 ms (S) and 0.127 s (MAC 32), scaled by cells"}
+ },
+ "outcomes": null
+}
