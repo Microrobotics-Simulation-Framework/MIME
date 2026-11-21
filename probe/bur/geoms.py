@@ -38,3 +38,15 @@ def thread(lam, y0, height, power, Vn, Vs, ytop, ramp=0.0):
         vel = (lambda x, y: Vn * fc + 0 * x, lambda x, y: 0.0 * x, lambda x, y: Vs * fc + 0 * x)
         return dict(phi=phi, vel=vel, clamp=lambda x, y: y > ytop, centre=(0.0, 0.0))
     return geom
+
+
+class DrivenRotor:
+    """A cylinder whose rate is set from outside each step (a free body's)."""
+    def __init__(s, L, R0, Ro):
+        s.L, s.R0, s.Ro, s.omega = L, R0, Ro, 0.0
+
+    def __call__(s, t):
+        cx = cy = 0.5 * s.L; om = s.omega
+        return dict(phi=lambda x, y: np.hypot(x - cx, y - cy) - s.R0,
+                    vel=(lambda x, y: -om * (y - cy), lambda x, y: om * (x - cx), lambda x, y: 0.0 * x),
+                    clamp=lambda x, y: np.hypot(x - cx, y - cy) > s.Ro, centre=(cx, cy))

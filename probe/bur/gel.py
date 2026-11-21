@@ -97,7 +97,11 @@ class Gel:
             M = np.zeros(sh + (3, 3))
             M[..., 0, 0] = 1 + a; M[..., 0, 1] = b; M[..., 1, 0] = c; M[..., 1, 1] = 1 + d
             M[..., 2, 0] = e; M[..., 2, 1] = f; M[..., 2, 2] = 1.0
-            return np.linalg.inv(np.einsum("...ki,...kj->...ij", M, M))
+            C = np.einsum("...ki,...kj->...ij", np.nan_to_num(M, nan=0.0, posinf=0.0, neginf=0.0), M)
+            det = np.linalg.det(C)
+            bad = ~np.isfinite(det) | (det < 1e-10) | (det > 1e10)     # a map with no meaning there (deep in the body, a wound paste)
+            C[bad] = np.eye(3)
+            return np.clip(np.linalg.inv(C), -1e6, 1e6)
         Bc = inv(a, g.n2c(b), g.n2c(c), d, 0.5 * (e + r(e, -1, 0)), 0.5 * (f + r(f, -1, 1)))
         Bn = inv(g.c2n(a), b, c, g.c2n(d), 0.5 * (e + r(e, 1, 1)), 0.5 * (f + r(f, 1, 0)))
         if not s.antiplane:
@@ -121,7 +125,7 @@ class Gel:
         return np.clip(s.d_adv, 0.0, 1.0)
 
     # ---- one step --------------------------------------------------------------------------------------------------------
-    def step(s):
+    def step(s, commit=True):
         g, dt, G, n = s.g, s.dt, s.G, s.g.n
         geo = s.geom(s.t + dt)
         phi = lambda x, y: geo["phi"](x, y)
@@ -219,8 +223,9 @@ class Gel:
             if s.paste is not None and s.tau_y is not None:
                 new = np.where(failed_c, s.paste(gam) / gam, new)
             eta_c_law = np.exp(0.5 * np.log(new) + 0.5 * np.log(eta_c_law)) if it > 0 else new
-        s.eta_c_prev = eta_c_law
-        s.U, s.W = U, W
+        if commit:
+            s.eta_c_prev = eta_c_law
+            s.U, s.W = U, W
         # loads on the body (per unit depth): minus the reaction on its rows
         ru, rv = react[:n].reshape(g.nx, g.ny), react[n:].reshape(g.nx, g.ny)
         h2 = g.h ** 2
@@ -231,6 +236,8 @@ class Gel:
         if s.antiplane:
             out["Fz"] = -h2 * react_w.reshape(g.nx, g.ny)[fix_w_body].sum()
         # failure: mark the material point (both stores), then convect
+        if not commit:                      # a trial solve: the load at this body velocity, nothing moved or marked
+            return out
         if s.tau_y is not None:
             fail = (teq_c > s.tau_y) & gel_c
             X, Y = s.map_at_centres()

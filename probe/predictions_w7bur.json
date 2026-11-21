@@ -5,7 +5,8 @@
   "laptop smokes of the bonded cylinder only (N 48, 64, 96; to 1 rad): T/T_exact 0.911 / 0.936-0.946 / 0.947; the first two builds read 0.71 and 0.78 (a co-located map, then a mask that dropped the stress at the body's surface) and were fixed before this file",
   "no arm with a thread, a wall law, a failure law, a free body or a contact has run",
   "after the first commit, before the runner launch (laptop, 2 threads): translation control at N 48 (map exact to 4e-12 cells; convected linear scalar gone, cubic overshoots to 1.14); wall-law cylinder N 48: T 1.23 of the sharp law (band 0.42 R; the thick-band factor is 1.38 [derived]); bonded flat wall -2 %, wavy walls inside their flat bracket; thread at nx 24, 1.5 wavelengths: (b) alone 0.148 G with largest elastic stress 0.62 G (sinusoid), (c) 0.104 G with 258 failed cells, (d) at s1 0.1 equal to (b) (nothing fails)",
-  "amended at the launch: gate_b's 'within 5 % at a band of 3 cells' will fail by the band's thickness (expected 1.10 at N 192 [derived]); gate_b's 'largest elastic stress passes G' now P 0.3 for the sinusoid and P 0.6 for the blade profile (power 4)"
+  "amended at the launch: gate_b's 'within 5 % at a band of 3 cells' will fail by the band's thickness (expected 1.10 at N 192 [derived]); gate_b's 'largest elastic stress passes G' now P 0.3 for the sinusoid and P 0.6 for the blade profile (power 4)",
+  "before the second launch (17:58): run 44926665415 in progress, 32 arms ended, none read; 4 thread arms died on a singular map (a guard added: places whose map has no meaning carry no stress); free-body smoke on the laptop: 79 steps at ratio 0.8, ledger identity 0.52 eps, delivery defect 3e-4 of m B"
  ],
  "operating_point": {
   "robot": "r_tip 1.2 mm, core 0.85 mm, pitch 1.0 mm, blade 0.3 mm, L 7 mm [read, MQ1's arithmetic; the supplement with diameters was not read by anyone]",
@@ -37,5 +38,6 @@
  },
  "controls": "cylinder exact torque; plant G x 1.05 in the carried stress (must move the torque 5 %); damage under translation with the convected scalar as the failing arm; wall strength x 1.05; bonded arm must not turn under a torque below its wind-up (no step-out curve)",
  "costs": "Modal: none planned ($0 of $2); runners: 2 to 3 h in parallel arms; laptop: smokes under 5 min, 2 threads",
- "outcomes": null
+ "outcomes": null,
+ "gate_f_emergent": "free cylinder through the project's body and magnetic-torque nodes, m B = the wall-law model's own steady torque at 1 Hz, G 1000: synchronous at ratios 0.8 and 0.95, slipping at 1.1 and 1.3, P 0.6 (the gel's wind-up may move the line a few %); G 1400 (predicted line 0.43): synchronous at 0.35, slipping at 0.5 and 0.8, P 0.6; G 700 (predicted 2.44): synchronous at 1.3 and 2.0, slipping at 3.0, P 0.6; bonded: mean rate under 0.05 of the field's at 0.1 and 0.8, P 0.9; S x 1.05 delivered: the delivery defect passes 1e-3 of m B on most steps, P 0.7; ledger identity under 16 eps, P 0.8"
 }
