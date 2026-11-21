@@ -1,0 +1,11 @@
+{
+ "written": "2026-11-21 19:24 CET, after launches 1 and 2 were seen (tube P3/P4 and localisation; shear P2 to s1.0), before any launch-3 arm",
+ "operating_point": {"as": "predictions_w7ref.json"},
+ "seen": "tube 0.1a Re_D 650: P4 s1.6 lift 126.3 torque 14.87; P3 sph/2 s1.6 126.3 / 14.90; P3 s1.26 127.6 / 16.1; a second P3 s1.6 realisation moved torque 6.3 %. Shear P2 s1.6/1.26/1.0 at 0.1a Re_D 650: drag 515/565/587, lift 300/216/159 (unconverged)",
+ "gate_LS": "P3 sph/2 at 0.03a and 0.01a within 2 % of P4 s1.6 on Re_D 650 lift and within 5 % on torque (P 0.6)",
+ "gate_LS_noise": "a second realisation of P3 sph/2 moves Re_D 650 torque under 3 % and lift under 1 % (P 0.55)",
+ "gate_LS_domain": "inlet 15a / outlet 45a moves Re_D 650 drag and lift under 1 % at P3 sph/2 (P 0.65)",
+ "gate_SS2": "plane-wall shear, full domain, P2 s1.6: steady (negative late growth rate) at the Re_D 260 shear (P 0.75), unstable at the 650 shear (P 0.55); the coarse base flow limits this to a classification",
+ "gate_SL": "the slim shear mesh's P2 s1.6 forces within 3 % of the launch-1 shear box P2 s1.6 at Re_D 260 (P 0.6)",
+ "outcomes": null
+}
