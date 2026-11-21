@@ -1,0 +1,39 @@
+{
+ "written": "2026-11-21 18:31 CET (date)",
+ "labels": "[measured] runner or laptop as named; [derived]; [inferred]; [estimate]; [read]",
+ "seen_before": [
+  "laptop smokes of the bonded cylinder only (N 48, 64, 96; to 1 rad): T/T_exact 0.911 / 0.936-0.946 / 0.947; the first two builds read 0.71 and 0.78 (a co-located map, then a mask that dropped the stress at the body's surface) and were fixed before this file",
+  "no arm with a thread, a wall law, a failure law, a free body or a contact has run"
+ ],
+ "operating_point": {
+  "robot": "r_tip 1.2 mm, core 0.85 mm, pitch 1.0 mm, blade 0.3 mm, L 7 mm [read, MQ1's arithmetic; the supplement with diameters was not read by anyone]",
+  "gel": "|G*| 500 to 1600 Pa; simulations at G 1000 Pa, stresses reported over G",
+  "speeds": "surface speed 0.9 mm/s (0.12 Hz) to 222 mm/s (29.5 Hz); quasi-static, no inertia in the gel",
+  "available_shear": "63 to 253 Pa on the envelope, 0.04 to 0.5 G [estimate, MQ1; torque 4 and 16 uN m is unsourced there]",
+  "models": "2-D only: (i) a rotor's cross-section in a clamped disc (in-plane), (ii) the thread unrolled to a wavy wall moving in its plane (phase speed) and out of it (sliding along the groove); no 3-D thread, no tip, no advance"
+ },
+ "preflight_findings_before_any_run": [
+  "the prototype's helical build is not in the plugin repository (no branch holds a helix or screw file); it is the 3DHELIX spike's own code, and it reports stored energy, crack energy and axial force of a LOCKED thread, no torque",
+  "the 0.99 to 1.02 uN m a turn is the 3-D co-moving window with Coulomb friction 0.3 on an unbonded thread in a pilot bore (frictionless: 3e-4 uN m); a bonded screw has no steady torque (it winds up without bound). Arm (a)'s comparison as written does not exist: (a) is judged against the exact annulus torque, a bracket and its own refinement",
+  "a bonded finned rotor in 2-D traps the gel between fins: a wall law alone cannot let it turn; the unrolled thread is the 2-D model where the gel can pass a crest",
+  "thread height over wavelength is 0.35: an intact gel passing a crest strains by order 1, the read failure strain; (b) alone may not be self-consistent",
+  "the step-out data in hand are two end points a design (four designs), field and torque unreported: a model with one free constant a design can be tested only on the second end point",
+  "Baumberger's law at its read constants (0.35 G at 1 mm/s, exponent 0.33 to 0.43) asks for 3 G at 222 mm/s and 0.54 kPa at 1600 Pa and 0.9 mm/s: both above the available 63 to 253 Pa [derived]"
+ ],
+ "gate_a_cylinder_control": "bonded cylinder against 4 pi G theta Ri^2 Ro^2/(Ro^2-Ri^2): within 10 % at 7 cells a radius, within 5 % at 14, P 0.7; first order (0.7 to 1.3), P 0.6; linear in theta to 1 rad within 2 % of its own small-angle value, P 0.7 (seen in smokes: held)",
+ "gate_a_thread": "bonded lobed rotor between the exact torques of its root and tip cylinders at every N, P 0.9; N 96 to N 192 change under 5 %, P 0.6; the bonded wavy wall's force ripple as a crest crosses cells under 3 % of the mean at 4 cells a blade thickness, P 0.4. MATERIALS' own (a) (within 5 % of the prototype) cannot be read",
+ "gate_convection": "map drift in a slipping steady state under one cell over 10 turns (cylinder with a wall law), P 0.5; damage on material coordinates under a rigid translation of 2 box lengths: failed area within 2 %, P 0.9; a convected damage scalar (linear) loses over 20 % of a 2-cell-wide layer, P 0.8 (the control must show the smear)",
+ "gate_b": "cylinder with the wall law: steady torque within 5 % of 2 pi R^2 sigma_w(omega R) at a band of 3 cells, P 0.5; the 1.05 plant is seen (torque up 3 to 7 %) in every case, P 0.6. Thread, (b) alone at full height: the gel's largest elastic stress passes G (the failure strain), P 0.8",
+ "gate_c": "bonded thread with failure at strain 1: a failed layer forms at the crest envelope within the first wavelength of travel, P 0.7; it persists (failed-cell count within 20 %) over 10 wavelengths with damage on material coordinates, P 0.5; with a convected scalar it heals or spreads by over 20 %, P 0.6",
+ "gate_d": "with both laws the groove's gel does not turn with the screw: it slides along the groove on the wall law and shears at the envelope at the phase speed (the 'nut' mode) when sigma_w is under about tau_paste, P 0.5",
+ "gate_f_stepout": "judged on: one constant a design fitted at the soft end point, the stiff end point's frequency predicted within a factor 3, law constants at their read values. (b) alone (power law, exponent 0.33 to 0.43): slope d ln f/d ln G of -2.3 to -3.0 against the data's -3.3 to -6.3: fails for 3 of 4 designs, P 0.6. (c) alone (rate-independent yield and paste): no finite slope (a cliff), fails, P 0.7. (d): a threshold in G plus a rate law can pass, P 0.4, and cannot be told from a fit (two points, one or two free constants): P 0.8 that (f) ends as 'cannot discriminate'. Prior of MATERIALS (b 0.4, c 0.2, d 0.3) not adopted",
+ "gate_e_contact": "a hard plane through the project's contact node: run only if the above lands in time, P 0.3 that it runs",
+ "kill_lines": {
+  "a": "MATERIALS: (a) off by over 15 % at every resolution tried. Read here on the cylinder against the exact torque and on the lobed rotor against its bracket and its finest level",
+  "convection": "the map drifts over 2 cells a turn in steady slip at every order tried, or damage on material coordinates loses over 20 % of the failed layer in 10 turns",
+  "ledger": "none claimed: no energy ledger is built in this spike"
+ },
+ "controls": "cylinder exact torque; plant G x 1.05 in the carried stress (must move the torque 5 %); damage under translation with the convected scalar as the failing arm; wall strength x 1.05; bonded arm must not turn under a torque below its wind-up (no step-out curve)",
+ "costs": "Modal: none planned ($0 of $2); runners: 2 to 3 h in parallel arms; laptop: smokes under 5 min, 2 threads",
+ "outcomes": null
+}
