@@ -35,6 +35,8 @@ ap.add_argument("--max_iter", type=int, default=400)
 ap.add_argument("--elastic_at", type=float, default=0.0, help="elastic run: report U at this grip displacement (mm)")
 ap.add_argument("--grip", default="clamped", choices=("clamped", "free_x"),
                 help="free_x: grips move only in y (uniform uniaxial stress for the strength runs)")
+ap.add_argument("--protect", type=int, default=0, help="rows next to each grip whose bonds never damage (0: none)")
+ap.add_argument("--grip_rows", type=int, default=1, help="rows held rigidly by each grip (m: a grip a horizon thick)")
 ap.add_argument("--wall", type=float, default=17000.0, help="s; stop and write before the runner's limit")
 ap.add_argument("--out", required=True)
 a = ap.parse_args()
@@ -111,6 +113,9 @@ crosses = (yi < 0) & (yj > 0)
 xc = P0[BI, 0] + (P0[BJ, 0] - P0[BI, 0]) * (0 - yi) / np.where(crosses, yj - yi, 1.0)
 cut0 = crosses & (xc < a.notch * mm)
 vert = crosses & (BO == np.where((half == [0, 1]).all(1))[0][0])  # nearest vertical bonds across y = 0
+_row = np.broadcast_to(np.arange(2 * ny_half)[None, :], X.shape).ravel()
+_near = (_row < a.protect) | (_row >= 2 * ny_half - a.protect)
+protected = _near[BI] | _near[BJ]
 
 # cells for the shared pressure (bilinear quads), J at the centroid
 ci, cj = np.meshgrid(np.arange(nx - 1), np.arange(2 * ny_half - 1), indexing="ij")
@@ -122,8 +127,9 @@ bcell = (np.clip((mid[:, 0] // h).astype(int), 0, nx - 2) * (2 * ny_half - 1)
 bcount = np.bincount(bcell, minlength=ncell).astype(float)
 
 # boundary conditions: grips clamped (u_x = 0, u_y = +-delta/2)
-top = idx[:, -1]
-bot = idx[:, 0]
+top = idx[:, -a.grip_rows:].ravel()
+bot = idx[:, :a.grip_rows].ravel()
+top_row = idx[:, -1]
 fixed = np.zeros((N, 2), bool)
 if a.grip == "clamped":
     fixed[top] = True
@@ -170,6 +176,10 @@ BOND_PAT = Pattern(*_bond_rc())
 
 
 def ratio(smax):
+    return np.where(protected, 1.0, _ratio(smax))
+
+
+def _ratio(smax):
     if law == "elastic":
         return np.ones_like(smax)
     if law == "critical":
@@ -317,7 +327,7 @@ def equilibrium(U, smax, delta, tol=1e-9, freeze=False):
             break
     rb = np.where(cut0, k_res, ratio(smax))
     _, g, _, _ = state(U, rb, cell_factor(rb))
-    F = float(np.sum(g[top, 1])) * T  # reaction on the top grip (N)
+    F = float(np.sum(g[top, 1])) * T  # reaction on the top grip (N): the sum over the grip's held rows
     Ustore = energy_only(U, rb, cell_factor(rb)) * T
     return U, smax, F, Ustore, its, damage_moves
 
@@ -341,7 +351,7 @@ def dissipated(smax):
         Db = env_work - 0.5 * fenv * dm
     else:
         Db = np.zeros_like(smax)
-    return float(np.sum(np.where(cut0, 0.0, Db))) * T
+    return float(np.sum(np.where(cut0 | protected, 0.0, Db))) * T
 
 
 def tip_x(smax):
