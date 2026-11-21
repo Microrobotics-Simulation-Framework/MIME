@@ -74,8 +74,10 @@ class Block:
     """Quarter block, nodes (ix, iy, iz), z = -zs[iz] (iz = 0 the top)."""
 
     def __init__(self, h, core, L, zone, band, mu, nu, corr="none", stencil_kind="iso", shape="quintic_c2",
-                 bonds=True, plant=None, ratio=1.25, cap=16.0):
+                 bonds=True, plant=None, ratio=1.25, cap=16.0, partner=None):
         self.h, self.mu, self.nu = h, mu, nu
+        # the continuum partner's cubic tensor (C11, C12, C44); default the bonds' isotropic one (lambda = mu)
+        self.partner = (3 * mu, mu, mu) if partner is None else partner
         K = 2 * mu * (1 + nu) / (3 * (1 - 2 * nu))
         self.Kp = K - 5 * mu / 3
         if self.Kp < -1e-12:
@@ -241,7 +243,11 @@ class Block:
         eps = 0.5 * (grad + jnp.swapaxes(grad, -1, -2))
         tr = jnp.trace(eps, axis1=-2, axis2=-1)
         vol = jnp.prod(jnp.asarray(self.esize), axis=1)
-        dens = mu * jnp.sum(eps * eps, axis=(-1, -2)) + 0.5 * mu * tr ** 2
+        C11, C12, C44 = self.partner
+        e11, e22, e33 = eps[..., 0, 0], eps[..., 1, 1], eps[..., 2, 2]
+        e12, e23, e13 = eps[..., 0, 1], eps[..., 1, 2], eps[..., 0, 2]
+        dens = 0.5 * (C11 * (e11 ** 2 + e22 ** 2 + e33 ** 2) + 2 * C12 * (e11 * e22 + e22 * e33 + e11 * e33)
+                      + 4 * C44 * (e12 ** 2 + e23 ** 2 + e13 ** 2))
         e_partner = jnp.sum((1.0 - jnp.asarray(self.ealpha)) * vol * jnp.mean(dens, axis=1))
         Gc = jnp.asarray(self.dNc)[None] * inv[:, None, :]
         trc = jnp.einsum("eai,eai->e", Ue, Gc)
@@ -291,7 +297,8 @@ class Block:
             Gg = self.dNg[gp][None] * inv[:, None, :]  # (E, 8, 3)
             sq = np.sum(Gg ** 2, axis=2)  # |grad N|^2
             for d in range(3):
-                val = (1 - self.ealpha)[:, None] * vol[:, None] / 8 * (mu * (sq + Gg[:, :, d] ** 2) + mu * Gg[:, :, d] ** 2)
+                C11, C12, C44 = self.partner
+                val = (1 - self.ealpha)[:, None] * vol[:, None] / 8 * (C11 * Gg[:, :, d] ** 2 + C44 * (sq - Gg[:, :, d] ** 2))
                 np.add.at(D[:, d], self.econn, val)
         Gc = self.dNc[None] * inv[:, None, :]
         for d in range(3):
