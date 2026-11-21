@@ -1,0 +1,11 @@
+{
+ "written": "2026-11-21 18:29 CET, after launch 1's tube ladders to s 0.8 and P3 at s 1.6/1.26 were seen, before any launch-2 arm",
+ "operating_point": {"as": "predictions_w7ref.json", "case": "tube 0.1a mainly, Re_D 260 and 650, P3/P4 on the s 1.6 / 1.26 meshes"},
+ "seen": "tube 0.1a Re_D 650: lift P2 184/160/145/132 (s 1.6/1.26/1.0/0.8), P3 132 (s1.6) 128 (s1.26); torque P2 24.9/25.3/20.1/18.3, P3 17.7/16.1; Re_D 260 near converged (drag 188, lift 71, torque 18.5)",
+ "gate_localisation": "of the single refinements at P3 s1.6 (sphere surface h/2, wake h/2, gap k x2, wall disc h/2, grading 0.2), the sphere surface moves the Re_D 650 torque most (P 0.55), the wake second; gap and wall disc each under 1 % (P 0.7)",
+ "gate_p": "P4 at s1.6 within 3 % of P3 at s1.26 on Re_D 650 lift and within 6 % on torque (P 0.5); drag within 0.5 % (P 0.8)",
+ "gate_noise": "another realisation of the P3 s1.6 mesh (Lu 10.37) moves Re_D 650 lift by under 2 % and torque by under 4 % (P 0.6)",
+ "gate_domain_P3": "inlet 15a / outlet 45a and inlet 6a / outlet 20a move Re_D 650 drag by under 1 % and lift by under 2 % at P3 s1.6 (P 0.6)",
+ "predicted_values": {"tube_0.1a_ReD650_converged": {"Fx": [312, 322], "Fz": [115, 128], "Ty": [12, 16.5]}},
+ "outcomes": null
+}
