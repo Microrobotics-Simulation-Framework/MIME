@@ -3,7 +3,9 @@
  "labels": "[measured] runner or laptop as named; [derived]; [inferred]; [estimate]; [read]",
  "seen_before": [
   "laptop smokes of the bonded cylinder only (N 48, 64, 96; to 1 rad): T/T_exact 0.911 / 0.936-0.946 / 0.947; the first two builds read 0.71 and 0.78 (a co-located map, then a mask that dropped the stress at the body's surface) and were fixed before this file",
-  "no arm with a thread, a wall law, a failure law, a free body or a contact has run"
+  "no arm with a thread, a wall law, a failure law, a free body or a contact has run",
+  "after the first commit, before the runner launch (laptop, 2 threads): translation control at N 48 (map exact to 4e-12 cells; convected linear scalar gone, cubic overshoots to 1.14); wall-law cylinder N 48: T 1.23 of the sharp law (band 0.42 R; the thick-band factor is 1.38 [derived]); bonded flat wall -2 %, wavy walls inside their flat bracket; thread at nx 24, 1.5 wavelengths: (b) alone 0.148 G with largest elastic stress 0.62 G (sinusoid), (c) 0.104 G with 258 failed cells, (d) at s1 0.1 equal to (b) (nothing fails)",
+  "amended at the launch: gate_b's 'within 5 % at a band of 3 cells' will fail by the band's thickness (expected 1.10 at N 192 [derived]); gate_b's 'largest elastic stress passes G' now P 0.3 for the sinusoid and P 0.6 for the blade profile (power 4)"
  ],
  "operating_point": {
   "robot": "r_tip 1.2 mm, core 0.85 mm, pitch 1.0 mm, blade 0.3 mm, L 7 mm [read, MQ1's arithmetic; the supplement with diameters was not read by anyone]",

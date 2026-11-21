@@ -68,10 +68,11 @@ class Gel:
     """geom(t) -> dict(phi=f(x,y) signed distance to the body (positive in the gel), vel=f(x,y)->(ub, vb, wb), clamp=f(x,y)->bool)."""
 
     def __init__(s, grid, G, geom, dt, band=0.0, wall_law=None, tau_y=None, paste=None, damage="material", order=3,
-                 kappa_max=8.0, n_picard=4, antiplane=False, plant_wall=1.0):
+                 kappa_max=8.0, n_picard=4, antiplane=False, plant_wall=1.0, plant_G=1.0, d_order=1):
         s.g, s.G, s.geom, s.dt = grid, G, geom, dt
         s.band, s.wall_law, s.tau_y, s.paste, s.damage, s.order = band, wall_law, tau_y, paste, damage, order
         s.kappa_max, s.n_picard, s.antiplane, s.plant_wall = kappa_max, n_picard, antiplane, plant_wall
+        s.plant_G, s.d_order = plant_G, d_order
         n = grid.n
         s.xi = np.zeros((3, grid.nx, grid.ny))          # xi1, xi2, zeta at centres
         s.d_ref = np.zeros((grid.nx, grid.ny))          # damage on material coordinates (a reference grid, same cells)
@@ -146,10 +147,12 @@ class Gel:
         # places that straddle the body's surface must act, as the viscosity's do); outside the band when the wall slips
         el = (lambda ph: ph >= s.band) if s.band > 0 else (lambda ph: np.ones_like(ph, dtype=bool))
         el_c, el_n, el_u, el_v = el(ph_c), el(ph_n), el(ph_u), el(ph_v)
+        soft = (gel_c | band_c).astype(float)                     # a place between rigid cells only carries nothing
+        el_n = el_n & (g.c2n(soft) > 0); el_u = el_u & (g.c2u(soft) > 0); el_v = el_v & (g.c2v(soft) > 0)
         Bc, Bn, Bu, Bv = s.left_cauchy_green()
         d_c = s.damage_at_centres() if s.tau_y is not None else np.zeros((g.nx, g.ny))
         hit = lambda a: (a > 0.2).astype(float)                    # a place fails with any failed neighbour
-        Gc = G * el_c * (1.0 - d_c); Gn = G * el_n * (1.0 - hit(g.c2n(d_c)))
+        Gc = s.plant_G * G * el_c * (1.0 - d_c); Gn = s.plant_G * G * el_n * (1.0 - hit(g.c2n(d_c)))
         sxx_c, syy_c, Sxy = Gc * (Bc[..., 0, 0] - 1), Gc * (Bc[..., 1, 1] - 1), Gn * Bn[..., 0, 1]
         kap_c = np.clip(np.maximum(np.maximum(Bc[..., 0, 0], Bc[..., 1, 1]), Bc[..., 2, 2]), 1.0, s.kappa_max)
         eta_el_c = kap_c * G * dt                       # the elastic increment as a viscosity, on the stiff side
@@ -160,9 +163,8 @@ class Gel:
             Sxz = G * el_u * (1.0 - hit(g.c2u(d_c))) * Bu[..., 0, 2]; Syz = G * el_v * (1.0 - hit(g.c2v(d_c))) * Bv[..., 1, 2]
         Div = sp.hstack([g.Dpx, g.Dpy], format="csr")
         # the stress the intact gel carries, for the failure law (centres)
-        if s.tau_y is not None:
-            D = Bc - np.eye(3) * (np.trace(Bc, axis1=-2, axis2=-1) / 3.0)[..., None, None]
-            teq_c = G * np.sqrt(0.5 * np.einsum("...ij,...ij->...", D, D))
+        D = Bc - np.eye(3) * (np.trace(Bc, axis1=-2, axis2=-1) / 3.0)[..., None, None]
+        teq_c = G * np.sqrt(0.5 * np.einsum("...ij,...ij->...", D, D))
         failed_c = (d_c > 0.5) & gel_c
         eta_c_law = None if s.eta_c_prev is None else s.eta_c_prev.copy()
         nonlin = (s.wall_law is not None and s.band > 0) or (s.paste is not None and s.tau_y is not None)
@@ -177,7 +179,7 @@ class Gel:
             mc = (gel_c | band_c).astype(float)                    # rigid places carry no law: averages leave them out
             def mavg(op):
                 wgt = op(mc)
-                return np.where(wgt > 0, op(eta_c * mc) / np.maximum(wgt, 1e-300), G * dt)
+                return np.where(wgt > 0, op(eta_c * mc) / np.maximum(wgt, 1e-300), 0.0)   # rigid against rigid: no coupling
             eta_n, eta_u, eta_v = mavg(g.c2n), mavg(g.c2u), mavg(g.c2v)
             eta_c = np.where(mc > 0, eta_c, G * dt)
             Ec, En = sp.diags(eta_c.ravel()), sp.diags(eta_n.ravel())
@@ -235,7 +237,10 @@ class Gel:
             i = np.floor(X / g.h).astype(int) % g.nx; j = np.floor(Y / g.h).astype(int) % g.ny
             np.maximum.at(s.d_ref, (i[fail], j[fail]), 1.0)
             s.d_adv = np.maximum(s.d_adv, fail.astype(float))
-            out["failed_cells"] = int((s.damage_at_centres() > 0.5).sum()); out["teq_max"] = float(teq_c[gel_c].max())
+            out["failed_cells"] = int(((s.damage_at_centres() > 0.5) & gel_c).sum())
+        intact = gel_c & el_c & (d_c < 0.5)
+        out["teq_max"] = float(teq_c[intact].max()) if intact.any() else 0.0
+        s.last = dict(U=U, W=W, gel_c=gel_c, band_c=band_c, d_c=d_c, teq_c=teq_c, ph_c=ph_c)
         s.convect(U, W, (ph_u, ph_v, ph_c))
         s.t += dt
         out["kappa_max"] = float(kap_c[gel_c].max()) if gel_c.any() else 1.0
@@ -262,7 +267,7 @@ class Gel:
         xd, yd, um, vm, xm, ym = depart(g.xc, g.yc)
         new[2] = S(s.xi[2], xd, yd, OC, s.order) - (dt * S(w, xm, ym, OC, 1) if s.antiplane else 0.0)
         s.xi = new
-        s.d_adv = S(s.d_adv, xd, yd, OC, 1)
+        s.d_adv = S(s.d_adv, xd, yd, OC, s.d_order)
         if s.band > 0:
             s.fill_from_gel(phis, S, (OU, OV, OC))
 
