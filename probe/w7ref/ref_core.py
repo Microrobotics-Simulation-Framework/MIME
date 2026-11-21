@@ -142,9 +142,10 @@ def build_mesh(kind, gap, s=1.0, order=2, full=False, R=2.5925925925925926, Lu=1
     else:
         z_top = centre[2]
         y0 = 0.0 if not full else -3.0
-        n_restrict += _lattice(mp, -3.0, 6.0, y0, 3.0, 0.0, z_top + 2.5, h_w)
-        n_restrict += _lattice(mp, 6.0, min(16.0, Ld), -4.5 if full else 0.0, 4.5, 0.0, z_top + 4.0, 2 * h_w)
-        if Ld > 16.0:
+        xn, xm = wk.get("x_near", 6.0), wk.get("x_mid", 16.0)
+        n_restrict += _lattice(mp, -3.0, xn, y0, 3.0, 0.0, z_top + 2.5, h_w)
+        n_restrict += _lattice(mp, xn, min(xm, Ld), -4.5 if full else 0.0, 4.5, 0.0, z_top + 4.0, 2 * h_w)
+        if Ld > 16.0 and wk.get("far", True):
             n_restrict += _lattice(mp, 16.0, min(Ld, 40.0), -6.0 if full else 0.0, 6.0, 0.0, z_top + 5.5, 4 * h_w)
     t0 = time.time()
     ngm = geo.GenerateMesh(mp=mp)

@@ -223,8 +223,6 @@ def stability(fl, sspec, Re, log):
     A_cn.AsVector().data = (1.0 / dt) * m.mat.AsVector() + 0.5 * J.AsVector()
     B_cn = m.mat.CreateMatrix()
     B_cn.AsVector().data = (1.0 / dt) * m.mat.AsVector() - 0.5 * J.AsVector()
-    inv_be = A_be.Inverse(fd, inverse="pardiso")
-    inv_cn = A_cn.Inverse(fd, inverse="pardiso")
     x = ng.GridFunction(X)
     rng = np.random.default_rng(sspec.get("seed", 0))
     arr = x.vec.FV().NumPy()
@@ -233,7 +231,10 @@ def stability(fl, sspec, Re, log):
     rhs = x.vec.CreateVector()
     tmp = x.vec.CreateVector()
     rhs.data = (1.0 / dt) * m.mat * x.vec
+    inv_be = A_be.Inverse(fd, inverse="pardiso")  # one factor alive at a time (memory)
     x.vec.data = inv_be * rhs
+    del inv_be, A_be
+    inv_cn = A_cn.Inverse(fd, inverse="pardiso")
     norms, times, fyz = [], [], []
     n = int(round(T / dt))
     t0 = time.time()
