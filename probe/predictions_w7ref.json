@@ -1,0 +1,31 @@
+{
+ "written": "2026-11-21 18:00 CET (before any runner arm; local smokes seen: coarse tube s=2.0 short domain at Re_D 0/260/650, coarse eka s=2.0 L=20 at Re_gamma 0/0.1, coarse shear s=2.0 Stokes)",
+ "spike": "w7ref: converged reference for a held sphere near a wall at finite Re (NGSolve Taylor-Hood P2/P1, body-fitted curved tetrahedra, steady Newton, half domain with a mirror plane)",
+ "operating_point": {
+  "geometry": "tube D 3.5 mm, sphere d 1.35 mm (a/R 0.3857), held (no rotation), gaps 0.1a, 0.03a, 0.01a from the wall",
+  "fluid": "nu 3.3e-6 m^2/s, rho 1050 kg/m^3 (mu 3.465e-3 Pa s), Newtonian",
+  "Re_D": [260, 650],
+  "U_mean_m_per_s": [0.2451, 0.6129],
+  "wall_shear_rate_per_s": [560.3, 1400.8],
+  "Re_p_tube_Uc_d": {"0.1a": [134, 335], "0.03a": [128, 319]},
+  "plane_wall_case": "linear shear G = 4 U_m / R (the tube's wall shear rate), same gaps, same nu: Re_G = G a^2/nu = 77.4 and 193.4; Re_p (U_c d/nu) 170/425 at 0.1a, 159/398 at 0.03a",
+  "units_reported": "F / (mu U_m a), T / (mu U_m a^2); drag +x along the flow, lift +z away from the wall (towards the tube axis), torque +y"
+ },
+ "gate_validation_eka": "Ekanayake et al. 2020 (arXiv 2002.06142) Table 2, non-rotating sphere with zero slip at l/a = 1.2, Re_gamma 0.1 (L* 100): C_L1 1.6178, C_D1 -8.3614; mine within 3 % on C_L1 (Stokes-lift-subtracted) and 1 % on C_D1 at the finest level and box L* 50; P = 0.7",
+ "gate_free_sphere": "unbounded sphere C_D within 2 % of Clift-Grace-Weber (1.0853 at Re 100, 0.7769 at Re 200) on the finest level; P = 0.8",
+ "gate_stokes_plane": "Stokes resistances xx, zz, ryry, x_ry on the plane-wall meshes within 0.5 % of the exact bispherical values at 0.1a and 0.03a, 1 % at 0.01a, at s <= 1.0 in the large box; P = 0.7",
+ "gate_stokes_lift": "the tube's Stokes lift (zero by reversibility) falls with refinement and is under 1e-3 of the drag at the finest level; P = 0.8",
+ "gate_ladder": "tube drag at 0.1a monotone over s = 1.6, 1.26, 1.0, 0.8, 0.63 with observed order 2 to 4 and a Richardson band under 1 % at both Re_D; lift band under 2 %; torque under 2 %; P = 0.65",
+ "gate_domain": "inlet 10a -> 15a and outlet 30a -> 45a move tube forces by under 0.3 %; P = 0.75",
+ "gate_viscosity": "nu x 1.05 at fixed U_m: force ratio equals 1.05 x f(Re/1.05)/f(Re), f interpolated as a power law from the clean s=1.0 ladder (Re_D 0, 260, 455, 650) before the planted run, within 0.5 %; detection: the planted ratio differs from 1 by more than the interpolation band",
+ "gate_stability": "tube at both Re_D and gaps 0.1a, 0.03a: steady (late growth rate of the linearised CN march < 0, full domain); P = 0.85. Plane-wall linear shear at the Re_D-650 shear (Re_p 425): steady state unstable; P = 0.55",
+ "predicted_values": {
+  "tube_0.1a_ReD260": {"Fx": [185, 205], "Fz": [65, 90], "Ty": [19, 25]},
+  "tube_0.1a_ReD650": {"Fx": [300, 345], "Fz": [140, 185], "Ty": [20, 27]},
+  "tube_0.03a_vs_0.1a": "drag +1 to +5 %, lift +3 to +12 %",
+  "tube_stokes_0.1a_Fx": [63, 69],
+  "observed_order_drag": [2, 4]
+ },
+ "kill": "no ladder at 0.1a converging to 2 % (Richardson band on drag, lift or torque over 2 %, or a non-monotone ladder whose spread over the three finest levels exceeds 2 %) within the runner budget (finest level about 0.5M unknowns, 16 GB). Then report the resolution it would need by the observed order.",
+ "outcomes": null
+}
