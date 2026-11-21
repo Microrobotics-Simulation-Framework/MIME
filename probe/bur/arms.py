@@ -165,6 +165,7 @@ def t_run(nx, power, V, mode, height=HT, s1=0.1, n=0.4, band_cells=3, tau_y=1.0,
         kw.update(band=band_cells * g.h, wall_law=wall_law(s1, n, Vreg=1e-3 * V), plant_wall=plant)
     if mode in "cd":
         kw.update(tau_y=tau_y * G0, paste=paste_law(tau_p * G0, mu_p, 1e-2 * V / LAM))
+    kw["order"] = int(os.environ.get("BUR_ORDER", "3"))
     gel = Gel(g, G0, geom, dt, **kw)
     rows = []
     nst = int(round(waves * LAM / (Vn * dt)))
@@ -180,7 +181,7 @@ def t_run(nx, power, V, mode, height=HT, s1=0.1, n=0.4, band_cells=3, tau_y=1.0,
     last = r[:, 0] > waves - 1.0
     mid = (r[:, 0] > 1.0) & (r[:, 0] <= 2.0)
     res = dict(nx=nx, power=power, V=V, mode=mode, height=height, s1=s1, n=n, tau_y=tau_y, tau_p=tau_p, mu_p=mu_p, damage=damage,
-               plant=plant, waves=waves, cells_a_blade=0.3 / g.h,
+               plant=plant, waves=waves, cells_a_blade=0.3 / g.h, order=kw["order"],
                wall_law_over_G=float(wall_law(s1, n)(np.array(V)) / G0) if mode in "bd" else None,
                tau_az_over_G=float(r[last, 3].mean()), tau_n_over_G=float(r[last, 1].mean()), tau_s_over_G=float(r[last, 2].mean()),
                tau_az_wave2=float(r[mid, 3].mean()), tau_az_ripple_pp=float((r[last, 3].max() - r[last, 3].min()) / abs(r[last, 3].mean())),
