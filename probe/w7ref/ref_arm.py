@@ -55,8 +55,11 @@ def case_setup(spec):
 
 def main():
     name, out_dir = sys.argv[1], sys.argv[2]
-    specs = json.load(open(os.path.join(HERE, "arms_spec.json")))
-    spec = specs[name]
+    if os.environ.get("REF_SPEC_JSON"):
+        spec = json.loads(os.environ["REF_SPEC_JSON"])
+    else:
+        spec = json.load(open(os.path.join(HERE, "arms_spec.json")))[name]
+    budget = float(os.environ.get("REF_BUDGET_S", "1e12"))
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f"{name}.json")
     nthreads = int(os.environ.get("REF_THREADS", "4"))
@@ -77,12 +80,13 @@ def main():
             json.dump(rec, f, indent=1)
         os.replace(out_path + ".tmp", out_path)
 
+    prev_rec = json.load(open(out_path)) if os.path.exists(out_path) else None
     t0 = time.time()
     dom = {k: spec[k] for k in ("Lu", "Ld", "Ly", "H", "Rf", "R", "hfar") if k in spec}
     if spec["kind"] in ("tube", "shear") and "R" not in dom:
         dom["R"] = R_TUBE
     mesh, info = build_mesh(spec["kind"], spec["gap"], s=spec["s"], order=spec.get("order", 2), full=spec.get("full", False),
-                            wake=spec.get("wake"), **dom)
+                            wake=spec.get("wake"), base=spec.get("base"), **dom)
     info.pop("centre", None)
     rec["mesh"] = info
     log(f"mesh {info['ne']} elements, {info['nv']} vertices, {info['t_mesh']:.1f} s")
@@ -95,10 +99,33 @@ def main():
         log(f"dofs free {nfree} total {ntot}; rss {rss_gib():.2f} GiB")
         dump()
         half = 1.0 if spec.get("full", False) else 2.0
+        # resume: a state saved by an earlier launch of the same arm on the same (deterministically regenerated) mesh
+        state_path = os.path.join(out_dir, f"{name}.state.npz")
+        mhash = mesh_hash(mesh)
+        rec["mesh_hash"] = mhash
+        done = set()
+        if os.path.exists(state_path) and prev_rec is not None:
+            st0 = np.load(state_path)
+            if st0["mesh_hash"].tolist() == mhash and len(st0["vec"]) == len(fl.gfu.vec):
+                fl.gfu.vec.FV().NumPy()[:] = st0["vec"]
+                prev = prev_rec
+                rec["results"] = prev.get("results", [])
+                rec["resumed"] = prev.get("resumed", 0) + 1
+                done = {r["Re"] for r in rec["results"]}
+                log(f"resumed from {state_path}: Re done {sorted(done)}")
+            else:
+                log("saved state does not match this mesh: starting afresh")
+        step_t = [0.0]
         if spec["kind"] == "res":
             rec["resistance"] = resistance(fl, spec, half, log)
             dump()
         for Re in spec.get("Re", []):
+            if Re in done:
+                continue
+            if time.time() - t0 + 1.2 * max(step_t) > budget:
+                rec["stopped"] = f"budget: {time.time() - t0:.0f} s used before Re {Re}"
+                log(rec["stopped"])
+                break
             t1 = time.time()
             if Re == 0:
                 nu, conv = 1.0, 0.0
@@ -110,6 +137,8 @@ def main():
             row = dict(Re=Re, nu=nu, conv=conv, code=full, per_mu=({k: v / nu for k, v in full.items()}),
                        newton=st, t=time.time() - t1, rss_gib=rss_gib())
             rec["results"].append(row)
+            step_t.append(row["t"])
+            np.savez(state_path, vec=fl.gfu.vec.FV().NumPy().copy(), mesh_hash=np.array(mhash), Re=Re)
             log(f"Re {Re}: conv {st['converged']} its {st['iters']} factors {st['n_factor']} t {row['t']:.1f}s | per mu: Fx {row['per_mu']['Fx']:.6f}"
                 f" Fz {row['per_mu']['Fz']:.6f} Ty {row['per_mu']['Ty']:.6f} Ty_sym {row['per_mu']['Ty_sym']:.6f} (trac g {row['per_mu']['Fx_g']:.5f}); rss {row['rss_gib']:.2f}")
             dump()
@@ -120,6 +149,17 @@ def main():
     rec["finished"] = time.strftime("%Y-%m-%d %H:%M:%S %Z")
     rec["log"] = log_lines[-400:]
     dump()
+
+
+def mesh_hash(mesh):
+    """Cheap fingerprint of a regenerated mesh: counts and the first vertices' coordinates."""
+    pts = []
+    for i, v in enumerate(mesh.vertices):
+        if i >= 2000:
+            break
+        pts.append(v.point)
+    a = np.array(pts)
+    return [float(mesh.nv), float(mesh.ne), float(a.sum()), float((a ** 2).sum())]
 
 
 def build_centre(spec):

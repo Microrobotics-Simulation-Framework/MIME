@@ -41,10 +41,11 @@ def _lattice(mp, x0, x1, y0, y1, z0, z1, h, inside=None):
 
 
 def build_mesh(kind, gap, s=1.0, order=2, full=False, R=2.5925925925925926, Lu=10.0, Ld=30.0, Ly=12.0, H=12.0, Rf=20.0,
-               wake=None, hmin=2e-4, hfar=None):
-    """Netgen mesh of the fluid around a unit sphere. Returns (mesh, info)."""
-    k = BASE["k"] / s
-    h_sph, h_wall, h_far, h_w = (BASE[n] * s for n in ("h_sph", "h_wall", "h_far", "h_w"))
+               wake=None, hmin=2e-4, hfar=None, base=None):
+    """Netgen mesh of the fluid around a unit sphere. Returns (mesh, info). base overrides entries of BASE."""
+    B = dict(BASE, **(base or {}))
+    k = B["k"] / s
+    h_sph, h_wall, h_far, h_w = (B[n] * s for n in ("h_sph", "h_wall", "h_far", "h_w"))
     if hfar is not None:
         h_far = hfar * s
     big = 1000.0
@@ -83,7 +84,7 @@ def build_mesh(kind, gap, s=1.0, order=2, full=False, R=2.5925925925925926, Lu=1
         if f.name not in names:
             f.name = "sym"
     geo = OCCGeometry(dom)
-    mp = MeshingParameters(maxh=h_far, grading=BASE["grading"])
+    mp = MeshingParameters(maxh=h_far, grading=B["grading"])
     n_restrict = 0
     ylo = -R if full else 0.0
     if kind in ("tube", "shear", "eka", "res"):
