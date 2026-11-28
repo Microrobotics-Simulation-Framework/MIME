@@ -7,12 +7,13 @@ python -I -c "import ngsolve; print('ngsolve', ngsolve.__version__)" >> probe/ou
 nproc > probe/out/nproc_${PROBE_ARM}.txt; free -g >> probe/out/nproc_${PROBE_ARM}.txt
 export OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4
 case "$PROBE_ARM" in
-  ns*) python -I probe/code/run_ns.py "probe/out/${PROBE_ARM}.jsonl" "$(cat probe/specs/${PROBE_ARM}.spec)" >> "probe/out/${PROBE_ARM}.log" 2>&1
+  ns*) timeout 18000 python -I probe/code/run_ns.py "probe/out/${PROBE_ARM}.jsonl" "$(cat probe/specs/${PROBE_ARM}.spec)" >> "probe/out/${PROBE_ARM}.log" 2>&1
        echo "ns exit $?" >> "probe/out/${PROBE_ARM}.log" ;;
   *) while IFS= read -r line; do
        [ -z "$line" ] && continue
-       python -I probe/code/run_lin.py "probe/out/${PROBE_ARM}.jsonl" "$line" >> "probe/out/${PROBE_ARM}.log" 2>&1
-       echo "spec exit $?" >> "probe/out/${PROBE_ARM}.log"
+       timeout 3600 python -I probe/code/run_lin.py "probe/out/${PROBE_ARM}.jsonl" "$line" >> "probe/out/${PROBE_ARM}.log" 2>&1
+       rc=$?; echo "spec exit $rc" >> "probe/out/${PROBE_ARM}.log"
+       if [ $rc -eq 124 ]; then echo "spec timed out: arm aborted" >> "probe/out/${PROBE_ARM}.log"; break; fi
      done < "probe/specs/${PROBE_ARM}.specs" ;;
 esac
 echo ALLDONE >> "probe/out/${PROBE_ARM}.log"
