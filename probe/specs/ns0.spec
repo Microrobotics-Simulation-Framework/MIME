@@ -1,0 +1,1 @@
+{"gap": 0.1, "cfac": 1.0, "hbody": 0.12, "hwake": 0.3, "order": 3, "Lin": 10.0, "Lout": 30.0, "maxh": 1.5, "tag": "NS0-g0.1-P3", "points": [{"Re": 50.18, "V": 0.0, "Om": 0.0, "flow": 1.0, "label": "F0-Re260"}, {"Re": 125.45, "V": 0.0, "Om": 0.0, "flow": 1.0, "label": "F0-Re650"}]}
