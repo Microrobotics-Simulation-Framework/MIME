@@ -34,7 +34,7 @@ def helix_correction(H, c, Rm, newton=8):
     rv = [pb[0] - rh * ct, pb[1] - rh * st, pb[2] - Zt(t)]
     d = sqrt(rv[0] ** 2 + rv[1] ** 2 + rv[2] ** 2)
     cb = [-(d - H.rho) * rv[i] / d for i in range(3)]
-    return CoefficientFunction(tuple(sum(float(Rm[i, j]) * cb[j] for j in range(3)) for i in range(3)))
+    return CoefficientFunction(tuple(sum(float(Rm[i, j]) * cb[j] for j in range(3)) for i in range(3))).Compile()
 
 
 def carina_correction(g, newton=10):
@@ -48,7 +48,7 @@ def carina_correction(g, newton=10):
     ex, ey = A * cos(phi), B * sin(phi)
     rv = [x - ex, y - ey, z]
     d = sqrt(rv[0] ** 2 + rv[1] ** 2 + rv[2] ** 2)
-    return CoefficientFunction(tuple((rc - d) * rv[i] / d for i in range(3)))
+    return CoefficientFunction(tuple((rc - d) * rv[i] / d for i in range(3))).Compile()
 
 
 def apply(mesh, order, corrections, inverse="sparsecholesky"):

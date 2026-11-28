@@ -26,7 +26,7 @@ for fn in sys.argv[1:]:
             print("ERR", r.get("spec", {}).get("tag"), r.get("error")); continue
         S = np.array(r["S"])
         sp = r["spec"]
-        g = sp["gap"]
+        g = sp.get("plant_of", sp["gap"])     # K1 plants are compared with the exact value at the unplanted gap
         ndof = sum(c["free"] for c in r["classes"])
         rss = max(c["rss_gib"] for c in r["classes"])
         if sp["geom"] == "G0" and r["s"] == 0:

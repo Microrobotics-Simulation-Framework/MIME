@@ -48,8 +48,16 @@ point for torques is c.
 - Finite Re: steady Navier-Stokes; each row of the reference tables names its frame (body frame for translation along a
   straight tube; frozen geometry in the lab frame otherwise).
 
-## Checks (check_cases.py; results in work/check_cases*.jsonl)
+## Checks (check_cases.py; results in work/check_cases*.jsonl, work/dbg_*.out)
 - Mesh boundary vertices against the analytic wall function: G0, G0b, G1, G2, G3 at 1e-14 [measured].
-- Sphere gaps: the closed form against the minimum over 2e5 surface samples, every geometry and pose [measured].
-- H: Netgen-OCC's Pipe surface deviates from the exact tube by up to 1.5e-5 a [measured]; the loft variant is checked in
-  work/dbg_body.out.
+- Sphere gaps: the closed form against the minimum over 6e4 to 2e5 surface samples, every geometry and G4 pose [measured].
+- G4: the cylinders and the bulb are exact in OCC (7e-7); OCC's fillet faces (named `carina`) deviate from the analytic rolling
+  ball by up to 5.1e-4 a, median 2.2e-4 a, at the apex [measured]. The solver moves the `carina` faces onto the analytic surface
+  (code/exactgeo.py, a harmonic deformation of the curved mesh). A core that uses OCC's fillet as its wall inherits that error.
+- H: OCC's Pipe surface deviates from the exact tube by up to 1.5e-5 a [measured]; the solver moves the `body` faces onto the
+  analytic tube in the same way. The OCC loft alternative was too slow to build (over 15 min for 121 sections).
+- F: OCC's Pipe twist is not implemented in netgen 6.2.2608; a 49-section loft of the stadium was not checked; F has no
+  verified mesh (see the report).
+- Construction note (G4): fillet the A-B crease of the two daughter cylinders alone, then unite with the parent and bulb.
+  Filleting the crease on the full union gave a solid whose later booleans were wrong (lumen minus sphere 542.6 against
+  703.2) [measured].
