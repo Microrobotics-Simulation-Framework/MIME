@@ -28,6 +28,7 @@ def build(spec):
         lum = S_(Pnt(0, 0, 0), spec.get("Lc", 30.0)); lum.faces.name = "outer"; cuts = ["y", "x", "z"]
     elif gname in ("G1", "G1h"):
         R = G.R_SPH if (gname == "G1" and body.name == "SPH") else G.R_HF
+        R = float(spec.get("R", R))           # override (control K6: W7REF's tube R = 70/27)
         w = G.Tube(R)
         L = spec.get("win", 6.0) * R
         if body.name == "SPH":
