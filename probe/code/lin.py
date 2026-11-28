@@ -75,19 +75,18 @@ def grade_points_sphere(wall, c, gap, cfac, h_body, gmax=0.6, hmin=None):
         ring = c + np.cos(psi) * n + np.sin(psi) * (np.cos(ph)[:, None] * e1 + np.sin(ph)[:, None] * e2)
         g = wall.sdf(ring)
         gr = float(np.min(g))
-        for p, gg in zip(ring, g):
-            hb = h_body
-            if gg < gmax:
-                hl = max(cfac * gg, hmin if hmin else 0.0)
-                pts.append((p, min(hl, hb)))
-                # mid-gap and wall foot, along the wall normal
-                gw = np.array([(wall.sdf(np.atleast_2d(p + eps * e))[0] - wall.sdf(np.atleast_2d(p - eps * e))[0]) / (2 * eps)
-                               for e in np.eye(3)])
-                gw /= np.linalg.norm(gw)
-                pts.append((p - 0.5 * gg * gw, min(hl, hb)))
-                pts.append((p - gg * gw, min(max(hl, cfac * gg), hb)))
-            else:
-                pts.append((p, hb))
+        near = g < gmax
+        for p in ring[~near]:
+            pts.append((p, h_body))
+        if near.any():
+            R_ = ring[near]
+            gw = np.stack([(wall.sdf(R_ + eps * e) - wall.sdf(R_ - eps * e)) / (2 * eps) for e in np.eye(3)], -1)
+            gw /= np.linalg.norm(gw, axis=1, keepdims=True)
+            for p, gg, gv in zip(R_, g[near], gw):
+                hl = min(max(cfac * gg, hmin if hmin else 0.0), h_body)
+                pts.append((p, hl))
+                pts.append((p - 0.5 * gg * gv, hl))
+                pts.append((p - gg * gv, hl))
         step = min(0.5 * max(cfac * gr, hmin if hmin else 0.0), 0.7 * h_body) if gr < gmax else 0.7 * h_body
         step = max(step, 1e-5)
         psi += step
