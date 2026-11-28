@@ -1,0 +1,6 @@
+{"geom": "G1", "gap": 0.1, "cfac": 1.0, "hbody": 0.07, "maxh": 1.2, "orders": [3, 4], "s": [1381], "F0": true, "win": 6.0, "tag": "B2-brink-g0.1-hb0.07"}
+{"geom": "G1", "gap": 0.1, "cfac": 1.0, "hbody": 0.05, "maxh": 1.2, "orders": [3, 4], "s": [1381], "F0": true, "win": 6.0, "tag": "B2-brink-g0.1-hb0.05"}
+{"geom": "G1", "gap": 0.01, "cfac": 1.0, "hbody": 0.07, "maxh": 1.2, "orders": [3, 4], "s": [1381], "F0": true, "win": 6.0, "tag": "B2-brink-g0.01-hb0.07"}
+{"geom": "G1", "gap": 0.01, "cfac": 1.0, "hbody": 0.05, "maxh": 1.2, "orders": [3, 4], "s": [1381], "F0": true, "win": 6.0, "tag": "B2-brink-g0.01-hb0.05"}
+{"geom": "G1", "gap": 0.001, "cfac": 1.0, "hbody": 0.07, "maxh": 1.2, "orders": [3, 4], "s": [1381], "F0": true, "win": 6.0, "tag": "B2-brink-g0.001-hb0.07"}
+{"geom": "G1", "gap": 0.001, "cfac": 1.0, "hbody": 0.05, "maxh": 1.2, "orders": [3, 4], "s": [1381], "F0": true, "win": 6.0, "tag": "B2-brink-g0.001-hb0.05"}
