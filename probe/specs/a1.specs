@@ -1,0 +1,5 @@
+{"geom": "G0", "gap": 0.1, "cfac": 1.0, "hbody": 0.25, "maxh": 6.0, "orders": [2, 3, 4], "s": [0], "Lc": 30.0, "tag": "A1-g0.1-c1.0"}
+{"geom": "G0", "gap": 0.1, "cfac": 0.7, "hbody": 0.18, "maxh": 6.0, "orders": [2, 3, 4], "s": [0], "Lc": 30.0, "tag": "A1-g0.1-c0.7"}
+{"geom": "G0", "gap": 0.10200000000000001, "cfac": 1.0, "hbody": 0.25, "maxh": 6.0, "orders": [2, 3, 4], "s": [0], "Lc": 30.0, "tag": "K1-g0.1", "plant_of": 0.1}
+{"geom": "G0b", "gap": 0.1, "b": 4.0, "cfac": 1.0, "hbody": 0.25, "maxh": 6.0, "orders": [2, 3, 4], "s": [0], "Lc": 30.0, "tag": "A4-g0.1"}
+{"geom": "Bunb", "gap": 0.0, "cfac": 1.0, "hbody": 0.1, "maxh": 6.0, "orders": [2, 3, 4], "s": [130, 1381], "Lc": 30.0, "tag": "A2-hb0.1"}
