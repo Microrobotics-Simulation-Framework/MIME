@@ -1,0 +1,4 @@
+{"geom": "G4", "gap": 0.1, "cfac": 1.0, "hbody": 0.2, "maxh": 1.5, "orders": [2, 3, 4], "s": [0, 130, 1381], "F0": true, "body": "SPH", "tag": "C1-SPH-G4-P2-g0.1-L1", "pose": "P2"}
+{"geom": "G4", "gap": 0.1, "cfac": 0.7, "hbody": 0.14, "maxh": 1.5, "orders": [2, 3, 4], "s": [0, 130, 1381], "F0": true, "body": "SPH", "tag": "C1-SPH-G4-P2-g0.1-L2", "pose": "P2"}
+{"geom": "G4", "gap": 0.01, "cfac": 1.0, "hbody": 0.2, "maxh": 1.5, "orders": [2, 3, 4], "s": [0, 130, 1381], "F0": true, "body": "SPH", "tag": "C1-SPH-G4-P2-g0.01-L1", "pose": "P2"}
+{"geom": "G4", "gap": 0.01, "cfac": 0.7, "hbody": 0.14, "maxh": 1.5, "orders": [2, 3, 4], "s": [0, 130, 1381], "F0": true, "body": "SPH", "tag": "C1-SPH-G4-P2-g0.01-L2", "pose": "P2"}

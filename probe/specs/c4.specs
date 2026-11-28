@@ -1,0 +1,2 @@
+{"geom": "G3", "gap": 0.001, "cfac": 1.0, "hbody": 0.2, "maxh": 1.5, "orders": [2, 3], "s": [0, 130, 1381], "F0": true, "body": "SPH", "tag": "C1-SPH-G3-g0.001-L1"}
+{"geom": "G3", "gap": 0.001, "cfac": 0.7, "hbody": 0.14, "maxh": 1.5, "orders": [2, 3], "s": [0, 130, 1381], "F0": true, "body": "SPH", "tag": "C1-SPH-G3-g0.001-L2"}

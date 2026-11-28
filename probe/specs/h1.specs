@@ -1,0 +1,4 @@
+{"geom": "G1", "gap": 0.1, "cfac": 1.0, "hbody": 0.15, "maxh": 1.2, "orders": [2, 3], "s": [0, 130], "F0": true, "body": "H", "spin": 0.0, "win": 4.0, "tag": "H1-G1-g0.1-L1"}
+{"geom": "G1", "gap": 0.1, "cfac": 0.7, "hbody": 0.1, "maxh": 1.2, "orders": [2, 3], "s": [0, 130], "F0": true, "body": "H", "spin": 0.0, "win": 4.0, "tag": "H1-G1-g0.1-L2"}
+{"geom": "G1", "gap": 0.01, "cfac": 1.0, "hbody": 0.15, "maxh": 1.2, "orders": [2, 3], "s": [0, 130], "F0": true, "body": "H", "spin": 0.0, "win": 4.0, "tag": "H1-G1-g0.01-L1"}
+{"geom": "G1", "gap": 0.01, "cfac": 0.7, "hbody": 0.1, "maxh": 1.2, "orders": [2, 3], "s": [0, 130], "F0": true, "body": "H", "spin": 0.0, "win": 4.0, "tag": "H1-G1-g0.01-L2"}
